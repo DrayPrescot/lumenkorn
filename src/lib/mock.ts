@@ -240,6 +240,21 @@ export const mock = {
         return out(mockFaces.filter((f) => f.imageId === a.id));
       case "faces_of_images":
         return out(mockFaces.filter((f) => a.ids.includes(f.imageId)));
+      case "person_rename": {
+        const name: string = a.name.trim();
+        const other = mockPersons.find((p) => p.id !== a.id && p.name.toLowerCase() === name.toLowerCase());
+        if (other) {
+          for (const f of mockFaces.filter((f) => f.personId === a.id)) {
+            f.personId = other.id;
+            f.personName = other.name;
+          }
+          return out(other.id);
+        }
+        const me = mockPersons.find((p) => p.id === a.id);
+        if (me) me.name = name;
+        for (const f of mockFaces.filter((f) => f.personId === a.id)) f.personName = name;
+        return out(a.id);
+      }
       case "faces_reassign": {
         const name: string | null = a.name;
         let pid: number | null = null;

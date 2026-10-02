@@ -13,6 +13,8 @@
 
   let review = $state<{ person: Person; faces: FaceInfo[] } | null>(null);
   let names = $state<Record<number, string>>({});
+  /** Benannte Person, deren Name gerade bearbeitet wird */
+  let editing = $state<number | null>(null);
 
   async function act(f: () => Promise<unknown>) {
     try {
@@ -95,7 +97,32 @@
           <button class="avatar" onclick={() => open(p)} title="Fotos von {p.name}">
             {#if p.coverFace}<img src={faceUrl(p.coverFace)} alt="" />{/if}
           </button>
-          <div class="name">{p.name}</div>
+          {#if editing === p.id}
+            <form
+              onsubmit={async (e) => {
+                e.preventDefault();
+                const v = (e.currentTarget.elements.namedItem("n") as HTMLInputElement).value;
+                editing = null;
+                await lib.renamePerson(p.id, v);
+              }}
+            >
+              <!-- svelte-ignore a11y_autofocus -->
+              <input
+                type="text"
+                name="n"
+                value={p.name}
+                autofocus
+                onfocus={(e) => e.currentTarget.select()}
+                onblur={() => (editing = null)}
+                onkeydown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Escape") editing = null;
+                }}
+              />
+            </form>
+          {:else}
+            <button class="name" title="Klicken zum Umbenennen" onclick={() => (editing = p.id)}>{p.name}</button>
+          {/if}
           <div class="muted small">{p.imageCount} {p.imageCount === 1 ? "Foto" : "Fotos"}</div>
           <div class="row">
             {#if p.suggested}
@@ -205,6 +232,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    padding: 1px 4px;
+    border-radius: var(--radius-s);
+    cursor: text;
+  }
+  .name:hover {
+    background: var(--raised);
   }
   .card input {
     width: 124px;

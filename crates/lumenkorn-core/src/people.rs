@@ -466,10 +466,19 @@ impl Catalog {
             return Err(Error::Invalid("Bitte einen Namen eingeben".into()));
         }
         let existing = self.person_by_name(name)?.filter(|id| *id != person_id);
+        // Eine Gruppe benennen bestätigt ihre Gesichter. Eine schon benannte
+        // Person nur umbenennen (z. B. „Max“ → „Max Mustermann“) lässt offene
+        // Vorschläge offen – sie sind weiterhin zu prüfen.
+        let had_name: bool = self.conn.query_row(
+            "SELECT name IS NOT NULL FROM persons WHERE id = ?1",
+            [person_id],
+            |r| r.get(0),
+        )?;
+        let confirm = if had_name { "confirmed" } else { "1" };
         let target = self.with_tx(|tx| match existing {
             Some(other) => {
                 tx.execute(
-                    "UPDATE faces SET person_id = ?1, confirmed = 1 WHERE person_id = ?2",
+                    &format!("UPDATE faces SET person_id = ?1, confirmed = {confirm} WHERE person_id = ?2"),
                     params![other, person_id],
                 )?;
                 tx.execute("DELETE FROM persons WHERE id = ?1", [person_id])?;
@@ -481,7 +490,7 @@ impl Catalog {
                     params![person_id, name],
                 )?;
                 tx.execute(
-                    "UPDATE faces SET confirmed = 1 WHERE person_id = ?1",
+                    &format!("UPDATE faces SET confirmed = {confirm} WHERE person_id = ?1"),
                     [person_id],
                 )?;
                 Ok(person_id)
@@ -769,5 +778,45 @@ mod tests {
         assert!(back.iter().all(|f| f.person_id != Some(ben)));
         // Leerer Name wird abgelehnt
         assert!(cat.reassign_faces(&wrong, Some("  ")).is_err());
+    }
+
+    /// Umbenennen einer schon benannten Person behält offene Vorschläge;
+    /// ein vorhandener Name führt zusammen.
+    #[test]
+    fn renames_named_person() {
+        let (mut cat, imgs) = catalog_with_images(3);
+        let mut idx = cat.people_index().unwrap();
+        add(&mut cat, &mut idx, imgs[0], face(0, 0.1));
+        let group = cat.image_faces(imgs[0]).unwrap()[0].person_id.unwrap();
+        let max = cat.name_person(group, "Max").unwrap();
+        // Neues Foto wird Max nur vorgeschlagen
+        let mut idx = cat.people_index().unwrap();
+        add(&mut cat, &mut idx, imgs[1], face(0, 0.12));
+        assert!(!cat.image_faces(imgs[1]).unwrap()[0].confirmed);
+
+        assert_eq!(
+            cat.name_person(max, "Max Mustermann").unwrap(),
+            max,
+            "gleiche Person"
+        );
+        let faces = cat.person_faces(max).unwrap();
+        assert!(
+            faces
+                .iter()
+                .all(|f| f.person_name.as_deref() == Some("Max Mustermann"))
+        );
+        assert_eq!(
+            faces.iter().filter(|f| f.confirmed).count(),
+            1,
+            "Vorschlag bleibt offen"
+        );
+
+        // Umbenennen auf einen vorhandenen Namen führt zusammen
+        let mut idx = cat.people_index().unwrap();
+        add(&mut cat, &mut idx, imgs[2], face(3, 0.0));
+        let g2 = cat.image_faces(imgs[2]).unwrap()[0].person_id.unwrap();
+        let erika = cat.name_person(g2, "Erika").unwrap();
+        assert_eq!(cat.name_person(erika, "max mustermann").unwrap(), max);
+        assert_eq!(cat.person_faces(max).unwrap().len(), 3);
     }
 }

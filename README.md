@@ -41,7 +41,10 @@ and uses the GPU (AMD, NVIDIA, Intel) through Vulkan or DirectX 12 where availab
   Rejected photos can then be moved to the trash in one step.
 - **Compare** up to 12 photos side by side with linked zoom, and view any photo at 1:1.
 - **People:** fix assignments for many photos at once. Select them and reassign or remove
-  a person in the info panel.
+  a person in the info panel. To rename a person (e.g. "Max" → "Max Mustermann"), double-click
+  or right-click their name in the sidebar.
+- **Collapsible sidebar:** click the *Projekte*, *Personen* or *Ordner* heading to collapse
+  that section.
 
 ### Develop (non-destructive)
 - **Linear floating-point RAW pipeline** ([rawler](https://github.com/dnglab/dnglab)) with:

@@ -9,6 +9,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ### Added
 - People: reassign or remove a person for all selected photos at once
   (info panel → “Personen in der Auswahl”).
+- Rename people who already have a name, e.g. “Max” → “Max Mustermann”:
+  double-click or right-click the name in the sidebar, or click it under
+  “Personen verwalten”. Open suggestions stay open, and an existing name
+  merges both people after confirmation.
+- Collapsible sidebar sections (Projects, People, Folders), remembered
+  across restarts.
 - Compare is reachable from everywhere: `C` also in Develop, `Enter`/`E` with
   several photos selected, and the context menu.
 

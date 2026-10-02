@@ -18,6 +18,9 @@ und lokale KI für Verschlagwortung und Inhaltssuche.
 - **Projekte** bündeln beliebig viele Ordner, auch von verschiedenen Laufwerken. Pro Ordner wählbar, ob Unterordner dazugehören. Neue Fotos in diesen Ordnern landen automatisch im Projekt; überlappende Ordner führen nicht zu Dubletten.
 - **Thumbnails** für JPEG, PNG, TIFF, WebP und RAW (NEF, CR2, CR3, ARW, RAF, DNG, ORF, RW2 …). Unbearbeitete RAWs nutzen das eingebettete Kamera-JPEG (schnell); bearbeitete Bilder zeigen die Bearbeitung.
 - **EXIF:** Aufnahmezeit, Kamera, Objektiv, ISO, Belichtung, Blende, Brennweite, Orientierung.
+- **Seitenleiste:** Die Bereiche „Projekte“, „Personen“ und „Ordner“ lassen sich per Klick auf die
+  Überschrift einklappen (bleibt nach einem Neustart so). Eingeklappt bleibt der gerade gewählte
+  Eintrag sichtbar.
 - **Raster** im Blocksatz mit echten Seitenverhältnissen, virtualisiert, Einzelansicht mit Filmstreifen.
 - **Suche** über Dateiname, Ordner, Kamera, Objektiv, Schlagworte und Personen – oder nach Bildinhalt (KI). Mehrere Wörter müssen alle passen, Teilwörter genügen („sonnen“ findet „Sonnenuntergang“); Groß-/Kleinschreibung, Umlaute und Akzente spielen keine Rolle („cafe“ findet „Café“). Ein Volltextindex (SQLite FTS5) macht das auch bei 50 000 Fotos in Millisekunden. Filter nach Mindestbewertung, Sortierung.
 
@@ -238,6 +241,10 @@ Hintergrund in allen Fotos nach Gesichtern (nach der Verschlagwortung).
   Fotos werden der Person danach **vorgeschlagen** (gestrichelt bzw. „Lena?“) – ✓ bestätigt, ✕ nimmt
   heraus und schlägt dieses Gesicht der Person nie wieder vor. Ein gleicher Name führt zwei Personen
   zusammen. Einzelne Gesichter lassen sich im Infobereich direkt benennen oder ignorieren.
+- **Umbenennen:** Doppel- oder Rechtsklick auf eine Person in der Seitenleiste bzw. Klick auf den
+  Namen in „Personen verwalten“, z. B. „Max“ → „Max Mustermann“. Bestätigte Gesichter bleiben
+  bestätigt, offene Vorschläge bleiben zu prüfen. Gibt es den neuen Namen schon, werden beide
+  Personen nach Rückfrage zusammengeführt.
 - **Mehrere Fotos auf einmal korrigieren:** Fotos auswählen (Strg-/Umschalt-Klick, Strg+A) – der
   Infobereich zeigt unter „Personen in der Auswahl“ alle darin erkannten Personen. Je Person lassen
   sich die Gesichter aller ausgewählten Fotos einer anderen Person zuordnen (Name eingeben) oder

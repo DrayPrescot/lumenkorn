@@ -21,6 +21,7 @@
   let newProject = $state<string | null>(null);
   let menu = $state<{ x: number; y: number; node: FolderNode; root?: Root } | null>(null);
   let renaming = $state<number | null>(null);
+  let renamingPerson = $state<number | null>(null);
 
   onMount(async () => {
     platform = (await api.appInfo()).platform;
@@ -71,6 +72,15 @@
   const scanningRoot = $derived(lib.scan ? lib.roots.find((r) => r.id === lib.scan!.rootId) : undefined);
 </script>
 
+{#snippet toggle(key: "projects" | "people" | "folders", title: string, count: number)}
+  {@const closed = !!lib.collapsed[key]}
+  <button class="toggle" aria-expanded={!closed} title={closed ? `${title} aufklappen` : `${title} einklappen`} onclick={() => lib.toggleSection(key)}>
+    <span class="chev" class:closed><Icon name="chevron" size={11} /></span>
+    <h2>{title}</h2>
+    {#if closed && count}<span class="count">{count}</span>{/if}
+  </button>
+{/snippet}
+
 <svelte:window onclick={() => (menu = null)} onkeydown={(e) => e.key === "Escape" && (menu = null)} />
 
 <aside>
@@ -88,12 +98,12 @@
 
     <section>
       <header>
-        <h2>Projekte</h2>
+        {@render toggle("projects", "Projekte", lib.projects.length)}
         <button class="icon-btn" aria-label="Neues Projekt" title="Neues Projekt" onclick={() => (newProject = "")}>
           <Icon name="plus" size={14} />
         </button>
       </header>
-      {#if newProject !== null}
+      {#if newProject !== null && !lib.collapsed.projects}
         <form onsubmit={(e) => (e.preventDefault(), submitNewProject())}>
           <!-- svelte-ignore a11y_autofocus -->
           <input
@@ -107,7 +117,9 @@
         </form>
       {/if}
       {#each lib.projects as p (p.id)}
-        {#if renaming === p.id}
+        {#if lib.collapsed.projects && !lib.isScope({ type: "project", id: p.id })}
+          <!-- eingeklappt: nur das gerade gewählte Projekt zeigen -->
+        {:else if renaming === p.id}
           <form
             onsubmit={(e) => {
               e.preventDefault();
@@ -133,7 +145,7 @@
           </button>
         {/if}
       {:else}
-        {#if newProject === null}
+        {#if newProject === null && !lib.collapsed.projects}
           <p class="hint">Ein Projekt bündelt Ordner von beliebigen Orten. Rechtsklick auf einen Ordner fügt ihn hinzu.</p>
         {/if}
       {/each}
@@ -141,19 +153,58 @@
 
     <section>
       <header>
-        <h2>Personen</h2>
+        {@render toggle("people", "Personen", lib.people.filter((p) => p.name).length)}
         <button class="icon-btn" aria-label="Alle Personen" title="Personen und Gruppen verwalten" onclick={() => { lib.mode = "library"; lib.view = "people"; }}>
           <Icon name="stack" size={14} />
         </button>
       </header>
       {#each lib.people.filter((p) => p.name) as p (p.id)}
-        <button class="item person" class:active={lib.isScope({ type: "person", id: p.id })} onclick={() => lib.setScope({ type: "person", id: p.id })}>
-          {#if p.coverFace}<img class="avatar" src={faceUrl(p.coverFace)} alt="" />{:else}<span class="avatar"></span>{/if}
-          <span>{p.name}</span>
-          <span class="count">{p.imageCount}</span>
-        </button>
+        {#if lib.collapsed.people && !lib.isScope({ type: "person", id: p.id })}
+          <!-- eingeklappt: nur die gerade gewählte Person zeigen -->
+        {:else if renamingPerson === p.id}
+          <form
+            onsubmit={async (e) => {
+              e.preventDefault();
+              const v = (e.currentTarget.elements.namedItem("n") as HTMLInputElement).value;
+              renamingPerson = null;
+              await lib.renamePerson(p.id, v);
+            }}
+          >
+            <!-- svelte-ignore a11y_autofocus -->
+            <input
+              type="text"
+              name="n"
+              value={p.name}
+              autofocus
+              onfocus={(e) => e.currentTarget.select()}
+              onblur={() => (renamingPerson = null)}
+              onkeydown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Escape") renamingPerson = null;
+              }}
+            />
+          </form>
+        {:else}
+          <button
+            class="item person"
+            class:active={lib.isScope({ type: "person", id: p.id })}
+            onclick={() => lib.setScope({ type: "person", id: p.id })}
+            ondblclick={() => (renamingPerson = p.id)}
+            oncontextmenu={(e) => {
+              e.preventDefault();
+              renamingPerson = p.id;
+            }}
+            title="Doppelklick oder Rechtsklick zum Umbenennen"
+          >
+            {#if p.coverFace}<img class="avatar" src={faceUrl(p.coverFace)} alt="" />{:else}<span class="avatar"></span>{/if}
+            <span>{p.name}</span>
+            <span class="count">{p.imageCount}</span>
+          </button>
+        {/if}
       {/each}
-      {#if lib.peopleStatus?.ready}
+      {#if lib.collapsed.people}
+        <!-- eingeklappt -->
+      {:else if lib.peopleStatus?.ready}
         {@const unnamed = lib.people.filter((p) => !p.name && p.faceCount >= 2).length}
         <button class="item" class:active={lib.view === "people" && lib.mode === "library"} onclick={() => { lib.mode = "library"; lib.view = "people"; }}>
           <Icon name="sparkle" size={15} />
@@ -166,20 +217,20 @@
 
     <section>
       <header>
-        <h2>Ordner</h2>
+        {@render toggle("folders", "Ordner", lib.roots.length)}
         <button class="icon-btn" aria-label="Ordner hinzufügen" title="Ordner hinzufügen" onclick={addFolder}>
           <Icon name="plus" size={14} />
         </button>
       </header>
       {#each lib.roots as root (root.id)}
         {@const tree = lib.trees[root.id]}
-        {#if tree}
+        {#if tree && !lib.collapsed.folders}
           <ul class="tree">
             <FolderTree node={tree} oncontext={(n, e) => openMenu(n, e, rootFor(n))} />
           </ul>
         {/if}
       {:else}
-        <div class="empty">
+        <div class="empty" hidden={lib.collapsed.folders}>
           <p>Wähle einen Ordner auf deinem Rechner. Die Bilder bleiben, wo sie sind – Lumenkorn liest sie nur ein.</p>
           <button class="btn primary" onclick={addFolder}><Icon name="folder" size={14} /> Ordner hinzufügen</button>
         </div>
@@ -292,6 +343,30 @@
     justify-content: space-between;
     padding: 0 4px 0 8px;
     margin-bottom: 4px;
+  }
+  .toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex: 1;
+    min-width: 0;
+    height: 24px;
+    margin-left: -4px;
+    padding: 0 4px;
+    border-radius: var(--radius-s);
+    text-align: left;
+  }
+  .toggle:hover h2 {
+    color: var(--text);
+  }
+  .chev {
+    display: inline-flex;
+    color: var(--faint);
+    transform: rotate(90deg);
+    transition: transform 0.12s;
+  }
+  .chev.closed {
+    transform: none;
   }
   h2 {
     margin: 0;

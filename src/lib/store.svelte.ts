@@ -520,6 +520,43 @@ class Library {
     if (this.scope.type === "project" && this.scope.id === projectId) await this.loadImages(true);
   }
 
+  /** Person umbenennen (z. B. „Max“ → „Max Mustermann“). Gibt es den Namen
+   *  schon bei einer anderen Person, werden beide nach Rückfrage zusammengeführt. */
+  async renamePerson(id: number, name: string): Promise<boolean> {
+    name = name.trim();
+    const old = this.people.find((p) => p.id === id);
+    if (!name || name === old?.name) return false;
+    const other = this.people.find((p) => p.id !== id && p.name?.toLocaleLowerCase("de") === name.toLocaleLowerCase("de"));
+    if (other && !confirm(`„${other.name}“ gibt es schon. Beide Personen zu einer zusammenführen?`)) return false;
+    try {
+      const target = await api.personRename(id, name);
+      await this.refreshPeople();
+      // Ansicht der umbenannten Person: bei Zusammenführung zur Zielperson wechseln
+      if (this.scope.type === "person" && this.scope.id === id && target !== id) {
+        this.setScope({ type: "person", id: target });
+      }
+      this.notify(other ? `Mit „${other.name}“ zusammengeführt` : old?.name ? `„${old.name}“ heißt jetzt „${name}“` : `„${name}“ gespeichert`);
+      return true;
+    } catch (e) {
+      this.notify(String(e), "error");
+      return false;
+    }
+  }
+
+  // --- Seitenleiste ----------------------------------------------------------
+
+  /** Eingeklappte Bereiche der Seitenleiste (bleibt über Neustarts erhalten) */
+  collapsed = $state<Record<string, boolean>>(loadCollapsed());
+
+  toggleSection(key: "projects" | "people" | "folders") {
+    this.collapsed = { ...this.collapsed, [key]: !this.collapsed[key] };
+    try {
+      localStorage.setItem("lumenkorn.sidebar.collapsed", JSON.stringify(this.collapsed));
+    } catch {
+      // ohne Speicher gilt die Einstellung nur bis zum Neustart
+    }
+  }
+
   async renameProject(id: number, name: string) {
     try {
       const old = this.projects.find((p) => p.id === id);
@@ -544,3 +581,12 @@ class Library {
 }
 
 export const lib = new Library();
+
+function loadCollapsed(): Record<string, boolean> {
+  try {
+    const v = JSON.parse(localStorage.getItem("lumenkorn.sidebar.collapsed") ?? "{}");
+    return v && typeof v === "object" ? v : {};
+  } catch {
+    return {};
+  }
+}
