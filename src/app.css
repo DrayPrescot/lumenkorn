@@ -1,0 +1,147 @@
+/* Lumenkorn – Grundgestaltung.
+   Neutrales, ungetöntes Grau, damit Fotos farbtreu wirken (keine Farbstiche
+   durch blaustichiges „Dark Mode“-Schwarz). Einziger Akzent ist ein
+   Natriumdampf-Bernstein, sparsam für Auswahl und Sterne. */
+
+:root {
+  --bg: #1c1d1f;
+  --panel: #232427;
+  --raised: #2d2e32;
+  --line: #36373c;
+  --text: #e7e5e0;
+  --muted: #96969b;
+  --faint: #6c6c72;
+  --accent: #e3a93a;
+  --accent-ink: #1c1d1f;
+  --reject: #c9574b;
+
+  --font: "Instrument Sans Variable", system-ui, sans-serif;
+  --step--1: 12px;
+  --step-0: 13px;
+  --step-1: 15px;
+  --step-2: 19px;
+
+  --sidebar: 268px;
+  --info: 296px;
+  --toolbar: 48px;
+  --radius-s: 4px;
+  --radius-m: 8px;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--step-0);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+input[type="text"],
+input[type="search"],
+select {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  padding: 5px 9px;
+  min-width: 0;
+}
+
+input::placeholder {
+  color: var(--faint);
+}
+
+/* Schaltflächen */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: var(--radius-s);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.btn:hover {
+  border-color: var(--faint);
+}
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.btn.quiet {
+  background: none;
+  border-color: transparent;
+  color: var(--muted);
+}
+.btn.quiet:hover {
+  color: var(--text);
+  background: var(--raised);
+}
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-s);
+  color: var(--muted);
+}
+.icon-btn:hover {
+  color: var(--text);
+  background: var(--raised);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.scroll {
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

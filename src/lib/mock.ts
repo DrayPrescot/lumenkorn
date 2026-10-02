@@ -1,0 +1,338 @@
+// Mock-Backend für die Arbeit an der Oberfläche im normalen Browser.
+// Erzeugt eine Beispielbibliothek mit Platzhalterbildern.
+
+import { DEFAULT_PARAMS, transferParams } from "./api";
+import type { DevelopParams, Edit, FolderNode, ImageDetail, ImageQuery, ImageSummary, ImageTag, Project, Root } from "./api";
+
+type Img = ImageDetail & { rootId: number; hue: number; edit?: DevelopParams; snapshots: Edit[] };
+
+const sep = "/";
+const roots: Root[] = [
+  { id: 1, path: "/home/anna/Bilder", name: "Bilder", imageCount: 0, lastScan: 0 },
+  { id: 2, path: "/media/archiv/Fotos", name: "Fotos", imageCount: 0, lastScan: 0 },
+];
+
+const dirs: [number, string, number][] = [
+  [1, "/home/anna/Bilder/2025/Lofoten", 46],
+  [1, "/home/anna/Bilder/2025/Hochzeit Lena & Tom", 38],
+  [1, "/home/anna/Bilder/2026/Porträts Studio", 24],
+  [1, "/home/anna/Bilder/2026/Streetfotografie München", 31],
+  [2, "/media/archiv/Fotos/Kunde Brauhaus/Produkt", 18],
+  [2, "/media/archiv/Fotos/Kunde Brauhaus/Location", 22],
+];
+
+const ratios = [1.5, 1.5, 1.5, 0.667, 1.333, 0.75, 1.778, 1, 2.4];
+const cameras = ["Sony ILCE-7M4", "Fujifilm X-T5", "Canon EOS R6m2"];
+const lenses = ["FE 24-70mm F2.8 GM II", "XF33mmF1.4 R LM WR", "RF35mm F1.8 MACRO IS STM"];
+const tagPool = ["Berge", "Meer", "Himmel", "Person", "Gebäude", "Straße", "Nacht", "Schnee", "Bier", "Porträt", "Hund"];
+
+let nextId = 1;
+const images: Img[] = [];
+let seed = 7;
+const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+
+for (const [rootId, dir, n] of dirs) {
+  for (let i = 0; i < n; i++) {
+    const r = ratios[Math.floor(rnd() * ratios.length)];
+    const raw = rnd() > 0.45;
+    const ext = raw ? (rootId === 1 ? "arw" : "raf") : "jpg";
+    const day = 1 + Math.floor(rnd() * 27);
+    const id = nextId++;
+    const tags: ImageTag[] = tagPool
+      .filter(() => rnd() > 0.8)
+      .map((name) => ({ name, source: "ai" as const, confidence: 0.5 + rnd() * 0.5 }));
+    images.push({
+      id,
+      rootId,
+      hue: Math.floor(rnd() * 360),
+      path: `${dir}${sep}DSC0${1000 + id}.${ext}`,
+      dir,
+      fileName: `DSC0${1000 + id}.${ext.toUpperCase()}`,
+      ext,
+      size: 18_000_000 + Math.floor(rnd() * 30_000_000),
+      width: Math.round(6000 * Math.min(1, r)),
+      height: Math.round((6000 * Math.min(1, r)) / r),
+      capturedAt: `20${dir.includes("2026") ? 26 : 25}-0${1 + (id % 9)}-${String(day).padStart(2, "0")}T${String(8 + (id % 12)).padStart(2, "0")}:${String(id % 60).padStart(2, "0")}:12`,
+      camera: cameras[id % 3],
+      lens: lenses[id % 3],
+      iso: [100, 200, 400, 800, 3200][id % 5],
+      exposure: ["1/250", "1/1000", "1/60", "1/8000", "2s"][id % 5],
+      aperture: [1.4, 2.8, 4, 8, 11][id % 5],
+      focalLength: [24, 33, 35, 50, 70][id % 5],
+      rating: rnd() > 0.7 ? Math.ceil(rnd() * 5) : 0,
+      flag: 0,
+      tags,
+      snapshots: [],
+    });
+  }
+}
+
+const projects: Project[] = [
+  {
+    id: 1,
+    name: "Portfolio 2026",
+    description: "",
+    folders: [
+      { path: "/home/anna/Bilder/2025/Lofoten", recursive: true },
+      { path: "/home/anna/Bilder/2026/Porträts Studio", recursive: true },
+      { path: "/media/archiv/Fotos/Kunde Brauhaus", recursive: true },
+    ],
+    imageCount: 0,
+    createdAt: 0,
+    updatedAt: 0,
+  },
+];
+
+const within = (p: string, d: string) => p === d || p.startsWith(d + sep);
+
+function inScope(img: Img, q: ImageQuery): boolean {
+  const s = q.scope;
+  if (s.type === "folder") return s.recursive ? within(img.dir, s.path) : img.dir === s.path;
+  if (s.type === "project") {
+    const p = projects.find((p) => p.id === s.id);
+    return !!p?.folders.some((f) => (f.recursive ? within(img.dir, f.path) : img.dir === f.path));
+  }
+  return true;
+}
+
+function query(q: ImageQuery): ImageSummary[] {
+  const words = (q.search ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+  let list = images.filter(
+    (i) =>
+      inScope(i, q) &&
+      i.rating >= (q.minRating ?? 0) &&
+      words.every((w) =>
+        [i.fileName, i.camera ?? "", i.lens ?? "", ...i.tags.map((t) => t.name)].some((s) => s.toLowerCase().includes(w)),
+      ),
+  );
+  const by = q.sort ?? "capturedAsc";
+  list = [...list].sort((a, b) => {
+    if (by === "nameAsc") return a.fileName.localeCompare(b.fileName);
+    if (by === "ratingDesc") return b.rating - a.rating;
+    const c = (a.capturedAt ?? "").localeCompare(b.capturedAt ?? "");
+    return by === "capturedDesc" ? -c : c;
+  });
+  return list.map((i) => ({
+    id: i.id,
+    path: i.path,
+    fileName: i.fileName,
+    kind: i.ext === "jpg" ? "raster" : "raw",
+    width: i.width,
+    height: i.height,
+    capturedAt: i.capturedAt,
+    rating: i.rating,
+    flag: i.flag,
+    thumbReady: true,
+    missing: false,
+    edited: !!i.edit,
+  }));
+}
+
+function tree(root: Root): FolderNode {
+  const counts = new Map<string, number>([[root.path, 0]]);
+  for (const i of images.filter((i) => i.rootId === root.id)) {
+    counts.set(i.dir, (counts.get(i.dir) ?? 0) + 1);
+    let p = i.dir;
+    while (p.lastIndexOf(sep) > root.path.length - 1) {
+      p = p.slice(0, p.lastIndexOf(sep));
+      if (!counts.has(p)) counts.set(p, 0);
+    }
+  }
+  const build = (path: string, name: string): FolderNode => {
+    const children = [...counts.keys()]
+      .filter((k) => k.startsWith(path + sep) && !k.slice(path.length + 1).includes(sep))
+      .sort()
+      .map((k) => build(k, k.slice(path.length + 1)));
+    const count = counts.get(path) ?? 0;
+    return { path, name, count, total: count + children.reduce((s, c) => s + c.total, 0), children };
+  };
+  return build(root.path, root.name);
+}
+
+function withCount(p: Project): Project {
+  return { ...p, imageCount: query({ scope: { type: "project", id: p.id } }).length };
+}
+
+const delay = <T>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 30));
+
+export const mock = {
+  async invoke<T>(cmd: string, a: Record<string, any> = {}): Promise<T> {
+    const out = (v: unknown) => delay(v) as Promise<T>;
+    switch (cmd) {
+      case "app_info":
+        return out({ version: "0.1.0", platform: "browser", dataDir: "(Mock)" });
+      case "list_roots":
+        return out(roots.map((r) => ({ ...r, imageCount: images.filter((i) => i.rootId === r.id).length })));
+      case "add_root":
+        throw "Im Browser-Modus können keine Ordner hinzugefügt werden. Starte die App mit `npm run tauri dev`.";
+      case "remove_root":
+      case "rescan_root":
+        return out(null);
+      case "folder_tree":
+        return out(tree(roots.find((r) => r.id === a.rootId)!));
+      case "query_images":
+        return out(query(a.query));
+      case "image_detail": {
+        const { rootId, hue, edit, snapshots, ...d } = images.find((i) => i.id === a.id)!;
+        return out(d);
+      }
+      case "develop_load": {
+        const img = images.find((i) => i.id === a.id)!;
+        await new Promise((r) => setTimeout(r, 400)); // RAW-Dekodierung simulieren
+        return out({ params: img.edit ?? null, fullWidth: img.width, fullHeight: img.height, raw: img.ext !== "jpg", snapshots: img.snapshots });
+      }
+      case "develop_detect_tilt":
+        return out(1.5);
+      case "develop_params": {
+        const img = images.find((i) => i.id === a.id)!;
+        return out({ ...DEFAULT_PARAMS, ...(img.edit ?? {}) });
+      }
+      case "develop_release":
+        return out(null);
+      case "develop_transfer":
+        for (const i of images.filter((i) => a.ids.includes(i.id))) i.edit = transferParams({ ...DEFAULT_PARAMS, ...(i.edit ?? {}) }, a.source, a.groups);
+        return out(null);
+      case "develop_save":
+        for (const i of images.filter((i) => a.ids.includes(i.id))) i.edit = a.params;
+        return out(null);
+      case "develop_snapshot": {
+        const img = images.find((i) => i.id === a.id)!;
+        img.snapshots.unshift({ id: Date.now(), imageId: img.id, name: a.name || "Schnappschuss", params: structuredClone(img.edit!), isCurrent: false, createdAt: Date.now() / 1000, updatedAt: 0 });
+        return out(img.snapshots);
+      }
+      case "develop_restore": {
+        const img = images.find((i) => i.snapshots.some((s) => s.id === a.editId))!;
+        img.edit = structuredClone(img.snapshots.find((s) => s.id === a.editId)!.params);
+        return out(img.edit);
+      }
+      case "develop_delete_snapshot": {
+        const img = images.find((i) => i.id === a.id)!;
+        img.snapshots = img.snapshots.filter((s) => s.id !== a.editId);
+        return out(img.snapshots);
+      }
+      case "ai_status":
+        return out({ runtimePath: null, runtimeLoaded: false, runtimeDownloadable: true, modelReady: false, missing: ["vision.onnx", "text.onnx", "vocab.json", "merges.txt"], downloadSize: 161_000_000, modelDir: "(Mock)", masksReady: false, masksMissing: ["subject.onnx", "sam-encoder.onnx", "sam-decoder.onnx"], masksDownloadSize: 287_000_000, repairReady: false, repairDownloadSize: 92_600_000, denoiseReady: false, denoiseDownloadSize: 131_000_000, gpuRuntimes: [{ backend: "webgpu", label: "WebGPU (Vulkan)", version: "1.27.0", installed: false, downloadSize: 25_163_729 }], accel: { active: { library: null, gpuEnabled: false, gpuError: null, placements: [] }, devices: [{ vendor: "AMD", name: "Radeon RX 7900 XTX / XT / GRE", memory: 25_753_026_560, discrete: true }], restartRequired: false, develop: { enabled: true, available: true, info: { name: "AMD Radeon RX 7900 XTX (RADV NAVI31)", backend: "Vulkan", kind: "discrete", driver: "radv Mesa" }, error: null } }, crashNotice: null, downloading: false, loaded: false, error: null, analyzed: 0, total: images.length, settings: { autoTag: true, accel: "auto", developGpu: true, faces: true } });
+      case "people_status":
+        return out({ ready: false, downloadSize: 38_929_000, enabled: true, analyzed: 0, total: images.length, faces: 0, error: null });
+      case "people_list":
+      case "person_faces":
+      case "image_faces":
+        return out([]);
+      case "ai_benchmark":
+        return out({ gpu: false, backend: "CPU", size: 512, seconds: 6.1, seconds24mp: 558 });
+      case "mask_subject":
+      case "mask_sky":
+      case "develop_sample_color":
+        return out([0.55, 0.12 * Math.cos(a.x * 6), 0.12 * Math.sin(a.y * 6)]);
+      case "mask_object":
+        await new Promise((r) => setTimeout(r, 600));
+        return out({ maskId: a.maskId ?? `mock-${Date.now()}`, coverage: 0.3 });
+      case "denoise_start":
+        throw "Rauschreduzierung ist nur in der App verfügbar.";
+      case "denoise_cancel":
+      case "merge_cancel":
+        return out(null);
+      case "merge_start":
+        throw "Zusammenfügen ist nur in der App verfügbar.";
+      case "ai_set_settings":
+      case "ai_retag_all":
+      case "ai_cancel_download":
+        return out(null);
+      case "ai_download":
+        throw "Downloads sind nur in der App verfügbar.";
+      case "semantic_search":
+        return out(query({ scope: a.scope, search: a.query, minRating: a.minRating }));
+      case "export_images":
+        throw "Export ist nur in der App verfügbar.";
+      case "set_rating":
+        images.filter((i) => a.ids.includes(i.id)).forEach((i) => (i.rating = a.rating));
+        return out(null);
+      case "rejected_summary": {
+        const r = images.filter((i) => a.ids.includes(i.id) && i.flag === -1);
+        return out({ count: r.length, bytes: r.reduce((n, i) => n + i.size, 0), trashSupported: true });
+      }
+      case "delete_rejected": {
+        const r = images.filter((i) => a.ids.includes(i.id) && i.flag === -1);
+        for (const i of r) images.splice(images.indexOf(i), 1);
+        return out({ deleted: r.map((i) => i.id), bytes: r.reduce((n, i) => n + i.size, 0), failed: [], toTrash: a.toTrash });
+      }
+      case "set_flag":
+        images.filter((i) => a.ids.includes(i.id)).forEach((i) => (i.flag = a.flag));
+        return out(null);
+      case "add_tag": {
+        const img = images.find((i) => i.id === a.imageId)!;
+        if (!img.tags.some((t) => t.name.toLowerCase() === a.name.toLowerCase()))
+          img.tags.unshift({ name: a.name, source: "manual", confidence: null });
+        return out(img.tags);
+      }
+      case "remove_tag": {
+        const img = images.find((i) => i.id === a.imageId)!;
+        img.tags = img.tags.filter((t) => t.name !== a.name);
+        return out(img.tags);
+      }
+      case "list_projects":
+        return out(projects.map(withCount));
+      case "create_project": {
+        const p: Project = { id: Date.now(), name: a.name, description: a.description ?? "", folders: [], imageCount: 0, createdAt: 0, updatedAt: 0 };
+        projects.push(p);
+        return out(p);
+      }
+      case "update_project": {
+        const p = projects.find((p) => p.id === a.id)!;
+        p.name = a.name;
+        p.description = a.description;
+        return out(withCount(p));
+      }
+      case "delete_project":
+        projects.splice(projects.findIndex((p) => p.id === a.id), 1);
+        return out(null);
+      case "add_project_folder": {
+        const p = projects.find((p) => p.id === a.projectId)!;
+        p.folders = p.folders.filter((f) => f.path !== a.path).concat({ path: a.path, recursive: a.recursive });
+        return out(withCount(p));
+      }
+      case "remove_project_folder": {
+        const p = projects.find((p) => p.id === a.projectId)!;
+        p.folders = p.folders.filter((f) => f.path !== a.path);
+        return out(withCount(p));
+      }
+    }
+    throw `Unbekannter Befehl ${cmd}`;
+  },
+
+  listen(_event: string, _cb: (p: unknown) => void) {
+    return Promise.resolve(() => {});
+  },
+
+  /** Grobe Annäherung der Entwicklung über SVG-Filter – nur fürs UI-Design im Browser. */
+  async developRender(id: number, p: DevelopParams): Promise<Blob> {
+    const url = this.imageUrl("preview", id);
+    const svg = decodeURIComponent(url.slice(url.indexOf(",") + 1));
+    const gain = Math.pow(2, p.exposure);
+    const slope = 1 + p.contrast / 150;
+    const sat = 1 + p.saturation / 100 + p.vibrance / 200;
+    const warm = p.temperature / 400;
+    const filter = `<filter id="d"><feColorMatrix type="saturate" values="${Math.max(0, sat)}"/>
+      <feComponentTransfer><feFuncR type="linear" slope="${gain * slope * (1 + warm)}" intercept="${(1 - slope) / 2}"/>
+      <feFuncG type="linear" slope="${gain * slope}" intercept="${(1 - slope) / 2}"/>
+      <feFuncB type="linear" slope="${gain * slope * (1 - warm)}" intercept="${(1 - slope) / 2}"/></feComponentTransfer></filter>`;
+    const out = svg.replace("<defs>", `<defs>${filter}`).replace(/<rect /, '<g filter="url(#d)"><rect ').replace("</svg>", "</g></svg>");
+    await new Promise((r) => setTimeout(r, 40));
+    return new Blob([out], { type: "image/svg+xml" });
+  },
+
+  imageUrl(_variant: string, id: number): string {
+    const img = images.find((i) => i.id === id);
+    const h = img?.hue ?? 200;
+    const w = img?.width ?? 1500;
+    const ht = img?.height ?? 1000;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${ht}" preserveAspectRatio="none">
+      <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="hsl(${h},45%,62%)"/><stop offset="0.6" stop-color="hsl(${(h + 30) % 360},35%,38%)"/>
+        <stop offset="1" stop-color="hsl(${(h + 50) % 360},30%,16%)"/></linearGradient></defs>
+      <rect width="100%" height="100%" fill="url(#g)"/>
+      <path d="M0 ${ht * 0.72} L${w * 0.3} ${ht * 0.48} L${w * 0.52} ${ht * 0.66} L${w * 0.75} ${ht * 0.4} L${w} ${ht * 0.62} L${w} ${ht} L0 ${ht}Z" fill="hsl(${(h + 60) % 360},25%,12%)" opacity=".85"/>
+      <circle cx="${w * 0.72}" cy="${ht * 0.22}" r="${Math.min(w, ht) * 0.07}" fill="hsl(${h},70%,88%)" opacity=".8"/></svg>`;
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  },
+};

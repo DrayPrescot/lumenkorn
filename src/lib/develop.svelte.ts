@@ -1,0 +1,857 @@
+// Zustand des Entwickeln-Modus: Parameter, Live-Vorschau, Verlauf, Speichern.
+
+import {
+  api,
+  DEFAULT_PARAMS,
+  listen,
+  NEUTRAL_LOCAL,
+  type DevelopParams,
+  type Edit,
+  type ExportProgress,
+  type LocalAdjust,
+  type MaskLayer,
+  type MaskShape,
+  type PromptPoint,
+  type RepairLayer,
+  type TransferGroups,
+  transferParams,
+} from "./api";
+
+export type MaskTool = "linear" | "radial" | "brush" | "object" | "color";
+export type NewMaskKind = MaskTool | "subject" | "sky";
+
+const MASK_NAMES: Record<NewMaskKind, string> = {
+  linear: "Verlauf",
+  radial: "Radial",
+  brush: "Pinsel",
+  object: "Objekt",
+  color: "Farbe",
+  subject: "Motiv",
+  sky: "Himmel",
+};
+import { lib } from "./store.svelte";
+import type { HslMode } from "./hsl";
+
+const same = (a: DevelopParams, b: DevelopParams) => JSON.stringify(a) === JSON.stringify(b);
+const clone = (p: DevelopParams): DevelopParams => JSON.parse(JSON.stringify(p));
+
+/** Übertragen wird ausschließlich der Reiter „Basis“ (ohne Rauschreduzierung). */
+const BASIC_ONLY: TransferGroups = { basic: true, masks: false, geometry: false };
+
+class Develop {
+  /** Bild, das gerade entwickelt wird. */
+  imageId = $state<number | null>(null);
+  params = $state<DevelopParams>(clone(DEFAULT_PARAMS));
+  raw = $state(false);
+  fullSize = $state<[number, number]>([0, 0]);
+  snapshots = $state<Edit[]>([]);
+
+  /** Objekt-URL der aktuellen Vorschau. */
+  url = $state<string | null>(null);
+  beforeUrl = $state<string | null>(null);
+  showBefore = $state(false);
+  loading = $state(false);
+  rendering = $state(false);
+
+  /** Zielgröße der Vorschau (Bühne × Pixeldichte). */
+  maxEdge = $state(1600);
+
+  /** Kopierte Basis-Einstellungen (Strg+Umschalt+C) und ihre Herkunft */
+  clipboard = $state<{ params: DevelopParams; name: string } | null>(null);
+
+  // --- Rauschreduzierung --------------------------------------------------
+  /** Laufende Berechnung: Bild und Fortschritt */
+  denoising = $state<{ imageId: number; done: number; total: number } | null>(null);
+  /** Stärke für die nächste Berechnung, 0…100; 50 = geschätztes Rauschen */
+  denoiseStrength = $state(65);
+
+  /** Reiter im Entwickeln-Bereich */
+  tab = $state<"basic" | "masks" | "repair" | "crop">("basic");
+
+  // --- Reparatur ---------------------------------------------------------
+  /** Laufende Berechnung: Index der Reparatur und Fortschritt */
+  repairing = $state<{ index: number; done: number; total: number } | null>(null);
+
+  /** Masken-Werkzeuge arbeiten im Reiter „Reparatur“ auf den Reparaturen. */
+  get editsRepairs(): boolean {
+    return this.tab === "repair";
+  }
+
+  /** Ebenen, auf die sich Auswahl und Werkzeuge beziehen */
+  get list(): (MaskLayer | RepairLayer)[] {
+    return this.editsRepairs ? this.params.repairs : this.params.masks;
+  }
+
+  // --- Zuschnitt ---------------------------------------------------------
+  /** Zuschnitt-Werkzeug aktiv: Anzeige ohne Zuschnitt, Rahmen bearbeiten. */
+  cropMode = $state(false);
+  /** Seitenverhältnis (Breite/Höhe in Pixeln) oder null = frei */
+  cropAspect = $state<number | null>(null);
+  #cropBefore: DevelopParams["crop"] = null;
+  #straightenBefore = 0;
+
+  // --- Masken -----------------------------------------------------------
+  /** Index der ausgewählten Maskenebene. */
+  activeMask = $state<number | null>(null);
+  /** Werkzeug, mit dem auf dem Bild gearbeitet wird. */
+  tool = $state<MaskTool | null>(null);
+  brush = $state({ size: 0.03, feather: 0.6, erase: false });
+  showOverlay = $state(false);
+  /** Laufende KI-Berechnung, z. B. „Motiv wird erkannt …“ */
+  maskBusy = $state<string | null>(null);
+  exportProgress = $state<ExportProgress | null>(null);
+
+  #undo: DevelopParams[] = [];
+  #redo: DevelopParams[] = [];
+  #committed: DevelopParams = clone(DEFAULT_PARAMS);
+  #saved: DevelopParams = clone(DEFAULT_PARAMS);
+  #saving: Promise<unknown> = Promise.resolve();
+  #lastOpen = -Infinity;
+  #inFlight = false;
+  #pending = false;
+  #saveTimer: ReturnType<typeof setTimeout> | undefined;
+  #loadToken = 0;
+  /** Für welches Bild `params` geladen sind. Während ein neues Bild lädt,
+   *  stehen dort noch die Werte des vorigen – nie speichern oder rendern. */
+  #paramsFor: number | null = null;
+  #beforeSeq = 0;
+
+  /** Parameter des geöffneten Bildes sind geladen. */
+  get ready(): boolean {
+    return this.imageId !== null && this.#paramsFor === this.imageId;
+  }
+
+  /** Letzter Verlaufsschritt entspricht den Standardwerten. Bewusst nicht aus
+   *  den Live-Parametern abgeleitet: Das würde bei jedem Pinselpunkt alle
+   *  Parameter serialisieren. */
+  isDefault = $state(true);
+
+  #setCommitted(p: DevelopParams) {
+    this.#committed = p;
+    this.isDefault = same(p, DEFAULT_PARAMS);
+  }
+
+  constructor() {
+    listen("repair-progress", (e) => {
+      if (this.repairing && e.imageId === this.imageId) this.repairing = { ...this.repairing, done: e.done, total: e.total };
+    });
+    listen("denoise-progress", async (e) => {
+      if (!e.finished) {
+        this.denoising = { imageId: e.imageId, done: e.done, total: e.total };
+        return;
+      }
+      this.denoising = null;
+      if (e.error) {
+        if (!e.error.includes("Abgebrochen")) lib.notify(`Rauschreduzierung: ${e.error}`, "error");
+        return;
+      }
+      if (!e.denoiseId) return;
+      if (this.imageId === e.imageId && this.ready) {
+        this.params.denoise = { id: e.denoiseId, amount: this.params.denoise?.amount ?? 100 };
+        this.schedule();
+        this.commit();
+      } else {
+        // Inzwischen anderes Bild offen: direkt speichern
+        try {
+          // Nur die Einstellungen lesen – das RAW nicht dekodieren
+          const saved = { ...clone(DEFAULT_PARAMS), ...(await api.developParams(e.imageId)) };
+          const denoise = { id: e.denoiseId, amount: saved.denoise?.amount ?? 100 };
+          await this.#saving;
+          await api.developSave([e.imageId], { ...saved, denoise });
+        } catch (err) {
+          lib.notify(String(err), "error");
+        }
+      }
+      lib.notify("Rauschreduzierung fertig.");
+    });
+
+    listen("export-progress", (p) => {
+      this.exportProgress = p;
+      if (p.finished) {
+        const ok = p.total - p.failed.length;
+        lib.notify(
+          p.failed.length
+            ? `${ok} von ${p.total} exportiert. Fehlgeschlagen: ${p.failed.join("; ")}`
+            : `${ok} ${ok === 1 ? "Foto" : "Fotos"} exportiert nach ${p.dir}`,
+          p.failed.length ? "error" : "info",
+        );
+        setTimeout(() => (this.exportProgress = null), 1500);
+      }
+    });
+  }
+
+  /** Öffnet ein Bild zur Bearbeitung. Vorherige Änderungen werden vorher gespeichert. */
+  async open(id: number) {
+    if (this.imageId === id) return;
+    if (this.cropMode) this.applyCrop();
+    // Token vor dem Warten auf das Speichern holen: Wird inzwischen ein
+    // weiteres Bild geöffnet, gewinnt dieses (nicht das zuletzt fertige).
+    const token = ++this.#loadToken;
+    await this.flush();
+    if (token !== this.#loadToken) return;
+    this.imageId = id;
+    this.#paramsFor = null;
+    this.loading = true;
+    this.#undo = [];
+    this.#redo = [];
+    this.activeMask = null;
+    this.tool = null;
+    this.showOverlay = false;
+    this.cropMode = false;
+    this.revoke();
+    try {
+      // Schnelles Durchblättern (Pfeiltaste gehalten): Jeder Ladevorgang
+      // dekodiert ein RAW (Sekunden, bis 1,5 GB). Erst laden, wenn kurz
+      // nicht weitergeblättert wurde – sonst nur das, wo man ankommt.
+      const now = performance.now();
+      const rapid = now - this.#lastOpen < 400;
+      this.#lastOpen = now;
+      if (rapid) {
+        await new Promise((r) => setTimeout(r, 150));
+        if (token !== this.#loadToken) return;
+      }
+      const info = await api.developLoad(id);
+      if (token !== this.#loadToken) return;
+      const p = { ...clone(DEFAULT_PARAMS), ...(info.params ?? {}) };
+      p.masks = (p.masks ?? []).map((m) => ({ ...m, adjust: { ...NEUTRAL_LOCAL, ...m.adjust } }));
+      p.repairs = (p.repairs ?? []).map((r) => ({ ...r, result: r.result ?? null, resultKey: r.resultKey ?? null }));
+      this.params = p;
+      this.#paramsFor = id;
+      this.#setCommitted(clone(p));
+      this.#saved = clone(p);
+      this.raw = info.raw;
+      this.fullSize = [info.fullWidth, info.fullHeight];
+      this.snapshots = info.snapshots;
+      await this.renderNow();
+      this.renderBefore();
+    } catch (e) {
+      if (token === this.#loadToken) lib.notify(`Bild kann nicht entwickelt werden: ${e}`, "error");
+    } finally {
+      if (token === this.#loadToken) this.loading = false;
+    }
+  }
+
+  close() {
+    const wasOpen = this.imageId !== null;
+    // Erst speichern, dann die großen Puffer im Backend freigeben
+    const saved = this.flush();
+    const token = ++this.#loadToken;
+    this.imageId = null;
+    this.#paramsFor = null;
+    this.revoke();
+    this.#undo = [];
+    this.#redo = [];
+    // Nicht freigeben, wenn inzwischen wieder ein Bild geöffnet wurde
+    if (wasOpen)
+      Promise.resolve(saved).finally(() => {
+        if (token === this.#loadToken) api.developRelease().catch(() => {});
+      });
+  }
+
+  revoke() {
+    if (this.url) URL.revokeObjectURL(this.url);
+    if (this.beforeUrl) URL.revokeObjectURL(this.beforeUrl);
+    this.url = null;
+    this.beforeUrl = null;
+  }
+
+  // --- Parameter ändern ------------------------------------------------------
+
+  /** Wert setzen (live, z. B. beim Ziehen eines Reglers). */
+  // --- HSL ------------------------------------------------------------------
+
+  /** Welche Reglergruppe das HSL-Werkzeug zeigt (und die Pipette verändert). */
+  hslMode = $state<HslMode>("hue");
+  /** Pipette aktiv: auf dem Bild klicken und nach oben/unten ziehen. */
+  hslPick = $state(false);
+
+  /** Einen Farbbereich setzen (immer als neues Objekt). */
+  setHsl(mode: HslMode, band: number, value: number) {
+    const cur = this.params.hsl ?? DEFAULT_PARAMS.hsl;
+    const arr = [...cur[mode]];
+    arr[band] = Math.round(Math.max(-100, Math.min(100, value)));
+    this.params.hsl = { ...$state.snapshot(cur), [mode]: arr } as DevelopParams["hsl"];
+    this.schedule();
+  }
+
+  /** Mehrere Bereiche auf einmal (Pipette): `base` + `delta` × Anteil. */
+  setHslWeighted(mode: HslMode, base: number[], weights: number[], delta: number) {
+    const cur = $state.snapshot(this.params.hsl ?? DEFAULT_PARAMS.hsl) as DevelopParams["hsl"];
+    const arr = base.map((b, i) => (weights[i] > 0 ? Math.round(Math.max(-100, Math.min(100, b + delta * weights[i]))) : cur[mode][i]));
+    this.params.hsl = { ...cur, [mode]: arr };
+    this.schedule();
+  }
+
+  set<K extends keyof DevelopParams>(key: K, value: DevelopParams[K]) {
+    this.params[key] = value;
+    this.schedule();
+  }
+
+  /** Ende einer Änderung (Regler losgelassen): Verlaufsschritt anlegen. */
+  commit() {
+    if (!this.ready) return;
+    const snap = $state.snapshot(this.params) as DevelopParams;
+    if (same(snap, this.#committed)) return;
+    this.#undo.push(this.#committed);
+    if (this.#undo.length > 200) this.#undo.shift();
+    this.#redo = [];
+    this.#setCommitted(clone(snap));
+    this.scheduleSave();
+  }
+
+  replace(p: DevelopParams) {
+    this.params = clone(p);
+    this.schedule();
+    this.commit();
+  }
+
+  reset() {
+    this.replace(DEFAULT_PARAMS);
+  }
+
+  undo() {
+    const prev = this.#undo.pop();
+    if (!prev) return;
+    this.#redo.push(clone($state.snapshot(this.params) as DevelopParams));
+    this.params = clone(prev);
+    this.#setCommitted(clone(prev));
+    this.schedule();
+    this.scheduleSave();
+  }
+
+  redo() {
+    const next = this.#redo.pop();
+    if (!next) return;
+    this.#undo.push(clone($state.snapshot(this.params) as DevelopParams));
+    this.params = clone(next);
+    this.#setCommitted(clone(next));
+    this.schedule();
+    this.scheduleSave();
+  }
+
+  rotate(dir: 1 | -1) {
+    this.params.rotate = (this.params.rotate + 4 + dir) % 4;
+    this.schedule();
+    this.commit();
+    this.renderBefore();
+  }
+
+  // --- Rendern ---------------------------------------------------------------
+
+  /** Rendert so oft wie nötig, aber nie mehr als eine Anfrage gleichzeitig. */
+  schedule() {
+    if (this.#inFlight) {
+      this.#pending = true;
+      return;
+    }
+    this.renderNow();
+  }
+
+  async renderNow() {
+    const id = this.imageId;
+    if (id === null || !this.ready) return;
+    this.#inFlight = true;
+    this.rendering = true;
+    try {
+      const params = $state.snapshot(this.params) as DevelopParams;
+      // Beim Zuschneiden das ganze Bild zeigen; der Rahmen wird darübergelegt.
+      if (this.cropMode) params.crop = null;
+      const sel = this.showOverlay && this.activeMask !== null ? this.activeMask : null;
+      const overlay = this.editsRepairs ? null : sel;
+      const overlayRepair = this.editsRepairs ? sel : null;
+      const blob = await api.developRender(id, params, this.maxEdge, overlay, overlayRepair);
+      if (id !== this.imageId) return;
+      const old = this.url;
+      this.url = URL.createObjectURL(blob);
+      if (old) setTimeout(() => URL.revokeObjectURL(old), 1000);
+    } catch (e) {
+      lib.notify(String(e), "error");
+    } finally {
+      this.#inFlight = false;
+      this.rendering = false;
+      if (this.#pending) {
+        this.#pending = false;
+        this.renderNow();
+      }
+    }
+  }
+
+  /** Ausschnitt in hoher Auflösung für die Zoomansicht (Objekt-URL). */
+  async detailUrl(r: { x: number; y: number; w: number; h: number }, scale: number): Promise<string | null> {
+    const id = this.imageId;
+    if (id === null) return null;
+    const params = $state.snapshot(this.params) as DevelopParams;
+    if (this.cropMode) params.crop = null;
+    const blob = await api.developRenderDetail(id, params, r, scale);
+    if (id !== this.imageId) return null;
+    return URL.createObjectURL(blob);
+  }
+
+  /** Vorher-Ansicht: Standardparameter, aber mit derselben Geometrie. */
+  async renderBefore() {
+    const id = this.imageId;
+    if (id === null || !this.ready) return;
+    const seq = ++this.#beforeSeq;
+    const p = { ...clone(DEFAULT_PARAMS), rotate: this.params.rotate, flipHorizontal: this.params.flipHorizontal };
+    const blob = await api.developRender(id, p, this.maxEdge);
+    // Nur die neueste Anfrage zählt (schnelles Drehen)
+    if (id !== this.imageId || seq !== this.#beforeSeq) return;
+    if (this.beforeUrl) URL.revokeObjectURL(this.beforeUrl);
+    this.beforeUrl = URL.createObjectURL(blob);
+  }
+
+  // --- Rauschreduzierung -----------------------------------------------------
+
+  async startDenoise() {
+    if (this.imageId === null) return;
+    try {
+      this.denoising = { imageId: this.imageId, done: 0, total: 0 };
+      // 0 → halbe, 50 → geschätzte, 100 → doppelte Rauschstärke
+      const factor = 0.5 * Math.pow(4, this.denoiseStrength / 100);
+      await api.denoiseStart(this.imageId, factor);
+    } catch (e) {
+      this.denoising = null;
+      lib.notify(String(e), "error");
+    }
+  }
+
+  removeDenoise() {
+    this.params.denoise = null;
+    this.schedule();
+    this.commit();
+  }
+
+  // --- Zuschnitt -------------------------------------------------------------
+
+  enterCrop() {
+    if (this.imageId === null || this.cropMode) return;
+    this.#cropBefore = $state.snapshot(this.params.crop) as DevelopParams["crop"];
+    this.#straightenBefore = this.params.straighten;
+    this.tool = null;
+    this.activeMask = null;
+    this.showOverlay = false;
+    this.cropMode = true;
+    this.schedule();
+  }
+
+  applyCrop() {
+    if (!this.cropMode) return;
+    const c = this.params.crop;
+    // Voller Rahmen ist kein Zuschnitt
+    if (c && c.x <= 1e-4 && c.y <= 1e-4 && c.w >= 0.9999 && c.h >= 0.9999) this.params.crop = null;
+    this.cropMode = false;
+    this.schedule();
+    this.commit();
+  }
+
+  cancelCrop() {
+    if (!this.cropMode) return;
+    this.params.crop = this.#cropBefore;
+    this.params.straighten = this.#straightenBefore;
+    this.cropMode = false;
+    this.schedule();
+  }
+
+  resetCrop() {
+    this.params.crop = null;
+    this.params.straighten = 0;
+    this.schedule();
+    if (!this.cropMode) this.commit();
+  }
+
+  /** Größter zentrierter Ausschnitt mit dem Seitenverhältnis innerhalb des Rahmens. */
+  setAspect(aspect: number | null, frame: [number, number]) {
+    this.cropAspect = aspect;
+    if (aspect === null) return;
+    const [fw, fh] = frame;
+    const c = this.params.crop ?? { x: 0, y: 0, w: 1, h: 1 };
+    // Mittelpunkt behalten, so groß wie möglich
+    const cx = c.x + c.w / 2;
+    const cy = c.y + c.h / 2;
+    let w = c.w;
+    let h = (w * fw) / (fh * aspect);
+    if (h > c.h) {
+      h = c.h;
+      w = (h * fh * aspect) / fw;
+    }
+    const x = Math.min(Math.max(0, cx - w / 2), 1 - w);
+    const y = Math.min(Math.max(0, cy - h / 2), 1 - h);
+    this.params.crop = { x, y, w, h };
+    this.schedule();
+  }
+
+  async autoStraighten() {
+    if (this.imageId === null) return;
+    this.maskBusy = "Horizont wird gesucht …";
+    try {
+      const fix = await api.developDetectTilt(this.imageId, this.params.rotate, this.params.flipHorizontal);
+      if (fix === null) lib.notify("Keine eindeutigen geraden Kanten gefunden.");
+      else {
+        this.params.straighten = Math.round(fix * 100) / 100;
+        this.schedule();
+        if (!this.cropMode) this.commit();
+      }
+    } catch (e) {
+      lib.notify(String(e), "error");
+    } finally {
+      this.maskBusy = null;
+    }
+  }
+
+  // --- Masken ---------------------------------------------------------------
+
+  get layer(): MaskLayer | RepairLayer | null {
+    return this.activeMask !== null ? (this.list[this.activeMask] ?? null) : null;
+  }
+
+  /** Aktive Maskenebene (nicht Reparatur) – für die Regler der lokalen Anpassung */
+  get maskLayer(): MaskLayer | null {
+    return this.editsRepairs || this.activeMask === null ? null : (this.params.masks[this.activeMask] ?? null);
+  }
+
+  /** Neue Maskenebene. Geometrische Masken werden danach auf dem Bild gezogen. */
+  async addMask(kind: NewMaskKind) {
+    if (this.imageId === null) return;
+    const list = this.list;
+    let layer: MaskLayer | RepairLayer;
+    if (this.editsRepairs) {
+      layer = {
+        id: `r${Date.now().toString(36)}`,
+        name: `Reparatur ${list.length + 1}`,
+        enabled: true,
+        shapes: [],
+        result: null,
+        resultKey: null,
+      };
+    } else {
+      const n = this.params.masks.filter((m) => m.name.startsWith(MASK_NAMES[kind])).length;
+      layer = {
+        id: `m${Date.now().toString(36)}`,
+        name: n ? `${MASK_NAMES[kind]} ${n + 1}` : MASK_NAMES[kind],
+        enabled: true,
+        shapes: [],
+        adjust: { ...NEUTRAL_LOCAL },
+      };
+    }
+    if (kind === "subject" || kind === "sky") {
+      const shape = await this.runAi(kind);
+      if (!shape) return;
+      layer.shapes.push(shape);
+      this.tool = null;
+    } else {
+      this.tool = kind;
+      this.#newObject = kind === "object";
+      this.#newColor = kind === "color";
+      this.pendingSubtract = false;
+    }
+    list.push(layer);
+    this.activeMask = list.length - 1;
+    this.showOverlay = true;
+    this.schedule();
+    this.commit();
+  }
+
+  /** Weitere Form zur aktiven Ebene hinzufügen oder davon abziehen. */
+  async addShape(kind: NewMaskKind, subtract: boolean) {
+    const layer = this.layer;
+    if (!layer) return;
+    if (kind === "subject" || kind === "sky") {
+      const shape = await this.runAi(kind);
+      if (!shape) return;
+      layer.shapes.push({ ...shape, subtract });
+      this.schedule();
+      this.commit();
+    } else {
+      this.tool = kind;
+      this.pendingSubtract = subtract;
+      this.#newObject = kind === "object";
+      this.#newColor = kind === "color";
+      if (kind === "brush") this.brush.erase = false;
+    }
+    this.showOverlay = true;
+    this.schedule();
+  }
+
+  /** Neue Formen der aktiven Ebene werden abgezogen statt hinzugefügt. */
+  pendingSubtract = $state(false);
+  /** Nächster Objekt-Klick beginnt eine neue Form statt die letzte zu verfeinern. */
+  #newObject = false;
+  /** Nächster Pipetten-Klick beginnt eine neue Farbform. */
+  #newColor = false;
+
+  private async runAi(kind: "subject" | "sky"): Promise<MaskShape | null> {
+    if (this.imageId === null) return null;
+    this.maskBusy = kind === "subject" ? "Motiv wird erkannt …" : "Himmel wird gesucht …";
+    try {
+      const r = kind === "subject" ? await api.maskSubject(this.imageId) : await api.maskSky(this.imageId);
+      if (r.coverage < 0.005) {
+        lib.notify(kind === "sky" ? "Kein Himmel gefunden." : "Kein Motiv gefunden.");
+      }
+      return { type: "raster", maskId: r.maskId, kind };
+    } catch (e) {
+      lib.notify(String(e), "error");
+      return null;
+    } finally {
+      this.maskBusy = null;
+    }
+  }
+
+  selectMask(index: number | null) {
+    this.activeMask = index;
+    const shapes = index !== null ? this.list[index]?.shapes : undefined;
+    this.tool = null;
+    if (shapes?.length) {
+      const last = shapes[shapes.length - 1];
+      if (last.type === "brush") this.tool = "brush";
+      if (last.type === "raster" && last.kind === "object") this.tool = "object";
+      if (last.type === "color") this.tool = "color";
+    }
+    this.pendingSubtract = false;
+    // Reparatur ohne Ergebnis: Auswahl rot zeigen
+    if (this.editsRepairs && index !== null && !(this.list[index] as RepairLayer).result) this.showOverlay = true;
+    if (this.showOverlay) this.schedule();
+  }
+
+  removeMask(index: number) {
+    this.list.splice(index, 1);
+    if (this.activeMask !== null && this.activeMask >= this.list.length) this.activeMask = null;
+    this.tool = null;
+    this.schedule();
+    this.commit();
+  }
+
+  toggleOverlay() {
+    this.showOverlay = !this.showOverlay;
+    this.schedule();
+  }
+
+  setLocal<K extends keyof LocalAdjust>(key: K, value: number) {
+    const layer = this.maskLayer;
+    if (!layer) return;
+    layer.adjust[key] = value;
+    // Sobald eine Wirkung eingestellt wird, die Überlagerung ausblenden – man
+    // will das Ergebnis sehen.
+    if (this.showOverlay) this.showOverlay = false;
+    this.schedule();
+  }
+
+  /** Formänderung beim Ziehen (live), `commit()` danach beim Loslassen. */
+  touch() {
+    this.schedule();
+  }
+
+  /** Klickpunkt für „Objekt“ setzen und die Maske neu berechnen lassen. */
+  async objectClick(point: PromptPoint) {
+    const layer = this.layer;
+    if (!layer || this.imageId === null) return;
+    const subtract = this.pendingSubtract;
+    const last = layer.shapes.length - 1;
+    const idx = !this.#newObject && last >= 0 && layer.shapes[last].type === "raster" && (layer.shapes[last] as { kind: string }).kind === "object" ? last : -1;
+    const prev = idx >= 0 ? (layer.shapes[idx] as Extract<MaskShape, { type: "raster" }>) : null;
+    const points = [...(prev?.prompt ?? []), point];
+    this.maskBusy = prev ? "Auswahl wird verfeinert …" : "Objekt wird erkannt …";
+    try {
+      const r = await api.maskObject(this.imageId, points, prev?.maskId ?? null);
+      const shape: MaskShape = { type: "raster", kind: "object", maskId: r.maskId, prompt: points, subtract: prev?.subtract ?? subtract };
+      if (idx >= 0) layer.shapes[idx] = shape;
+      else layer.shapes.push(shape);
+      this.#newObject = false;
+      this.showOverlay = true;
+      this.schedule();
+      this.commit();
+    } catch (e) {
+      lib.notify(String(e), "error");
+    } finally {
+      this.maskBusy = null;
+    }
+  }
+
+  /**
+   * Pipette: Farbe an der Stelle messen und zur Farbmaske hinzufügen.
+   * `remove` (Alt-Klick) entfernt stattdessen die nächstgelegene Farbe.
+   */
+  async colorClick(x: number, y: number, remove: boolean) {
+    const layer = this.layer;
+    const id = this.imageId;
+    if (!layer || id === null) return;
+    const last = layer.shapes.length - 1;
+    const cur = !this.#newColor && last >= 0 && layer.shapes[last].type === "color"
+      ? (layer.shapes[last] as Extract<MaskShape, { type: "color" }>)
+      : null;
+    if (remove) {
+      if (!cur || !cur.samples.length) return;
+      let best = 0;
+      cur.samples.forEach((s, i) => {
+        const b = cur.samples[best];
+        if ((s.x - x) ** 2 + (s.y - y) ** 2 < (b.x - x) ** 2 + (b.y - y) ** 2) best = i;
+      });
+      cur.samples.splice(best, 1);
+      if (!cur.samples.length) layer.shapes.splice(last, 1);
+      this.schedule();
+      this.commit();
+      return;
+    }
+    try {
+      const lab = await api.developSampleColor(id, x, y);
+      if (this.imageId !== id) return;
+      const sample = { x, y, lab };
+      if (cur) cur.samples.push(sample);
+      else layer.shapes.push({ type: "color", samples: [sample], range: 30, subtract: this.pendingSubtract });
+      this.#newColor = false;
+      this.showOverlay = true;
+      this.schedule();
+      this.commit();
+    } catch (e) {
+      lib.notify(String(e), "error");
+    }
+  }
+
+  // --- Reparatur -------------------------------------------------------------
+
+  /** Fingerabdruck einer Auswahl – erkennt Änderungen nach dem Berechnen. */
+  repairKey(shapes: MaskShape[]): string {
+    const str = JSON.stringify(shapes);
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619);
+    return (h >>> 0).toString(36) + str.length.toString(36);
+  }
+
+  /** Reparatur mit LaMa berechnen (volle Auflösung). */
+  async computeRepair(index: number) {
+    const r = this.params.repairs[index];
+    const id = this.imageId;
+    if (!r || id === null || !r.shapes.length || this.repairing) return;
+    this.tool = null;
+    this.repairing = { index, done: 0, total: 0 };
+    const shapes = $state.snapshot(r.shapes) as MaskShape[];
+    try {
+      const result = await api.repairCompute(id, shapes, $state.snapshot(this.params.denoise) as DevelopParams["denoise"]);
+      if (this.imageId !== id) return;
+      const cur = this.params.repairs.find((x) => x.id === r.id);
+      if (!cur) return;
+      cur.result = result;
+      cur.resultKey = this.repairKey(shapes);
+      cur.enabled = true;
+      this.showOverlay = false;
+      this.schedule();
+      this.commit();
+      this.flush();
+    } catch (e) {
+      if (!String(e).includes("Abgebrochen")) lib.notify(`Reparatur: ${e}`, "error");
+    } finally {
+      this.repairing = null;
+    }
+  }
+
+  // --- Speichern -------------------------------------------------------------
+
+  scheduleSave() {
+    clearTimeout(this.#saveTimer);
+    this.#saveTimer = setTimeout(() => this.flush(), 500);
+  }
+
+  async flush() {
+    clearTimeout(this.#saveTimer);
+    const id = this.imageId;
+    if (id === null || !this.ready) return;
+    const p = $state.snapshot(this.params) as DevelopParams;
+    if (same(p, this.#saved)) return;
+    this.#saved = clone(p);
+    // Speichervorgänge strikt nacheinander: Die Befehle laufen im Backend
+    // parallel, ein älterer Stand dürfte sonst einen neueren überschreiben.
+    const run = this.#saving.then(() => api.developSave([id], p));
+    this.#saving = run.catch(() => {});
+    try {
+      await run;
+      const edited = !same(p, DEFAULT_PARAMS);
+      // Nur bei Änderung neu zuweisen – sonst rechnet das Raster bei jedem Speichern neu
+      if (lib.images.some((i) => i.id === id && i.edited !== edited)) {
+        lib.images = lib.images.map((i) => (i.id === id ? { ...i, edited } : i));
+      }
+    } catch (e) {
+      // Beim nächsten Anlass erneut versuchen
+      if (this.imageId === id) this.#saved = { ...p, version: -1 };
+      lib.notify(`Speichern fehlgeschlagen: ${e}`, "error");
+    }
+  }
+
+  // --- Kopieren / Einfügen (nur Basis) ---------------------------------------
+  //
+  // Bewusst ohne Knöpfe: Strg+Umschalt+C / Strg+Umschalt+V oder Rechtsklick.
+  // Übertragen wird nur der Reiter „Basis“ (Weißabgleich, Licht, Farbe, HSL,
+  // Klarheit, Schärfen) – nie Masken, Reparaturen, Entrauschen oder Zuschnitt.
+
+  /** Basis-Einstellungen eines Fotos kopieren (im Entwickeln: der aktuelle Stand). */
+  async copyBasic(id: number) {
+    try {
+      const params =
+        this.imageId === id && this.ready
+          ? clone($state.snapshot(this.params) as DevelopParams)
+          : { ...clone(DEFAULT_PARAMS), ...(await api.developParams(id)) };
+      const name = lib.images.find((i) => i.id === id)?.fileName ?? "Foto";
+      this.clipboard = { params, name };
+      lib.notify(`Basis-Einstellungen von ${name} kopiert`);
+    } catch (e) {
+      lib.notify(String(e), "error");
+    }
+  }
+
+  /** Kopierte Basis-Einstellungen auf die Fotos `ids` übertragen. */
+  async pasteBasic(ids: number[]) {
+    const clip = this.clipboard;
+    if (!clip) {
+      lib.notify("Zuerst Basis-Einstellungen kopieren (Strg+Umschalt+C).");
+      return;
+    }
+    if (!ids.length) return;
+    const src = clip.params;
+    // Vor jedem Warten festlegen, was wohin geht (Bildwechsel währenddessen)
+    const openId = this.ready ? this.imageId : null;
+    const others = ids.filter((i) => i !== openId);
+    if (openId !== null && ids.includes(openId)) {
+      this.replace(transferParams($state.snapshot(this.params) as DevelopParams, src, BASIC_ONLY)); // mit Rückgängig
+      await this.flush();
+    }
+    if (others.length) {
+      try {
+        // Nach laufenden Speichervorgängen – sonst überschreibt ein älterer Stand das Einfügen
+        await this.#saving;
+        await api.developTransfer(others, src, BASIC_ONLY);
+      } catch (e) {
+        lib.notify(String(e), "error");
+        return;
+      }
+      const set = new Set(others);
+      lib.images = lib.images.map((i) => (set.has(i.id) ? { ...i, edited: true } : i));
+    }
+    lib.notify(`Basis-Einstellungen auf ${ids.length} ${ids.length === 1 ? "Foto" : "Fotos"} übertragen`);
+  }
+
+  // --- Schnappschüsse --------------------------------------------------------
+
+  async snapshot(name: string) {
+    if (this.imageId === null) return;
+    await this.flush();
+    if (this.isDefault) {
+      lib.notify("Ohne Bearbeitung gibt es nichts festzuhalten.");
+      return;
+    }
+    this.snapshots = await api.developSnapshot(this.imageId, name);
+  }
+
+  async restore(edit: Edit) {
+    if (!this.ready) return;
+    await this.flush();
+    await this.#saving;
+    const p = await api.developRestore(edit.id);
+    this.replace({ ...clone(DEFAULT_PARAMS), ...p });
+    this.#saved = clone(this.params);
+  }
+
+  async deleteSnapshot(edit: Edit) {
+    if (this.imageId === null) return;
+    this.snapshots = await api.developDeleteSnapshot(this.imageId, edit.id);
+  }
+}
+
+export const dev = new Develop();

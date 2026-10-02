@@ -1,0 +1,48 @@
+# Changelog
+
+All notable changes to Lumenkorn are documented here.
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and the project uses [Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+## [0.1.0] – 2026-10-02
+
+First public version. The project was developed under the working title
+“Lichtwerk”; existing catalogs from that version are taken over automatically
+on first start.
+
+### Library
+- Source folders with live file watching (only changed paths are re-scanned),
+  folder tree, projects, star ratings and pick/reject flags.
+- Full-text search (SQLite FTS5 with trigrams) across file names, folders,
+  camera, lens, keywords and people.
+- Fast thumbnails from embedded RAW previews; edited photos show their edit.
+- Culling: `X` rejects, `Shift+X` rejects and advances, rejected photos can be
+  moved to the trash or deleted permanently.
+- Side-by-side compare and 1:1 zoom.
+
+### Develop (non-destructive)
+- Linear RAW pipeline (rawler) with white balance, exposure, tone, clarity,
+  color, HSL with eyedropper, sharpening, crop and straighten with automatic
+  horizon detection.
+- Local adjustments: linear and radial gradients, brush, color range with
+  eyedropper, and AI masks (subject, sky, object).
+- GPU processing via wgpu (Vulkan, DirectX 12, Metal) with CPU fallback.
+- Copy/paste of basic settings with `Ctrl+Shift+C` / `Ctrl+Shift+V` or the
+  context menu.
+- Export to JPEG, 16-bit TIFF and PNG.
+
+### Local AI (optional download, runs offline)
+- Automatic keywords and semantic search (CLIP).
+- AI noise reduction (DRUNet), AI repair / object removal (LaMa).
+- Face detection and grouping into people (YuNet, SFace).
+
+### Merge
+- HDR from exposure brackets (alignment, measured exposure ratios, de-ghosting,
+  chained alignment for wide brackets up to ±6 EV).
+- Panorama (any shot order, multi-row, cylindrical / spherical / perspective
+  projection, exposure compensation, auto-crop).
+- Focus stacking (alignment including focus breathing, Laplacian pyramid fusion).
+- Results are stored as linear 16-bit OpenEXR next to the source photos and
+  develop like RAW files.

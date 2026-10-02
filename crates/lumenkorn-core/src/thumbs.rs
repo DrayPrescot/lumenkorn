@@ -1,0 +1,688 @@
+//! Vorschaubilder: kleine Thumbnails fürs Raster und größere Vorschauen
+//! für die Einzelansicht. Beide werden als JPEG im Cache-Ordner abgelegt.
+//!
+//! Unbearbeitete RAWs nutzen das eingebettete Kamera-JPEG – das ist um ein
+//! Vielfaches schneller als eine Entwicklung. Sobald ein Bild bearbeitet ist,
+//! entstehen Thumbnail und Vorschau über die Entwicklungspipeline und zeigen
+//! damit die Bearbeitung.
+
+use crate::catalog::{Catalog, ThumbJob};
+use crate::error::{Error, Result};
+use crate::formats::ImageKind;
+use crate::maskstore::MaskFiles;
+use image::metadata::Orientation;
+use image::{DynamicImage, ImageFormat, ImageReader};
+use lumenkorn_develop::repair::{NoRepairs, RepairFiles, RepairSource};
+use lumenkorn_develop::{DevelopParams, MaskSource, NoMasks, RenderOptions, Source};
+use rayon::prelude::*;
+use std::io::Cursor;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::Mutex;
+
+/// Längste Kante der Raster-Thumbnails.
+pub const THUMB_SIZE: u32 = 512;
+/// Längste Kante der Vorschau in der Einzelansicht.
+pub const PREVIEW_SIZE: u32 = 2048;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Variant {
+    Thumb,
+    Preview,
+}
+
+impl Variant {
+    pub fn max_size(self) -> u32 {
+        match self {
+            Variant::Thumb => THUMB_SIZE,
+            Variant::Preview => PREVIEW_SIZE,
+        }
+    }
+    fn dir(self) -> &'static str {
+        match self {
+            Variant::Thumb => "thumbs",
+            Variant::Preview => "previews",
+        }
+    }
+}
+
+/// Ablage der erzeugten Vorschauen, z. B. `<cache>/thumbs/2a/42.jpg`.
+#[derive(Debug, Clone)]
+pub struct ThumbCache {
+    base: PathBuf,
+    /// KI-Masken, damit Vorschauen lokale Anpassungen damit zeigen.
+    masks: Option<Arc<MaskFiles>>,
+    /// Ordner mit entrauschten Zwischenstufen
+    denoise_dir: Option<PathBuf>,
+    /// Flicken der KI-Reparaturen
+    repairs: Option<Arc<RepairFiles>>,
+}
+
+impl ThumbCache {
+    pub fn new(base: impl Into<PathBuf>) -> Self {
+        Self {
+            base: base.into(),
+            masks: None,
+            denoise_dir: None,
+            repairs: None,
+        }
+    }
+
+    pub fn with_masks(mut self, masks: Arc<MaskFiles>) -> Self {
+        self.masks = Some(masks);
+        self
+    }
+
+    pub fn with_denoise_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.denoise_dir = Some(dir.into());
+        self
+    }
+
+    pub fn with_repairs(mut self, repairs: Arc<RepairFiles>) -> Self {
+        self.repairs = Some(repairs);
+        self
+    }
+
+    fn repair_source(&self) -> &dyn RepairSource {
+        match &self.repairs {
+            Some(r) => r.as_ref(),
+            None => &NoRepairs,
+        }
+    }
+
+    fn mask_source(&self) -> &dyn MaskSource {
+        match &self.masks {
+            Some(m) => m.as_ref(),
+            None => &NoMasks,
+        }
+    }
+
+    /// Wurzel des Vorschau-Speichers
+    pub fn base(&self) -> &Path {
+        &self.base
+    }
+
+    pub fn path_for(&self, variant: Variant, id: i64) -> PathBuf {
+        self.base
+            .join(variant.dir())
+            .join(format!("{:02x}", id.rem_euclid(256)))
+            .join(format!("{id}.jpg"))
+    }
+
+    pub fn read(&self, variant: Variant, id: i64) -> Option<Vec<u8>> {
+        std::fs::read(self.path_for(variant, id)).ok()
+    }
+
+    pub fn write(&self, variant: Variant, id: i64, jpeg: &[u8]) -> Result<()> {
+        let p = self.path_for(variant, id);
+        if let Some(dir) = p.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        // Erst temporär schreiben, dann umbenennen: nie halbe Dateien im Cache.
+        // Eindeutiger Name: Worker und Bildprotokoll können dasselbe Bild
+        // gleichzeitig schreiben (unter Windows schlägt sonst das Umbenennen fehl)
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = p.with_extension(format!("{}.{n}.tmp", std::process::id()));
+        std::fs::write(&tmp, jpeg)?;
+        std::fs::rename(tmp, p)?;
+        Ok(())
+    }
+
+    pub fn remove(&self, id: i64) {
+        for v in [Variant::Thumb, Variant::Preview] {
+            let _ = std::fs::remove_file(self.path_for(v, id));
+        }
+    }
+
+    /// Liefert die Vorschau aus dem Cache oder erzeugt sie bei Bedarf.
+    pub fn get_or_render(&self, variant: Variant, job: &ThumbJob) -> Result<Vec<u8>> {
+        if let Some(bytes) = self.read(variant, job.id) {
+            return Ok(bytes);
+        }
+        let bytes = render_job(
+            job,
+            variant.max_size(),
+            self.mask_source(),
+            self.denoise_dir.as_deref(),
+            self.repair_source(),
+        )?;
+        self.write(variant, job.id, &bytes)?;
+        Ok(bytes)
+    }
+}
+
+impl ThumbCache {
+    /// Ganzes Bild in voller Auflösung (Zoom in Bibliothek und Vergleich).
+    /// Wird nicht auf der Platte zwischengespeichert.
+    pub fn render_full(&self, job: &ThumbJob) -> Result<Vec<u8>> {
+        render_full(
+            job,
+            self.mask_source(),
+            self.denoise_dir.as_deref(),
+            self.repair_source(),
+        )
+    }
+}
+
+/// Volle Auflösung: Bearbeitete Bilder und RAWs werden entwickelt (das
+/// eingebettete JPEG eines RAWs ist oft kleiner als das Original),
+/// unbearbeitete Rasterbilder nur dekodiert.
+pub fn render_full(
+    job: &ThumbJob,
+    masks: &dyn MaskSource,
+    denoise_dir: Option<&Path>,
+    repairs: &dyn RepairSource,
+) -> Result<Vec<u8>> {
+    let edit = job
+        .edit
+        .as_ref()
+        .map(DevelopParams::from_json)
+        .filter(|p| !p.is_default());
+    if let Some(p) = edit {
+        return render_developed(job, &p, u32::MAX, masks, denoise_dir, repairs);
+    }
+    if job.kind == ImageKind::Raw {
+        if let Some(bytes) = full_size_preview(job)? {
+            return Ok(bytes);
+        }
+        return render_developed(
+            job,
+            &DevelopParams::default(),
+            u32::MAX,
+            masks,
+            None,
+            repairs,
+        );
+    }
+    render(Path::new(&job.path), job.kind, job.orientation, u32::MAX)
+}
+
+/// Die meisten Kameras betten eine JPEG-Vorschau in voller Sensorgröße ein.
+/// Für unbearbeitete RAWs ist das die volle Auflösung: Sekunden schneller als
+/// Entwickeln und farblich gleich zur Vorschau in der Bibliothek (die auch
+/// aus dieser Datei stammt). Ohne Drehung werden die Bytes unverändert
+/// geliefert. `None`, wenn die Vorschau deutlich kleiner als der Sensor ist.
+fn full_size_preview(job: &ThumbJob) -> Result<Option<Vec<u8>>> {
+    let Some(sensor) = job.long_edge else {
+        return Ok(None);
+    };
+    let data = std::fs::read(&job.path)?;
+    let Some((jpeg, edge)) = embedded_jpegs(&data)
+        .into_iter()
+        .filter_map(|c| jpeg_size(c).map(|(w, h)| (c, w.max(h))))
+        .max_by_key(|(_, edge)| *edge)
+    else {
+        return Ok(None);
+    };
+    if (edge as f32) < sensor as f32 * 0.9 {
+        return Ok(None);
+    }
+    let orientation = job
+        .orientation
+        .and_then(|o| Orientation::from_exif(o as u8))
+        .filter(|o| *o != Orientation::NoTransforms);
+    let Some(o) = orientation else {
+        return Ok(Some(jpeg.to_vec()));
+    };
+    let mut img = image::load(Cursor::new(jpeg), ImageFormat::Jpeg)?;
+    img.apply_orientation(o);
+    Ok(Some(encode_jpeg(&img, 90)?))
+}
+
+/// Vorschau für einen Katalogeintrag – mit Bearbeitung, falls vorhanden.
+pub fn render_job(
+    job: &ThumbJob,
+    max: u32,
+    masks: &dyn MaskSource,
+    denoise_dir: Option<&Path>,
+    repairs: &dyn RepairSource,
+) -> Result<Vec<u8>> {
+    let edit = job
+        .edit
+        .as_ref()
+        .map(DevelopParams::from_json)
+        .filter(|p| !p.is_default());
+    if let Some(p) = edit {
+        return render_developed(job, &p, max, masks, denoise_dir, repairs);
+    }
+    match render(Path::new(&job.path), job.kind, job.orientation, max) {
+        Ok(bytes) => Ok(bytes),
+        // RAW ohne brauchbares eingebettetes JPEG: selbst entwickeln.
+        Err(e) if job.kind == ImageKind::Raw => {
+            render_developed(job, &DevelopParams::default(), max, masks, None, repairs)
+                .map_err(|_| e)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+fn render_developed(
+    job: &ThumbJob,
+    params: &DevelopParams,
+    max: u32,
+    masks: &dyn MaskSource,
+    denoise_dir: Option<&Path>,
+    repairs: &dyn RepairSource,
+) -> Result<Vec<u8>> {
+    let denoised = match (&params.denoise, denoise_dir) {
+        (Some(d), Some(dir)) => lumenkorn_develop::denoised::path(dir, &d.id)
+            .and_then(|p| lumenkorn_develop::denoised::read(&p, Some(max as usize)).ok()),
+        _ => None,
+    };
+    let src = Source::load(
+        Path::new(&job.path),
+        job.kind == ImageKind::Raw,
+        job.orientation.map(|o| o as u16),
+        Some(max as usize),
+    )?;
+    let rgb = lumenkorn_develop::render_auto_rgb8(
+        &src,
+        params,
+        &RenderOptions {
+            masks,
+            overlay: None,
+            denoised: denoised.as_ref(),
+            region: None,
+            repairs,
+        },
+    );
+    Ok(lumenkorn_develop::output::encode_jpeg_rgb8(&rgb, 84)?)
+}
+
+/// Dekodiert ein Bild, skaliert es auf `max` und liefert ein JPEG.
+pub fn render(path: &Path, kind: ImageKind, orientation: Option<i64>, max: u32) -> Result<Vec<u8>> {
+    encode_jpeg(&decode_unedited(path, kind, orientation, max)?, 82)
+}
+
+/// Unbearbeitetes, aufrecht gedrehtes Bild mit höchstens `max` Pixeln Kante.
+/// RAWs liefern ihr eingebettetes JPEG – schnell, ohne Entwicklung.
+pub fn decode_unedited(
+    path: &Path,
+    kind: ImageKind,
+    orientation: Option<i64>,
+    max: u32,
+) -> Result<DynamicImage> {
+    // Lineares EXR (Ergebnis von HDR/Panorama/Focus Stacking): wie ein RAW
+    // mit Standardeinstellungen entwickeln
+    if lumenkorn_develop::exr_io::is_exr(path) {
+        let src = Source::load(
+            path,
+            false,
+            orientation.map(|o| o as u16),
+            Some(max as usize),
+        )?;
+        let rgb = lumenkorn_develop::render_auto_rgb8(
+            &src,
+            &DevelopParams::default(),
+            &RenderOptions {
+                masks: &NoMasks,
+                overlay: None,
+                denoised: None,
+                region: None,
+                repairs: &NoRepairs,
+            },
+        );
+        return Ok(DynamicImage::ImageRgb8(rgb));
+    }
+    let img = match kind {
+        ImageKind::Raster => ImageReader::open(path)?.with_guessed_format()?.decode()?,
+        ImageKind::Raw => decode_embedded_preview(path, max)?,
+    };
+    let mut img = if img.width() > max || img.height() > max {
+        img.thumbnail(max, max)
+    } else {
+        img
+    };
+    if let Some(o) = orientation.and_then(|o| Orientation::from_exif(o as u8)) {
+        img.apply_orientation(o);
+    }
+    Ok(img)
+}
+
+/// Bild für die Analyse (Gesichter): unbearbeitet, damit Positionen auch nach
+/// späterem Zuschneiden gelten. RAWs ohne brauchbares eingebettetes JPEG
+/// werden mit Standardeinstellungen entwickelt.
+pub fn decode_for_analysis(job: &ThumbJob, max: u32) -> Result<DynamicImage> {
+    match decode_unedited(Path::new(&job.path), job.kind, job.orientation, max) {
+        Ok(img) => Ok(img),
+        Err(e) if job.kind == ImageKind::Raw => {
+            let bytes = render_developed(
+                job,
+                &DevelopParams::default(),
+                max,
+                &NoMasks,
+                None,
+                &NoRepairs,
+            )
+            .map_err(|_| e)?;
+            Ok(image::load_from_memory(&bytes)?)
+        }
+        Err(e) => Err(e),
+    }
+}
+
+fn encode_jpeg(img: &DynamicImage, quality: u8) -> Result<Vec<u8>> {
+    Ok(lumenkorn_develop::output::encode_jpeg_rgb8(
+        &img.to_rgb8(),
+        quality,
+    )?)
+}
+
+/// Dekodiert eine eingebettete JPEG-Vorschau des RAWs. Funktioniert
+/// unabhängig vom Containerformat (TIFF-basierte RAWs wie NEF/CR2/ARW/DNG,
+/// aber auch CR3 und RAF).
+///
+/// Gewählt wird die *kleinste* Vorschau, deren längere Kante mindestens
+/// `min_edge` misst – für ein 512-px-Thumbnail reicht meist die mittlere
+/// Vorschau, statt das 24–60-MP-JPEG voll zu dekodieren. Gibt es keine
+/// passende, die größte.
+pub fn decode_embedded_preview(path: &Path, min_edge: u32) -> Result<DynamicImage> {
+    // Die Vorschauen liegen fast immer vorn in der Datei (TIFF-IFDs, CR3-PRVW,
+    // RAF-Kopf). Erst den Anfang lesen, die ganze Datei (24–60 MB, bei 50 000
+    // RAWs Terabytes auf dem NAS) nur, wenn dort nichts Passendes steckt.
+    use std::io::Read;
+    const HEAD: u64 = 16 << 20;
+    let mut head = Vec::new();
+    let file_len = {
+        let mut f = std::fs::File::open(path)?;
+        let len = f.metadata()?.len();
+        f.by_ref().take(HEAD).read_to_end(&mut head)?;
+        len
+    };
+    if file_len > HEAD
+        && let Some(img) = best_preview(&head, min_edge, true)
+    {
+        return Ok(img);
+    }
+    let data = if file_len > HEAD {
+        std::fs::read(path)?
+    } else {
+        head
+    };
+    best_preview(&data, min_edge, false).ok_or_else(|| Error::NoPreview(path.display().to_string()))
+}
+
+/// Dekodiert die kleinste eingebettete Vorschau mit mindestens `min_edge`
+/// Pixeln Kante, sonst die größte. `only_sufficient`: nur eine ausreichend
+/// große akzeptieren (für den Versuch mit dem Dateianfang).
+fn best_preview(data: &[u8], min_edge: u32, only_sufficient: bool) -> Option<DynamicImage> {
+    let mut candidates: Vec<(&[u8], u32)> = embedded_jpegs(data)
+        .into_iter()
+        // Größe aus dem Kopf lesen; „JPEGs“ mit verlustfreien Sensordaten
+        // (SOF3) lassen sich nicht als Bild dekodieren und fallen hier weg.
+        .filter_map(|c| jpeg_size(c).map(|(w, h)| (c, w.max(h))))
+        .filter(|(_, edge)| *edge >= 160)
+        .filter(|(_, edge)| !only_sufficient || *edge >= min_edge)
+        .collect();
+    // Passende aufsteigend, danach die zu kleinen absteigend
+    candidates.sort_by_key(|(_, edge)| {
+        if *edge >= min_edge {
+            (0, *edge as i64)
+        } else {
+            (1, -(*edge as i64))
+        }
+    });
+    candidates
+        .into_iter()
+        .find_map(|(c, _)| image::load(Cursor::new(c), ImageFormat::Jpeg).ok())
+}
+
+/// Breite und Höhe eines JPEG aus seinem Frame-Kopf (SOF0/1/2), ohne zu
+/// dekodieren. `None` für verlustfreie oder unbekannte Varianten.
+fn jpeg_size(d: &[u8]) -> Option<(u32, u32)> {
+    let mut pos = 2;
+    while pos + 9 < d.len() {
+        if d[pos] != 0xFF {
+            return None;
+        }
+        let marker = d[pos + 1];
+        if marker == 0xFF {
+            pos += 1;
+            continue;
+        }
+        let len = u16::from_be_bytes([d[pos + 2], d[pos + 3]]) as usize;
+        match marker {
+            0xC0..=0xC2 => {
+                let h = u16::from_be_bytes([d[pos + 5], d[pos + 6]]) as u32;
+                let w = u16::from_be_bytes([d[pos + 7], d[pos + 8]]) as u32;
+                return (w > 0 && h > 0).then_some((w, h));
+            }
+            // Andere SOF-Varianten (verlustfrei, arithmetisch) oder Scanbeginn
+            0xC3 | 0xC5..=0xC7 | 0xC9..=0xCB | 0xCD..=0xCF | 0xDA => return None,
+            _ => pos += 2 + len,
+        }
+    }
+    None
+}
+
+/// Findet vollständige JPEG-Datenströme (SOI…EOI) in einem Puffer.
+pub fn embedded_jpegs(data: &[u8]) -> Vec<&[u8]> {
+    const MIN_LEN: usize = 8 * 1024;
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i + 3 < data.len() {
+        if data[i] == 0xFF
+            && data[i + 1] == 0xD8
+            && data[i + 2] == 0xFF
+            && let Some(len) = jpeg_len(&data[i..])
+        {
+            if len >= MIN_LEN {
+                out.push(&data[i..i + len]);
+            }
+            // Über das gefundene JPEG springen – darin eingebettete
+            // EXIF-Thumbnails interessieren uns nicht.
+            i += len;
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
+/// Länge eines JPEG-Streams anhand seiner Marker-Struktur.
+fn jpeg_len(d: &[u8]) -> Option<usize> {
+    let mut pos = 2; // nach SOI
+    loop {
+        // Füllbytes 0xFF überspringen
+        while pos < d.len() && d[pos] == 0xFF && d.get(pos + 1) == Some(&0xFF) {
+            pos += 1;
+        }
+        if pos + 1 >= d.len() || d[pos] != 0xFF {
+            return None;
+        }
+        let marker = d[pos + 1];
+        match marker {
+            0xD9 => return Some(pos + 2), // EOI
+            0xD0..=0xD7 | 0x01 => {
+                pos += 2;
+                continue;
+            }
+            _ => {}
+        }
+        if pos + 3 >= d.len() {
+            return None;
+        }
+        let seg_len = u16::from_be_bytes([d[pos + 2], d[pos + 3]]) as usize;
+        if seg_len < 2 {
+            return None;
+        }
+        pos += 2 + seg_len;
+        if marker == 0xDA {
+            // Entropiecodierte Daten bis zum nächsten echten Marker überspringen.
+            while pos + 1 < d.len() {
+                if d[pos] == 0xFF {
+                    let m = d[pos + 1];
+                    if m == 0x00 || (0xD0..=0xD7).contains(&m) {
+                        pos += 2;
+                        continue;
+                    }
+                    if m == 0xFF {
+                        pos += 1;
+                        continue;
+                    }
+                    break;
+                }
+                pos += 1;
+            }
+        }
+        if pos > d.len() {
+            return None;
+        }
+    }
+}
+
+/// Bearbeitete Bilder, die gleichzeitig für Thumbnails entwickelt werden
+const EDITED_PARALLEL: usize = 2;
+
+/// Erzeugt alle ausstehenden Thumbnails parallel.
+///
+/// `on_done(id, ok)` wird pro Bild aufgerufen, damit die Oberfläche das
+/// Thumbnail sofort nachladen kann. Liefert die Anzahl verarbeiteter Bilder.
+pub fn generate_pending(
+    catalog: &Mutex<Catalog>,
+    cache: &ThumbCache,
+    on_done: &(dyn Fn(i64, bool) + Sync),
+) -> Result<usize> {
+    let mut processed = 0;
+    loop {
+        let (n, more) = generate_some(catalog, cache, on_done, 256)?;
+        processed += n;
+        if !more {
+            return Ok(processed);
+        }
+    }
+}
+
+/// Wie [`generate_pending`], aber höchstens etwa `limit` Bilder. Liefert
+/// (verarbeitet, weitere ausstehend). Für den Hintergrund-Worker: Zwischen den
+/// Portionen kommen andere Aufträge (Ordneränderungen, Scans) an die Reihe,
+/// statt beim ersten Import stundenlang zu warten.
+pub fn generate_some(
+    catalog: &Mutex<Catalog>,
+    cache: &ThumbCache,
+    on_done: &(dyn Fn(i64, bool) + Sync),
+    limit: usize,
+) -> Result<(usize, bool)> {
+    let mut processed = 0;
+    while processed < limit {
+        let jobs = catalog.lock().unwrap().pending_thumbs(64)?;
+        if jobs.is_empty() {
+            return Ok((processed, false));
+        }
+        let one = |job: &ThumbJob| -> Result<Vec<u8>> {
+            render_job(
+                job,
+                THUMB_SIZE,
+                cache.mask_source(),
+                cache.denoise_dir.as_deref(),
+                cache.repair_source(),
+            )
+        };
+        // Unbearbeitete Bilder (eingebettete Vorschau, klein) voll parallel.
+        // Bearbeitete werden ganz entwickelt – ein RAW belegt dabei bis ~1,5 GB.
+        // Deshalb höchstens zwei gleichzeitig; die Pipeline selbst nutzt
+        // ohnehin alle Kerne.
+        let (edited, plain): (Vec<&ThumbJob>, Vec<&ThumbJob>) =
+            jobs.iter().partition(|j| j.edit.is_some());
+        let mut results: Vec<(&ThumbJob, Result<Vec<u8>>)> =
+            plain.par_iter().map(|j| (*j, one(j))).collect();
+        for pair in edited.chunks(EDITED_PARALLEL) {
+            results.extend(pair.par_iter().map(|j| (*j, one(j))).collect::<Vec<_>>());
+        }
+
+        // Schreiben und Zustand setzen unter der Sperre: Wurde das Bild während
+        // des Renderns bearbeitet (Entwickeln speichert eigene Thumbnails), ist
+        // dieses Ergebnis veraltet und darf das neue nicht überschreiben – es
+        // bleibt ausstehend und wird mit der neuen Bearbeitung erzeugt.
+        let cat = catalog.lock().unwrap();
+        for (job, res) in results {
+            processed += 1;
+            let current = match cat.thumb_job(job.id) {
+                Ok(c) => c,
+                Err(_) => continue, // inzwischen gelöscht
+            };
+            if current.edit != job.edit || current.path != job.path {
+                continue;
+            }
+            let res = res.and_then(|bytes| cache.write(Variant::Thumb, job.id, &bytes));
+            if let Err(e) = &res {
+                log::warn!("Thumbnail für {} fehlgeschlagen: {e}", job.path);
+            }
+            // Alte Vorschau verwerfen, falls sich die Datei geändert hat.
+            let _ = std::fs::remove_file(cache.path_for(Variant::Preview, job.id));
+            cat.set_thumb_state(job.id, res.is_ok())?;
+            on_done(job.id, res.is_ok());
+        }
+    }
+    Ok((processed, true))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{Rgb, RgbImage};
+
+    fn sample_jpeg(w: u32, h: u32) -> Vec<u8> {
+        let img = RgbImage::from_fn(w, h, |x, y| Rgb([(x % 256) as u8, (y % 256) as u8, 128]));
+        encode_jpeg(&DynamicImage::ImageRgb8(img), 90).unwrap()
+    }
+
+    #[test]
+    fn picks_smallest_sufficient_embedded_jpeg() {
+        let small = sample_jpeg(400, 300);
+        let big = sample_jpeg(1200, 800);
+        let mut fake_raw = b"II*\0 fake raw header ".to_vec();
+        fake_raw.extend(std::iter::repeat_n(0x42u8, 5000));
+        fake_raw.extend(&small);
+        fake_raw.extend(std::iter::repeat_n(0x17u8, 3000));
+        fake_raw.extend(&big);
+        fake_raw.extend(std::iter::repeat_n(0x00u8, 1000));
+
+        let found = embedded_jpegs(&fake_raw);
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[1].len(), big.len());
+
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("x.nef");
+        std::fs::write(&p, &fake_raw).unwrap();
+        let size = |min| {
+            let img = decode_embedded_preview(&p, min).unwrap();
+            (img.width(), img.height())
+        };
+        assert_eq!(size(300), (400, 300), "kleine reicht");
+        assert_eq!(size(512), (1200, 800), "kleine zu klein");
+        assert_eq!(size(5000), (1200, 800), "keine reicht: größte");
+        assert_eq!(jpeg_size(&small), Some((400, 300)));
+    }
+
+    #[test]
+    fn reads_file_head_first_and_falls_back_to_whole_file() {
+        let small = sample_jpeg(400, 300);
+        let big = sample_jpeg(1200, 800);
+        let mut raw = b"II*\0".to_vec();
+        raw.extend(&small);
+        raw.resize(17 << 20, 0x11); // große Vorschau erst hinter den ersten 16 MB
+        raw.extend(&big);
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("gross.nef");
+        std::fs::write(&p, &raw).unwrap();
+        let size = |min| {
+            let img = decode_embedded_preview(&p, min).unwrap();
+            (img.width(), img.height())
+        };
+        assert_eq!(size(300), (400, 300), "aus dem Dateianfang");
+        assert_eq!(size(1000), (1200, 800), "Rückfall: ganze Datei");
+    }
+
+    #[test]
+    fn renders_with_orientation() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("a.jpg");
+        std::fs::write(&p, sample_jpeg(1600, 900)).unwrap();
+        let bytes = render(&p, ImageKind::Raster, Some(6), 512).unwrap();
+        let img = image::load_from_memory(&bytes).unwrap();
+        // 90° gedreht: hochkant
+        assert_eq!((img.width(), img.height()), (288, 512));
+    }
+}

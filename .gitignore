@@ -1,0 +1,19 @@
+# Build output
+node_modules/
+dist/
+target/
+src-tauri/gen/
+
+# Local catalogs and test output
+*.db
+*.db-*
+*.exr
+*.tmp
+*.log
+
+# Editors and OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

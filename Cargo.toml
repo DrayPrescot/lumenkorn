@@ -1,0 +1,31 @@
+[workspace]
+resolver = "3"
+members = ["crates/lumenkorn-ai","crates/lumenkorn-core", "crates/lumenkorn-develop", "src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["DrayPrescot"]
+repository = "https://github.com/DrayPrescot/lumenkorn"
+homepage = "https://github.com/DrayPrescot/lumenkorn"
+rust-version = "1.90"
+
+[profile.dev.package."*"]
+# Bilddekodierung ist im Debug-Build sonst unerträglich langsam.
+opt-level = 3
+# Keine Debug-Infos für Abhängigkeiten – spart viele GB im Build-Ordner.
+debug = false
+
+[profile.dev]
+debug = "line-tables-only"
+
+# Die Pipeline rechnet pro Pixel – auch im Debug-Build optimieren,
+# sonst sind die Regler nicht flüssig.
+[profile.dev.package.lumenkorn-develop]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

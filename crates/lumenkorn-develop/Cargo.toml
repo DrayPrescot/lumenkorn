@@ -1,0 +1,28 @@
+[package]
+name = "lumenkorn-develop"
+description = "Non-destruktive Bildentwicklung für Lumenkorn: RAW-Dekodierung und Bearbeitungspipeline"
+version.workspace = true
+edition.workspace = true
+# rawler steht unter LGPL-2.1; der Rest von Lumenkorn unter MIT/Apache-2.0.
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+bytemuck = { version = "1.25.2", features = ["derive"] }
+half = "2"
+# Ergebnisse von HDR, Panorama und Focus Stacking: lineares OpenEXR (Halbgleitkomma)
+exr = { version = "1.74", default-features = false, features = ["rayon"] }
+# Schneller JPEG-Encoder (SIMD): ~4× schneller als der von image-rs
+jpeg-encoder = { version = "0.6", features = ["simd"] }
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "tiff", "webp", "rayon"] }
+log = "0.4.34"
+pollster = "1.0.1"
+rawler = "0.8.0"
+rayon = "1.12.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.21"
+# GPU-Pipeline: Vulkan (Linux, Android, Windows), DirectX 12 (Windows), Metal (macOS).
+wgpu = { version = "30", default-features = false, features = ["std", "parking_lot", "vulkan", "dx12", "metal", "wgsl"] }

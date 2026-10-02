@@ -1,0 +1,38 @@
+[package]
+name = "lumenkorn-ai"
+description = "Lokale KI für Lumenkorn: CLIP-Embeddings, Verschlagwortung, semantische Suche"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+flate2 = "1.1.10"
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
+lumenkorn-develop = { path = "../lumenkorn-develop" }
+log = "0.4.34"
+# ONNX Runtime wird zur Laufzeit geladen (load-dynamic): Die App startet auch
+# ohne, und die passende Bibliothek kann pro Plattform nachgeladen werden.
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "api-22", "webgpu", "directml"] }
+rayon = "1.12.0"
+regex = "1.13.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.10.9"
+tar = "0.4.46"
+thiserror = "2.0.21"
+ureq = { version = "3", features = ["platform-verifier"] }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+
+# Windows: Begleit-DLLs der GPU-Laufzeit (DirectML.dll, dxcompiler.dll …)
+# vorab aus dem Laufzeitordner laden – Windows sucht sie sonst nur neben der .exe.
+[target.'cfg(windows)'.dependencies]
+libloading = "0.9.0"
+
+[dev-dependencies]
+flate2 = "1.1.10"
+serde_json = "1.0.151"
+tar = "0.4.46"
+tempfile = "3.27.0"
