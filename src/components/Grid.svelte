@@ -82,7 +82,8 @@
     else if (k === "ArrowLeft") lib.move(-1);
     else if (k === "ArrowDown") vertical(1);
     else if (k === "ArrowUp") vertical(-1);
-    else if ((k === "Enter" || k === " ") && lib.focused) lib.view = "loupe";
+    // Mehrere ausgewählt: alle groß nebeneinander (Vergleich)
+    else if ((k === "Enter" || k === " ") && lib.focused) lib.openLarge();
     else if (k === "a" && (e.ctrlKey || e.metaKey)) lib.selection = new Set(lib.images.map((i) => i.id));
     else return;
     e.preventDefault();
@@ -109,6 +110,8 @@
         <button class="btn" onclick={() => { lib.search = ""; lib.minRating = 0; lib.loadImages(); }}>Filter zurücksetzen</button>
       {:else if lib.scope.type === "project"}
         <p>Dieses Projekt hat noch keine Fotos. Füge oben über „Ordner“ einen Ordner hinzu.</p>
+      {:else if lib.scope.type === "person"}
+        <p>Dieser Person sind keine Fotos (mehr) zugeordnet.</p>
       {:else if !lib.roots.length}
         <p>Füge links unter „Ordner“ einen Ordner mit Fotos hinzu.</p>
       {:else}

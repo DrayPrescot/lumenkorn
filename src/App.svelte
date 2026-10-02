@@ -92,10 +92,9 @@
     else if (k === "g") {
       lib.mode = "library";
       lib.view = "grid";
-    } else if (k === "e" && lib.focused) {
-      lib.mode = "library";
-      lib.view = "loupe";
-    } else if (k === "c" && lib.mode === "library") lib.compare();
+    } else if (k === "e" && lib.focused) lib.openLarge();
+    // Vergleich auch aus dem Entwickeln (Auswahl im Filmstreifen)
+    else if (k === "c") lib.compare();
     else if (k === "d") lib.enterDevelop();
     else return;
     e.preventDefault();

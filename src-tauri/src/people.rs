@@ -277,6 +277,28 @@ pub fn face_assign(state: State<AppState>, face_id: i64, name: String) -> Result
 }
 
 #[tauri::command(async)]
+pub fn faces_of_images(state: State<AppState>, ids: Vec<i64>) -> Result<Vec<FaceInfo>, Error> {
+    state.catalog.lock().unwrap().faces_of_images(&ids)
+}
+
+/// Mehrere Gesichter (z. B. aus allen ausgewählten Fotos) einer Person
+/// zuordnen oder – ohne Namen – aus ihrer bisherigen Person herausnehmen.
+#[tauri::command(async)]
+pub fn faces_reassign(
+    state: State<AppState>,
+    face_ids: Vec<i64>,
+    name: Option<String>,
+) -> Result<Option<i64>, Error> {
+    let r = state
+        .catalog
+        .lock()
+        .unwrap()
+        .reassign_faces(&face_ids, name.as_deref());
+    state.people.invalidate();
+    r
+}
+
+#[tauri::command(async)]
 pub fn face_confirm(state: State<AppState>, face_id: i64) -> Result<(), Error> {
     state.catalog.lock().unwrap().confirm_face(face_id)?;
     state.people.invalidate();

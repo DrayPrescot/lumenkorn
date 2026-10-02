@@ -362,6 +362,75 @@ impl Catalog {
         self.faces_where("f.person_id = ?1", person_id)
     }
 
+    /// Sichtbare Gesichter mehrerer Fotos (für Änderungen an einer Auswahl).
+    pub fn faces_of_images(&self, image_ids: &[i64]) -> Result<Vec<FaceInfo>> {
+        let ids = serde_json::to_string(image_ids)?;
+        let mut st = self.conn.prepare(
+            "SELECT f.id, f.image_id, f.x, f.y, f.w, f.h, f.score, f.person_id, p.name, f.confirmed
+             FROM faces f LEFT JOIN persons p ON p.id = f.person_id
+             WHERE f.hidden = 0 AND f.image_id IN (SELECT value FROM json_each(?1))
+             ORDER BY f.image_id, f.x",
+        )?;
+        let rows = st.query_map([ids], |r| {
+            Ok(FaceInfo {
+                id: r.get(0)?,
+                image_id: r.get(1)?,
+                rect: [r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?],
+                score: r.get(6)?,
+                person_id: r.get(7)?,
+                person_name: r.get(8)?,
+                confirmed: r.get(9)?,
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Mehrere Gesichter auf einmal ändern: mit `name` dieser Person zuordnen
+    /// (bestätigt; neu angelegt, falls es sie nicht gibt), ohne `name` die
+    /// Zuordnung lösen und der bisherigen Person nicht wieder vorschlagen.
+    /// Liefert die Ziel-Person.
+    pub fn reassign_faces(&mut self, face_ids: &[i64], name: Option<&str>) -> Result<Option<i64>> {
+        if face_ids.is_empty() {
+            return Ok(None);
+        }
+        let ids = serde_json::to_string(face_ids)?;
+        let person = match name.map(str::trim) {
+            Some("") => return Err(Error::Invalid("Bitte einen Namen eingeben".into())),
+            Some(name) => Some(match self.person_by_name(name)? {
+                Some(id) => id,
+                None => {
+                    self.conn.execute(
+                        "INSERT INTO persons (name, created_at) VALUES (?1, ?2)",
+                        params![name, now()],
+                    )?;
+                    self.conn.last_insert_rowid()
+                }
+            }),
+            None => None,
+        };
+        self.with_tx(|tx| {
+            match person {
+                Some(p) => tx.execute(
+                    "UPDATE faces SET person_id = ?2, confirmed = 1, rejected_person = NULL, hidden = 0
+                     WHERE id IN (SELECT value FROM json_each(?1))",
+                    params![ids, p],
+                )?,
+                None => tx.execute(
+                    "UPDATE faces SET rejected_person = person_id, person_id = NULL, confirmed = 0
+                     WHERE id IN (SELECT value FROM json_each(?1)) AND person_id IS NOT NULL",
+                    params![ids],
+                )?,
+            };
+            Ok(())
+        })?;
+        self.invalidate_people_index();
+        self.drop_empty_groups()?;
+        if let Some(p) = person {
+            self.suggest_for(p)?;
+        }
+        Ok(person)
+    }
+
     // --- Bearbeiten ------------------------------------------------------------
 
     fn person_by_name(&self, name: &str) -> Result<Option<i64>> {
@@ -660,5 +729,45 @@ mod tests {
         let f = cat.image_faces(imgs[0]).unwrap();
         assert_eq!(f.len(), 2);
         assert_ne!(f[0].person_id, f[1].person_id);
+    }
+
+    /// Mehrere Fotos auf einmal einer anderen Person zuordnen bzw. aus einer
+    /// Person herausnehmen – alle, nicht nur das erste.
+    #[test]
+    fn reassigns_faces_of_several_photos() {
+        let (mut cat, imgs) = catalog_with_images(4);
+        let mut idx = cat.people_index().unwrap();
+        for &i in &imgs {
+            add(&mut cat, &mut idx, i, face(0, 0.1));
+        }
+        let group = cat.image_faces(imgs[0]).unwrap()[0].person_id.unwrap();
+        let anna = cat.name_person(group, "Anna").unwrap();
+        assert_eq!(cat.faces_of_images(&imgs).unwrap().len(), 4);
+
+        // Drei der vier Fotos zeigen in Wahrheit Ben
+        let wrong: Vec<i64> = cat
+            .faces_of_images(&imgs[1..])
+            .unwrap()
+            .iter()
+            .map(|f| f.id)
+            .collect();
+        assert_eq!(wrong.len(), 3);
+        let ben = cat.reassign_faces(&wrong, Some("Ben")).unwrap().unwrap();
+        let anna_imgs = cat
+            .query_images(&ImageQuery::new(Scope::Person { id: anna }))
+            .unwrap();
+        assert_eq!(anna_imgs.len(), 1, "nur noch das erste Foto bei Anna");
+        let ben_faces = cat.person_faces(ben).unwrap();
+        assert_eq!(ben_faces.len(), 3);
+        assert!(ben_faces.iter().all(|f| f.confirmed));
+
+        // Aus Ben wieder herausnehmen: alle drei, und nicht erneut vorgeschlagen
+        cat.reassign_faces(&wrong, None).unwrap();
+        assert!(cat.person_faces(ben).unwrap().is_empty());
+        cat.name_person(anna, "Anna").unwrap();
+        let back: Vec<_> = cat.faces_of_images(&imgs[1..]).unwrap();
+        assert!(back.iter().all(|f| f.person_id != Some(ben)));
+        // Leerer Name wird abgelehnt
+        assert!(cat.reassign_faces(&wrong, Some("  ")).is_err());
     }
 }

@@ -28,6 +28,23 @@ const tagPool = ["Berge", "Meer", "Himmel", "Person", "Gebäude", "Straße", "Na
 
 let nextId = 1;
 const images: Img[] = [];
+
+// Beispiel-Gesichter: die ersten zwölf Fotos je ein Gesicht, gerade IDs „Anna“
+const mockPersons: { id: number; name: string }[] = [{ id: 1, name: "Anna" }];
+const mockFaces: { id: number; imageId: number; rect: [number, number, number, number]; score: number; personId: number | null; personName: string | null; confirmed: boolean }[] = [];
+function mockPeople() {
+  if (!mockFaces.length) {
+    images.slice(0, 12).forEach((im, i) =>
+      mockFaces.push({ id: i + 1, imageId: im.id, rect: [0.4, 0.3, 0.2, 0.3], score: 0.9, personId: i % 2 ? null : 1, personName: i % 2 ? null : "Anna", confirmed: i % 2 === 0 }),
+    );
+  }
+  return mockPersons
+    .map((p) => {
+      const fs = mockFaces.filter((f) => f.personId === p.id);
+      return { id: p.id, name: p.name, faceCount: fs.length, suggested: 0, imageCount: fs.length, coverFace: fs[0]?.id ?? null };
+    })
+    .filter((p) => p.faceCount > 0);
+}
 let seed = 7;
 const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 
@@ -92,6 +109,7 @@ function inScope(img: Img, q: ImageQuery): boolean {
     const p = projects.find((p) => p.id === s.id);
     return !!p?.folders.some((f) => (f.recursive ? within(img.dir, f.path) : img.dir === f.path));
   }
+  if (s.type === "person") return mockFaces.some((f) => f.imageId === img.id && f.personId === s.id);
   return true;
 }
 
@@ -215,9 +233,27 @@ export const mock = {
       case "people_status":
         return out({ ready: false, downloadSize: 38_929_000, enabled: true, analyzed: 0, total: images.length, faces: 0, error: null });
       case "people_list":
+        return out(mockPeople());
       case "person_faces":
+        return out(mockFaces.filter((f) => f.personId === a.id));
       case "image_faces":
-        return out([]);
+        return out(mockFaces.filter((f) => f.imageId === a.id));
+      case "faces_of_images":
+        return out(mockFaces.filter((f) => a.ids.includes(f.imageId)));
+      case "faces_reassign": {
+        const name: string | null = a.name;
+        let pid: number | null = null;
+        if (name) {
+          pid = mockPersons.find((p) => p.name.toLowerCase() === name.toLowerCase())?.id ?? null;
+          if (pid === null) mockPersons.push({ id: (pid = mockPersons.length + 1), name });
+        }
+        for (const f of mockFaces.filter((f) => a.faceIds.includes(f.id))) {
+          f.personId = pid;
+          f.personName = name;
+          f.confirmed = pid !== null;
+        }
+        return out(pid);
+      }
       case "ai_benchmark":
         return out({ gpu: false, backend: "CPU", size: 512, seconds: 6.1, seconds24mp: 558 });
       case "mask_subject":

@@ -176,6 +176,8 @@ pub fn run() {
             people::person_rename,
             people::face_assign,
             people::face_confirm,
+            people::faces_of_images,
+            people::faces_reassign,
             people::face_reject,
             people::face_hide,
             people::person_delete,

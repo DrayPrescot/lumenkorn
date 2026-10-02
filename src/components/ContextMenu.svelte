@@ -51,6 +51,11 @@
     <kbd>Strg+Umschalt+V</kbd>
   </button>
   <hr />
+  <button role="menuitem" disabled={!many} onclick={() => run(() => lib.compare())}>
+    <span>Groß nebeneinander vergleichen{many ? ` (${Math.min(lib.selection.size, 12)} Fotos)` : ""}</span>
+    <kbd>C</kbd>
+  </button>
+  <hr />
   <div class="label">Zusammenfügen{many ? ` (${lib.selection.size} Fotos)` : ""}</div>
   <button role="menuitem" disabled={!many || busy} onclick={() => run(() => lib.openMerge("hdr"))}>
     <span>HDR aus Belichtungsreihe …</span>

@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- People: reassign or remove a person for all selected photos at once
+  (info panel → “Personen in der Auswahl”).
+- Compare is reachable from everywhere: `C` also in Develop, `Enter`/`E` with
+  several photos selected, and the context menu.
+
+### Fixed
+- Person view now refreshes after changing assignments, so wrongly assigned
+  photos disappear immediately; if a person ends up without photos, the view
+  switches to the new person (or to all photos).
+
 ## [0.1.0] – 2026-10-02
 
 First public version. The project was developed under the working title

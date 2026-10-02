@@ -40,6 +40,8 @@ and uses the GPU (AMD, NVIDIA, Intel) through Vulkan or DirectX 12 where availab
 - **Culling:** `X` rejects a photo, `Shift+X` rejects it and moves to the next.
   Rejected photos can then be moved to the trash in one step.
 - **Compare** up to 12 photos side by side with linked zoom, and view any photo at 1:1.
+- **People:** fix assignments for many photos at once. Select them and reassign or remove
+  a person in the info panel.
 
 ### Develop (non-destructive)
 - **Linear floating-point RAW pipeline** ([rawler](https://github.com/dnglab/dnglab)) with:
@@ -108,13 +110,13 @@ Installers for Windows (`.msi` / `.exe`) and Linux (`.deb`, `.AppImage`) are pub
 | Key | Action |
 |---|---|
 | Arrow keys | Navigate |
-| `Enter` / `E` | Single photo view |
+| `Enter` / `E` | Show large (several selected: side by side) |
 | `D` / `G` | Develop / back to grid |
 | `0`–`5` | Rating |
 | `P` / `X` / `U` | Pick / reject / clear flag |
 | `Shift+X` | Reject and go to the next photo |
 | `Ctrl+Del` | Delete rejected photos (with confirmation) |
-| `C` | Compare selected photos |
+| `C` | Compare selected photos (also in Develop and via right-click) |
 | `Z`, mouse wheel | Zoom (fit ↔ 100 %) |
 | `\` | Before / after |
 | `R` | Crop |

@@ -37,8 +37,93 @@
     } catch (e) {
       lib.notify(String(e), "error");
     }
+    await facesChanged();
+  }
+
+  /** Nach jeder Änderung an Gesichtern: Anzeigen und – in der Ansicht einer
+   *  Person – die Fotoliste neu laden (falsch zugeordnete verschwinden). */
+  async function facesChanged(target: number | null = null) {
+    await lib.refreshPeople();
+    // Ansicht einer Person, die es danach nicht mehr gibt (alle Fotos verschoben,
+    // unbenannte Gruppe aufgelöst): zur neuen Person bzw. zu allen Fotos wechseln
+    const s = lib.scope;
+    if (s.type === "person" && !lib.people.some((p) => p.id === s.id)) {
+      lib.setScope(target !== null ? { type: "person", id: target } : { type: "all" });
+      return;
+    }
+    if (s.type === "person") await lib.loadImages(true);
     if (lib.focused) await loadFaces(lib.focused.id);
-    lib.refreshPeople();
+    if (selIds.length) await loadSelFaces(selIds);
+  }
+
+  // --- Personen in einer Mehrfachauswahl -------------------------------------
+  let selFaces = $state<FaceInfo[]>([]);
+  let selNames = $state<Record<string, string>>({});
+  let selBusy = $state(false);
+  const selIds = $derived(lib.selection.size > 1 ? [...lib.selection] : []);
+  async function loadSelFaces(ids: number[]) {
+    try {
+      const got = await api.facesOfImages(ids);
+      if (ids === selIds) selFaces = got; // veraltete Antwort verwerfen
+    } catch {
+      selFaces = [];
+    }
+  }
+  $effect(() => {
+    const ids = selIds;
+    if (!ids.length) {
+      selFaces = [];
+      return;
+    }
+    const t = setTimeout(() => loadSelFaces(ids), SETTLE);
+    return () => clearTimeout(t);
+  });
+
+  type FaceGroup = { key: string; personId: number | null; label: string; named: boolean; faceIds: number[]; images: number };
+  /** Gesichter der Auswahl nach Person: benannte, dann Gruppen, dann ohne Zuordnung.
+   *  In der Ansicht einer Person steht diese zuerst. */
+  const selGroups = $derived.by((): FaceGroup[] => {
+    const by = new Map<string, FaceGroup & { imgs: Set<number> }>();
+    for (const f of selFaces) {
+      const key = f.personId === null ? "none" : String(f.personId);
+      let g = by.get(key);
+      if (!g) {
+        const label = f.personName ?? (f.personId === null ? "Ohne Zuordnung" : "Unbenannte Gruppe");
+        g = { key, personId: f.personId, label, named: !!f.personName, faceIds: [], images: 0, imgs: new Set() };
+        by.set(key, g);
+      }
+      g.faceIds.push(f.id);
+      g.imgs.add(f.imageId);
+    }
+    const scopePerson = lib.scope.type === "person" ? lib.scope.id : null;
+    const rank = (g: FaceGroup) =>
+      g.personId !== null && g.personId === scopePerson ? 0 : g.named ? 1 : g.personId !== null ? 2 : 3;
+    return [...by.values()]
+      .map(({ imgs, ...g }) => ({ ...g, images: imgs.size }))
+      .sort((a, b) => rank(a) - rank(b) || b.images - a.images || a.label.localeCompare(b.label));
+  });
+
+  /** Alle Gesichter einer Gruppe in der Auswahl einer Person zuordnen
+   *  (`name`) oder aus ihrer Person herausnehmen (`null`). */
+  async function reassignGroup(g: FaceGroup, name: string | null) {
+    if (selBusy) return;
+    if (name !== null && !name.trim()) return;
+    selBusy = true;
+    selNames[g.key] = "";
+    let target: number | null = null;
+    try {
+      target = await api.facesReassign(g.faceIds, name === null ? null : name.trim());
+      const n = g.images;
+      lib.notify(
+        name === null
+          ? `${g.label} aus ${n} ${n === 1 ? "Foto" : "Fotos"} entfernt`
+          : `${n} ${n === 1 ? "Foto" : "Fotos"} „${name.trim()}“ zugeordnet`,
+      );
+    } catch (e) {
+      lib.notify(String(e), "error");
+    }
+    selBusy = false;
+    await facesChanged(target);
   }
   async function assign(f: FaceInfo) {
     const name = (faceNames[f.id] ?? "").trim();
@@ -107,6 +192,9 @@
 </script>
 
 <aside class="scroll">
+  <datalist id="info-person-names">
+    {#each lib.people.filter((p) => p.name) as p (p.id)}<option value={p.name}></option>{/each}
+  </datalist>
   {#if lib.selection.size > 1}
     <section>
       <h3>{lib.selection.size} Fotos ausgewählt</h3>
@@ -119,6 +207,37 @@
         <button class="btn" onclick={onexport}><Icon name="export" size={14} /> Exportieren …</button>
       </div>
     </section>
+    {#if selGroups.length}
+      <section>
+        <h4>Personen in der Auswahl</h4>
+        <p class="muted">Änderungen gelten für alle {lib.selection.size} ausgewählten Fotos.</p>
+        <ul class="selfaces">
+          {#each selGroups as g (g.key)}
+            <li>
+              <div class="selhead">
+                <span class="pname-static">{g.label}</span>
+                <span class="muted">{g.images} {g.images === 1 ? "Foto" : "Fotos"}</span>
+                {#if g.personId !== null}
+                  <button class="icon-btn" disabled={selBusy} title="{g.label} aus allen ausgewählten Fotos entfernen" aria-label="Aus allen entfernen" onclick={() => reassignGroup(g, null)}>
+                    <Icon name="close" size={11} />
+                  </button>
+                {/if}
+              </div>
+              <form onsubmit={(e) => (e.preventDefault(), reassignGroup(g, selNames[g.key] ?? ""))}>
+                <input
+                  type="text"
+                  placeholder={g.named ? "Andere Person zuordnen …" : "Person zuordnen …"}
+                  list="info-person-names"
+                  bind:value={selNames[g.key]}
+                  disabled={selBusy}
+                  onkeydown={(e) => e.stopPropagation()}
+                />
+              </form>
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/if}
   {/if}
 
   {#if detail}
@@ -213,9 +332,6 @@
             </li>
           {/each}
         </ul>
-        <datalist id="info-person-names">
-          {#each lib.people.filter((p) => p.name) as p (p.id)}<option value={p.name}></option>{/each}
-        </datalist>
       </section>
     {/if}
 
@@ -384,6 +500,29 @@
     color: var(--faint);
     padding: 16px;
     margin: 0;
+  }
+  .selfaces {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    display: grid;
+    gap: 10px;
+  }
+  .selhead {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .selhead .muted {
+    margin-left: auto;
+    font-size: var(--step--1);
+  }
+  .pname-static {
+    font-weight: 500;
+  }
+  .selfaces input {
+    width: 100%;
+    margin-top: 4px;
   }
   .faces {
     list-style: none;

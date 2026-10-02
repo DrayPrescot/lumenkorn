@@ -238,6 +238,10 @@ Hintergrund in allen Fotos nach Gesichtern (nach der Verschlagwortung).
   Fotos werden der Person danach **vorgeschlagen** (gestrichelt bzw. „Lena?“) – ✓ bestätigt, ✕ nimmt
   heraus und schlägt dieses Gesicht der Person nie wieder vor. Ein gleicher Name führt zwei Personen
   zusammen. Einzelne Gesichter lassen sich im Infobereich direkt benennen oder ignorieren.
+- **Mehrere Fotos auf einmal korrigieren:** Fotos auswählen (Strg-/Umschalt-Klick, Strg+A) – der
+  Infobereich zeigt unter „Personen in der Auswahl“ alle darin erkannten Personen. Je Person lassen
+  sich die Gesichter aller ausgewählten Fotos einer anderen Person zuordnen (Name eingeben) oder
+  mit ✕ herausnehmen. In der Ansicht einer Person verschwinden falsch zugeordnete Fotos sofort.
 - **Filtern und Suchen:** Personen erscheinen in der Seitenleiste; ein Klick zeigt alle ihre Fotos.
   Die normale Suche findet auch Namen.
 - Gesichter beziehen sich auf das unbearbeitete Foto; Zuschnitt oder Bearbeitung ändern nichts an
@@ -253,8 +257,9 @@ trennt, habe ich nicht prüfen können – die Schwelle steht in `crates/lumenko
 
 ## Vergleichen und Zoomen
 
-- **Vergleich:** Mehrere Fotos mit Strg- bzw. Umschalt-Klick auswählen, dann „Vergleichen“ oder
-  Taste C. Bis zu 12 Fotos erscheinen groß nebeneinander, mit **gekoppeltem Zoom** (abschaltbar):
+- **Vergleich:** Mehrere Fotos mit Strg- bzw. Umschalt-Klick auswählen, dann „Vergleichen“,
+  Taste C, Enter oder Rechtsklick → „Groß nebeneinander vergleichen“ (auch im Entwickeln, mit
+  Auswahl im Filmstreifen). Bis zu 12 Fotos erscheinen groß nebeneinander, mit **gekoppeltem Zoom** (abschaltbar):
   Zoomen und Verschieben wirkt auf alle gleichzeitig, an derselben Bildstelle – ideal für
   Schärfevergleiche in Serien. Ein Klick hebt ein Foto hervor; Bewertung und Markierung wirken im
   Vergleich nur auf dieses. × oder Entf nimmt ein Foto heraus.
@@ -332,7 +337,7 @@ Histogramm, Kopieren/Einfügen/Zurücksetzen und Export bleiben in allen Reitern
 | Taste | Aktion |
 |---|---|
 | Pfeiltasten | Navigieren |
-| Enter / Leertaste / E | Einzelansicht |
+| Enter / Leertaste / E | Groß anzeigen (mehrere ausgewählt: nebeneinander im Vergleich) |
 | D | Entwickeln |
 | Esc / G | Zurück zum Raster |
 | 0–5 | Bewertung |
@@ -341,7 +346,7 @@ Histogramm, Kopieren/Einfügen/Zurücksetzen und Export bleiben in allen Reitern
 | Strg+Entf / Strg+Rücktaste | Abgelehnte Fotos der Ansicht von der Festplatte löschen (mit Rückfrage) |
 | Strg+A | Alles auswählen |
 | Klick mit Strg / Umschalt | Mehrfachauswahl (Raster und Filmstreifen) |
-| C | Ausgewählte Fotos vergleichen (2–12, groß nebeneinander) |
+| C | Ausgewählte Fotos vergleichen (2–12, groß nebeneinander) – auch im Entwickeln und per Rechtsklick |
 | Scrollrad | Zoomen zum Mauszeiger hin (Einzelansicht, Vergleich, Entwickeln) |
 | Strg + / Strg − / Strg 0 | Vergrößern / Verkleinern / Einpassen |
 | Z oder Doppelklick | Einpassen ↔ 100 % |

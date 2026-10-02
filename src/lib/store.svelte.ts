@@ -252,6 +252,16 @@ class Library {
     this.view = "compare";
   }
 
+  /** Groß anzeigen: mehrere ausgewählte Fotos nebeneinander (Vergleich),
+   *  sonst das fokussierte in der Einzelansicht. */
+  openLarge() {
+    if (this.selection.size > 1) this.compare();
+    else if (this.focused) {
+      this.mode = "library";
+      this.view = "loupe";
+    }
+  }
+
   /** Bild aus dem Vergleich nehmen; bei weniger als zwei zurück zur Einzelansicht. */
   removeFromCompare(id: number) {
     const s = new Set(this.selection);
