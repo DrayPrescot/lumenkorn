@@ -43,6 +43,10 @@ updates:
       day: monday
       time: "05:00"
       timezone: Europe/Berlin
+    ignore:
+      # Die „Version“ ist hier die Rust-Version (fest in rust-toolchain.toml) –
+      # die wird bewusst von Hand angehoben.
+      - dependency-name: dtolnay/rust-toolchain
     groups:
       actions-patch:
         update-types: [patch]
