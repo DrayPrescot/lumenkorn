@@ -15,7 +15,7 @@ half = "2"
 # Ergebnisse von HDR, Panorama und Focus Stacking: lineares OpenEXR (Halbgleitkomma)
 exr = { version = "1.74", default-features = false, features = ["rayon"] }
 # Schneller JPEG-Encoder (SIMD): ~4× schneller als der von image-rs
-jpeg-encoder = { version = "0.6", features = ["simd"] }
+jpeg-encoder = { version = "0.7", features = ["simd"] }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "tiff", "webp", "rayon"] }
 log = "0.4.34"
 pollster = "1.0.1"
