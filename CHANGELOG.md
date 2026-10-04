@@ -36,6 +36,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
   as the rolling “nightly” pre-release.
 
 ### Changed
+- The window starts maximized; `F11` toggles fullscreen.
 - RAW detail: Bayer sensors are demosaiced with RCD instead of PPG (sharper
   fine detail, far fewer maze and false-color artifacts), Fujifilm X-Trans with
   Markesteijn instead of bilinear. RAWs also get capture sharpening at sensor

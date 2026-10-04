@@ -139,6 +139,7 @@ SmartScreen asks for confirmation on first launch.
 | `C` | Compare selected photos (also in Develop and via right-click) |
 | `Z`, mouse wheel | Zoom (fit ↔ 100 %) |
 | `\` | Before / after |
+| `F11` | Fullscreen on/off (the window starts maximized) |
 | `R` | Crop |
 | `[` / `]` | Rotate left / right |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
