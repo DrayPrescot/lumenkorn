@@ -460,6 +460,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn checksum_of_downloads() {
+        // SHA-256 von „abc“ (FIPS 180-2) – Groß-/Kleinschreibung egal
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("abc");
+        std::fs::write(&f, b"abc").unwrap();
+        let ok = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        verify_sha256(&f, ok).unwrap();
+        verify_sha256(&f, &ok.to_uppercase()).unwrap();
+        assert!(verify_sha256(&f, &ok.replace('b', "c")).is_err());
+    }
+
+    #[test]
     fn preference_roundtrip() {
         for p in [
             Preference::Auto,
