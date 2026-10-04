@@ -1,0 +1,5 @@
+# Pinned so local builds and CI use the same compiler and clippy lints.
+# Bump deliberately (and fix new lints in the same commit).
+[toolchain]
+channel = "1.95.0"
+components = ["rustfmt", "clippy"]

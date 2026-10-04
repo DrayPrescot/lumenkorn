@@ -66,7 +66,9 @@ pub fn read(path: &Path, max_edge: Option<usize>) -> Result<ImageF32> {
     let mut raw = vec![0u8; bytes];
     f.read_exact(&mut raw)?;
     let data = raw
-        .chunks_exact(6)
+        .as_chunks::<6>()
+        .0
+        .iter()
         .map(|c| [0, 2, 4].map(|i| f16::from_le_bytes([c[i], c[i + 1]]).to_f32()))
         .collect();
     let img = ImageF32 {

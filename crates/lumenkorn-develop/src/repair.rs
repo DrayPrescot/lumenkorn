@@ -96,8 +96,10 @@ impl Patch {
         let u32s = |n: usize, f: &mut BufReader<std::fs::File>| -> Result<Vec<usize>> {
             let mut b = vec![0u8; 4 * n];
             f.read_exact(&mut b)?;
-            Ok(b.chunks_exact(4)
-                .map(|c| u32::from_le_bytes(c.try_into().unwrap()) as usize)
+            Ok(b.as_chunks::<4>()
+                .0
+                .iter()
+                .map(|c| u32::from_le_bytes(*c) as usize)
                 .collect())
         };
         let mut magic = [0u8; 4];
@@ -123,7 +125,9 @@ impl Patch {
             let mut raw = vec![0u8; w * h * 6];
             f.read_exact(&mut raw)?;
             let rgb = raw
-                .chunks_exact(6)
+                .as_chunks::<6>()
+                .0
+                .iter()
                 .map(|c| [0, 2, 4].map(|i| f16::from_le_bytes([c[i], c[i + 1]]).to_f32()))
                 .collect();
             let mut alpha = vec![0u8; w * h];

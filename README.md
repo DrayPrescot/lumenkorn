@@ -143,7 +143,7 @@ SmartScreen asks for confirmation on first launch.
 ## Building from source
 
 **Requirements**
-- Rust 1.90 or newer (stable).
+- Rust 1.95 (pinned in `rust-toolchain.toml`; rustup installs it automatically).
 - Node.js 20 or newer.
 - The [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform:
   - **Windows:** Microsoft C++ Build Tools and WebView2. WebView2 is usually preinstalled on Windows 10 and 11.

@@ -329,8 +329,10 @@ pub fn load_state_dict(bytes: &[u8]) -> Result<Vec<(String, Tensor)>> {
             .map_err(|_| bad("Speicherdaten unvollständig"))?;
         storages.insert(
             k,
-            raw.chunks_exact(4)
-                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            raw.as_chunks::<4>()
+                .0
+                .iter()
+                .map(|c| f32::from_le_bytes(*c))
                 .collect(),
         );
     }
