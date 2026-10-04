@@ -1,7 +1,9 @@
 //! Sprache für Meldungen an die Oberfläche (Fehler, Hinweise). Die Oberfläche
 //! setzt sie beim Start; Protokollmeldungen bleiben deutsch.
 //!
-//! ```
+//! Beispiel (nur übersetzt, nicht ausgeführt: die Sprache ist global, und
+//! Doctests laufen parallel in einem Prozess – geprüft wird im Unit-Test):
+//! ```no_run
 //! use lumenkorn_develop::{i18n, tr};
 //! let n = 3;
 //! i18n::set_english(true);
