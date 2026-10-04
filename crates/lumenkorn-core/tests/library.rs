@@ -513,7 +513,8 @@ fn merge_result_joins_catalog() {
 
     // Ergebnis mit Lichtern über 1,0 neben die Quelle schreiben und aufnehmen
     let img = ImageF32::from_fn(900, 300, |x, _| [x as f32 / 300.0, 0.5, 0.25]);
-    let out = a.join("reihe_1-Pano.exr");
+    // Wie in der App: Zielpfad aus dem Katalogpfad der Quelle (normiert)
+    let out = Path::new(&src.path).with_file_name("reihe_1-Pano.exr");
     exr_io::write(&img, &out, false).unwrap();
     let rep = scan_paths(&cat, root.id, std::slice::from_ref(&out), &no_progress).unwrap();
     assert_eq!(rep.added, 1);
