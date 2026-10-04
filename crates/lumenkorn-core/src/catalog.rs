@@ -191,6 +191,14 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (root_id, path)
     );
     "#,
+    // v9: RAW-Entwicklung mit RCD-Demosaicing und Eingangsschärfung – die
+    // Vorschaubilder bearbeiteter RAWs (aus der Entwicklung gerendert) neu
+    // erzeugen. Unbearbeitete nutzen das eingebettete Kamera-JPEG.
+    r#"
+    UPDATE images SET thumb_state = 0
+    WHERE kind = 'raw'
+      AND id IN (SELECT image_id FROM edits WHERE is_current = 1);
+    "#,
 ];
 
 /// Volltextindex der Suche: je Foto ein Eintrag aus Dateiname, Ordner (relativ
@@ -1610,5 +1618,65 @@ mod search_tests {
             .to_string_lossy()
             .to_string();
         assert!(hits(&cat, &tmp_name).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use super::*;
+
+    /// v9: Vorschaubilder bearbeiteter RAWs werden neu erzeugt, andere nicht.
+    #[test]
+    fn new_raw_pipeline_refreshes_edited_raw_thumbnails() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root_dir = tmp.path().join("Fotos");
+        std::fs::create_dir_all(&root_dir).unwrap();
+        let db = tmp.path().join("k.db");
+        let ids = {
+            let mut cat = Catalog::open(&db).unwrap();
+            let root = cat.add_root(&root_dir).unwrap();
+            let mut add = |name: &str, kind| {
+                let dir = root.path.clone();
+                cat.with_tx(|tx| {
+                    Catalog::insert_image(
+                        tx,
+                        &NewImage {
+                            root_id: root.id,
+                            path: format!("{dir}{}{name}", std::path::MAIN_SEPARATOR),
+                            dir: dir.clone(),
+                            file_name: name.into(),
+                            ext: name.rsplit('.').next().unwrap().into(),
+                            kind,
+                            size: 1,
+                            mtime: 0,
+                            quick_hash: name.into(),
+                            meta: Default::default(),
+                        },
+                    )
+                })
+                .unwrap()
+            };
+            let raw_edited = add("a.nef", crate::formats::ImageKind::Raw);
+            let raw_plain = add("b.nef", crate::formats::ImageKind::Raw);
+            let jpg_edited = add("c.jpg", crate::formats::ImageKind::Raster);
+            let p = DevelopParams {
+                exposure: 0.5,
+                ..Default::default()
+            };
+            cat.save_develop(&[raw_edited, jpg_edited], &p).unwrap();
+            cat.conn
+                .execute_batch("UPDATE images SET thumb_state = 1; PRAGMA user_version = 8;")
+                .unwrap();
+            [raw_edited, raw_plain, jpg_edited]
+        };
+        let cat = Catalog::open(&db).unwrap();
+        let state = |id: i64| -> i64 {
+            cat.conn
+                .query_row("SELECT thumb_state FROM images WHERE id = ?1", [id], |r| {
+                    r.get(0)
+                })
+                .unwrap()
+        };
+        assert_eq!(ids.map(state), [0, 1, 1]);
     }
 }

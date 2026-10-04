@@ -33,7 +33,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
   fine detail, far fewer maze and false-color artifacts), Fujifilm X-Trans with
   Markesteijn instead of bilinear. RAWs also get capture sharpening at sensor
   resolution (luminance only, halo-limited, threshold adapts to the measured
-  noise), as Lightroom applies by default.
+  noise), as Lightroom applies by default. Thumbnails of already edited RAWs
+  are regenerated once after the update.
 - Export defaults to an `Export` subfolder next to each original. Folders
   Lumenkorn creates for this are marked (`.lumenkorn-export`) and not added to
   the library.
