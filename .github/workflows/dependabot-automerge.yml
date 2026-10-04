@@ -1,0 +1,80 @@
+name: Dependabot auto-merge
+
+# Übernimmt kleine Updates von Dependabot automatisch – aber erst, wenn die CI
+# für genau diesen Stand grün ist:
+#   1. classify: Beim Öffnen/Aktualisieren eines Dependabot-PRs wird geprüft, ob
+#      jedes enthaltene Update „klein“ ist (Patch-Version; Minor-Version nur bei
+#      Bibliotheken ab 1.0). Dann bekommt der PR das Label „automerge“, sonst
+#      „manual-review“.
+#   2. merge: Nach einem erfolgreichen CI-Lauf für einen PR mit „automerge“ wird
+#      er übernommen (Squash) und die CI auf main gestartet – sie baut die
+#      Nightly-MSI. (Ein Merge durch GITHUB_TOKEN löst selbst keine Workflows aus.)
+
+on:
+  pull_request:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  classify:
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@v2
+      - name: Label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.html_url }}
+          DEPS: ${{ steps.meta.outputs.updated-dependencies-json }}
+        run: |
+          gh label create automerge --color 0e8a16 --description "Kleines Update – wird nach grüner CI übernommen" --force -R "$GITHUB_REPOSITORY"
+          gh label create manual-review --color d93f0b --description "Größeres Update – bitte prüfen" --force -R "$GITHUB_REPOSITORY"
+          echo "$DEPS" | jq -r '.[] | "\(.dependencyName): \(.prevVersion) → \(.newVersion) (\(.updateType))"'
+          safe=$(echo "$DEPS" | jq '
+            length > 0 and all(.[];
+              .updateType == "version-update:semver-patch"
+              or (.updateType == "version-update:semver-minor"
+                  and ((.prevVersion // "0") | ltrimstr("v") | split(".")[0] | tonumber? // 0) >= 1))')
+          echo "klein: $safe"
+          if [ "$safe" = "true" ]; then
+            gh pr edit "$PR" --add-label automerge --remove-label manual-review
+          else
+            gh pr edit "$PR" --add-label manual-review --remove-label automerge
+          fi
+
+  merge:
+    if: >
+      github.event_name == 'workflow_run'
+      && github.event.workflow_run.event == 'pull_request'
+      && github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.actor.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - name: Merge if labeled and CI was green for the current commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          pr=$(gh pr list -R "$GITHUB_REPOSITORY" --head "$BRANCH" --state open \
+                 --json number,headRefOid,author,labels \
+                 --jq ".[] | select(.author.login == \"app/dependabot\" or .author.login == \"dependabot[bot]\")
+                          | select(.headRefOid == \"$SHA\")
+                          | select(any(.labels[]; .name == \"automerge\")) | .number" | head -1)
+          if [ -z "$pr" ]; then
+            echo "Nichts zu übernehmen (kein offener Dependabot-PR mit Label automerge für $SHA)."
+            exit 0
+          fi
+          gh pr merge "$pr" -R "$GITHUB_REPOSITORY" --squash --delete-branch
+          gh workflow run ci.yml -R "$GITHUB_REPOSITORY" --ref main

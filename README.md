@@ -221,6 +221,16 @@ npm run check
 npm run i18n               # every UI text has an English translation
 ```
 
+### Dependency updates
+Dependabot checks the Rust crates (e.g. rawler), npm packages and GitHub Actions every Monday.
+Patch updates are grouped into one pull request per ecosystem; anything else comes separately.
+After CI passes, `.github/workflows/dependabot-automerge.yml` merges small updates automatically
+(patch versions, and minor versions of libraries at 1.0 or later) and starts CI on `main`, which
+publishes a new nightly MSI. Breaking updates (a new major version, or a minor bump below 1.0 such as
+rawler 0.8 → 0.9) are labeled `manual-review` and stay open. On Linux, CI also tests every rawler
+version against real RAW files from seven cameras (OpenImageIO sample images). The Rust toolchain
+(`rust-toolchain.toml`), AI models and ONNX Runtime are pinned on purpose and updated by hand.
+
 ### Translations
 UI texts are written in German in the source and serve as their own keys:
 `t("Ordner hinzufügen")` shows "Add folder" in English. The English texts live in

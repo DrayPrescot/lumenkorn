@@ -518,6 +518,16 @@ LUMENKORN_GPU_SOFTWARE=1 cargo test -p lumenkorn-develop --test gpu
 LUMENKORN_TEST_ORT_GPU=/pfad/runtime-webgpu/libonnxruntime.so LUMENKORN_TEST_DENOISE=/pfad LUMENKORN_TEST_SEG=/pfad/masken cargo test --release -p lumenkorn-ai --test gpu
 ```
 
+**Updates der Abhängigkeiten:** Dependabot prüft jeden Montag die Rust-Crates (z. B. rawler),
+npm-Pakete und GitHub-Actions. Patch-Updates kommen je Bereich gesammelt in einem Pull Request, alle
+anderen einzeln. Nach grüner CI übernimmt `.github/workflows/dependabot-automerge.yml` kleine Updates
+automatisch (Patch-Versionen, bei Bibliotheken ab 1.0 auch Minor-Versionen) und startet die CI auf
+`main` – dabei entsteht eine neue Nightly-MSI. Inkompatible Sprünge (neue Major-Version oder unter 1.0
+ein Minor-Sprung wie rawler 0.8 → 0.9) bekommen das Label `manual-review` und bleiben offen. Unter
+Linux prüft die CI jede rawler-Version zusätzlich mit echten RAWs von sieben Kameras
+(OpenImageIO-Testbilder). Rust-Version (`rust-toolchain.toml`), KI-Modelle und ONNX Runtime sind
+bewusst fest und werden von Hand aktualisiert.
+
 **Übersetzungen:** Texte der Oberfläche stehen im Quelltext auf Deutsch und sind zugleich der
 Schlüssel: `t("Ordner hinzufügen")` ergibt auf Englisch „Add folder“. Die englischen Texte liegen in
 `src/lib/i18n/en/*.ts` (eine Datei je Bereich); für deutsche Wörter mit mehreren Bedeutungen sucht

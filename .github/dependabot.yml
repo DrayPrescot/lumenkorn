@@ -1,0 +1,50 @@
+# Wöchentliche Prüfung auf neue Versionen der Abhängigkeiten.
+#
+# Patch-Updates werden je Ökosystem in einem Pull Request gesammelt, alle
+# anderen kommen einzeln. Nach grüner CI übernimmt
+# .github/workflows/dependabot-automerge.yml automatisch: Patch-Versionen und –
+# bei Bibliotheken ab 1.0 – Minor-Versionen. Unter 1.0 gilt ein Minor-Sprung
+# als inkompatibel (z. B. rawler 0.8 → 0.9), ebenso jede neue Major-Version
+# (Tauri 2 → 3); diese Pull Requests bleiben zur Prüfung von Hand offen.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 10
+    groups:
+      cargo-patch:
+        update-types: [patch]
+    commit-message:
+      prefix: "deps(cargo)"
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 10
+    groups:
+      npm-patch:
+        update-types: [patch]
+    commit-message:
+      prefix: "deps(npm)"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Berlin
+    groups:
+      actions-patch:
+        update-types: [patch]
+    commit-message:
+      prefix: "deps(actions)"

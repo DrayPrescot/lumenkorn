@@ -32,6 +32,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Select several folders in the sidebar with `Ctrl`-click (or a range with
   `Shift`-click) and add them to a project at once, or create a new project
   from them, via right-click. `Esc` clears the selection.
+- Automatic dependency updates: Dependabot checks weekly; small updates are
+  merged after green CI and produce a new nightly MSI, breaking ones stay open
+  for review. CI tests rawler against real RAWs from seven cameras.
 - CI builds a Windows MSI after every green push to `main` and publishes it
   as the rolling “nightly” pre-release.
 

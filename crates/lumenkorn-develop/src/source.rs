@@ -367,19 +367,33 @@ mod tests {
     use super::*;
 
     /// Eigene Pipeline mit rawlers PPG ergibt exakt rawlers Ergebnis (Farb-
-    /// umrechnung, Zuschnitt). Braucht echte RAWs: `LUMENKORN_TEST_RAW=a.nef:b.cr2`.
+    /// umrechnung, Zuschnitt), RCD weicht nur im Detail ab. Braucht echte RAWs:
+    /// `LUMENKORN_TEST_RAW=/ordner/mit/raws` (wie `tests/raw.rs`; die CI lädt
+    /// Beispiel-RAWs von sechs Kameras).
     #[test]
     fn own_pipeline_matches_rawler() {
-        let Ok(list) = std::env::var("LUMENKORN_TEST_RAW") else {
+        let Ok(dir) = std::env::var("LUMENKORN_TEST_RAW") else {
             eprintln!("übersprungen: LUMENKORN_TEST_RAW nicht gesetzt");
             return;
         };
-        for f in list.split(':').filter(|f| !f.is_empty()) {
-            let raw = rawler::decode_file(Path::new(f)).unwrap();
+        let mut files: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| {
+                p.extension()
+                    .is_some_and(|e| !e.eq_ignore_ascii_case("jpg"))
+            })
+            .collect();
+        files.sort();
+        for f in files {
+            let f = f.display().to_string();
+            let raw = rawler::decode_file(Path::new(&f)).unwrap();
             let theirs = rawler_pipeline(&raw).unwrap();
-            let ours = own_pipeline(&raw, DemosaicMethod::Ppg)
-                .unwrap()
-                .expect("eigene Pipeline");
+            let Some(ours) = own_pipeline(&raw, DemosaicMethod::Ppg).unwrap() else {
+                // Sonderfälle (Fuji SuperCCD, Vierfarb-Sensoren) rechnet rawler
+                eprintln!("{f}: Sonderfall, rawler-Pipeline");
+                continue;
+            };
             assert_eq!(
                 (ours.width, ours.height),
                 (theirs.width, theirs.height),
@@ -392,6 +406,29 @@ mod tests {
                 .flat_map(|(a, b)| (0..3).map(move |c| (a[c] - b[c]).abs()))
                 .fold(0f32, f32::max);
             assert!(max < 1e-5, "{f}: Abweichung {max}");
+
+            // RCD: gleiche Abmessungen und Farben wie rawler, Unterschiede nur im
+            // Detail (Kanten, Rauschen) – fällt die Ähnlichkeit, stimmt das
+            // Farbmuster oder die Weißabgleich-Zuordnung nicht mehr.
+            let rcd = own_pipeline(&raw, DemosaicMethod::Rcd)
+                .unwrap()
+                .expect("eigene Pipeline");
+            assert_eq!(
+                (rcd.width, rcd.height),
+                (theirs.width, theirs.height),
+                "{f}"
+            );
+            let enc = |v: f32| v.clamp(0.0, 1.0).sqrt();
+            let mse = rcd
+                .data
+                .iter()
+                .zip(&theirs.data)
+                .flat_map(|(a, b)| (0..3).map(move |c| ((enc(a[c]) - enc(b[c])) as f64).powi(2)))
+                .sum::<f64>()
+                / (rcd.data.len() * 3) as f64;
+            let psnr = 10.0 * (1.0 / mse.max(1e-12)).log10();
+            eprintln!("{f}: RCD gegenüber PPG {psnr:.1} dB");
+            assert!(psnr > 30.0, "{f}: RCD weicht zu stark ab ({psnr:.1} dB)");
         }
     }
 }

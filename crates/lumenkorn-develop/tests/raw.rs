@@ -31,11 +31,9 @@ fn develops_real_raws() {
             .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         let load = t.elapsed();
         assert_eq!(src.kind, SourceKind::Raw);
-        assert!(
-            src.image.long_edge() <= 2048 && src.full_width > 2048,
-            "{}",
-            path.display()
-        );
+        // Proxy höchstens 2048 Pixel; kleinere Sensoren (z. B. Fuji F700) bleiben
+        let full = src.full_width.max(src.full_height);
+        assert_eq!(src.image.long_edge(), full.min(2048), "{}", path.display());
 
         let t = std::time::Instant::now();
         let out = render(
