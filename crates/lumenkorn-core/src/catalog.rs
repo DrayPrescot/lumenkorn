@@ -1561,13 +1561,17 @@ mod search_tests {
         std::fs::create_dir_all(root_dir.join("Lofoten")).unwrap();
         let mut cat = Catalog::open_in_memory().unwrap();
         let root = cat.add_root(&root_dir).unwrap();
-        let dir = root_dir.join("Lofoten").to_string_lossy().into_owned();
+        // Wie der Scanner: Pfade vom normierten Quellordner aus bilden. (Unter
+        // Windows kann der Temp-Pfad Kurznamen wie „RUNNER~1“ enthalten, die
+        // `canonicalize` auflöst.)
+        let sep = std::path::MAIN_SEPARATOR;
+        let dir = format!("{}{sep}Lofoten", root.path);
         cat.with_tx(|tx| {
             Catalog::insert_image(
                 tx,
                 &NewImage {
                     root_id: root.id,
-                    path: format!("{dir}/a.jpg"),
+                    path: format!("{dir}{sep}a.jpg"),
                     dir: dir.clone(),
                     file_name: "a.jpg".into(),
                     ext: "jpg".into(),
@@ -1585,7 +1589,7 @@ mod search_tests {
         cat.conn
             .execute(
                 "UPDATE roots SET path = ?1",
-                [format!("{}/", root_dir.display())],
+                [format!("{}{sep}", root.path)],
             )
             .unwrap();
         cat.conn

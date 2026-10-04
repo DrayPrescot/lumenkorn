@@ -81,7 +81,7 @@ jobs:
           CARGO_TERM_COLOR: never
         run: |
           set +e
-          cargo test --workspace 2>&1 | tee tests.txt
+          cargo test --workspace --no-fail-fast 2>&1 | tee tests.txt
           code=${PIPESTATUS[0]}
           if [ "$code" != 0 ]; then
             grep -E "panicked at|^error|FAILED|failures:$" -A3 tests.txt | head -40 | sed 's/^/::error::/'
