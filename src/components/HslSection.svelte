@@ -6,11 +6,12 @@
   import { HSL_BANDS, type HslMode } from "../lib/hsl";
   import Icon from "./Icon.svelte";
   import Slider from "./Slider.svelte";
+  import { t } from "../lib/i18n";
 
   const modes: { id: HslMode; label: string }[] = [
-    { id: "hue", label: "Farbton" },
-    { id: "saturation", label: "Sättigung" },
-    { id: "luminance", label: "Luminanz" },
+    { id: "hue", label: t("Farbton") },
+    { id: "saturation", label: t("Sättigung") },
+    { id: "luminance", label: t("Luminanz") },
   ];
 
   const hsl = $derived(dev.params.hsl ?? DEFAULT_PARAMS.hsl);
@@ -37,7 +38,7 @@
 <details open class="hsl">
   <summary tabindex="-1">HSL</summary>
   <div class="head">
-    <div class="seg" role="tablist" aria-label="HSL-Regler">
+    <div class="seg" role="tablist" aria-label={t("HSL-Regler")}>
       {#each modes as m (m.id)}
         <!-- Tab springt von Regler zu Regler; Knöpfe per Maus -->
         <button role="tab" tabindex="-1" aria-selected={dev.hslMode === m.id} class:on={dev.hslMode === m.id} onclick={() => (dev.hslMode = m.id)}>
@@ -50,8 +51,8 @@
       class="icon-btn pick"
       class:on={dev.hslPick}
       aria-pressed={dev.hslPick}
-      aria-label="Pipette"
-      title="Pipette: auf eine Farbe im Bild klicken und nach oben/unten ziehen"
+      aria-label={t("Pipette")}
+      title={t("Pipette: auf eine Farbe im Bild klicken und nach oben/unten ziehen")}
       onclick={() => (dev.hslPick = !dev.hslPick)}
     >
       <Icon name="pipette" size={15} />
@@ -60,9 +61,9 @@
 
   {#if dev.hslPick}
     <p class="hint">
-      Auf eine Farbe im Bild klicken und nach oben (mehr) oder unten (weniger) ziehen – verstellt wird
-      {dev.hslMode === "hue" ? "der Farbton" : dev.hslMode === "saturation" ? "die Sättigung" : "die Luminanz"}
-      der getroffenen Farbbereiche. Esc beendet.
+      {t("Auf eine Farbe im Bild klicken und nach oben (mehr) oder unten (weniger) ziehen – verstellt wird")}
+      {dev.hslMode === "hue" ? t("der Farbton") : dev.hslMode === "saturation" ? t("die Sättigung") : t("die Luminanz")}
+      {t("der getroffenen Farbbereiche. Esc beendet.")}
     </p>
   {/if}
 
@@ -80,7 +81,7 @@
     {/each}
   </div>
   {#if changed}
-    <button class="btn small reset" tabindex="-1" onclick={reset}>HSL zurücksetzen</button>
+    <button class="btn small reset" tabindex="-1" onclick={reset}>{t("HSL zurücksetzen")}</button>
   {/if}
 </details>
 

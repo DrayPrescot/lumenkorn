@@ -1,5 +1,6 @@
 // Zentraler Oberflächenzustand (Svelte-5-Runes).
 
+import { isCanceled, lang, num, t, tc } from "./i18n";
 import { api, listen, type AiStatus, type Person, type PeopleStatus, type AiDownloadEvent, type DeleteReport, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress } from "./api";
 
 class Library {
@@ -43,9 +44,9 @@ class Library {
 
   scopeTitle = $derived.by(() => {
     const s = this.scope;
-    if (s.type === "all") return "Alle Fotos";
-    if (s.type === "project") return this.projects.find((p) => p.id === s.id)?.name ?? "Projekt";
-    if (s.type === "person") return this.people.find((p) => p.id === s.id)?.name ?? "Unbenannte Person";
+    if (s.type === "all") return t("Alle Fotos");
+    if (s.type === "project") return this.projects.find((p) => p.id === s.id)?.name ?? t("Projekt");
+    if (s.type === "person") return this.people.find((p) => p.id === s.id)?.name ?? t("Unbenannte Person");
     return s.path.split(/[\\/]/).pop() || s.path;
   });
 
@@ -54,6 +55,8 @@ class Library {
   #messageTimer: ReturnType<typeof setTimeout> | undefined;
 
   async init() {
+    // Meldungen aus dem Hintergrund in der Sprache der Oberfläche
+    api.setLanguage(lang).catch(() => {});
     await Promise.all([this.loadRoots(), this.loadProjects()]);
     await this.loadImages();
 
@@ -61,28 +64,31 @@ class Library {
     listen("library-changed", async (r) => {
       this.scan = null;
       const changes = r.added + r.updated + r.moved + r.missing;
-      const root = this.roots.find((x) => x.id === r.rootId)?.name ?? "Ordner";
+      const root = this.roots.find((x) => x.id === r.rootId)?.name ?? tc("one", "Ordner");
       const skipped = (r.unsupported ?? []).filter(([, n]) => n > 0);
       const skippedText = [
         skipped.length &&
-          `${skipped.reduce((s, [, n]) => s + n, 0)} Dateien übersprungen (${skipped.map(([e]) => e.toUpperCase()).join(", ")} – Format noch nicht unterstützt)`,
-        r.unreadable && `${r.unreadable} Einträge nicht lesbar (Berechtigung? Details im Protokoll)`,
+          t("{n} Dateien übersprungen ({formats} – Format noch nicht unterstützt)", {
+            n: skipped.reduce((s, [, n]) => s + n, 0),
+            formats: skipped.map(([e]) => e.toUpperCase()).join(", "),
+          }),
+        r.unreadable && t("{n} Einträge nicht lesbar (Berechtigung? Details im Protokoll)", { n: r.unreadable }),
       ]
         .filter(Boolean)
         .join(". ");
       if (changes > 0) {
         const parts = [
-          r.added && `${r.added} neu`,
-          r.moved && `${r.moved} verschoben`,
-          r.updated && `${r.updated} geändert`,
-          r.missing && `${r.missing} fehlen`,
+          r.added && t("{n} neu", { n: r.added }),
+          r.moved && t("{n} verschoben", { n: r.moved }),
+          r.updated && t("{n} geändert", { n: r.updated }),
+          r.missing && t("{n} fehlen", { n: r.missing }),
         ].filter(Boolean);
-        this.notify(`„${root}“ abgeglichen: ${parts.join(", ")}${skippedText ? `. ${skippedText}` : ""}`);
+        this.notify(t("„{root}“ abgeglichen: {changes}", { root, changes: parts.join(", ") }) + (skippedText ? `. ${skippedText}` : ""));
       } else if ((r.requested || r.foldersChanged) && skippedText) {
-        this.notify(`„${root}“: keine neuen Fotos. ${skippedText}`);
+        this.notify(t("„{root}“: keine neuen Fotos. {skipped}", { root, skipped: skippedText }));
       } else if (r.requested && !r.foldersChanged) {
         // Rückmeldung, dass „Neu einlesen“ gelaufen ist
-        this.notify(`„${root}“ neu eingelesen: keine Änderungen`);
+        this.notify(t("„{root}“ neu eingelesen: keine Änderungen", { root }));
       }
       if (changes > 0 || r.foldersChanged) await Promise.all([this.loadRoots(), this.loadProjects()]);
       // Nichts an den Fotos geändert (z. B. nur eine XMP-Datei oder ein leerer
@@ -117,8 +123,8 @@ class Library {
     listen("ai-download", async (e) => {
       this.aiDownload = e.finished ? null : e;
       if (e.finished) {
-        if (e.error) this.notify(`KI-Download: ${e.error}`, "error");
-        else this.notify("KI ist bereit. Fotos werden jetzt im Hintergrund verschlagwortet.");
+        if (e.error) this.notify(t("KI-Download: {error}", { error: e.error }), "error");
+        else this.notify(t("KI ist bereit. Fotos werden jetzt im Hintergrund verschlagwortet."));
         await Promise.all([this.refreshAi(), this.refreshPeople()]);
       }
     });
@@ -259,14 +265,18 @@ class Library {
     const project = this.projects.find((p) => p.id === projectId);
     const todo = top.filter((p) => !project?.folders.some((f) => f.path === p));
     if (!todo.length) {
-      this.notify(`Alle gewählten Ordner sind schon in „${project?.name ?? "dem Projekt"}“`);
+      this.notify(t("Alle gewählten Ordner sind schon in „{name}“", { name: project?.name ?? t("dem Projekt") }));
       return;
     }
     try {
       let p: Project | null = null;
       for (const path of todo) p = await api.addProjectFolder(projectId, path, true);
       this.projects = this.projects.map((x) => (x.id === p!.id ? p! : x));
-      this.notify(todo.length === 1 ? `Zu „${p!.name}“ hinzugefügt` : `${todo.length} Ordner zu „${p!.name}“ hinzugefügt`);
+      this.notify(
+        todo.length === 1
+          ? t("Zu „{name}“ hinzugefügt", { name: p!.name })
+          : t("{n} Ordner zu „{name}“ hinzugefügt", { n: todo.length, name: p!.name }),
+      );
       if (this.scope.type === "project" && this.scope.id === projectId) await this.loadImages(true);
     } catch (e) {
       // Bis zum Fehler hinzugefügte Ordner anzeigen
@@ -311,10 +321,10 @@ class Library {
   /** Vergleichsansicht der ausgewählten Bilder öffnen. */
   compare() {
     if (this.selection.size < 2) {
-      this.notify("Für den Vergleich mindestens zwei Fotos auswählen (Strg- oder Umschalt-Klick).");
+      this.notify(t("Für den Vergleich mindestens zwei Fotos auswählen (Strg- oder Umschalt-Klick)."));
       return;
     }
-    if (this.selection.size > 12) this.notify("Verglichen werden die ersten 12 ausgewählten Fotos.");
+    if (this.selection.size > 12) this.notify(t("Verglichen werden die ersten 12 ausgewählten Fotos."));
     const items = this.compareItems;
     if (!items.some((x) => x.index === this.focus)) this.focus = items[0].index;
     this.mode = "library";
@@ -372,14 +382,14 @@ class Library {
   /** Öffnet den Dialog zum Zusammenfügen der ausgewählten Fotos. */
   openMerge(kind: MergeKind) {
     if (this.mergeProgress && !this.mergeProgress.finished) {
-      this.notify("Es werden bereits Fotos zusammengefügt.");
+      this.notify(t("Es werden bereits Fotos zusammengefügt."));
       return;
     }
     const sel = this.selection;
     // Reihenfolge wie angezeigt (für Focus Stacking: Schärfeebene nah → fern)
     const ids = this.images.filter((i) => sel.has(i.id)).map((i) => i.id);
     if (ids.length < 2) {
-      this.notify("Zum Zusammenfügen mindestens zwei Fotos auswählen (Strg- oder Umschalt-Klick).");
+      this.notify(t("Zum Zusammenfügen mindestens zwei Fotos auswählen (Strg- oder Umschalt-Klick)."));
       return;
     }
     this.merge = { kind, ids };
@@ -388,16 +398,16 @@ class Library {
   /** Ergebnis fertig: Liste neu laden und das neue Foto auswählen. */
   async #mergeDone(e: MergeProgress) {
     if (e.error) {
-      if (e.error !== "Abgebrochen") this.notify(`Zusammenfügen fehlgeschlagen: ${e.error}`, "error");
+      if (!isCanceled(e.error)) this.notify(t("Zusammenfügen fehlgeschlagen: {error}", { error: e.error }), "error");
       return;
     }
     await this.loadImages(true);
     const index = e.imageId === null ? -1 : this.images.findIndex((i) => i.id === e.imageId);
     if (index >= 0) {
       this.select(index);
-      this.notify(`${e.fileName} erstellt`);
+      this.notify(t("{file} erstellt", { file: e.fileName ?? "" }));
     } else {
-      this.notify(`${e.fileName} erstellt (in dieser Ansicht nicht sichtbar)`);
+      this.notify(t("{file} erstellt (in dieser Ansicht nicht sichtbar)", { file: e.fileName ?? "" }));
     }
   }
 
@@ -480,7 +490,7 @@ class Library {
       const items = this.compareItems;
       const pos = items.findIndex((x) => x.index === this.focus);
       if (pos >= 0 && pos < items.length - 1) this.focus = items[pos + 1].index;
-      else this.notify("Letztes Foto im Vergleich");
+      else this.notify(t("Letztes Foto im Vergleich"));
       return;
     }
     const set = new Set(ids);
@@ -489,7 +499,7 @@ class Library {
       if (set.has(im.id)) last = idx;
     });
     if (last >= this.images.length - 1) {
-      this.notify("Letztes Foto erreicht");
+      this.notify(t("Letztes Foto erreicht"));
       if (ids.length > 1) this.select(last);
       return;
     }
@@ -526,16 +536,23 @@ class Library {
     if (this.view === "compare" && this.selection.size < 2) this.view = this.focus >= 0 ? "loupe" : "grid";
     if (this.focus < 0 && this.view === "loupe") this.view = "grid";
 
-    const mb = (report.bytes / 1e6).toLocaleString("de-DE", { maximumFractionDigits: report.bytes < 1e7 ? 2 : 0 });
-    const n = (k: number) => `${k} ${k === 1 ? "Foto" : "Fotos"}`;
-    const where = report.toTrash ? "in den Papierkorb verschoben" : "endgültig gelöscht";
+    const mb = num(report.bytes / 1e6, { maximumFractionDigits: report.bytes < 1e7 ? 2 : 0 });
+    const k = report.deleted.length;
+    const photos = t(k === 1 ? "{n} Foto" : "{n} Fotos", { n: k });
     if (report.failed.length) {
+      const vars = { photos, failed: report.failed.length, error: report.failed[0].error };
       this.notify(
-        `${n(report.deleted.length)} ${where}, ${report.failed.length} nicht: ${report.failed[0].error}`,
+        report.toTrash
+          ? t("{photos} in den Papierkorb verschoben, {failed} nicht: {error}", vars)
+          : t("{photos} endgültig gelöscht, {failed} nicht: {error}", vars),
         "error",
       );
     } else {
-      this.notify(`${n(report.deleted.length)} ${where} (${mb} MB)`);
+      this.notify(
+        report.toTrash
+          ? t("{photos} in den Papierkorb verschoben ({mb} MB)", { photos, mb })
+          : t("{photos} endgültig gelöscht ({mb} MB)", { photos, mb }),
+      );
     }
     this.loadRoots();
     this.refreshPeople();
@@ -547,7 +564,7 @@ class Library {
   async addRoot(path: string) {
     try {
       const root = await api.addRoot(path);
-      this.notify(`„${root.name}“ wird eingelesen …`);
+      this.notify(t("„{name}“ wird eingelesen …", { name: root.name }));
       await this.loadRoots();
     } catch (e) {
       this.notify(String(e), "error");
@@ -576,7 +593,7 @@ class Library {
     try {
       const p = await api.addProjectFolder(projectId, path, recursive);
       this.projects = this.projects.map((x) => (x.id === p.id ? p : x));
-      this.notify(`Zu „${p.name}“ hinzugefügt`);
+      this.notify(t("Zu „{name}“ hinzugefügt", { name: p.name }));
       if (this.scope.type === "project" && this.scope.id === projectId) await this.loadImages(true);
     } catch (e) {
       this.notify(String(e), "error");
@@ -596,7 +613,7 @@ class Library {
     const old = this.people.find((p) => p.id === id);
     if (!name || name === old?.name) return false;
     const other = this.people.find((p) => p.id !== id && p.name?.toLocaleLowerCase("de") === name.toLocaleLowerCase("de"));
-    if (other && !confirm(`„${other.name}“ gibt es schon. Beide Personen zu einer zusammenführen?`)) return false;
+    if (other && !confirm(t("„{name}“ gibt es schon. Beide Personen zu einer zusammenführen?", { name: other.name ?? "" }))) return false;
     try {
       const target = await api.personRename(id, name);
       await this.refreshPeople();
@@ -604,7 +621,13 @@ class Library {
       if (this.scope.type === "person" && this.scope.id === id && target !== id) {
         this.setScope({ type: "person", id: target });
       }
-      this.notify(other ? `Mit „${other.name}“ zusammengeführt` : old?.name ? `„${old.name}“ heißt jetzt „${name}“` : `„${name}“ gespeichert`);
+      this.notify(
+        other
+          ? t("Mit „{name}“ zusammengeführt", { name: other.name ?? "" })
+          : old?.name
+            ? t("„{old}“ heißt jetzt „{name}“", { old: old.name, name })
+            : t("„{name}“ gespeichert", { name }),
+      );
       return true;
     } catch (e) {
       this.notify(String(e), "error");

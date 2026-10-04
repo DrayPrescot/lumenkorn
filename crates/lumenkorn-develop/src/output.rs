@@ -38,8 +38,9 @@ pub fn encode_jpeg(img: &ImageF32, quality: u8) -> Result<Vec<u8>> {
 pub fn encode_jpeg_rgb8(rgb: &RgbImage, quality: u8) -> Result<Vec<u8>> {
     let (w, h) = rgb.dimensions();
     if w > u16::MAX as u32 || h > u16::MAX as u32 {
-        return Err(Error::Params(format!(
-            "{w}×{h} ist zu groß für JPEG (max. 65535)"
+        return Err(Error::Params(crate::tr!(
+            "{w}×{h} ist zu groß für JPEG (max. 65535)",
+            "{w}×{h} is too large for JPEG (max. 65535)"
         )));
     }
     let mut out = Vec::with_capacity(rgb.as_raw().len() / 12);

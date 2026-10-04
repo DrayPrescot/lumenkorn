@@ -4,6 +4,8 @@
 // `zoom` ist das Verhältnis Bildschirmpixel (Gerätepixel) zu Originalpixeln:
 // 1 = 100 %, also jedes Bildpixel ein Bildschirmpixel.
 
+import { t } from "./i18n";
+
 export const ZOOM_STEPS = [0.0625, 0.125, 0.25, 1 / 3, 0.5, 2 / 3, 1, 1.5, 2, 3, 4, 8];
 export const MAX_ZOOM = 8;
 
@@ -60,7 +62,7 @@ export class ZoomState {
 
   label(): string {
     const pct = Math.round(this.effective * 100);
-    return this.fit ? `Einpassen · ${pct} %` : `${pct} %`;
+    return this.fit ? t("Einpassen · {pct} %", { pct }) : t("{pct} %", { pct });
   }
 }
 

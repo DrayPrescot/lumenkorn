@@ -63,9 +63,12 @@ impl MaskFiles {
 
     /// Speichert (oder ersetzt) eine Maske.
     pub fn put(&self, id: &str, mask: &image::GrayImage) -> Result<()> {
-        let path = self
-            .path(id)
-            .ok_or_else(|| Error::Invalid(format!("ungültige Masken-ID {id}")))?;
+        let path = self.path(id).ok_or_else(|| {
+            Error::Invalid(lumenkorn_develop::tr!(
+                "ungültige Masken-ID {id}",
+                "invalid mask ID {id}"
+            ))
+        })?;
         std::fs::create_dir_all(&self.dir)?;
         let tmp = path.with_extension("tmp.png");
         mask.save(&tmp)?;

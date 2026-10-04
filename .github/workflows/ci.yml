@@ -27,6 +27,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: npm run i18n
       - run: npm run build
 
   rust:
@@ -118,19 +119,19 @@ jobs:
       - name: Build MSI
         run: npm run tauri build -- --bundles msi
 
+      # One installer per language (German and English, see bundle.windows.wix.language)
       - name: Collect MSI
         id: msi
         shell: bash
         run: |
-          f=$(ls target/release/bundle/msi/*.msi | head -1)
-          test -n "$f"
-          echo "path=$f" >> "$GITHUB_OUTPUT"
-          echo "name=$(basename "$f")" >> "$GITHUB_OUTPUT"
+          ls target/release/bundle/msi/*.msi
+          test -n "$(ls target/release/bundle/msi/*.msi)"
+          echo "names=$(cd target/release/bundle/msi && ls *.msi | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
           name: lumenkorn-msi-${{ github.sha }}
-          path: ${{ steps.msi.outputs.path }}
+          path: target/release/bundle/msi/*.msi
           retention-days: 30
 
       - name: Publish as "nightly" pre-release
@@ -139,12 +140,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release delete nightly --yes --cleanup-tag || true
-          gh release create nightly "${{ steps.msi.outputs.path }}" \
+          gh release create nightly target/release/bundle/msi/*.msi \
             --target "$GITHUB_SHA" --prerelease \
             --title "Lumenkorn – aktueller Stand (main)" \
             --notes "Automatisch gebaut aus ${GITHUB_SHA::7} am $(date -u '+%Y-%m-%d %H:%M') UTC.
 
-          Installer für Windows: **${{ steps.msi.outputs.name }}**. Ein neuer Stand lässt sich einfach über
+          Installer für Windows (Deutsch \`de-DE\`, English \`en-US\` – nur die Sprache des Installationsprogramms; die App
+          folgt der Systemsprache und lässt sich unten links umstellen): ${{ steps.msi.outputs.names }}. Ein neuer Stand lässt sich einfach über
           den alten installieren; Katalog und Bearbeitungen bleiben erhalten.
 
           Nicht signiert: Windows SmartScreen fragt beim ersten Start nach (\"Weitere Informationen\" → \"Trotzdem ausführen\")."

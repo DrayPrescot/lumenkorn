@@ -3,6 +3,7 @@
   import { lib } from "../lib/store.svelte";
   import Icon from "./Icon.svelte";
   import { onMount } from "svelte";
+  import { t, num } from "../lib/i18n";
 
   let { onclose }: { onclose: () => void } = $props();
 
@@ -13,7 +14,7 @@
     void lib.refreshPeople();
   });
   const d = $derived(lib.aiDownload?.progress);
-  const mb = (b: number) => `${Math.round(b / 1_000_000).toLocaleString("de-DE")} MB`;
+  const mb = (b: number) => `${num(Math.round(b / 1_000_000))} MB`;
   const pct = $derived(d && d.total ? Math.min(100, (d.done / d.total) * 100) : null);
 
   const ps = $derived(lib.peopleStatus);
@@ -47,18 +48,18 @@
   // Name aus dem Betriebssystem (mit Speicher) bevorzugt, sonst vom Grafiktreiber
   const deviceLabel = $derived(
     device
-      ? `${device.vendor} ${device.name}${device.memory ? ` · ${gb(device.memory)} Grafikspeicher` : ""}`
+      ? `${device.vendor} ${device.name}${device.memory ? ` · ${t("{size} Grafikspeicher", { size: gb(device.memory) })}` : ""}`
       : dev?.info && dev.info.kind !== "software"
         ? dev.info.name
         : null,
   );
   const devText = $derived.by(() => {
     if (!dev) return "";
-    if (!dev.enabled) return "Regler, Masken und Export rechnet der Prozessor.";
-    if (dev.available === null) return "Grafikkarte wird gesucht …";
-    if (!dev.available) return `Nicht verfügbar – es rechnet der Prozessor (${dev.error ?? "unbekannt"}).`;
-    const base = `Aktiv: ${dev.info?.name} über ${dev.info?.backend}.`;
-    return dev.error ? `${base} Letzter Fehler, dabei auf den Prozessor ausgewichen: ${dev.error}` : base;
+    if (!dev.enabled) return t("Regler, Masken und Export rechnet der Prozessor.");
+    if (dev.available === null) return t("Grafikkarte wird gesucht …");
+    if (!dev.available) return t("Nicht verfügbar – es rechnet der Prozessor ({error}).", { error: dev.error ?? t("unbekannt") });
+    const base = t("Aktiv: {name} über {backend}.", { name: String(dev.info?.name), backend: String(dev.info?.backend) });
+    return dev.error ? `${base} ${t("Letzter Fehler, dabei auf den Prozessor ausgewichen: {error}", { error: dev.error })}` : base;
   });
 
   async function toggleDevelopGpu(e: Event) {
@@ -69,10 +70,10 @@
     setTimeout(() => void lib.refreshAi(), 1500);
   }
   const MODEL_LABELS: Record<string, string> = {
-    "drunet.onnx": "Rauschreduzierung",
-    "subject.onnx": "Motiv",
-    "sam-encoder.onnx": "Objekt per Klick",
-    "vision.onnx": "Schlagworte",
+    "drunet.onnx": t("Rauschreduzierung"),
+    "subject.onnx": t("Motiv"),
+    "sam-encoder.onnx": t("Objekt per Klick"),
+    "vision.onnx": t("Schlagworte"),
   };
   const placements = $derived(
     (s?.accel.active.placements ?? []).filter((p) => MODEL_LABELS[p.model]).map((p) => ({ ...p, label: MODEL_LABELS[p.model] })),
@@ -80,7 +81,7 @@
   const activeLabel = $derived.by(() => {
     const lib_ = s?.accel.active.library;
     if (!lib_) return null;
-    if (lib_ === "cpu" || !s?.accel.active.gpuEnabled) return "Prozessor (CPU)";
+    if (lib_ === "cpu" || !s?.accel.active.gpuEnabled) return t("Prozessor (CPU)");
     return s?.gpuRuntimes.find((g) => g.backend === lib_)?.label ?? lib_;
   });
 
@@ -108,14 +109,14 @@
   }
 
   const secs = (v: number) =>
-    v < 1 ? `${v.toLocaleString("de-DE", { maximumFractionDigits: 2 })} s`
+    v < 1 ? `${num(v, { maximumFractionDigits: 2 })} s`
     : v < 90 ? `${Math.round(v)} s`
     : `${Math.round(v / 60)} min`;
 
   async function retag() {
     await api.aiRetagAll();
     await lib.refreshAi();
-    lib.notify("Alle Fotos werden neu analysiert.");
+    lib.notify(t("Alle Fotos werden neu analysiert."));
   }
 </script>
 
@@ -124,19 +125,18 @@
   <div
     class="dialog"
     role="dialog"
-    aria-label="KI"
+    aria-label={t("KI")}
     tabindex="-1"
     onclick={(e) => e.stopPropagation()}
     onkeydown={(e) => { e.stopPropagation(); if (e.key === "Escape") onclose(); }}
   >
     <header>
-      <h3><Icon name="sparkle" size={15} /> Lokale KI</h3>
-      <button class="icon-btn" aria-label="Schließen" onclick={onclose}><Icon name="close" size={14} /></button>
+      <h3><Icon name="sparkle" size={15} /> {t("Lokale KI")}</h3>
+      <button class="icon-btn" aria-label={t("Schließen")} onclick={onclose}><Icon name="close" size={14} /></button>
     </header>
 
     <p class="lead">
-      Lumenkorn erkennt Motive, Orte, Licht und Wetter und vergibt passende Schlagworte. Außerdem kannst du nach
-      Bildinhalten suchen, etwa „Hund am Strand“. Alles läuft auf diesem Gerät, kein Foto verlässt den Rechner.
+      {t("Lumenkorn erkennt Motive, Orte, Licht und Wetter und vergibt passende Schlagworte. Außerdem kannst du nach Bildinhalten suchen, etwa „Hund am Strand“. Alles läuft auf diesem Gerät, kein Foto verlässt den Rechner.")}
     </p>
 
     {#if s?.crashNotice}
@@ -149,178 +149,174 @@
           onclick={async () => {
             await api.aiDismissNotice();
             await lib.refreshAi();
-          }}>Verstanden</button
+          }}>{t("Verstanden")}</button
         >
       </div>
     {/if}
 
     {#if !s}
-      <p class="muted">Status wird geladen …</p>
+      <p class="muted">{t("Status wird geladen …")}</p>
     {:else if lib.aiDownload}
       <div class="progress">
         <div class="line">
-          <span>{d ? `${d.item} (${d.index} von ${d.count})` : "Verbinde …"}</span>
-          <span class="muted">{d ? `${mb(d.done)}${d.total ? ` von ${mb(d.total)}` : ""}` : ""}</span>
+          <span>{d ? t("{item} ({index} von {count})", { item: d.item, index: d.index, count: d.count }) : t("Verbinde …")}</span>
+          <span class="muted">{d ? `${mb(d.done)}${d.total ? t(" von {size}", { size: mb(d.total) }) : ""}` : ""}</span>
         </div>
         <progress max="100" value={pct ?? undefined}></progress>
-        <button class="btn quiet" onclick={() => api.aiCancelDownload()}>Abbrechen</button>
+        <button class="btn quiet" onclick={() => api.aiCancelDownload()}>{t("Abbrechen")}</button>
       </div>
     {:else if !s.modelReady || !s.runtimePath}
       <div class="box">
         <p>
-          Benötigt einmalig etwa <strong>{mb(s.downloadSize)}</strong>: die ONNX-Laufzeit (von GitHub) und das
-          Bildmodell CLIP ViT-B/32 (von Hugging Face).
+          {t("Benötigt einmalig etwa")} <strong>{mb(s.downloadSize)}</strong>{t(": die ONNX-Laufzeit (von GitHub) und das Bildmodell CLIP ViT-B/32 (von Hugging Face).")}
         </p>
         {#if !s.runtimeDownloadable && !s.runtimePath}
           <p class="warn">
-            Für diese Plattform gibt es keinen automatischen Download der Laufzeit. Lege die ONNX-Runtime-Bibliothek
-            unter <code>{s.modelDir.replace(/clip-vit-b32$/, "runtime")}</code> ab.
+            {t("Für diese Plattform gibt es keinen automatischen Download der Laufzeit. Lege die ONNX-Runtime-Bibliothek unter")}
+            <code>{s.modelDir.replace(/clip-vit-b32$/, "runtime")}</code>{t(" ab.")}
           </p>
         {/if}
-        <button class="btn primary" onclick={() => download("clip")}>KI-Komponenten herunterladen</button>
+        <button class="btn primary" onclick={() => download("clip")}>{t("KI-Komponenten herunterladen")}</button>
       </div>
     {:else}
       <dl>
-        <dt>Analysiert</dt>
+        <dt>{t("Analysiert")}</dt>
         <dd>
-          {s.analyzed.toLocaleString("de-DE")} von {s.total.toLocaleString("de-DE")} Fotos
+          {t("{done} von {total} Fotos", { done: s.analyzed, total: s.total })}
           {#if s.total}<progress max={s.total} value={s.analyzed}></progress>{/if}
         </dd>
-        <dt>Modell</dt>
-        <dd>CLIP ViT-B/32{s.loaded ? ", geladen" : ""}</dd>
+        <dt>{t("Modell")}</dt>
+        <dd>CLIP ViT-B/32{s.loaded ? t(", geladen") : ""}</dd>
       </dl>
       {#if s.error}
-        <p class="warn">Das Modell konnte nicht geladen werden: {s.error}</p>
+        <p class="warn">{t("Das Modell konnte nicht geladen werden: {error}", { error: s.error })}</p>
       {/if}
       <label class="check">
         <input type="checkbox" checked={s.settings.autoTag} onchange={toggleAuto} />
-        Neue Fotos automatisch verschlagworten
+        {t("Neue Fotos automatisch verschlagworten")}
       </label>
       <div class="actions">
-        <button class="btn" onclick={retag}>Alle neu analysieren</button>
+        <button class="btn" onclick={retag}>{t("Alle neu analysieren")}</button>
       </div>
     {/if}
 
     {#if s && !lib.aiDownload}
       <div class="sep"></div>
-      <h4>KI-Masken</h4>
+      <h4>{t("KI-Masken")}</h4>
       {#if s.masksReady}
-        <p class="muted">Installiert: „Motiv“, „Objekt per Klick“ und verfeinerter „Himmel“ im Entwickeln-Modus unter „Masken“.</p>
+        <p class="muted">{t("Installiert: „Motiv“, „Objekt per Klick“ und verfeinerter „Himmel“ im Entwickeln-Modus unter „Masken“.")}</p>
       {:else}
         <div class="box">
           <p>
-            „Motiv auswählen“ (IS-Net) und „Objekt per Klick“ (Segment Anything) benötigen einmalig etwa
-            <strong>{mb(s.masksDownloadSize)}</strong> von GitHub. „Himmel“ funktioniert auch ohne, wird damit aber genauer.
+            {t("„Motiv auswählen“ (IS-Net) und „Objekt per Klick“ (Segment Anything) benötigen einmalig etwa")}
+            <strong>{mb(s.masksDownloadSize)}</strong> {t("von GitHub. „Himmel“ funktioniert auch ohne, wird damit aber genauer.")}
           </p>
-          <button class="btn primary" onclick={() => download("masks")}>KI-Masken herunterladen</button>
+          <button class="btn primary" onclick={() => download("masks")}>{t("KI-Masken herunterladen")}</button>
         </div>
       {/if}
     {/if}
 
     {#if s && !lib.aiDownload}
       <div class="sep"></div>
-      <h4>KI-Rauschreduzierung</h4>
+      <h4>{t("KI-Rauschreduzierung")}</h4>
       {#if s.denoiseReady}
-        <p class="muted">Installiert: im Entwickeln-Modus unter „Details“.</p>
+        <p class="muted">{t("Installiert: im Entwickeln-Modus unter „Details“.")}</p>
       {:else}
         <div class="box">
           <p>
-            DRUNet entfernt Bildrauschen, ohne Details zu verwischen. Lumenkorn lädt die Original-Gewichte (etwa
-            <strong>{mb(s.denoiseDownloadSize)}</strong>, MIT-Lizenz) von GitHub und bereitet das Modell lokal vor.
+            {t("DRUNet entfernt Bildrauschen, ohne Details zu verwischen. Lumenkorn lädt die Original-Gewichte (etwa")}
+            <strong>{mb(s.denoiseDownloadSize)}</strong>{t(", MIT-Lizenz) von GitHub und bereitet das Modell lokal vor.")}
           </p>
-          <button class="btn primary" onclick={() => download("denoise")}>Rauschreduzierung herunterladen</button>
+          <button class="btn primary" onclick={() => download("denoise")}>{t("Rauschreduzierung herunterladen")}</button>
         </div>
       {/if}
     {/if}
 
     {#if s && !lib.aiDownload && ps}
       <div class="sep"></div>
-      <h4>Personenerkennung</h4>
+      <h4>{t("Personenerkennung")}</h4>
       {#if ps.ready}
         <dl>
-          <dt>Analysiert</dt>
+          <dt>{t("Analysiert")}</dt>
           <dd>
-            {ps.analyzed.toLocaleString("de-DE")} von {ps.total.toLocaleString("de-DE")} Fotos, {ps.faces.toLocaleString("de-DE")} Gesichter
+            {t("{done} von {total} Fotos, {faces} Gesichter", { done: ps.analyzed, total: ps.total, faces: ps.faces })}
             {#if ps.total}<progress max={ps.total} value={ps.analyzed}></progress>{/if}
           </dd>
         </dl>
-        {#if ps.error}<p class="warn">Modelle konnten nicht geladen werden: {ps.error}</p>{/if}
+        {#if ps.error}<p class="warn">{t("Modelle konnten nicht geladen werden: {error}", { error: ps.error })}</p>{/if}
         <label class="check">
           <input type="checkbox" checked={s.settings.faces} onchange={toggleFaces} />
-          Gesichter in neuen Fotos suchen
+          {t("Gesichter in neuen Fotos suchen")}
         </label>
         <div class="actions">
-          <button class="btn" onclick={async () => { await api.peopleRescan(); await lib.refreshPeople(); lib.notify("Alle Fotos werden erneut nach Gesichtern durchsucht. Namen bleiben erhalten."); }}>
-            Alle neu durchsuchen
+          <button class="btn" onclick={async () => { await api.peopleRescan(); await lib.refreshPeople(); lib.notify(t("Alle Fotos werden erneut nach Gesichtern durchsucht. Namen bleiben erhalten.")); }}>
+            {t("Alle neu durchsuchen")}
           </button>
         </div>
       {:else}
         <div class="box">
           <p>
-            Findet Gesichter (YuNet) und gruppiert gleiche Personen (SFace), damit du sie benennen und danach filtern kannst.
-            Einmalig etwa <strong>{mb(ps.downloadSize)}</strong> aus dem OpenCV Model Zoo (MIT bzw. Apache-2.0).
-            Gesichtsdaten bleiben auf diesem Rechner.
+            {t("Findet Gesichter (YuNet) und gruppiert gleiche Personen (SFace), damit du sie benennen und danach filtern kannst. Einmalig etwa")}
+            <strong>{mb(ps.downloadSize)}</strong> {t("aus dem OpenCV Model Zoo (MIT bzw. Apache-2.0). Gesichtsdaten bleiben auf diesem Rechner.")}
           </p>
-          <button class="btn primary" onclick={() => download("faces").then(() => lib.refreshPeople())}>Personenerkennung herunterladen</button>
+          <button class="btn primary" onclick={() => download("faces").then(() => lib.refreshPeople())}>{t("Personenerkennung herunterladen")}</button>
         </div>
       {/if}
     {/if}
 
     {#if s && !lib.aiDownload}
       <div class="sep"></div>
-      <h4>Grafikkarte</h4>
+      <h4>{t("Grafikkarte")}</h4>
       {#if deviceLabel}
-        <p class="muted">Erkannt: {deviceLabel}</p>
+        <p class="muted">{t("Erkannt: {device}", { device: deviceLabel })}</p>
       {/if}
       <div class="sub">
         <label class="check">
           <input type="checkbox" checked={s.settings.developGpu} onchange={toggleDevelopGpu} />
-          Bildbearbeitung auf der Grafikkarte
+          {t("Bildbearbeitung auf der Grafikkarte")}
         </label>
         <p class="muted small" class:warn={dev?.enabled && (dev.available === false || dev.error)}>{devText}</p>
       </div>
-      <h5>KI-Modelle</h5>
+      <h5>{t("KI-Modelle")}</h5>
       {#if s.gpuRuntimes.length === 0}
-        <p class="muted">Auf dieser Plattform rechnet die KI auf dem Prozessor.</p>
+        <p class="muted">{t("Auf dieser Plattform rechnet die KI auf dem Prozessor.")}</p>
       {:else if gpuInstalled.length === 0}
         <div class="box">
           <p>
-            Die KI braucht dafür eine GPU-fähige ONNX Runtime. Damit laufen Rauschreduzierung und Motiv-Erkennung um ein
-            Vielfaches schneller. Funktioniert
-            mit AMD-, NVIDIA- und Intel-Grafik über den normalen Treiber{s.gpuRuntimes[0].backend === "webgpu"
-              ? " (Vulkan – unter Linux genügt Mesa, ROCm ist nicht nötig)"
-              : " (DirectX 12)"}. Einmalig etwa <strong>{mb(s.gpuRuntimes[0].downloadSize)}</strong>.
+            {t("Die KI braucht dafür eine GPU-fähige ONNX Runtime. Damit laufen Rauschreduzierung und Motiv-Erkennung um ein Vielfaches schneller. Funktioniert mit AMD-, NVIDIA- und Intel-Grafik über den normalen Treiber")}{s.gpuRuntimes[0].backend === "webgpu"
+              ? t(" (Vulkan – unter Linux genügt Mesa, ROCm ist nicht nötig)")
+              : " (DirectX 12)"}{t(". Einmalig etwa")} <strong>{mb(s.gpuRuntimes[0].downloadSize)}</strong>.
           </p>
           <div class="actions">
             <button class="btn primary" onclick={() => download(s.gpuRuntimes[0].backend)}>
-              GPU-Unterstützung herunterladen
+              {t("GPU-Unterstützung herunterladen")}
             </button>
             {#each s.gpuRuntimes.slice(1) as alt (alt.backend)}
-              <button class="btn quiet" onclick={() => download(alt.backend)}>Alternative: {alt.label}</button>
+              <button class="btn quiet" onclick={() => download(alt.backend)}>{t("Alternative: {label}", { label: alt.label })}</button>
             {/each}
           </div>
         </div>
       {:else}
         <dl>
-          <dt>Rechenwerk</dt>
+          <dt>{t("Rechenwerk")}</dt>
           <dd>
             <select value={s.settings.accel} onchange={setAccel}>
-              <option value="auto">Automatisch (Grafikkarte)</option>
+              <option value="auto">{t("Automatisch (Grafikkarte)")}</option>
               {#if gpuInstalled.length > 1}
                 {#each gpuInstalled as g (g.backend)}
                   <option value={g.backend}>{g.label}</option>
                 {/each}
               {/if}
-              <option value="cpu">Nur Prozessor (CPU)</option>
+              <option value="cpu">{t("Nur Prozessor (CPU)")}</option>
             </select>
           </dd>
-          <dt>Aktiv</dt>
-          <dd>{activeLabel ?? "– (wird beim ersten Einsatz geladen)"}</dd>
+          <dt>{t("Aktiv")}</dt>
+          <dd>{activeLabel ?? t("– (wird beim ersten Einsatz geladen)")}</dd>
           {#if placements.length}
-            <dt>Modelle</dt>
+            <dt>{t("Modelle")}</dt>
             <dd class="chips">
               {#each placements as p (p.model)}
-                <span class="chip" class:gpu={p.gpu} title={p.gpu ? "Rechnet auf der Grafikkarte" : "Rechnet auf dem Prozessor – nicht alle Operationen dieses Modells laufen auf der Grafikkarte"}>
+                <span class="chip" class:gpu={p.gpu} title={p.gpu ? t("Rechnet auf der Grafikkarte") : t("Rechnet auf dem Prozessor – nicht alle Operationen dieses Modells laufen auf der Grafikkarte")}>
                   {p.label}: {p.gpu ? "GPU" : "CPU"}
                 </span>
               {/each}
@@ -329,24 +325,23 @@
         </dl>
         {#if s.accel.restartRequired}
           <div class="box">
-            <p>Die GPU-Laufzeit ist installiert und wird nach einem Neustart von Lumenkorn geladen.</p>
-            <button class="btn primary" onclick={() => api.appRestart()}>Jetzt neu starten</button>
+            <p>{t("Die GPU-Laufzeit ist installiert und wird nach einem Neustart von Lumenkorn geladen.")}</p>
+            <button class="btn primary" onclick={() => api.appRestart()}>{t("Jetzt neu starten")}</button>
           </div>
         {/if}
         {#if s.accel.active.gpuError}
           <p class="warn">
-            Die Grafikkarte konnte nicht genutzt werden, die KI rechnet auf dem Prozessor: {s.accel.active.gpuError}
+            {t("Die Grafikkarte konnte nicht genutzt werden, die KI rechnet auf dem Prozessor: {error}", { error: s.accel.active.gpuError })}
           </p>
         {/if}
         {#if s.denoiseReady && !s.accel.restartRequired}
           <div class="actions bench">
             <button class="btn" onclick={benchmark} disabled={benchRunning}>
-              {benchRunning ? "Messe …" : "Geschwindigkeit testen"}
+              {benchRunning ? t("Messe …") : t("Geschwindigkeit testen")}
             </button>
             {#if bench}
               <span>
-                {bench.gpu ? `GPU (${bench.backend})` : "CPU"}: {bench.size}×{bench.size} Pixel in {secs(bench.seconds)} –
-                Rauschreduzierung eines 24-MP-Fotos etwa {secs(bench.seconds24mp)}
+                {bench.gpu ? `GPU (${bench.backend})` : "CPU"}: {t("{size}×{size} Pixel in {time} – Rauschreduzierung eines 24-MP-Fotos etwa {time24}", { size: String(bench.size), time: secs(bench.seconds), time24: secs(bench.seconds24mp) })}
               </span>
             {/if}
           </div>
@@ -355,7 +350,7 @@
           <div class="actions">
             {#each gpuMissing as alt (alt.backend)}
               <button class="btn quiet" onclick={() => download(alt.backend)}>
-                Zusätzlich {alt.label} laden ({mb(alt.downloadSize)})
+                {t("Zusätzlich {label} laden ({size})", { label: alt.label, size: mb(alt.downloadSize) })}
               </button>
             {/each}
           </div>
@@ -364,8 +359,7 @@
     {/if}
 
     <p class="note">
-      KI-Schlagworte sind gestrichelt umrandet und lassen sich wie eigene entfernen. Eigene Schlagworte werden nie
-      überschrieben.
+      {t("KI-Schlagworte sind gestrichelt umrandet und lassen sich wie eigene entfernen. Eigene Schlagworte werden nie überschrieben.")}
     </p>
   </div>
 </div>

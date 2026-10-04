@@ -4,8 +4,9 @@ use crate::AppState;
 use crate::worker::Job;
 use lumenkorn_core::formats::ImageKind;
 use lumenkorn_core::{Edit, Error};
+use lumenkorn_develop::i18n::tr_s;
 use lumenkorn_develop::output::{self, ExportOptions};
-use lumenkorn_develop::{Crop, DevelopParams, ImageF32, RenderOptions, Source};
+use lumenkorn_develop::{Crop, DevelopParams, ImageF32, RenderOptions, Source, tr};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -223,7 +224,12 @@ async fn blocking<T: Send + 'static>(
 ) -> Result<T, Error> {
     tauri::async_runtime::spawn_blocking(move || f(&app.state::<AppState>()))
         .await
-        .map_err(|e| Error::Invalid(format!("Hintergrundaufgabe abgebrochen: {e}")))?
+        .map_err(|e| {
+            Error::Invalid(tr!(
+                "Hintergrundaufgabe abgebrochen: {e}",
+                "Background task aborted: {e}"
+            ))
+        })?
 }
 
 #[derive(Serialize)]
@@ -308,7 +314,9 @@ pub async fn develop_sample_color(
     y: f32,
 ) -> Result<[f32; 3], Error> {
     if !(x.is_finite() && y.is_finite()) {
-        return Err(Error::Invalid("Ungültige Position".into()));
+        return Err(Error::Invalid(
+            tr_s("Ungültige Position", "Invalid position").into(),
+        ));
     }
     blocking(app, move |state| {
         let src = load_proxy(state, id, PROXY_EDGE)?;
@@ -516,7 +524,7 @@ pub fn develop_transfer(
 pub fn develop_snapshot(state: State<AppState>, id: i64, name: String) -> Result<Vec<Edit>, Error> {
     let cat = state.catalog.lock().unwrap();
     let name = if name.trim().is_empty() {
-        "Schnappschuss".to_string()
+        tr_s("Schnappschuss", "Snapshot").to_string()
     } else {
         name.trim().to_string()
     };
@@ -576,15 +584,19 @@ pub fn export_images(
     if let Some(d) = &dir
         && !d.is_dir()
     {
-        return Err(Error::Invalid(format!("{} ist kein Ordner", d.display())));
+        return Err(Error::Invalid(tr!(
+            "{} ist kein Ordner",
+            "{} is not a folder",
+            d.display()
+        )));
     }
     // Anzeige des Ziels: gewählter Ordner bzw. die tatsächlich benutzten
     let chosen = dir.clone();
     let shown = move |used: &std::collections::BTreeSet<PathBuf>| match (&chosen, used.len()) {
         (Some(d), _) => d.display().to_string(),
         (None, 1) => used.first().unwrap().display().to_string(),
-        (None, 0) => "Unterordner „Export“".to_string(),
-        (None, n) => format!("„Export“ in {n} Ordnern"),
+        (None, 0) => tr_s("Unterordner „Export“", "Subfolder “Export”").to_string(),
+        (None, n) => tr!("„Export“ in {n} Ordnern", "“Export” in {n} folders"),
     };
     std::thread::Builder::new()
         .name("lumenkorn-export".into())
@@ -644,7 +656,9 @@ pub fn export_images(
                     let target_dir = match &dir {
                         Some(d) => d.clone(),
                         None => lumenkorn_core::scanner::export_dir_for(Path::new(&job.path))
-                            .map_err(|e| Error::Invalid(format!("Export-Ordner: {e}")))?,
+                            .map_err(|e| {
+                                Error::Invalid(tr!("Export-Ordner: {e}", "Export folder: {e}"))
+                            })?,
                     };
                     let target = unique_path(&target_dir, &name, options.format.extension());
                     used.insert(target_dir);

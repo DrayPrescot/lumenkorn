@@ -7,6 +7,7 @@ use crate::AppState;
 use crate::worker::Job;
 use lumenkorn_core::Error;
 use lumenkorn_core::formats::ImageKind;
+use lumenkorn_develop::i18n::tr_s;
 use lumenkorn_develop::merge::{focus, hdr, pano};
 use lumenkorn_develop::{ImageF32, Source, SourceKind};
 use serde::{Deserialize, Serialize};
@@ -68,11 +69,21 @@ pub fn merge_start(
     options: Option<MergeOptions>,
 ) -> Result<(), Error> {
     if ids.len() < 2 {
-        return Err(Error::Invalid("Mindestens zwei Fotos auswählen.".into()));
+        return Err(Error::Invalid(
+            tr_s(
+                "Mindestens zwei Fotos auswählen.",
+                "Select at least two photos.",
+            )
+            .into(),
+        ));
     }
     if ids.len() > 200 {
         return Err(Error::Invalid(
-            "Höchstens 200 Fotos auf einmal zusammenfügen.".into(),
+            tr_s(
+                "Höchstens 200 Fotos auf einmal zusammenfügen.",
+                "Merge at most 200 photos at once.",
+            )
+            .into(),
         ));
     }
     let state = app.state::<AppState>();
@@ -80,7 +91,11 @@ pub fn merge_start(
         let mut running = state.merge.running.lock().unwrap();
         if *running {
             return Err(Error::Invalid(
-                "Es werden bereits Fotos zusammengefügt.".into(),
+                tr_s(
+                    "Es werden bereits Fotos zusammengefügt.",
+                    "Photos are already being merged.",
+                )
+                .into(),
             ));
         }
         *running = true;
@@ -104,7 +119,11 @@ pub fn merge_start(
             }))
             .unwrap_or_else(|_| {
                 Err(Error::Invalid(
-                    "Interner Fehler beim Zusammenfügen (Details im Protokoll)".into(),
+                    tr_s(
+                        "Interner Fehler beim Zusammenfügen (Details im Protokoll)",
+                        "Internal error while merging (details in the log)",
+                    )
+                    .into(),
                 ))
             });
             let cancelled = state.merge.cancel.load(Ordering::SeqCst);
@@ -115,14 +134,14 @@ pub fn merge_start(
                 .unwrap_or_else(|e| e.into_inner()) = false;
             // Große Zwischenpuffer dem Betriebssystem zurückgeben
             crate::memory::trim_heap();
-            // Abbrechen ist kein Fehler: genau „Abgebrochen“ melden (die Oberfläche schweigt dann)
+            // Abbrechen ist kein Fehler: „Abgebrochen“/„Canceled“ melden (die Oberfläche schweigt dann)
             match res {
                 Err(_) if cancelled => emit(MergeEvent {
                     stage: String::new(),
                     done: 0,
                     total: 0,
                     finished: true,
-                    error: Some("Abgebrochen".into()),
+                    error: Some(lumenkorn_develop::i18n::tr_s("Abgebrochen", "Canceled").into()),
                     image_id: None,
                     file_name: None,
                 }),
@@ -133,7 +152,7 @@ pub fn merge_start(
                         t.elapsed()
                     );
                     emit(MergeEvent {
-                        stage: "Fertig".into(),
+                        stage: tr_s("Fertig", "Done").into(),
                         done: 1,
                         total: 1,
                         finished: true,
@@ -224,11 +243,11 @@ fn run(
         MergeKind::Focus => focus::merge(n, &load, options.focus, &progress, cancel)?,
     };
     if cancel.load(Ordering::SeqCst) {
-        return Err(Error::Invalid("abgebrochen".into()));
+        return Err(Error::Invalid(tr_s("abgebrochen", "canceled").into()));
     }
 
     // Neben das erste Foto schreiben
-    progress("Speichern", 0, 1);
+    progress(tr_s("Speichern", "Saving"), 0, 1);
     let first = Path::new(&jobs[0].path);
     let dir = first.parent().unwrap_or(Path::new("."));
     let stem = first.file_stem().and_then(|s| s.to_str()).unwrap_or("Bild");

@@ -6,6 +6,7 @@
   import { dev } from "../lib/develop.svelte";
   import { HSL_BANDS, hslWeights, hueOf, samplePixel } from "../lib/hsl";
   import { lib } from "../lib/store.svelte";
+  import { t } from "../lib/i18n";
 
   let { stageW, stageH, imgW, imgH }: { stageW: number; stageH: number; imgW: number; imgH: number } = $props();
 
@@ -43,7 +44,7 @@
     if (!pressed) return;
     const { hue, chroma } = hueOf(r, g, b);
     if (chroma < 0.02) {
-      lib.notify("Hier ist kaum Farbe – die Pipette wirkt auf bunte Bereiche.");
+      lib.notify(t("Hier ist kaum Farbe – die Pipette wirkt auf bunte Bereiche."));
       return;
     }
     const weights = hslWeights(hue);
@@ -52,7 +53,7 @@
       .map((w, i) => ({ w, i }))
       .filter((x) => x.w > 0.05)
       .sort((a, b) => b.w - a.w)
-      .map((x) => `${HSL_BANDS[x.i].name} ${Math.round(x.w * 100)} %`);
+      .map((x) => t("{name} {p} %", { name: HSL_BANDS[x.i].name, p: Math.round(x.w * 100) }));
     label = { x: px, y: py, text: parts.join(" · ") };
   }
 

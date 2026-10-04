@@ -5,6 +5,7 @@
   import { api, type MaskShape, type RepairLayer } from "../lib/api";
   import { dev, type NewMaskKind } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
+  import { t } from "../lib/i18n";
   import Icon from "./Icon.svelte";
   import Slider from "./Slider.svelte";
 
@@ -15,8 +16,8 @@
   const ready = $derived(!!lib.ai?.repairReady);
 
   const kinds: { kind: NewMaskKind; label: string; hint: string; ai?: boolean }[] = [
-    { kind: "brush", label: "Pinsel", hint: "Bereich übermalen" },
-    { kind: "object", label: "Objekt", hint: "Auf ein Objekt klicken", ai: true },
+    { kind: "brush", label: t("Pinsel"), hint: t("Bereich übermalen") },
+    { kind: "object", label: t("Objekt"), hint: t("Auf ein Objekt klicken"), ai: true },
   ];
 
   const repairs = $derived(dev.params.repairs);
@@ -36,9 +37,9 @@
   }
 
   function describe(s: MaskShape): string {
-    if (s.type === "brush") return `Pinsel (${s.strokes.length} ${s.strokes.length === 1 ? "Strich" : "Striche"})`;
-    if (s.type === "raster") return s.kind === "object" ? `Objekt (${s.prompt?.length ?? 0} ${(s.prompt?.length ?? 0) === 1 ? "Punkt" : "Punkte"})` : s.kind === "subject" ? "Motiv" : "Himmel";
-    return s.type === "linear" ? "Verlauf" : "Radial";
+    if (s.type === "brush") return t(s.strokes.length === 1 ? "Pinsel ({n} Strich)" : "Pinsel ({n} Striche)", { n: s.strokes.length });
+    if (s.type === "raster") return s.kind === "object" ? t((s.prompt?.length ?? 0) === 1 ? "Objekt ({n} Punkt)" : "Objekt ({n} Punkte)", { n: s.prompt?.length ?? 0 }) : s.kind === "subject" ? t("Motiv") : t("Himmel");
+    return s.type === "linear" ? t("Verlauf") : t("Radial");
   }
 
   function removeShape(i: number) {
@@ -50,8 +51,8 @@
 
   const hint = $derived.by(() => {
     if (dev.maskBusy) return dev.maskBusy;
-    if (dev.tool === "brush") return "Übermale, was verschwinden soll – lieber etwas großzügiger. Alt radiert.";
-    if (dev.tool === "object") return "Klicke auf das Objekt. Weitere Klicks verfeinern, Alt-Klick nimmt Bereiche heraus.";
+    if (dev.tool === "brush") return t("Übermale, was verschwinden soll – lieber etwas großzügiger. Alt radiert.");
+    if (dev.tool === "object") return t("Klicke auf das Objekt. Weitere Klicks verfeinern, Alt-Klick nimmt Bereiche heraus.");
     return null;
   });
 </script>
@@ -60,11 +61,11 @@
 
 <section class="repair">
   <header>
-    <h4>Reparatur <span class="ki">KI</span></h4>
+    <h4>{t("Reparatur")} <span class="ki">{t("KI")}</span></h4>
     {#if ready}
       <div class="anchor">
         <button class="btn small" disabled={!!dev.repairing} onclick={(e) => { e.stopPropagation(); menu = menu?.mode === "new" ? null : { mode: "new" }; }}>
-          <Icon name="plus" size={12} /> Neu
+          <Icon name="plus" size={12} /> {t("Neu")}
         </button>
         {#if menu?.mode === "new"}{@render kindMenu()}{/if}
       </div>
@@ -73,11 +74,11 @@
 
   {#if !ready}
     <p class="empty">
-      Entfernt Störendes – Staubflecken, Leitungen, Passanten – und füllt die Stelle passend aus der Umgebung (LaMa).
-      Benötigt einmalig etwa {Math.round((lib.ai?.repairDownloadSize ?? 92.6e6) / 1e6)} MB.
+      {t("Entfernt Störendes – Staubflecken, Leitungen, Passanten – und füllt die Stelle passend aus der Umgebung (LaMa).")}
+      {t("Benötigt einmalig etwa {n} MB.", { n: Math.round((lib.ai?.repairDownloadSize ?? 92.6e6) / 1e6) })}
     </p>
     <button class="btn small" disabled={!!lib.aiDownload} onclick={() => api.aiDownload("repair").then(() => lib.refreshAi())}>
-      {lib.aiDownload ? "Wird geladen …" : "Herunterladen"}
+      {lib.aiDownload ? t("Wird geladen …") : t("Herunterladen")}
     </button>
   {:else if repairs.length}
     <ul class="layers">
@@ -86,8 +87,8 @@
         <li class:active={dev.activeMask === i} class:off={!r.enabled}>
           <button
             class="eye"
-            aria-label={r.enabled ? "Reparatur ausblenden" : "Reparatur einblenden"}
-            title={r.enabled ? "Ausblenden" : "Einblenden"}
+            aria-label={r.enabled ? t("Reparatur ausblenden") : t("Reparatur einblenden")}
+            title={r.enabled ? t("Ausblenden") : t("Einblenden")}
             disabled={!r.result}
             onclick={() => { r.enabled = !r.enabled; dev.schedule(); dev.commit(); }}
           >
@@ -103,12 +104,12 @@
               onblur={(e) => { r.name = e.currentTarget.value.trim() || r.name; renaming = null; dev.commit(); }}
             />
           {:else}
-            <button class="name" onclick={() => dev.selectMask(dev.activeMask === i ? null : i)} ondblclick={() => (renaming = i)} title="Doppelklick zum Umbenennen">
+            <button class="name" onclick={() => dev.selectMask(dev.activeMask === i ? null : i)} ondblclick={() => (renaming = i)} title={t("Doppelklick zum Umbenennen")}>
               {r.name}
-              <span class="state">{st === "new" ? "Auswahl" : st === "stale" ? "geändert" : ""}</span>
+              <span class="state">{st === "new" ? t("Auswahl") : st === "stale" ? t("geändert") : ""}</span>
             </button>
           {/if}
-          <button class="icon-btn" aria-label="Reparatur löschen" title="Reparatur löschen" disabled={!!dev.repairing} onclick={() => dev.removeMask(i)}>
+          <button class="icon-btn" aria-label={t("Reparatur löschen")} title={t("Reparatur löschen")} disabled={!!dev.repairing} onclick={() => dev.removeMask(i)}>
             <Icon name="trash" size={13} />
           </button>
         </li>
@@ -116,8 +117,7 @@
     </ul>
   {:else}
     <p class="empty">
-      Wähle mit „Neu“ aus, was verschwinden soll. Mehrere Pinselstriche und Objekte lassen sich zu einer Reparatur
-      zusammenfassen; gerechnet wird erst, wenn du „Reparieren“ klickst.
+      {t("Wähle mit „Neu“ aus, was verschwinden soll. Mehrere Pinselstriche und Objekte lassen sich zu einer Reparatur zusammenfassen; gerechnet wird erst, wenn du „Reparieren“ klickst.")}
     </p>
   {/if}
 
@@ -133,53 +133,53 @@
         {#each active.shapes as s, k}
           <li>
             <span class="kind" class:sub={s.subtract}>{s.subtract ? "−" : "+"} {describe(s)}</span>
-            <button class="icon-btn" aria-label="Auswahl entfernen" disabled={!!dev.repairing} onclick={() => removeShape(k)}><Icon name="close" size={11} /></button>
+            <button class="icon-btn" aria-label={t("Auswahl entfernen")} disabled={!!dev.repairing} onclick={() => removeShape(k)}><Icon name="close" size={11} /></button>
           </li>
         {:else}
-          <li class="muted">Noch keine Auswahl – {dev.tool ? "siehe Hinweis oben" : "füge eine hinzu"}.</li>
+          <li class="muted">{dev.tool ? t("Noch keine Auswahl – siehe Hinweis oben.") : t("Noch keine Auswahl – füge eine hinzu.")}</li>
         {/each}
       </ul>
 
       <div class="row">
         <div class="anchor">
-          <button class="btn small" disabled={!!dev.repairing} onclick={(e) => { e.stopPropagation(); menu = menu?.mode === "add" ? null : { mode: "add" }; }}>Hinzufügen</button>
+          <button class="btn small" disabled={!!dev.repairing} onclick={(e) => { e.stopPropagation(); menu = menu?.mode === "add" ? null : { mode: "add" }; }}>{t("Hinzufügen")}</button>
           {#if menu?.mode === "add"}{@render kindMenu()}{/if}
         </div>
         <div class="anchor">
-          <button class="btn small" disabled={!!dev.repairing || !active.shapes.length} onclick={(e) => { e.stopPropagation(); menu = menu?.mode === "subtract" ? null : { mode: "subtract" }; }}>Abziehen</button>
+          <button class="btn small" disabled={!!dev.repairing || !active.shapes.length} onclick={(e) => { e.stopPropagation(); menu = menu?.mode === "subtract" ? null : { mode: "subtract" }; }}>{t("Abziehen")}</button>
           {#if menu?.mode === "subtract"}{@render kindMenu()}{/if}
         </div>
-        <button class="btn small" class:on={dev.showOverlay} onclick={() => dev.toggleOverlay()} title="Auswahl rot anzeigen (O)">Auswahl zeigen</button>
+        <button class="btn small" class:on={dev.showOverlay} onclick={() => dev.toggleOverlay()} title={t("Auswahl rot anzeigen (O)")}>{t("Auswahl zeigen")}</button>
       </div>
 
       {#if dev.tool === "brush"}
         <div class="brush">
           <div class="seg">
-            <button class:on={!dev.brush.erase} onclick={() => (dev.brush.erase = false)}>Malen</button>
-            <button class:on={dev.brush.erase} onclick={() => (dev.brush.erase = true)}>Radieren</button>
+            <button class:on={!dev.brush.erase} onclick={() => (dev.brush.erase = false)}>{t("Malen")}</button>
+            <button class:on={dev.brush.erase} onclick={() => (dev.brush.erase = true)}>{t("Radieren")}</button>
           </div>
-          <Slider label="Größe" value={Math.round(dev.brush.size * 1000) / 10} min={0.3} max={20} step={0.1} decimals={1} oninput={(v) => (dev.brush.size = v / 100)} oncommit={() => {}} neutral={3} />
+          <Slider label={t("Größe")} value={Math.round(dev.brush.size * 1000) / 10} min={0.3} max={20} step={0.1} decimals={1} oninput={(v) => (dev.brush.size = v / 100)} oncommit={() => {}} neutral={3} />
         </div>
       {:else if active.shapes.some((s) => s.type === "brush") && !dev.repairing}
-        <button class="btn small wide" onclick={() => { dev.tool = "brush"; dev.showOverlay = true; dev.schedule(); }}>Weiter malen</button>
+        <button class="btn small wide" onclick={() => { dev.tool = "brush"; dev.showOverlay = true; dev.schedule(); }}>{t("Weiter malen")}</button>
       {/if}
 
       {#if dev.repairing && dev.repairing.index === i}
         {@const p = dev.repairing}
-        <p class="hint busy">{p.total ? `Bereich ${Math.min(p.done + 1, p.total)} von ${p.total} wird gefüllt …` : "Wird vorbereitet (volle Auflösung) …"}</p>
+        <p class="hint busy">{p.total ? t("Bereich {n} von {total} wird gefüllt …", { n: Math.min(p.done + 1, p.total), total: p.total }) : t("Wird vorbereitet (volle Auflösung) …")}</p>
         <progress max={p.total || 1} value={p.done}></progress>
-        <button class="btn small" onclick={() => api.repairCancel()}>Abbrechen</button>
+        <button class="btn small" onclick={() => api.repairCancel()}>{t("Abbrechen")}</button>
       {:else}
         <button
           class="btn primary wide"
           disabled={!active.shapes.length || st === "done" || !!dev.repairing}
           onclick={() => dev.computeRepair(i)}
-          title="Auswahl bestätigen und mit KI füllen"
+          title={t("Auswahl bestätigen und mit KI füllen")}
         >
-          {st === "new" ? "Reparieren" : st === "stale" ? "Neu berechnen" : "Repariert"}
+          {st === "new" ? t("Reparieren") : st === "stale" ? t("Neu berechnen") : t("Repariert")}
         </button>
         {#if st === "stale"}
-          <p class="hint">Die Auswahl wurde geändert. Bis zur Neuberechnung bleibt das bisherige Ergebnis sichtbar.</p>
+          <p class="hint">{t("Die Auswahl wurde geändert. Bis zur Neuberechnung bleibt das bisherige Ergebnis sichtbar.")}</p>
         {/if}
       {/if}
     </div>
@@ -190,10 +190,10 @@
   <div class="menu" role="menu" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
     {#each kinds as k (k.kind)}
       {@const disabled = k.ai && !segReady}
-      <button role="menuitem" {disabled} onclick={() => pick(k.kind)} title={disabled ? "Benötigt die KI-Masken (unten links unter „KI“)" : k.hint}>
+      <button role="menuitem" {disabled} onclick={() => pick(k.kind)} title={disabled ? t("Benötigt die KI-Masken (unten links unter „KI“)") : k.hint}>
         {#if k.ai}<Icon name="sparkle" size={12} />{:else}<span class="sp"></span>{/if}
         <span class="l">{k.label}</span>
-        <span class="h">{disabled ? "KI-Masken fehlen" : k.hint}</span>
+        <span class="h">{disabled ? t("KI-Masken fehlen") : k.hint}</span>
       </button>
     {/each}
   </div>

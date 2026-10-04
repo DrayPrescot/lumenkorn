@@ -9,6 +9,7 @@
   import CropOverlay from "./CropOverlay.svelte";
   import ZoomView from "./ZoomView.svelte";
   import { ZoomState, zoomKey } from "../lib/zoom.svelte";
+  import { t } from "../lib/i18n";
 
   // Zoom bleibt beim Wechsel zum nächsten Bild erhalten (Serien vergleichen)
   const zoom = new ZoomState();
@@ -112,11 +113,11 @@
     {/if}
 
     {#if dev.loading}
-      <div class="status">{dev.raw ? "RAW wird entwickelt …" : "Wird geladen …"}</div>
+      <div class="status">{dev.raw ? t("RAW wird entwickelt …") : t("Wird geladen …")}</div>
     {/if}
 
     {#if before}
-      <div class="tag">Vorher</div>
+      <div class="tag">{t("Vorher")}</div>
     {/if}
 
   </div>

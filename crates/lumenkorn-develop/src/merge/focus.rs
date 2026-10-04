@@ -15,6 +15,7 @@
 use super::align::{self, Features, Mat3};
 use super::{Loader, Progress, check};
 use crate::error::{Error, Result};
+use crate::i18n::tr_s;
 use crate::image_f32::ImageF32;
 use rayon::prelude::*;
 use std::sync::atomic::AtomicBool;
@@ -195,7 +196,11 @@ pub fn merge(
 ) -> Result<ImageF32> {
     if n < 2 {
         return Err(Error::Params(
-            "Für Focus Stacking mindestens zwei Fotos wählen".into(),
+            tr_s(
+                "Für Focus Stacking mindestens zwei Fotos wählen",
+                "Select at least two photos for focus stacking",
+            )
+            .into(),
         ));
     }
     let r = n / 2;
@@ -212,13 +217,14 @@ pub fn merge(
     let mut kept = 0;
     for (k, &i) in order.iter().enumerate() {
         check(cancel)?;
-        progress("Bilder laden", k, n);
+        progress(tr_s("Bilder laden", "Loading images"), k, n);
         let img = load(i)?;
         if k == 0 {
             size = (img.width, img.height);
         } else if (img.width, img.height) != size {
-            return Err(Error::Params(format!(
+            return Err(Error::Params(crate::tr!(
                 "Alle Fotos müssen gleich groß sein (Nr. {} ist {}×{}, die Referenz {}×{})",
+                "All photos must be the same size (no. {} is {}×{}, the reference {}×{})",
                 i + 1,
                 img.width,
                 img.height,
@@ -279,7 +285,7 @@ pub fn merge(
 
     for (k, &i) in order.iter().enumerate() {
         check(cancel)?;
-        progress("Schärfe zusammenführen", k, n);
+        progress(tr_s("Schärfe zusammenführen", "Merging sharpness"), k, n);
         let img = match full[i].take() {
             Some(img) => img,
             None => load(i)?,
@@ -372,7 +378,7 @@ pub fn merge(
     }
     drop(best);
     drop(reference);
-    progress("Schärfe zusammenführen", n, n);
+    progress(tr_s("Schärfe zusammenführen", "Merging sharpness"), n, n);
     fused[levels].data = base_sum
         .iter()
         .zip(&base_cnt)

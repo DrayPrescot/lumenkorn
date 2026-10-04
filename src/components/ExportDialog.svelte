@@ -4,6 +4,7 @@
   import { dev } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
   import PathDialog from "./PathDialog.svelte";
+  import { t } from "../lib/i18n";
 
   let { ids, onclose }: { ids: number[]; onclose: () => void } = $props();
 
@@ -27,7 +28,7 @@
   }
 
   async function choose() {
-    const d = isTauri ? await pickFolder("Zielordner für den Export") : null;
+    const d = isTauri ? await pickFolder(t("Zielordner für den Export")) : null;
     if (d) dir = d;
     else if (!isTauri || navigator.userAgent.includes("Android")) pathDialog = true;
   }
@@ -36,7 +37,7 @@
     await dev.flush();
     try {
       await api.exportImages(ids, dir, { format, quality, longEdge: resize ? longEdge : null });
-      lib.notify(`Export von ${ids.length} ${ids.length === 1 ? "Foto" : "Fotos"} gestartet`);
+      lib.notify(t(ids.length === 1 ? "Export von {n} Foto gestartet" : "Export von {n} Fotos gestartet", { n: ids.length }));
       onclose();
     } catch (e) {
       lib.notify(String(e), "error");
@@ -54,18 +55,18 @@
     onclick={(e) => e.stopPropagation()}
     onsubmit={(e) => { e.preventDefault(); start(); }}
   >
-    <h3>{ids.length} {ids.length === 1 ? "Foto" : "Fotos"} exportieren</h3>
+    <h3>{t(ids.length === 1 ? "{n} Foto exportieren" : "{n} Fotos exportieren", { n: ids.length })}</h3>
 
     <fieldset>
-      <legend>Format</legend>
+      <legend>{t("Format")}</legend>
       <label><input type="radio" bind:group={format} value="jpeg" /> JPEG</label>
-      <label><input type="radio" bind:group={format} value="tiff16" /> TIFF, 16 Bit</label>
+      <label><input type="radio" bind:group={format} value="tiff16" /> {t("TIFF, 16 Bit")}</label>
       <label><input type="radio" bind:group={format} value="png" /> PNG</label>
     </fieldset>
 
     {#if format === "jpeg"}
       <label class="line">
-        Qualität
+        {t("Qualität")}
         <input type="range" min="40" max="100" bind:value={quality} />
         <span class="num">{quality}</span>
       </label>
@@ -73,39 +74,39 @@
 
     <label class="line">
       <input type="checkbox" bind:checked={resize} />
-      Längste Kante begrenzen auf
+      {t("Längste Kante begrenzen auf")}
       <input type="number" min="256" max="20000" step="1" bind:value={longEdge} disabled={!resize} /> px
     </label>
 
     <div class="line">
-      <span class="label">Ziel</span>
-      <span class="dir" class:chosen={dir} title={dir ?? "Im Ordner jedes Fotos wird bei Bedarf ein Unterordner „Export“ angelegt."}>
-        {dir ?? "Unterordner „Export“ neben dem Original"}
+      <span class="label">{t("Ziel")}</span>
+      <span class="dir" class:chosen={dir} title={dir ?? t("Im Ordner jedes Fotos wird bei Bedarf ein Unterordner „Export“ angelegt.")}>
+        {dir ?? t("Unterordner „Export“ neben dem Original")}
       </span>
     </div>
     <div class="line">
-      <button type="button" class="btn small" onclick={choose}>Anderer Ordner …</button>
+      <button type="button" class="btn small" onclick={choose}>{t("Anderer Ordner …")}</button>
       {#if dir}
-        <button type="button" class="btn small quiet" onclick={() => (dir = null)}>Zurück zu „Export“</button>
+        <button type="button" class="btn small quiet" onclick={() => (dir = null)}>{t("Zurück zu „Export“")}</button>
       {/if}
     </div>
 
     <p class="hint">
-      Exportiert in voller Auflösung mit allen Bearbeitungen. Vorhandene Dateien werden nicht überschrieben.
-      {#if !dir}Von Lumenkorn angelegte „Export“-Ordner erscheinen nicht in der Bibliothek.{/if}
+      {t("Exportiert in voller Auflösung mit allen Bearbeitungen. Vorhandene Dateien werden nicht überschrieben.")}
+      {#if !dir}{t("Von Lumenkorn angelegte „Export“-Ordner erscheinen nicht in der Bibliothek.")}{/if}
     </p>
 
     <div class="actions">
-      <button type="button" class="btn quiet" onclick={onclose}>Abbrechen</button>
-      <button type="submit" class="btn primary">Exportieren</button>
+      <button type="button" class="btn quiet" onclick={onclose}>{t("Abbrechen")}</button>
+      <button type="submit" class="btn primary">{t("Exportieren")}</button>
     </div>
   </form>
 </div>
 
 {#if pathDialog}
   <PathDialog
-    title="Zielordner"
-    hint="Vollständiger Pfad eines vorhandenen Ordners."
+    title={t("Zielordner")}
+    hint={t("Vollständiger Pfad eines vorhandenen Ordners.")}
     onsubmit={(p) => { pathDialog = false; dir = p; }}
     oncancel={() => (pathDialog = false)}
   />

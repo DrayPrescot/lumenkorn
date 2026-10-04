@@ -16,6 +16,14 @@ jedem Push automatisch neu gebaut, sobald alle Prüfungen grün sind. Ein neuer 
 den alten installieren. Die MSI ist nicht signiert, daher fragt Windows SmartScreen beim ersten Start
 nach („Weitere Informationen“ → „Trotzdem ausführen“).
 
+## Sprache
+
+Die Oberfläche gibt es auf **Deutsch und Englisch**. Lumenkorn folgt der Systemsprache; unten links in
+der Seitenleiste schaltet **DE / EN** um (bleibt gespeichert, die Oberfläche lädt dabei neu). Auch
+Meldungen aus dem Hintergrund (Fehler, Fortschritt) und neu vergebene **KI-Schlagworte** folgen der
+Sprache. Bereits vergebene Schlagworte bleiben, wie sie sind; „KI → Alle neu analysieren“ vergibt
+sie in der neuen Sprache neu. Die Windows-Installer gibt es ebenfalls in beiden Sprachen.
+
 ## Bibliothek
 
 - **Ordner statt Import.** Du fügst einen Ordner hinzu, Lumenkorn liest ihn ein. Nichts wird kopiert, verschoben oder verändert.
@@ -508,6 +516,13 @@ LUMENKORN_GPU_SOFTWARE=1 cargo test -p lumenkorn-develop --test gpu
 # KI GPU gegen CPU (WebGPU-Laufzeit; ohne Grafikkarte genügt Mesa lavapipe):
 LUMENKORN_TEST_ORT_GPU=/pfad/runtime-webgpu/libonnxruntime.so LUMENKORN_TEST_DENOISE=/pfad LUMENKORN_TEST_SEG=/pfad/masken cargo test --release -p lumenkorn-ai --test gpu
 ```
+
+**Übersetzungen:** Texte der Oberfläche stehen im Quelltext auf Deutsch und sind zugleich der
+Schlüssel: `t("Ordner hinzufügen")` ergibt auf Englisch „Add folder“. Die englischen Texte liegen in
+`src/lib/i18n/en/*.ts` (eine Datei je Bereich); für deutsche Wörter mit mehreren Bedeutungen sucht
+`tc("kontext", "…")` unter `"kontext|…"`. Meldungen aus Rust: `tr!("deutsch", "english")` aus
+`lumenkorn_develop`. `npm run i18n` (läuft auch in der CI) meldet fehlende Übersetzungen und
+abweichende Platzhalter.
 
 ## Android
 

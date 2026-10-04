@@ -4,6 +4,7 @@
   import { aspectOf, justify, type Row } from "../lib/layout";
   import { lib } from "../lib/store.svelte";
   import Icon from "./Icon.svelte";
+  import { t } from "../lib/i18n";
 
   const GAP = 4;
   const OVERSCAN = 600;
@@ -106,16 +107,16 @@
   {#if !lib.images.length && !lib.loading}
     <div class="empty">
       {#if lib.search || lib.minRating}
-        <p>Keine Fotos passen zu diesem Filter.</p>
-        <button class="btn" onclick={() => { lib.search = ""; lib.minRating = 0; lib.loadImages(); }}>Filter zurücksetzen</button>
+        <p>{t("Keine Fotos passen zu diesem Filter.")}</p>
+        <button class="btn" onclick={() => { lib.search = ""; lib.minRating = 0; lib.loadImages(); }}>{t("Filter zurücksetzen")}</button>
       {:else if lib.scope.type === "project"}
-        <p>Dieses Projekt hat noch keine Fotos. Füge oben über „Ordner“ einen Ordner hinzu.</p>
+        <p>{t("Dieses Projekt hat noch keine Fotos. Füge oben über „Ordner“ einen Ordner hinzu.")}</p>
       {:else if lib.scope.type === "person"}
-        <p>Dieser Person sind keine Fotos (mehr) zugeordnet.</p>
+        <p>{t("Dieser Person sind keine Fotos (mehr) zugeordnet.")}</p>
       {:else if !lib.roots.length}
-        <p>Füge links unter „Ordner“ einen Ordner mit Fotos hinzu.</p>
+        <p>{t("Füge links unter „Ordner“ einen Ordner mit Fotos hinzu.")}</p>
       {:else}
-        <p>In diesem Ordner liegen keine Fotos.</p>
+        <p>{t("In diesem Ordner liegen keine Fotos.")}</p>
       {/if}
     </div>
   {/if}
@@ -140,9 +141,9 @@
         >
           <img src={imageUrl("thumb", img.id, lib.thumbVersion[img.id] ?? 0)} alt="" decoding="async" draggable="false" />
           <span class="meta">
-            {#if img.flag === 1}<span class="flag" title="Markiert"><Icon name="flag" size={12} /></span>{/if}
+            {#if img.flag === 1}<span class="flag" title={t("Markiert")}><Icon name="flag" size={12} /></span>{/if}
             {#if img.rating}<span class="rating">{"★".repeat(img.rating)}</span>{/if}
-            {#if img.edited}<span class="edited" title="Bearbeitet"><Icon name="sliders" size={11} /></span>{/if}
+            {#if img.edited}<span class="edited" title={t("Bearbeitet")}><Icon name="sliders" size={11} /></span>{/if}
             {#if img.kind === "raw"}<span class="raw">RAW</span>{/if}
           </span>
         </button>

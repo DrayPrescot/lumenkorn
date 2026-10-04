@@ -11,6 +11,7 @@
 use crate::error::{Error, Result};
 use crate::onnx_writer::{Attr, Graph, Initializer, Io, Node};
 use crate::torch_legacy::{self, Tensor as TorchTensor};
+use lumenkorn_develop::tr;
 use ort::session::Session;
 use ort::value::Tensor;
 use std::collections::HashMap;
@@ -46,9 +47,9 @@ pub fn build_drunet_onnx(pth: &[u8]) -> Result<Vec<u8>> {
     };
 
     let weight = |g: &mut Graph, key: &str| -> Result<String> {
-        let t = sd
-            .get(key)
-            .ok_or_else(|| Error::ModelFormat(format!("Gewicht {key} fehlt")))?;
+        let t = sd.get(key).ok_or_else(|| {
+            Error::ModelFormat(tr!("Gewicht {key} fehlt", "Weight {key} missing"))
+        })?;
         g.initializers.push(Initializer {
             name: key.to_string(),
             dims: t.shape.iter().map(|d| *d as i64).collect(),

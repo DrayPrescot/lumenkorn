@@ -15,6 +15,7 @@ use crate::error::{Error, Result};
 use crate::tokenizer::{CONTEXT_LENGTH, ClipTokenizer};
 use image::DynamicImage;
 use image::imageops::FilterType;
+use lumenkorn_develop::{i18n::tr_s, tr};
 use ort::session::Session;
 use ort::value::Tensor;
 use std::path::Path;
@@ -67,14 +68,23 @@ impl Clip {
 
         let vision_in = input_named(&vision, "pixel_values")
             .or_else(|| vision.inputs().first().map(|i| i.name().to_string()))
-            .ok_or_else(|| Error::ModelFormat("Bildmodell ohne Eingang".into()))?;
-        let vision_out = embeds_out(&vision)
-            .ok_or_else(|| Error::ModelFormat("Bildmodell ohne Ausgang".into()))?;
-        let text_ids = input_named(&text, "input_ids")
-            .ok_or_else(|| Error::ModelFormat("Textmodell ohne input_ids".into()))?;
+            .ok_or_else(|| {
+                Error::ModelFormat(
+                    tr_s("Bildmodell ohne Eingang", "Image model without input").into(),
+                )
+            })?;
+        let vision_out = embeds_out(&vision).ok_or_else(|| {
+            Error::ModelFormat(tr_s("Bildmodell ohne Ausgang", "Image model without output").into())
+        })?;
+        let text_ids = input_named(&text, "input_ids").ok_or_else(|| {
+            Error::ModelFormat(
+                tr_s("Textmodell ohne input_ids", "Text model without input_ids").into(),
+            )
+        })?;
         let text_mask = input_named(&text, "attention_mask");
-        let text_out = embeds_out(&text)
-            .ok_or_else(|| Error::ModelFormat("Textmodell ohne Ausgang".into()))?;
+        let text_out = embeds_out(&text).ok_or_else(|| {
+            Error::ModelFormat(tr_s("Textmodell ohne Ausgang", "Text model without output").into())
+        })?;
 
         Ok(Self {
             vision: Mutex::new(vision),
@@ -173,10 +183,12 @@ fn preprocess(img: &DynamicImage) -> image::RgbImage {
 fn split_rows(shape: &[i64], values: &[f32], n: usize) -> Result<Vec<Vec<f32>>> {
     let dim = *shape
         .last()
-        .ok_or_else(|| Error::ModelFormat("leerer Ausgang".into()))? as usize;
+        .ok_or_else(|| Error::ModelFormat(tr_s("leerer Ausgang", "empty output").into()))?
+        as usize;
     if shape.len() != 2 || values.len() != n * dim {
-        return Err(Error::ModelFormat(format!(
-            "unerwartete Ausgabeform {shape:?}"
+        return Err(Error::ModelFormat(tr!(
+            "unerwartete Ausgabeform {shape:?}",
+            "unexpected output shape {shape:?}"
         )));
     }
     Ok(values

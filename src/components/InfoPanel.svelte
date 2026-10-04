@@ -2,6 +2,7 @@
   import { api, faceUrl, type FaceInfo, type ImageDetail } from "../lib/api";
   import { lib } from "../lib/store.svelte";
   import Icon from "./Icon.svelte";
+  import { locale, num, t, tc } from "../lib/i18n";
 
   let { onexport }: { onexport: () => void } = $props();
   let detail = $state<ImageDetail | null>(null);
@@ -97,7 +98,7 @@
       const key = f.personId === null ? "none" : String(f.personId);
       let g = by.get(key);
       if (!g) {
-        const label = f.personName ?? (f.personId === null ? "Ohne Zuordnung" : "Unbenannte Gruppe");
+        const label = f.personName ?? (f.personId === null ? t("Ohne Zuordnung") : t("Unbenannte Gruppe"));
         g = { key, personId: f.personId, label, named: !!f.personName, faceIds: [], open: [], images: 0, imgs: new Set() };
         by.set(key, g);
       }
@@ -119,7 +120,7 @@
     selBusy = true;
     try {
       const n = await api.facesConfirm(g.open);
-      lib.notify(`${n} ${n === 1 ? "Vorschlag" : "Vorschläge"} für ${g.label} bestätigt`);
+      lib.notify(t(n === 1 ? "{n} Vorschlag für {name} bestätigt" : "{n} Vorschläge für {name} bestätigt", { n, name: g.label }));
     } catch (e) {
       lib.notify(String(e), "error");
     }
@@ -140,8 +141,8 @@
       const n = g.images;
       lib.notify(
         name === null
-          ? `${g.label} aus ${n} ${n === 1 ? "Foto" : "Fotos"} entfernt`
-          : `${n} ${n === 1 ? "Foto" : "Fotos"} „${name.trim()}“ zugeordnet`,
+          ? t(n === 1 ? "{name} aus {n} Foto entfernt" : "{name} aus {n} Fotos entfernt", { n, name: g.label })
+          : t(n === 1 ? "{n} Foto „{name}“ zugeordnet" : "{n} Fotos „{name}“ zugeordnet", { n, name: name.trim() }),
       );
     } catch (e) {
       lib.notify(String(e), "error");
@@ -180,8 +181,8 @@
     if (!detail?.capturedAt) return null;
     const d = new Date(detail.capturedAt);
     return {
-      day: d.toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "long", year: "numeric" }),
-      time: d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),
+      day: d.toLocaleDateString(locale, { weekday: "short", day: "numeric", month: "long", year: "numeric" }),
+      time: d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
     };
   });
 
@@ -189,10 +190,10 @@
     const d = detail;
     if (!d) return [];
     return [
-      d.exposure && { v: `${d.exposure} s`, l: "Belichtung" },
-      d.aperture && { v: `f/${d.aperture.toLocaleString("de-DE")}`, l: "Blende" },
-      d.iso && { v: String(d.iso), l: "ISO" },
-      d.focalLength && { v: `${Math.round(d.focalLength)} mm`, l: "Brennweite" },
+      d.exposure && { v: `${d.exposure} s`, l: tc("exif", "Belichtung") },
+      d.aperture && { v: `f/${num(d.aperture)}`, l: t("Blende") },
+      d.iso && { v: String(d.iso), l: t("ISO") },
+      d.focalLength && { v: `${Math.round(d.focalLength)} mm`, l: t("Brennweite") },
     ].filter((x): x is { v: string; l: string } => !!x);
   });
 
@@ -201,7 +202,7 @@
     return parts.length > 3 ? `… / ${parts.slice(-3).join(" / ")}` : parts.join(" / ");
   };
 
-  const mb = (b: number) => `${(b / 1_000_000).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB`;
+  const mb = (b: number) => `${num(b / 1_000_000, { maximumFractionDigits: 1 })} MB`;
 
   async function addTag() {
     const name = newTag.trim();
@@ -221,33 +222,33 @@
   </datalist>
   {#if lib.selection.size > 1}
     <section>
-      <h3>{lib.selection.size} Fotos ausgewählt</h3>
+      <h3>{t("{n} Fotos ausgewählt", { n: lib.selection.size })}</h3>
       {#if lib.view === "compare" && lib.mode === "library"}
-        <p class="muted">Im Vergleich gelten Bewertung und Markierung für das hervorgehobene Foto, der Export für alle ausgewählten.</p>
+        <p class="muted">{t("Im Vergleich gelten Bewertung und Markierung für das hervorgehobene Foto, der Export für alle ausgewählten.")}</p>
       {:else}
-        <p class="muted">Bewertung, Markierung und Export gelten für alle ausgewählten Fotos.</p>
+        <p class="muted">{t("Bewertung, Markierung und Export gelten für alle ausgewählten Fotos.")}</p>
       {/if}
       <div class="actions">
-        <button class="btn" onclick={onexport}><Icon name="export" size={14} /> Exportieren …</button>
+        <button class="btn" onclick={onexport}><Icon name="export" size={14} /> {t("Exportieren …")}</button>
       </div>
     </section>
     {#if selGroups.length}
       <section>
-        <h4>Personen in der Auswahl</h4>
-        <p class="muted">Änderungen gelten für alle {lib.selection.size} ausgewählten Fotos.</p>
+        <h4>{t("Personen in der Auswahl")}</h4>
+        <p class="muted">{t("Änderungen gelten für alle {n} ausgewählten Fotos.", { n: lib.selection.size })}</p>
         <ul class="selfaces">
           {#each selGroups as g (g.key)}
             <li>
               <div class="selhead">
                 <span class="pname-static">{g.label}</span>
-                <span class="muted">{g.images} {g.images === 1 ? "Foto" : "Fotos"}</span>
+                <span class="muted">{t(g.images === 1 ? "{n} Foto" : "{n} Fotos", { n: g.images })}</span>
                 {#if g.open.length}
-                  <button class="btn small confirm" disabled={selBusy} title="Vorschläge für {g.label} in allen ausgewählten Fotos bestätigen" onclick={() => confirmGroup(g)}>
-                    ✓ {g.open.length} bestätigen
+                  <button class="btn small confirm" disabled={selBusy} title={t("Vorschläge für {name} in allen ausgewählten Fotos bestätigen", { name: g.label })} onclick={() => confirmGroup(g)}>
+                    ✓ {t("{n} bestätigen", { n: g.open.length })}
                   </button>
                 {/if}
                 {#if g.personId !== null}
-                  <button class="icon-btn" disabled={selBusy} title="{g.label} aus allen ausgewählten Fotos entfernen" aria-label="Aus allen entfernen" onclick={() => reassignGroup(g, null)}>
+                  <button class="icon-btn" disabled={selBusy} title={t("{name} aus allen ausgewählten Fotos entfernen", { name: g.label })} aria-label={t("Aus allen entfernen")} onclick={() => reassignGroup(g, null)}>
                     <Icon name="close" size={11} />
                   </button>
                 {/if}
@@ -255,7 +256,7 @@
               <form onsubmit={(e) => (e.preventDefault(), reassignGroup(g, selNames[g.key] ?? ""))}>
                 <input
                   type="text"
-                  placeholder={g.named ? "Andere Person zuordnen …" : "Person zuordnen …"}
+                  placeholder={g.named ? t("Andere Person zuordnen …") : t("Person zuordnen …")}
                   list="info-person-names"
                   bind:value={selNames[g.key]}
                   disabled={selBusy}
@@ -277,18 +278,18 @@
     </section>
 
     <section class="rate">
-      <div class="stars" role="group" aria-label="Bewertung">
+      <div class="stars" role="group" aria-label={t("Bewertung")}>
         {#each [1, 2, 3, 4, 5] as n}
-          <button class:on={(lib.focused?.rating ?? 0) >= n} aria-label="{n} Sterne" onclick={() => lib.rate(lib.focused?.rating === n ? 0 : n)}>
+          <button class:on={(lib.focused?.rating ?? 0) >= n} aria-label={t(n === 1 ? "{n} Stern" : "{n} Sterne", { n })} onclick={() => lib.rate(lib.focused?.rating === n ? 0 : n)}>
             <Icon name="star" size={18} fill={(lib.focused?.rating ?? 0) >= n} />
           </button>
         {/each}
       </div>
       <div class="flags">
-        <button class="icon-btn" class:pick={lib.focused?.flag === 1} aria-label="Markieren (P)" title="Markieren (P)" onclick={() => lib.flag(1)}>
+        <button class="icon-btn" class:pick={lib.focused?.flag === 1} aria-label={t("Markieren (P)")} title={t("Markieren (P)")} onclick={() => lib.flag(1)}>
           <Icon name="flag" />
         </button>
-        <button class="icon-btn" class:reject={lib.focused?.flag === -1} aria-label="Ablehnen (X)" title="Ablehnen (X) – Umschalt+X: ablehnen und weiter" onclick={() => lib.flag(-1)}>
+        <button class="icon-btn" class:reject={lib.focused?.flag === -1} aria-label={t("Ablehnen (X)")} title={t("Ablehnen (X) – Umschalt+X: ablehnen und weiter")} onclick={() => lib.flag(-1)}>
           <Icon name="reject" />
         </button>
       </div>
@@ -297,15 +298,15 @@
     <section>
       <dl>
         {#if date}
-          <dt>Aufnahme</dt>
-          <dd>{date.day}, {date.time} Uhr</dd>
+          <dt>{t("Aufnahme")}</dt>
+          <dd>{t("{day}, {time} Uhr", { day: date.day, time: date.time })}</dd>
         {/if}
         {#if d.camera}
-          <dt>Kamera</dt>
+          <dt>{t("Kamera")}</dt>
           <dd>{d.camera}</dd>
         {/if}
         {#if d.lens}
-          <dt>Objektiv</dt>
+          <dt>{t("Objektiv")}</dt>
           <dd>{d.lens}</dd>
         {/if}
       </dl>
@@ -318,43 +319,43 @@
       {/if}
       <dl>
         {#if d.width && d.height}
-          <dt>Größe</dt>
+          <dt>{t("Größe")}</dt>
           <dd>{d.width} × {d.height} px, {((d.width * d.height) / 1e6).toFixed(1)} MP</dd>
         {/if}
-        <dt>Datei</dt>
+        <dt>{t("Datei")}</dt>
         <dd>{d.ext.toUpperCase()}, {mb(d.size)}</dd>
       </dl>
     </section>
 
     {#if faces.length}
       <section>
-        <h4>Personen</h4>
+        <h4>{t("Personen")}</h4>
         <ul class="faces">
           {#each faces as f (f.id)}
             <li>
               <img src={faceUrl(f.id)} alt="" />
               {#if f.personName && f.confirmed}
-                <button class="pname" onclick={() => f.personId && lib.setScope({ type: "person", id: f.personId })} title="Alle Fotos von {f.personName}">
+                <button class="pname" onclick={() => f.personId && lib.setScope({ type: "person", id: f.personId })} title={t("Alle Fotos von {name}", { name: f.personName })}>
                   {f.personName}
                 </button>
-                <button class="icon-btn" title="Nicht {f.personName}" aria-label="Zuordnung entfernen" onclick={() => faceAct(() => api.faceReject(f.id))}>
+                <button class="icon-btn" title={t("Nicht {name}", { name: f.personName })} aria-label={t("Zuordnung entfernen")} onclick={() => faceAct(() => api.faceReject(f.id))}>
                   <Icon name="close" size={11} />
                 </button>
               {:else if f.personName}
                 <span class="suggest">{f.personName}?</span>
-                <button class="mini" title="Ja, {f.personName}" onclick={() => faceAct(() => api.faceConfirm(f.id))}>✓</button>
-                <button class="mini" title="Nein" onclick={() => faceAct(() => api.faceReject(f.id))}>✕</button>
+                <button class="mini" title={t("Ja, {name}", { name: f.personName })} onclick={() => faceAct(() => api.faceConfirm(f.id))}>✓</button>
+                <button class="mini" title={t("Nein")} onclick={() => faceAct(() => api.faceReject(f.id))}>✕</button>
               {:else}
                 <form onsubmit={(e) => (e.preventDefault(), assign(f))}>
                   <input
                     type="text"
-                    placeholder="Name"
+                    placeholder={t("Name")}
                     list="info-person-names"
                     bind:value={faceNames[f.id]}
                     onkeydown={(e) => e.stopPropagation()}
                   />
                 </form>
-                <button class="icon-btn" title="Ignorieren (kein Gesicht / unwichtig)" aria-label="Gesicht ignorieren" onclick={() => faceAct(() => api.faceHide(f.id))}>
+                <button class="icon-btn" title={t("Ignorieren (kein Gesicht / unwichtig)")} aria-label={t("Gesicht ignorieren")} onclick={() => faceAct(() => api.faceHide(f.id))}>
                   <Icon name="close" size={11} />
                 </button>
               {/if}
@@ -365,22 +366,25 @@
     {/if}
 
     <section>
-      <h4>Schlagworte</h4>
+      <h4>{t("Schlagworte")}</h4>
       <ul class="tags">
-        {#each d.tags as t (t.name)}
-          <li class:ai={t.source === "ai"} title={t.source === "ai" ? `Von der KI erkannt, ${Math.round((t.confidence ?? 0) * 100)} % sicher` : "Manuell vergeben"}>
-            {#if t.source === "ai"}<Icon name="sparkle" size={11} />{/if}
-            {t.name}
-            <button aria-label="Schlagwort {t.name} entfernen" onclick={() => removeTag(t.name)}><Icon name="close" size={10} /></button>
+        {#each d.tags as tag (tag.name)}
+          <li
+            class:ai={tag.source === "ai"}
+            title={tag.source === "ai" ? t("Von der KI erkannt, {p} % sicher", { p: Math.round((tag.confidence ?? 0) * 100) }) : t("Manuell vergeben")}
+          >
+            {#if tag.source === "ai"}<Icon name="sparkle" size={11} />{/if}
+            {tag.name}
+            <button aria-label={t("Schlagwort {name} entfernen", { name: tag.name })} onclick={() => removeTag(tag.name)}><Icon name="close" size={10} /></button>
           </li>
         {/each}
       </ul>
       <form onsubmit={(e) => (e.preventDefault(), addTag())}>
-        <input type="text" placeholder="Schlagwort hinzufügen" bind:value={newTag} onkeydown={(e) => e.stopPropagation()} />
+        <input type="text" placeholder={t("Schlagwort hinzufügen")} bind:value={newTag} onkeydown={(e) => e.stopPropagation()} />
       </form>
     </section>
   {:else if !lib.selection.size}
-    <p class="none">Wähle ein Foto, um Details zu sehen.</p>
+    <p class="none">{t("Wähle ein Foto, um Details zu sehen.")}</p>
   {/if}
 </aside>
 

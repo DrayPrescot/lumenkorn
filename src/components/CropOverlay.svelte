@@ -4,6 +4,7 @@
   // hilft beim Bildaufbau.
   import { dev } from "../lib/develop.svelte";
   import { frameSize } from "../lib/frame";
+  import { t } from "../lib/i18n";
 
   let { stageW, stageH, imgW, imgH }: { stageW: number; stageH: number; imgW: number; imgH: number } = $props();
 
@@ -121,7 +122,7 @@
   };
 </script>
 
-<svg bind:this={svg} class="crop" width={stageW} height={stageH} onpointermove={onmove} onpointerup={onup} role="application" aria-label="Zuschnitt">
+<svg bind:this={svg} class="crop" width={stageW} height={stageH} onpointermove={onmove} onpointerup={onup} role="application" aria-label={t("Zuschnitt")}>
   <!-- Außenbereich abdunkeln -->
   <path
     class="shade"

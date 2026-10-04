@@ -8,6 +8,7 @@ use lumenkorn_ai::models;
 use lumenkorn_core::Error;
 use lumenkorn_core::people::{FaceInfo, NewFace, PeopleIndex, Person};
 use lumenkorn_core::thumbs::decode_for_analysis;
+use lumenkorn_develop::i18n::tr_s;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -52,7 +53,10 @@ fn face_models(state: &AppState) -> Result<Arc<(FaceDetector, FaceEmbedder)>, Er
     }
     ensure_runtime(state)?;
     let dir = models::faces_dir(&state.data_dir);
-    let _guard = model_guard(state, "YuNet/SFace (Personen)");
+    let _guard = model_guard(
+        state,
+        tr_s("YuNet/SFace (Personen)", "YuNet/SFace (people)"),
+    );
     let m = Arc::new((
         FaceDetector::load(&dir.join(faces::DETECTOR_FILE)).map_err(err)?,
         FaceEmbedder::load(&dir.join(faces::EMBEDDER_FILE)).map_err(err)?,
@@ -127,7 +131,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
         // Fehler bei einem Bild betreffen nur dieses – sonst stünde es bei
         // jedem Durchlauf wieder vorn und hielte die ganze Erkennung auf.
         let found = {
-            let _g = analysis_guard(&state, "Personenerkennung");
+            let _g = analysis_guard(&state, tr_s("Personenerkennung", "Face recognition"));
             det.detect(&img).map_err(err).and_then(|faces| {
                 faces
                     .into_iter()

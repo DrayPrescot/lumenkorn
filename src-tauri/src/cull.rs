@@ -73,7 +73,11 @@ fn delete_rejected_blocking(
 ) -> Result<DeleteReport, Error> {
     if to_trash && !trash_supported() {
         return Err(Error::Invalid(
-            "Auf diesem System gibt es keinen Papierkorb.".into(),
+            lumenkorn_develop::i18n::tr_s(
+                "Auf diesem System gibt es keinen Papierkorb.",
+                "There is no trash on this system.",
+            )
+            .into(),
         ));
     }
     // Liste unter Sperre holen, Dateien ohne Sperre löschen (Papierkorb kann dauern)

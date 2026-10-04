@@ -67,7 +67,7 @@ impl Tagger {
                     break;
                 }
                 out.push(TagSuggestion {
-                    tag: eg.group.concepts[i - 1].tag.to_string(),
+                    tag: eg.group.concepts[i - 1].name().to_string(),
                     group: eg.group.name.to_string(),
                     confidence: p,
                 });

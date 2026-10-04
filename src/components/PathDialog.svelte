@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { t } from "../lib/i18n";
+
   let {
     title,
     hint,
@@ -22,11 +24,11 @@
   >
     <h3>{title}</h3>
     <!-- svelte-ignore a11y_autofocus -->
-    <input type="text" bind:value placeholder="/pfad/zum/ordner" autofocus spellcheck="false" />
+    <input type="text" bind:value placeholder={t("/pfad/zum/ordner")} autofocus spellcheck="false" />
     <p>{hint}</p>
     <div class="actions">
-      <button type="button" class="btn quiet" onclick={oncancel}>Abbrechen</button>
-      <button type="submit" class="btn primary" disabled={!value.trim()}>Hinzufügen</button>
+      <button type="button" class="btn quiet" onclick={oncancel}>{t("Abbrechen")}</button>
+      <button type="submit" class="btn primary" disabled={!value.trim()}>{t("Hinzufügen")}</button>
     </div>
   </form>
 </div>

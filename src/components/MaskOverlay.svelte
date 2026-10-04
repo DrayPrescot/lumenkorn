@@ -5,6 +5,7 @@
   // zugeschnitten) umgerechnet.
   import { oklabToCss, type MaskShape, type Stroke } from "../lib/api";
   import { dev } from "../lib/develop.svelte";
+  import { t } from "../lib/i18n";
   import { cropToFrame, frameSize, frameToCrop, frameToSource, sourceToFrame, straightenScale } from "../lib/frame";
 
   let { stageW, stageH, imgW, imgH }: { stageW: number; stageH: number; imgW: number; imgH: number } = $props();
@@ -229,7 +230,7 @@
   onpointerup={onup}
   onpointerleave={() => (cursor = null)}
   role="application"
-  aria-label="Masken-Editor"
+  aria-label={t("Masken-Editor")}
 >
   <defs>
     <clipPath id="img-clip"><rect x={rect.x} y={rect.y} width={rect.w} height={rect.h} /></clipPath>

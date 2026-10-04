@@ -4,6 +4,7 @@
   import { isTyping } from "../lib/keys";
   import { imageUrl } from "../lib/api";
   import { lib } from "../lib/store.svelte";
+  import { t, tc } from "../lib/i18n";
   import { ZoomState, zoomKey } from "../lib/zoom.svelte";
   import { libraryDims } from "../lib/layout";
   import Icon from "./Icon.svelte";
@@ -67,10 +68,10 @@
 
 <div class="compare">
   <div class="head">
-    <span class="muted">{items.length} Fotos im Vergleich · Klick hebt hervor, Bewertung wirkt auf das hervorgehobene Foto</span>
+    <span class="muted">{t("{n} Fotos im Vergleich · Klick hebt hervor, Bewertung wirkt auf das hervorgehobene Foto", { n: items.length })}</span>
     <label class="check">
       <input type="checkbox" bind:checked={linked} onchange={() => { if (linked) shared.reset(); }} />
-      Zoom koppeln
+      {t("Zoom koppeln")}
     </label>
   </div>
   <div class="cells" style="grid-template-columns: repeat({cols}, minmax(0, 1fr))" bind:clientWidth={w} bind:clientHeight={h}>
@@ -89,17 +90,17 @@
         />
         <div class="label">
           <span class="name" title={im.fileName}>{im.fileName}</span>
-          <span class="stars" aria-label="{im.rating} Sterne">
+          <span class="stars" aria-label={t(im.rating === 1 ? "{n} Stern" : "{n} Sterne", { n: im.rating })}>
             {#each [1, 2, 3, 4, 5] as n}
               <Icon name="star" size={11} fill={im.rating >= n} />
             {/each}
           </span>
-          {#if im.flag === 1}<span class="flag pick">Auswahl</span>{/if}
-          {#if im.flag === -1}<span class="flag reject">Abgelehnt</span>{/if}
+          {#if im.flag === 1}<span class="flag pick">{tc("flag", "Auswahl")}</span>{/if}
+          {#if im.flag === -1}<span class="flag reject">{t("Abgelehnt")}</span>{/if}
           <button
             class="remove"
-            title="Aus dem Vergleich nehmen (Entf)"
-            aria-label="Aus dem Vergleich nehmen"
+            title={t("Aus dem Vergleich nehmen (Entf)")}
+            aria-label={t("Aus dem Vergleich nehmen")}
             onclick={() => lib.removeFromCompare(im.id)}
           >
             <Icon name="close" size={12} />

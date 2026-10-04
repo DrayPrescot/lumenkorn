@@ -12,6 +12,7 @@
 use crate::error::{Error, Result};
 use lumenkorn_develop::ImageF32;
 use lumenkorn_develop::repair::{Patch, PatchPart};
+use lumenkorn_develop::{i18n::tr_s, tr};
 use ort::session::Session;
 use ort::value::Tensor;
 use rayon::prelude::*;
@@ -74,8 +75,9 @@ impl Inpainter {
         let out = s.run(vec![("image", image.into_dyn()), ("mask", mask.into_dyn())])?;
         let (_, v) = out[0].try_extract_tensor::<f32>()?;
         if v.len() != 3 * n {
-            return Err(Error::ModelFormat(format!(
+            return Err(Error::ModelFormat(tr!(
                 "LaMa liefert {} Werte",
+                "LaMa returns {} values",
                 v.len()
             )));
         }
@@ -97,7 +99,9 @@ impl Inpainter {
         let long = w.max(h);
         let sel: Vec<bool> = alpha.par_iter().map(|a| *a > 0.3).collect();
         if !sel.iter().any(|b| *b) {
-            return Err(Error::ModelFormat("Die Auswahl ist leer".into()));
+            return Err(Error::ModelFormat(
+                tr_s("Die Auswahl ist leer", "The selection is empty").into(),
+            ));
         }
         // Etwas erweitern: Schatten und Säume am Rand gehören meist dazu.
         let grow = (long / 400).max(3);

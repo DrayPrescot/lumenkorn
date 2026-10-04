@@ -8,6 +8,7 @@
 //! sich der Platz.
 
 use crate::error::{Error, Result};
+use crate::i18n::tr_s;
 use crate::image_f32::ImageF32;
 use half::f16;
 use std::io::{BufReader, BufWriter, Read, Write};
@@ -52,7 +53,13 @@ pub fn read(path: &Path, max_edge: Option<usize>) -> Result<ImageF32> {
     let mut head = [0u8; 16];
     f.read_exact(&mut head)?;
     if &head[0..4] != MAGIC {
-        return Err(Error::Params("keine entrauschte Lumenkorn-Datei".into()));
+        return Err(Error::Params(
+            tr_s(
+                "keine entrauschte Lumenkorn-Datei",
+                "not a denoised Lumenkorn file",
+            )
+            .into(),
+        ));
     }
     let w = u32::from_le_bytes(head[8..12].try_into().unwrap()) as usize;
     let h = u32::from_le_bytes(head[12..16].try_into().unwrap()) as usize;
@@ -62,7 +69,9 @@ pub fn read(path: &Path, max_edge: Option<usize>) -> Result<ImageF32> {
         .checked_mul(h)
         .and_then(|n| n.checked_mul(6))
         .filter(|n| *n <= len.saturating_sub(16))
-        .ok_or_else(|| Error::Params("entrauschte Datei beschädigt".into()))?;
+        .ok_or_else(|| {
+            Error::Params(tr_s("entrauschte Datei beschädigt", "denoised file corrupted").into())
+        })?;
     let mut raw = vec![0u8; bytes];
     f.read_exact(&mut raw)?;
     let data = raw

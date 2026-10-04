@@ -7,6 +7,7 @@ use lumenkorn_ai::inpaint::{self, Inpainter};
 use lumenkorn_ai::models;
 use lumenkorn_core::Error;
 use lumenkorn_core::formats::ImageKind;
+use lumenkorn_develop::i18n::tr_s;
 use lumenkorn_develop::{DenoiseRef, MaskLayer, MaskShape, Source};
 use serde::Serialize;
 use std::path::Path;
@@ -30,7 +31,11 @@ fn inpainter(state: &AppState) -> Result<Arc<Inpainter>, Error> {
     state.usage.touch(crate::memory::Slot::Interactive);
     if !models::status(&state.data_dir).repair_ready {
         return Err(Error::Invalid(
-            "Die KI-Reparatur ist noch nicht installiert. Lade sie über „KI“ unten links.".into(),
+            tr_s(
+                "Die KI-Reparatur ist noch nicht installiert. Lade sie über „KI“ unten links.",
+                "AI repair is not installed yet. Download it via “AI” at the bottom left.",
+            )
+            .into(),
         ));
     }
     let mut g = state.repair.model.lock().unwrap();
@@ -38,7 +43,7 @@ fn inpainter(state: &AppState) -> Result<Arc<Inpainter>, Error> {
         return Ok(m.clone());
     }
     ensure_runtime(state)?;
-    let _guard = model_guard(state, "LaMa (Reparatur)");
+    let _guard = model_guard(state, tr_s("LaMa (Reparatur)", "LaMa (repair)"));
     let m = Arc::new(
         Inpainter::load(&models::repair_dir(&state.data_dir).join(inpaint::MODEL_FILE))
             .map_err(err)?,
@@ -77,7 +82,13 @@ pub async fn repair_compute(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app2.state::<AppState>();
         if state.repair.busy.swap(true, Ordering::SeqCst) {
-            return Err(Error::Invalid("Es läuft bereits eine Reparatur.".into()));
+            return Err(Error::Invalid(
+                tr_s(
+                    "Es läuft bereits eine Reparatur.",
+                    "A repair is already running.",
+                )
+                .into(),
+            ));
         }
         state.repair.cancel.store(false, Ordering::SeqCst);
         let res = compute(&app2, &state, image_id, shapes, denoise);
@@ -136,7 +147,7 @@ fn compute(
         );
     };
     let patch = {
-        let _g = analysis_guard(state, "Reparatur");
+        let _g = analysis_guard(state, tr_s("Reparatur", "Repair"));
         model
             .repair(&src.image, &alpha, &progress, &state.repair.cancel)
             .map_err(err)?

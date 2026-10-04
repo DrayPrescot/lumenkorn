@@ -19,6 +19,7 @@
 use super::align::{self, Features, Mat3};
 use super::{Loader, Progress, check};
 use crate::error::{Error, Result};
+use crate::i18n::tr_s;
 use crate::image_f32::ImageF32;
 use rayon::prelude::*;
 use std::sync::atomic::AtomicBool;
@@ -63,7 +64,11 @@ pub fn merge(
 ) -> Result<ImageF32> {
     if n < 2 {
         return Err(Error::Params(
-            "Für HDR mindestens zwei Belichtungen wählen".into(),
+            tr_s(
+                "Für HDR mindestens zwei Belichtungen wählen",
+                "Select at least two exposures for HDR",
+            )
+            .into(),
         ));
     }
     // --- 1. Laden, Merkmale, mittlere Helligkeit --------------------------------
@@ -76,13 +81,17 @@ pub fn merge(
     let mut size = (0, 0);
     for i in 0..n {
         check(cancel)?;
-        progress("Bilder laden", i, n);
+        progress(tr_s("Bilder laden", "Loading images"), i, n);
         let img = load(i)?;
         if i == 0 {
             size = (img.width, img.height);
         } else if (img.width, img.height) != size {
             return Err(Error::Params(
-                "Die Belichtungsreihe muss aus gleich großen Fotos bestehen".into(),
+                tr_s(
+                    "Die Belichtungsreihe muss aus gleich großen Fotos bestehen",
+                    "The bracketed series must consist of photos of the same size",
+                )
+                .into(),
             ));
         }
         feats.push(align::features(&img, 1200, 2000));
@@ -118,7 +127,7 @@ pub fn merge(
         .collect();
 
     // homs[i]: Referenzkoordinaten → Koordinaten in Bild i
-    progress("Ausrichten", 0, n);
+    progress(tr_s("Ausrichten", "Aligning"), 0, n);
     let mut homs: Vec<Mat3> = vec![align::IDENTITY; n];
     if opts.align {
         for (k, &(i, j)) in chain.iter().enumerate() {
@@ -132,19 +141,19 @@ pub fn merge(
                     .and_then(|f| align::invert(&f.h))
                     .unwrap_or(homs[j]),
             };
-            progress("Ausrichten", k + 1, n);
+            progress(tr_s("Ausrichten", "Aligning"), k + 1, n);
         }
     }
     drop(feats);
 
     // Verhältnisse in voller Auflösung messen: In verkleinerten Bildern mischen
     // sich ausgefressene mit gesunden Pixeln, das verfälscht das Verhältnis.
-    progress("Belichtung messen", 0, n);
+    progress(tr_s("Belichtung messen", "Measuring exposure"), 0, n);
     let step = ((w * h) as f64 / 300_000.0).sqrt().max(1.0) as usize;
     let mut ratio = vec![1.0f32; n];
     for (k, &(i, j)) in chain.iter().enumerate() {
         check(cancel)?;
-        progress("Belichtung messen", k, n);
+        progress(tr_s("Belichtung messen", "Measuring exposure"), k, n);
         // Ohne Kopie, wenn beide im Speicher liegen
         let (li, lj);
         let img_i: &ImageF32 = match &full[i] {
@@ -178,8 +187,11 @@ pub fn merge(
             .collect();
         if q.len() < 50 {
             return Err(Error::Params(
-                "Die Belichtungen überlappen sich kaum – ist das wirklich eine Reihe? (Abstand höchstens ~3 EV)"
-                    .into(),
+                tr_s(
+                    "Die Belichtungen überlappen sich kaum – ist das wirklich eine Reihe? (Abstand höchstens ~3 EV)",
+                    "The exposures barely overlap – is this really a bracketed series? (spacing at most ~3 EV)",
+                )
+                .into(),
             ));
         }
         let mid = q.len() / 2;
@@ -200,7 +212,7 @@ pub fn merge(
     };
     for (step, &i) in order.iter().enumerate() {
         check(cancel)?;
-        progress("Zusammenführen", step, n);
+        progress(tr_s("Zusammenführen", "Merging"), step, n);
         let owned: Option<ImageF32> = if i == r {
             None
         } else {
@@ -252,7 +264,7 @@ pub fn merge(
         }
     }
 
-    progress("Zusammenführen", n, n);
+    progress(tr_s("Zusammenführen", "Merging"), n, n);
     let mut fetch = |i: usize| -> Result<Option<ImageF32>> {
         if i == r {
             return Ok(None);

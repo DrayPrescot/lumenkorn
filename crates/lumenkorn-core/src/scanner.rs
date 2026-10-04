@@ -10,6 +10,7 @@ use crate::error::{Error, Result};
 use crate::formats::{self, ImageKind};
 use crate::metadata;
 use crate::model::{ScanPhase, ScanProgress, ScanReport};
+use lumenkorn_develop::{i18n::tr_s, tr};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -72,7 +73,7 @@ pub const EXPORT_MARKER: &str = ".lumenkorn-export";
 pub fn export_dir_for(photo: &Path) -> std::io::Result<PathBuf> {
     let dir = photo
         .parent()
-        .ok_or_else(|| std::io::Error::other("Foto ohne Ordner"))?
+        .ok_or_else(|| std::io::Error::other(tr_s("Foto ohne Ordner", "Photo without folder")))?
         .join("Export");
     if !dir.is_dir() {
         std::fs::create_dir_all(&dir)?;
@@ -113,8 +114,9 @@ fn ensure_online(root: &Path) -> Result<()> {
     if root.is_dir() {
         Ok(())
     } else {
-        Err(Error::NotFound(format!(
+        Err(Error::NotFound(tr!(
             "Quellordner nicht erreichbar: {} (Laufwerk getrennt?)",
+            "Source folder not reachable: {} (drive disconnected?)",
             root.display()
         )))
     }

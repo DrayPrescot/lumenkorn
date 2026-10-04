@@ -7,6 +7,7 @@ use crate::metadata::Metadata;
 use crate::model::*;
 use crate::paths::{self, SEP};
 use lumenkorn_develop::DevelopParams;
+use lumenkorn_develop::{i18n::tr_s, tr};
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, Row, params, params_from_iter};
 use std::collections::BTreeMap;
@@ -376,8 +377,9 @@ impl Catalog {
 
     pub fn add_root(&self, path: &Path) -> Result<Root> {
         if !path.is_dir() {
-            return Err(Error::Invalid(format!(
+            return Err(Error::Invalid(tr!(
                 "{} ist kein Ordner",
+                "{} is not a folder",
                 path.display()
             )));
         }
@@ -386,14 +388,16 @@ impl Catalog {
         // Verschachtelte Quellordner würden Bilder doppelt erfassen.
         for r in self.roots()? {
             if paths::is_within(&p, &r.path) {
-                return Err(Error::Invalid(format!(
+                return Err(Error::Invalid(tr!(
                     "{p} liegt bereits in Quellordner {}",
+                    "{p} is already inside source folder {}",
                     r.path
                 )));
             }
             if paths::is_within(&r.path, &p) {
-                return Err(Error::Invalid(format!(
+                return Err(Error::Invalid(tr!(
                     "{p} enthält den bestehenden Quellordner {}. Bitte diesen zuerst entfernen.",
+                    "{p} contains the existing source folder {}. Please remove it first.",
                     r.path
                 )));
             }
@@ -410,7 +414,10 @@ impl Catalog {
     pub fn remove_root(&self, id: i64) -> Result<()> {
         let n = self.conn.execute("DELETE FROM roots WHERE id = ?1", [id])?;
         if n == 0 {
-            return Err(Error::NotFound(format!("Quellordner {id}")));
+            return Err(Error::NotFound(tr!(
+                "Quellordner {id}",
+                "Source folder {id}"
+            )));
         }
         Ok(())
     }
@@ -435,7 +442,7 @@ impl Catalog {
                 root_from_row,
             )
             .optional()?
-            .ok_or_else(|| Error::NotFound(format!("Quellordner {id}")))
+            .ok_or_else(|| Error::NotFound(tr!("Quellordner {id}", "Source folder {id}")))
     }
 
     /// Ordnerbaum eines Quellordners, aufgebaut aus den Ordnern mit Bildern.
@@ -803,7 +810,7 @@ impl Catalog {
                 },
             )
             .optional()?
-            .ok_or_else(|| Error::NotFound(format!("Bild {id}")))?;
+            .ok_or_else(|| Error::NotFound(tr!("Bild {id}", "Photo {id}")))?;
         d.tags = self.image_tags(id)?;
         Ok(d)
     }
@@ -811,7 +818,11 @@ impl Catalog {
     pub fn set_rating(&self, ids: &[i64], rating: i64) -> Result<()> {
         if !(0..=5).contains(&rating) {
             return Err(Error::Invalid(
-                "Bewertung muss zwischen 0 und 5 liegen".into(),
+                tr_s(
+                    "Bewertung muss zwischen 0 und 5 liegen",
+                    "Rating must be between 0 and 5",
+                )
+                .into(),
             ));
         }
         self.update_many(ids, "rating", rating)
@@ -819,7 +830,13 @@ impl Catalog {
 
     pub fn set_flag(&self, ids: &[i64], flag: i64) -> Result<()> {
         if !(-1..=1).contains(&flag) {
-            return Err(Error::Invalid("Markierung muss -1, 0 oder 1 sein".into()));
+            return Err(Error::Invalid(
+                tr_s(
+                    "Markierung muss -1, 0 oder 1 sein",
+                    "Flag must be -1, 0 or 1",
+                )
+                .into(),
+            ));
         }
         self.update_many(ids, "flag", flag)
     }
@@ -897,7 +914,7 @@ impl Catalog {
             .prepare_cached(&format!("{THUMB_JOB_SELECT} WHERE i.id = ?1"))?
             .query_row([id], thumb_job_from_row)
             .optional()?
-            .ok_or_else(|| Error::NotFound(format!("Bild {id}")))
+            .ok_or_else(|| Error::NotFound(tr!("Bild {id}", "Photo {id}")))
     }
 
     /// Fehlgeschlagene Thumbnails erneut versuchen (z. B. nach kurzer
@@ -916,7 +933,7 @@ impl Catalog {
             .prepare_cached("SELECT root_id FROM images WHERE id = ?1")?
             .query_row([id], |r| r.get(0))
             .optional()?
-            .ok_or_else(|| Error::NotFound(format!("Bild {id}")))
+            .ok_or_else(|| Error::NotFound(tr!("Bild {id}", "Photo {id}")))
     }
 
     /// Für ein zusammengefügtes Bild (HDR, Panorama, Focus Stacking): Aufnahme-
@@ -955,7 +972,13 @@ impl Catalog {
     pub fn create_project(&self, name: &str, description: &str) -> Result<Project> {
         let name = name.trim();
         if name.is_empty() {
-            return Err(Error::Invalid("Projektname darf nicht leer sein".into()));
+            return Err(Error::Invalid(
+                tr_s(
+                    "Projektname darf nicht leer sein",
+                    "Project name must not be empty",
+                )
+                .into(),
+            ));
         }
         let t = now();
         self.conn.execute(
@@ -968,14 +991,20 @@ impl Catalog {
     pub fn update_project(&self, id: i64, name: &str, description: &str) -> Result<Project> {
         let name = name.trim();
         if name.is_empty() {
-            return Err(Error::Invalid("Projektname darf nicht leer sein".into()));
+            return Err(Error::Invalid(
+                tr_s(
+                    "Projektname darf nicht leer sein",
+                    "Project name must not be empty",
+                )
+                .into(),
+            ));
         }
         let n = self.conn.execute(
             "UPDATE projects SET name = ?2, description = ?3, updated_at = ?4 WHERE id = ?1",
             params![id, name, description, now()],
         )?;
         if n == 0 {
-            return Err(Error::NotFound(format!("Projekt {id}")));
+            return Err(Error::NotFound(tr!("Projekt {id}", "Project {id}")));
         }
         self.project(id)
     }
@@ -1052,7 +1081,7 @@ impl Catalog {
                 },
             )
             .optional()?
-            .ok_or_else(|| Error::NotFound(format!("Projekt {id}")))?;
+            .ok_or_else(|| Error::NotFound(tr!("Projekt {id}", "Project {id}")))?;
 
         let mut st = self.conn.prepare(
             "SELECT path, recursive FROM project_folders WHERE project_id = ?1 ORDER BY path",
@@ -1084,7 +1113,13 @@ impl Catalog {
     ) -> Result<()> {
         let name = name.trim();
         if name.is_empty() {
-            return Err(Error::Invalid("Schlagwort darf nicht leer sein".into()));
+            return Err(Error::Invalid(
+                tr_s(
+                    "Schlagwort darf nicht leer sein",
+                    "Keyword must not be empty",
+                )
+                .into(),
+            ));
         }
         self.conn.execute(
             "INSERT INTO tags (name) VALUES (?1) ON CONFLICT (name) DO NOTHING",
@@ -1150,9 +1185,9 @@ impl Catalog {
 
     /// Legt einen benannten Snapshot des aktuellen Zustands an.
     pub fn create_snapshot(&self, image_id: i64, name: &str) -> Result<Edit> {
-        let cur = self
-            .current_edit(image_id)?
-            .ok_or_else(|| Error::Invalid("Bild hat noch keine Bearbeitung".into()))?;
+        let cur = self.current_edit(image_id)?.ok_or_else(|| {
+            Error::Invalid(tr_s("Bild hat noch keine Bearbeitung", "Photo has no edits yet").into())
+        })?;
         let t = now();
         self.conn.execute(
             "INSERT INTO edits (image_id, name, params, is_current, created_at, updated_at)

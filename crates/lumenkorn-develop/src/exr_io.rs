@@ -52,7 +52,7 @@ pub fn write(img: &ImageF32, path: &Path, scene_linear: bool) -> Result<()> {
     Image::from_layer(layer)
         .write()
         .to_file(&tmp)
-        .map_err(|e| Error::Params(format!("EXR schreiben: {e}")))?;
+        .map_err(|e| Error::Params(crate::tr!("EXR schreiben: {e}", "Writing EXR: {e}")))?;
     std::fs::rename(&tmp, path)?;
     Ok(())
 }
@@ -80,7 +80,7 @@ pub fn read(path: &Path) -> Result<(ImageF32, bool)> {
                 [r, g, b].map(|v| if v.is_finite() { v.max(0.0) } else { 0.0 });
         },
     )
-    .map_err(|e| Error::Params(format!("EXR lesen: {e}")))?;
+    .map_err(|e| Error::Params(crate::tr!("EXR lesen: {e}", "Reading EXR: {e}")))?;
     let scene = !matches!(
         img.layer_data.attributes.other.get(&Text::from(KIND_ATTR)),
         Some(AttributeValue::Text(t)) if t.as_slice() == b"display"

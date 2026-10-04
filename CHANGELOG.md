@@ -7,6 +7,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- English user interface. Lumenkorn follows the system language; **DE / EN** at
+  the bottom left of the sidebar switches it. Backend messages, AI keywords
+  for newly analyzed photos and the Windows installers (German and English
+  MSI) follow too. `npm run i18n` checks that every text is translated.
 - People: reassign or remove a person for all selected photos at once
   (info panel → “Personen in der Auswahl”).
 - Confirm several suggested faces at once: select faces in the review

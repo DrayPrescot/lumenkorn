@@ -2,6 +2,7 @@
 // Erzeugt eine Beispielbibliothek mit Platzhalterbildern.
 
 import { DEFAULT_PARAMS, transferParams } from "./api";
+import { t } from "./i18n";
 import type { DevelopParams, Edit, FolderNode, ImageDetail, ImageQuery, ImageSummary, ImageTag, Project, Root } from "./api";
 
 type Img = ImageDetail & { rootId: number; hue: number; edit?: DevelopParams; snapshots: Edit[] };
@@ -177,12 +178,14 @@ export const mock = {
   async invoke<T>(cmd: string, a: Record<string, any> = {}): Promise<T> {
     const out = (v: unknown) => delay(v) as Promise<T>;
     switch (cmd) {
+      case "set_language":
+        return out(null);
       case "app_info":
         return out({ version: "0.1.0", platform: "browser", dataDir: "(Mock)" });
       case "list_roots":
         return out(roots.map((r) => ({ ...r, imageCount: images.filter((i) => i.rootId === r.id).length })));
       case "add_root":
-        throw "Im Browser-Modus können keine Ordner hinzugefügt werden. Starte die App mit `npm run tauri dev`.";
+        throw t("Im Browser-Modus können keine Ordner hinzugefügt werden. Starte die App mit `npm run tauri dev`.");
       case "remove_root":
       case "rescan_root":
         return out(null);
@@ -290,22 +293,22 @@ export const mock = {
         await new Promise((r) => setTimeout(r, 600));
         return out({ maskId: a.maskId ?? `mock-${Date.now()}`, coverage: 0.3 });
       case "denoise_start":
-        throw "Rauschreduzierung ist nur in der App verfügbar.";
+        throw t("Rauschreduzierung ist nur in der App verfügbar.");
       case "denoise_cancel":
       case "merge_cancel":
         return out(null);
       case "merge_start":
-        throw "Zusammenfügen ist nur in der App verfügbar.";
+        throw t("Zusammenfügen ist nur in der App verfügbar.");
       case "ai_set_settings":
       case "ai_retag_all":
       case "ai_cancel_download":
         return out(null);
       case "ai_download":
-        throw "Downloads sind nur in der App verfügbar.";
+        throw t("Downloads sind nur in der App verfügbar.");
       case "semantic_search":
         return out(query({ scope: a.scope, search: a.query, minRating: a.minRating }));
       case "export_images":
-        throw "Export ist nur in der App verfügbar.";
+        throw t("Export ist nur in der App verfügbar.");
       case "set_rating":
         images.filter((i) => a.ids.includes(i.id)).forEach((i) => (i.rating = a.rating));
         return out(null);
@@ -359,7 +362,7 @@ export const mock = {
         return out(withCount(p));
       }
     }
-    throw `Unbekannter Befehl ${cmd}`;
+    throw t("Unbekannter Befehl {cmd}", { cmd });
   },
 
   listen(_event: string, _cb: (p: unknown) => void) {

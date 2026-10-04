@@ -20,7 +20,9 @@ pub type Loader<'a> = &'a (dyn Fn(usize) -> Result<ImageF32> + Sync);
 
 pub(crate) fn check(cancel: &AtomicBool) -> Result<()> {
     if cancel.load(Ordering::Relaxed) {
-        Err(Error::Params("Abgebrochen".into()))
+        Err(Error::Params(
+            crate::i18n::tr_s("Abgebrochen", "Canceled").into(),
+        ))
     } else {
         Ok(())
     }

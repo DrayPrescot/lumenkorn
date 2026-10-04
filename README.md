@@ -23,7 +23,8 @@ and uses the GPU (AMD, NVIDIA, Intel) through Vulkan or DirectX 12 where availab
 
 > [!NOTE]
 > **Early stage.** Lumenkorn is under active development (version 0.1).
-> The user interface is currently **German only**; an English translation is planned.
+> The user interface is available in **English and German**. It follows the system language and can be
+> switched at the bottom left of the sidebar (DE / EN).
 > Back up your photos as you would with any new tool. Lumenkorn never modifies your originals.
 
 ## Features
@@ -203,7 +204,6 @@ The three crates do not depend on Tauri, so everything can be tested without a G
   are verified by SHA-256 where the source publishes fixed files.
 
 ## Roadmap
-- English user interface (internationalization).
 - XMP sidecars, hierarchical keywords, and a multilingual text model for search.
 - Luminance range masks, and transferring masks between photos.
 - Further GPU tuning based on measurements on real hardware.
@@ -217,7 +217,16 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 npm run check
+npm run i18n               # every UI text has an English translation
 ```
+
+### Translations
+UI texts are written in German in the source and serve as their own keys:
+`t("Ordner hinzufügen")` shows "Add folder" in English. The English texts live in
+`src/lib/i18n/en/*.ts` (one file per area). For German words with several meanings, `tc("context", "…")`
+looks up `"context|…"` instead. Backend messages use `tr!("deutsch", "english")` from
+`lumenkorn_develop`. `npm run i18n` (also run in CI) reports missing translations and mismatched
+placeholders.
 
 ## License
 

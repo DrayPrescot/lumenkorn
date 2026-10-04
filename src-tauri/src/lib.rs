@@ -59,6 +59,10 @@ pub fn run() {
             }
             std::fs::create_dir_all(&data_dir)?;
             logfile::open(&data_dir);
+            // Zuletzt gewählte Sprache, bis die Oberfläche sie meldet
+            if let Ok(l) = std::fs::read_to_string(language_file(&data_dir)) {
+                lumenkorn_develop::i18n::set_english(l.trim() == "en");
+            }
             let catalog = Arc::new(Mutex::new(Catalog::open(&data_dir.join("katalog.db"))?));
             let masks = Arc::new(MaskFiles::new(data_dir.join("masken")));
             let repairs = Arc::new(lumenkorn_develop::repair::RepairFiles::new(
@@ -128,6 +132,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            commands::set_language,
             commands::list_roots,
             commands::add_root,
             commands::remove_root,
@@ -248,6 +253,11 @@ fn start_watcher(
 }
 
 /// Kennung der App vor der Umbenennung in Lumenkorn
+/// Datei mit der zuletzt gewählten Sprache („de“ oder „en“).
+pub(crate) fn language_file(data_dir: &std::path::Path) -> PathBuf {
+    data_dir.join("sprache")
+}
+
 const PREVIOUS_IDENTIFIER: &str = "de.lichtwerk.app";
 
 /// Übernimmt einen Ordner der früheren App-Kennung (gleicher übergeordneter

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { FolderNode } from "../lib/api";
   import { lib } from "../lib/store.svelte";
+  import { t } from "../lib/i18n";
   import Icon from "./Icon.svelte";
   import FolderTree from "./FolderTree.svelte";
 
@@ -48,17 +49,17 @@
     }}
   >
     {#if node.children.length}
-      <button class="twisty" class:open aria-label={open ? "Zuklappen" : "Aufklappen"} onclick={() => (open = !open)}>
+      <button class="twisty" class:open aria-label={open ? t("Zuklappen") : t("Aufklappen")} onclick={() => (open = !open)}>
         <Icon name="chevron" size={12} />
       </button>
     {:else}
       <span class="twisty"></span>
     {/if}
-    <button class="label" title="{node.path}&#10;Strg-/Umschalt-Klick wählt mehrere Ordner" {onclick}>
+    <button class="label" title={`${node.path}\n${t("Strg-/Umschalt-Klick wählt mehrere Ordner")}`} {onclick}>
       <span class="name">{node.name}</span>
       <span class="count">{node.total}</span>
     </button>
-    <button class="more" aria-label="Zu Projekt hinzufügen" title="Zu Projekt hinzufügen" onclick={(e) => oncontext(node, e)}>
+    <button class="more" aria-label={t("Zu Projekt hinzufügen")} title={t("Zu Projekt hinzufügen")} onclick={(e) => oncontext(node, e)}>
       <Icon name="stack" size={13} />
     </button>
   </div>

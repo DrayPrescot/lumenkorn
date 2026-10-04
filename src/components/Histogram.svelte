@@ -1,6 +1,8 @@
 <script lang="ts">
   // Histogramm der aktuellen Vorschau. Wird im Browser aus dem gerenderten Bild
   // berechnet – auf einer verkleinerten Kopie, das reicht für die Form völlig.
+  import { t, locale } from "../lib/i18n";
+
   let { src }: { src: string | null } = $props();
 
   let canvas: HTMLCanvasElement;
@@ -67,14 +69,14 @@
     ctx.globalCompositeOperation = "source-over";
   }
 
-  const pct = (v: number) => (v * 100).toLocaleString("de-DE", { maximumFractionDigits: 1 });
+  const pct = (v: number) => (v * 100).toLocaleString(locale, { maximumFractionDigits: 1 });
 </script>
 
 <figure>
-  <canvas bind:this={canvas} width={W} height={H} aria-label="Histogramm"></canvas>
+  <canvas bind:this={canvas} width={W} height={H} aria-label={t("Histogramm")}></canvas>
   <figcaption>
-    <span class:warn={clipLow > 0.01} title="Anteil reiner Schwarztöne">Schwarz {pct(clipLow)} %</span>
-    <span class:warn={clipHigh > 0.01} title="Anteil ausgebrannter Lichter">Lichter {pct(clipHigh)} %</span>
+    <span class:warn={clipLow > 0.01} title={t("Anteil reiner Schwarztöne")}>{t("Schwarz {p} %", { p: pct(clipLow) })}</span>
+    <span class:warn={clipHigh > 0.01} title={t("Anteil ausgebrannter Lichter")}>{t("Lichter {p} %", { p: pct(clipHigh) })}</span>
   </figcaption>
 </figure>
 

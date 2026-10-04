@@ -11,6 +11,7 @@
   import { frameSize } from "../lib/frame";
   import { api } from "../lib/api";
   import { untrack } from "svelte";
+  import { t, locale } from "../lib/i18n";
 
   let { onexport }: { onexport: () => void } = $props();
 
@@ -26,37 +27,41 @@
     track?: string;
   }
 
-  const groups: { title: string; sliders: Def[] }[] = [
+  const groups: { id: string; title: string; sliders: Def[] }[] = [
     {
-      title: "Weißabgleich",
+      id: "wb",
+      title: t("Weißabgleich"),
       sliders: [
-        { key: "temperature", label: "Temperatur", min: -100, max: 100, track: "linear-gradient(to right, #4f78c4, #8a8a8a, #d6b04a)" },
-        { key: "tint", label: "Tönung", min: -100, max: 100, track: "linear-gradient(to right, #5aa35a, #8a8a8a, #b65aa8)" },
+        { key: "temperature", label: t("Temperatur"), min: -100, max: 100, track: "linear-gradient(to right, #4f78c4, #8a8a8a, #d6b04a)" },
+        { key: "tint", label: t("Tönung"), min: -100, max: 100, track: "linear-gradient(to right, #5aa35a, #8a8a8a, #b65aa8)" },
       ],
     },
     {
-      title: "Licht",
+      id: "light",
+      title: t("Licht"),
       sliders: [
-        { key: "exposure", label: "Belichtung", min: -5, max: 5, step: 0.05, decimals: 2 },
-        { key: "contrast", label: "Kontrast", min: -100, max: 100 },
-        { key: "highlights", label: "Lichter", min: -100, max: 100 },
-        { key: "shadows", label: "Tiefen", min: -100, max: 100 },
-        { key: "whites", label: "Weiß", min: -100, max: 100 },
-        { key: "blacks", label: "Schwarz", min: -100, max: 100 },
+        { key: "exposure", label: t("Belichtung"), min: -5, max: 5, step: 0.05, decimals: 2 },
+        { key: "contrast", label: t("Kontrast"), min: -100, max: 100 },
+        { key: "highlights", label: t("Lichter"), min: -100, max: 100 },
+        { key: "shadows", label: t("Tiefen"), min: -100, max: 100 },
+        { key: "whites", label: t("Weiß"), min: -100, max: 100 },
+        { key: "blacks", label: t("Schwarz"), min: -100, max: 100 },
       ],
     },
     {
-      title: "Farbe",
+      id: "color",
+      title: t("Farbe"),
       sliders: [
-        { key: "vibrance", label: "Dynamik", min: -100, max: 100 },
-        { key: "saturation", label: "Sättigung", min: -100, max: 100 },
+        { key: "vibrance", label: t("Dynamik"), min: -100, max: 100 },
+        { key: "saturation", label: t("Sättigung"), min: -100, max: 100 },
       ],
     },
     {
-      title: "Details",
+      id: "details",
+      title: t("Details"),
       sliders: [
-        { key: "clarity", label: "Klarheit", min: -100, max: 100 },
-        { key: "sharpen", label: "Schärfen", min: 0, max: 150 },
+        { key: "clarity", label: t("Klarheit"), min: -100, max: 100 },
+        { key: "sharpen", label: t("Schärfen"), min: 0, max: 150 },
       ],
     },
   ];
@@ -65,19 +70,19 @@
   const running = $derived(!!dev.denoising && dev.denoising.imageId === dev.imageId);
 
   // Seitenverhältnisse als Breite/Höhe; „Original“ = Verhältnis des Rahmens
-  const aspects: { label: string; value: number | null | "orig" }[] = [
-    { label: "Frei", value: null },
-    { label: "Original", value: "orig" },
-    { label: "1:1", value: 1 },
-    { label: "4:5", value: 4 / 5 },
-    { label: "3:2", value: 3 / 2 },
-    { label: "16:9", value: 16 / 9 },
+  const aspects: { key: string; label: string; value: number | null | "orig" }[] = [
+    { key: "free", label: t("Frei"), value: null },
+    { key: "orig", label: t("Original"), value: "orig" },
+    { key: "1:1", label: "1:1", value: 1 },
+    { key: "4:5", label: "4:5", value: 4 / 5 },
+    { key: "3:2", label: "3:2", value: 3 / 2 },
+    { key: "16:9", label: "16:9", value: 16 / 9 },
   ];
-  let aspectKey = $state("Original");
+  let aspectKey = $state("orig");
   const frame = $derived(frameSize(dev.params, [dev.fullSize[0] || 1, dev.fullSize[1] || 1]));
 
   function setAspect(a: (typeof aspects)[number]) {
-    aspectKey = a.label;
+    aspectKey = a.key;
     const v = a.value === "orig" ? frame[0] / frame[1] : a.value;
     dev.setAspect(v, frame);
   }
@@ -89,10 +94,10 @@
   // --- Reiter ----------------------------------------------------------------
   type Tab = "basic" | "masks" | "repair" | "crop";
   const tabs: { id: Tab; label: string; title: string }[] = [
-    { id: "basic", label: "Basis", title: "Licht, Farbe, Details, Rauschreduzierung" },
-    { id: "masks", label: "Masken", title: "Lokale Anpassungen" },
-    { id: "repair", label: "Reparatur", title: "Störendes mit KI entfernen" },
-    { id: "crop", label: "Zuschnitt", title: "Zuschneiden, Geraderichten, Drehen (R)" },
+    { id: "basic", label: t("Basis"), title: t("Licht, Farbe, Details, Rauschreduzierung") },
+    { id: "masks", label: t("Masken"), title: t("Lokale Anpassungen") },
+    { id: "repair", label: t("Reparatur"), title: t("Störendes mit KI entfernen") },
+    { id: "crop", label: t("Zuschnitt"), title: t("Zuschneiden, Geraderichten, Drehen (R)") },
   ];
 
   function setTab(t: Tab) {
@@ -136,14 +141,14 @@
       const orig = frame[0] / frame[1];
       const r = c ? (c.w * frame[0]) / (c.h * frame[1]) : orig;
       const near = (v: number) => Math.abs(r / v - 1) < 0.01;
-      let key = "Frei";
+      let key = "free";
       let lock: number | null = null;
-      if (near(orig)) [key, lock] = ["Original", orig];
+      if (near(orig)) [key, lock] = ["orig", orig];
       else {
         for (const a of aspects) {
           if (typeof a.value !== "number") continue;
-          if (near(a.value)) [key, lock] = [a.label, a.value];
-          else if (near(1 / a.value)) [key, lock] = [a.label, 1 / a.value];
+          if (near(a.value)) [key, lock] = [a.key, a.value];
+          else if (near(1 / a.value)) [key, lock] = [a.key, 1 / a.value];
           if (lock) break;
         }
       }
@@ -169,7 +174,7 @@
     {/if}
   </section>
 
-  <div class="tabs" role="tablist" aria-label="Bearbeitung">
+  <div class="tabs" role="tablist" aria-label={t("Bearbeitung")}>
     {#each tabs as t (t.id)}
       <button role="tab" aria-selected={dev.tab === t.id} class:on={dev.tab === t.id} title={t.title} onclick={() => setTab(t.id)}>
         {t.label}{#if t.id === "masks" && dev.params.masks.length}<span class="count">{dev.params.masks.length}</span>{/if}{#if t.id === "repair" && dev.params.repairs.length}<span class="count">{dev.params.repairs.length}</span>{/if}
@@ -184,7 +189,7 @@
   {:else if dev.tab === "crop"}
     {@render cropSection()}
   {:else}
-    {#each groups as g (g.title)}
+    {#each groups as g (g.id)}
       <details open>
         <summary tabindex="-1">{g.title}</summary>
         <div class="sliders">
@@ -202,30 +207,30 @@
             />
           {/each}
         </div>
-        {#if g.title === "Details"}
+        {#if g.id === "details"}
           {@render denoiseSection()}
         {/if}
       </details>
-      {#if g.title === "Farbe"}
+      {#if g.id === "color"}
         <HslSection />
       {/if}
     {/each}
 
     <details>
-      <summary>Schnappschüsse {dev.snapshots.length ? `(${dev.snapshots.length})` : ""}</summary>
+      <summary>{t("Schnappschüsse")} {dev.snapshots.length ? `(${dev.snapshots.length})` : ""}</summary>
       <form class="snap" onsubmit={(e) => { e.preventDefault(); dev.snapshot(snapName); snapName = ""; }}>
-        <input type="text" placeholder="Name, z. B. Schwarzweiß" bind:value={snapName} onkeydown={(e) => e.stopPropagation()} />
-        <button class="btn" type="submit" disabled={dev.isDefault}>Festhalten</button>
+        <input type="text" placeholder={t("Name, z. B. Schwarzweiß")} bind:value={snapName} onkeydown={(e) => e.stopPropagation()} />
+        <button class="btn" type="submit" disabled={dev.isDefault}>{t("Festhalten")}</button>
       </form>
       <ul class="snaps">
         {#each dev.snapshots as s (s.id)}
           <li>
-            <button class="name" onclick={() => dev.restore(s)} title="Diesen Stand übernehmen">{s.name}</button>
-            <span class="when">{new Date(s.createdAt * 1000).toLocaleDateString("de-DE", { day: "numeric", month: "short" })}</span>
-            <button class="icon-btn" aria-label="Schnappschuss löschen" onclick={() => dev.deleteSnapshot(s)}><Icon name="close" size={12} /></button>
+            <button class="name" onclick={() => dev.restore(s)} title={t("Diesen Stand übernehmen")}>{s.name}</button>
+            <span class="when">{new Date(s.createdAt * 1000).toLocaleDateString(locale, { day: "numeric", month: "short" })}</span>
+            <button class="icon-btn" aria-label={t("Schnappschuss löschen")} onclick={() => dev.deleteSnapshot(s)}><Icon name="close" size={12} /></button>
           </li>
         {:else}
-          <li class="empty">Hält den aktuellen Stand fest, um später dorthin zurückzukehren.</li>
+          <li class="empty">{t("Hält den aktuellen Stand fest, um später dorthin zurückzukehren.")}</li>
         {/each}
       </ul>
     </details>
@@ -233,30 +238,30 @@
 
   <footer>
     <div class="row">
-      <button class="btn" disabled={dev.isDefault} onclick={() => dev.reset()} title="Alle Regler zurücksetzen">Zurücksetzen</button>
+      <button class="btn" disabled={dev.isDefault} onclick={() => dev.reset()} title={t("Alle Regler zurücksetzen")}>{t("Zurücksetzen")}</button>
     </div>
-    <button class="btn primary wide" onclick={onexport}>Exportieren …</button>
+    <button class="btn primary wide" onclick={onexport}>{t("Exportieren …")}</button>
   </footer>
 </aside>
 
 {#snippet denoiseSection()}
   <div class="denoise">
     <div class="dn-head">
-      <span class="dn-title">Rauschreduzierung <span class="ki">KI</span></span>
+      <span class="dn-title">{t("Rauschreduzierung")} <span class="ki">{t("KI")}</span></span>
       {#if dev.params.denoise && !running}
-        <button class="icon-btn" aria-label="Rauschreduzierung entfernen" title="Entfernen" onclick={() => dev.removeDenoise()}><Icon name="close" size={12} /></button>
+        <button class="icon-btn" aria-label={t("Rauschreduzierung entfernen")} title={t("Entfernen")} onclick={() => dev.removeDenoise()}><Icon name="close" size={12} /></button>
       {/if}
     </div>
     {#if running}
       {@const d = dev.denoising!}
       <p class="dn-note">
-        {d.total ? `Kachel ${d.done} von ${d.total}` : "Wird vorbereitet …"} – läuft im Hintergrund weiter.
+        {d.total ? t("Kachel {done} von {total}", { done: d.done, total: d.total }) : t("Wird vorbereitet …")} {t("– läuft im Hintergrund weiter.")}
       </p>
       <progress max={d.total || 1} value={d.done}></progress>
-      <button class="btn small" onclick={() => api.denoiseCancel()}>Abbrechen</button>
+      <button class="btn small" onclick={() => api.denoiseCancel()}>{t("Abbrechen")}</button>
     {:else if dev.params.denoise}
       <Slider
-        label="Mischung"
+        label={t("Mischung")}
         value={dev.params.denoise.amount}
         min={0}
         max={100}
@@ -265,18 +270,18 @@
         oncommit={() => dev.commit()}
       />
       <div class="dn-again">
-        <Slider label="Stärke" value={dev.denoiseStrength} min={0} max={100} neutral={50} oninput={(v) => (dev.denoiseStrength = v)} oncommit={() => {}} />
-        <button class="btn small" onclick={() => dev.startDenoise()} title="Mit dieser Stärke neu berechnen">Neu berechnen</button>
+        <Slider label={t("Stärke")} value={dev.denoiseStrength} min={0} max={100} neutral={50} oninput={(v) => (dev.denoiseStrength = v)} oncommit={() => {}} />
+        <button class="btn small" onclick={() => dev.startDenoise()} title={t("Mit dieser Stärke neu berechnen")}>{t("Neu berechnen")}</button>
       </div>
     {:else if !lib.ai?.denoiseReady}
-      <p class="dn-note">Entfernt Bildrauschen mit DRUNet, ohne Details zu verwischen. Benötigt einmalig etwa {Math.round((lib.ai?.denoiseDownloadSize ?? 131e6) / 1e6)} MB.</p>
+      <p class="dn-note">{t("Entfernt Bildrauschen mit DRUNet, ohne Details zu verwischen. Benötigt einmalig etwa {n} MB.", { n: Math.round((lib.ai?.denoiseDownloadSize ?? 131e6) / 1e6) })}</p>
       <button class="btn small" disabled={!!lib.aiDownload} onclick={() => api.aiDownload("denoise").then(() => lib.refreshAi())}>
-        {lib.aiDownload ? "Wird geladen …" : "Herunterladen"}
+        {lib.aiDownload ? t("Wird geladen …") : t("Herunterladen")}
       </button>
     {:else}
-      <Slider label="Stärke" value={dev.denoiseStrength} min={0} max={100} neutral={50} oninput={(v) => (dev.denoiseStrength = v)} oncommit={() => {}} />
-      <p class="dn-note">Berechnet das Foto in voller Auflösung – je nach Größe und Rechner eine bis mehrere Minuten. Danach lässt sich die Wirkung ohne Neuberechnung abschwächen.</p>
-      <button class="btn small" disabled={!!dev.denoising} onclick={() => dev.startDenoise()}>Entrauschen</button>
+      <Slider label={t("Stärke")} value={dev.denoiseStrength} min={0} max={100} neutral={50} oninput={(v) => (dev.denoiseStrength = v)} oncommit={() => {}} />
+      <p class="dn-note">{t("Berechnet das Foto in voller Auflösung – je nach Größe und Rechner eine bis mehrere Minuten. Danach lässt sich die Wirkung ohne Neuberechnung abschwächen.")}</p>
+      <button class="btn small" disabled={!!dev.denoising} onclick={() => dev.startDenoise()}>{t("Entrauschen")}</button>
     {/if}
   </div>
 {/snippet}
@@ -285,24 +290,24 @@
   <section class="crop">
     <div class="row">
       {#if dev.cropMode}
-        <button class="btn primary" onclick={() => dev.applyCrop()} title="Übernehmen (Enter)">Fertig</button>
-        <button class="btn quiet" onclick={() => dev.cancelCrop()} title="Abbrechen (Esc)">Abbrechen</button>
+        <button class="btn primary" onclick={() => dev.applyCrop()} title={t("Übernehmen (Enter)")}>{t("Fertig")}</button>
+        <button class="btn quiet" onclick={() => dev.cancelCrop()} title={t("Abbrechen (Esc)")}>{t("Abbrechen")}</button>
       {:else}
-        <button class="btn" onclick={() => dev.enterCrop()} title="Zuschneiden (R)">Zuschneiden</button>
+        <button class="btn" onclick={() => dev.enterCrop()} title={t("Zuschneiden (R)")}>{t("Zuschneiden")}</button>
       {/if}
-      <button class="btn quiet" disabled={!dev.params.crop && !dev.params.straighten} onclick={() => dev.resetCrop()}>Zurücksetzen</button>
+      <button class="btn quiet" disabled={!dev.params.crop && !dev.params.straighten} onclick={() => dev.resetCrop()}>{t("Zurücksetzen")}</button>
     </div>
     {#if dev.cropMode}
-      <div class="aspects" role="group" aria-label="Seitenverhältnis">
-        {#each aspects as a (a.label)}
-          <button class:on={aspectKey === a.label} onclick={() => setAspect(a)}>{a.label}</button>
+      <div class="aspects" role="group" aria-label={t("Seitenverhältnis")}>
+        {#each aspects as a (a.key)}
+          <button class:on={aspectKey === a.key} onclick={() => setAspect(a)}>{a.label}</button>
         {/each}
-        <button class="swap" title="Hoch- und Querformat tauschen" disabled={!dev.cropAspect || dev.cropAspect === 1} onclick={swapAspect}>⇄</button>
+        <button class="swap" title={t("Hoch- und Querformat tauschen")} disabled={!dev.cropAspect || dev.cropAspect === 1} onclick={swapAspect}>⇄</button>
       </div>
     {/if}
     <div class="straighten">
       <Slider
-        label="Geraderichten"
+        label={t("Geraderichten")}
         value={dev.params.straighten}
         min={-45}
         max={45}
@@ -312,17 +317,17 @@
         oninput={(v) => dev.set("straighten", v)}
         oncommit={() => { if (!dev.cropMode) dev.commit(); }}
       />
-      <button class="btn small" onclick={() => dev.autoStraighten()} title="Horizont und Kanten automatisch gerade stellen">Auto</button>
+      <button class="btn small" onclick={() => dev.autoStraighten()} title={t("Horizont und Kanten automatisch gerade stellen")}>{t("Auto")}</button>
     </div>
     <div class="row">
-      <button class="btn" onclick={() => dev.rotate(-1)} title="Links drehen ([)">↺ Links</button>
-      <button class="btn" onclick={() => dev.rotate(1)} title="Rechts drehen (])">↻ Rechts</button>
+      <button class="btn" onclick={() => dev.rotate(-1)} title={t("Links drehen ([)")}>↺ {t("Links")}</button>
+      <button class="btn" onclick={() => dev.rotate(1)} title={t("Rechts drehen (])")}>↻ {t("Rechts")}</button>
       <button
         class="btn"
         class:on={dev.params.flipHorizontal}
         onclick={() => { dev.set("flipHorizontal", !dev.params.flipHorizontal); dev.commit(); dev.renderBefore(); }}
       >
-        Spiegeln
+        {t("Spiegeln")}
       </button>
     </div>
   </section>

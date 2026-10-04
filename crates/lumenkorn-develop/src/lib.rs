@@ -29,6 +29,7 @@ mod error;
 pub mod exr_io;
 pub mod geometry;
 pub mod gpu;
+pub mod i18n;
 mod image_f32;
 mod local;
 pub mod masks;

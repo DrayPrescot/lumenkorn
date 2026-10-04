@@ -1,6 +1,7 @@
 <script lang="ts">
   import { isTauri, pickFolder, type Project } from "../lib/api";
   import { lib } from "../lib/store.svelte";
+  import { t } from "../lib/i18n";
   import Icon from "./Icon.svelte";
   import PathDialog from "./PathDialog.svelte";
 
@@ -9,7 +10,7 @@
   let confirmDelete = $state(false);
 
   async function add() {
-    const path = isTauri ? await pickFolder(`Ordner zu „${project.name}“ hinzufügen`) : null;
+    const path = isTauri ? await pickFolder(t("Ordner zu „{name}“ hinzufügen", { name: project.name })) : null;
     if (path) await lib.addFolderToProject(project.id, path, true);
     else if (!isTauri || navigator.userAgent.includes("Android")) pathDialog = true;
   }
@@ -22,42 +23,42 @@
 
 <svelte:window onclick={onclose} />
 
-<div class="pop" role="dialog" aria-label="Ordner im Projekt" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.key === "Escape" && onclose()}>
-  <p class="lead">Alle Fotos dieser Ordner gehören zu „{project.name}“, auch wenn sie später dazukommen.</p>
+<div class="pop" role="dialog" aria-label={t("Ordner im Projekt")} tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.key === "Escape" && onclose()}>
+  <p class="lead">{t("Alle Fotos dieser Ordner gehören zu „{name}“, auch wenn sie später dazukommen.", { name: project.name })}</p>
   <ul>
     {#each project.folders as f (f.path)}
       <li>
         <Icon name="folder" size={14} />
         <span class="path" title={f.path}>{short(f.path)}</span>
-        <label title="Unterordner einbeziehen">
+        <label title={t("Unterordner einbeziehen")}>
           <input type="checkbox" checked={f.recursive} onchange={(e) => lib.addFolderToProject(project.id, f.path, e.currentTarget.checked)} />
-          Unterordner
+          {t("Unterordner")}
         </label>
-        <button class="icon-btn" aria-label="Ordner aus Projekt entfernen" title="Aus Projekt entfernen" onclick={() => lib.removeFolderFromProject(project.id, f.path)}>
+        <button class="icon-btn" aria-label={t("Ordner aus Projekt entfernen")} title={t("Aus Projekt entfernen")} onclick={() => lib.removeFolderFromProject(project.id, f.path)}>
           <Icon name="close" size={13} />
         </button>
       </li>
     {:else}
-      <li class="empty">Noch keine Ordner. Füge welche hinzu oder klicke im Ordnerbaum mit rechts auf einen Ordner.</li>
+      <li class="empty">{t("Noch keine Ordner. Füge welche hinzu oder klicke im Ordnerbaum mit rechts auf einen Ordner.")}</li>
     {/each}
   </ul>
   <div class="actions">
     {#if confirmDelete}
-      <span class="muted">Projekt löschen? Fotos bleiben erhalten.</span>
-      <button class="btn quiet" onclick={() => (confirmDelete = false)}>Abbrechen</button>
-      <button class="btn danger" onclick={() => { onclose(); lib.deleteProject(project.id); }}>Löschen</button>
+      <span class="muted">{t("Projekt löschen? Fotos bleiben erhalten.")}</span>
+      <button class="btn quiet" onclick={() => (confirmDelete = false)}>{t("Abbrechen")}</button>
+      <button class="btn danger" onclick={() => { onclose(); lib.deleteProject(project.id); }}>{t("Löschen")}</button>
     {:else}
-      <button class="btn quiet" onclick={() => (confirmDelete = true)}><Icon name="trash" size={14} /> Projekt löschen</button>
+      <button class="btn quiet" onclick={() => (confirmDelete = true)}><Icon name="trash" size={14} /> {t("Projekt löschen")}</button>
       <span class="grow"></span>
-      <button class="btn primary" onclick={add}><Icon name="plus" size={14} /> Ordner hinzufügen</button>
+      <button class="btn primary" onclick={add}><Icon name="plus" size={14} /> {t("Ordner hinzufügen")}</button>
     {/if}
   </div>
 </div>
 
 {#if pathDialog}
   <PathDialog
-    title="Ordner zum Projekt hinzufügen"
-    hint="Vollständiger Pfad. Der Ordner muss in einem Ordner der Bibliothek liegen, damit Fotos erscheinen."
+    title={t("Ordner zum Projekt hinzufügen")}
+    hint={t("Vollständiger Pfad. Der Ordner muss in einem Ordner der Bibliothek liegen, damit Fotos erscheinen.")}
     onsubmit={(p) => { pathDialog = false; lib.addFolderToProject(project.id, p, true); }}
     oncancel={() => (pathDialog = false)}
   />

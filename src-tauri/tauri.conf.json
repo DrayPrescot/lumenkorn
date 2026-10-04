@@ -45,6 +45,14 @@
     "publisher": "DrayPrescot",
     "copyright": "Copyright © 2026 DrayPrescot and the Lumenkorn contributors",
     "license": "MIT OR Apache-2.0",
-    "longDescription": "Lumenkorn manages photo folders in place, develops RAW files non-destructively and runs its AI features (keywords, search, masks, noise reduction, repair, people) entirely on your computer."
+    "longDescription": "Lumenkorn manages photo folders in place, develops RAW files non-destructively and runs its AI features (keywords, search, masks, noise reduction, repair, people) entirely on your computer.",
+    "windows": {
+      "wix": {
+        "language": [
+          "de-DE",
+          "en-US"
+        ]
+      }
+    }
   }
 }

@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { api, faceUrl, isTauri, pickFolder, type FolderNode, type Root } from "../lib/api";
   import { lib, topFolders } from "../lib/store.svelte";
+  import { lang, setLang, t, tc } from "../lib/i18n";
   import FolderTree from "./FolderTree.svelte";
   import Icon from "./Icon.svelte";
   import PathDialog from "./PathDialog.svelte";
@@ -36,7 +37,7 @@
       pathDialog = true;
       return;
     }
-    const path = await pickFolder("Ordner zur Bibliothek hinzufügen");
+    const path = await pickFolder(t("Ordner zur Bibliothek hinzufügen"));
     if (path) await lib.addRoot(path);
   }
 
@@ -58,7 +59,7 @@
     // Mehrere Ordner mit gemeinsamem Elternordner: nach diesem benennen
     const parent = (p: string) => p.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]*$/, "");
     const common = paths.length > 1 && paths.every((p) => parent(p) === parent(paths[0])) ? parent(paths[0]) : null;
-    const name = paths.length > 1 ? (common?.split(/[\\/]/).pop() || "Neues Projekt") : node.name;
+    const name = paths.length > 1 ? (common?.split(/[\\/]/).pop() || t("Neues Projekt")) : node.name;
     const p = await lib.createProject(name);
     if (p) {
       await lib.addFoldersToProject(p.id, paths);
@@ -93,7 +94,7 @@
 
 {#snippet toggle(key: "projects" | "people" | "folders", title: string, count: number)}
   {@const closed = !!lib.collapsed[key]}
-  <button class="toggle" aria-expanded={!closed} title={closed ? `${title} aufklappen` : `${title} einklappen`} onclick={() => lib.toggleSection(key)}>
+  <button class="toggle" aria-expanded={!closed} title={closed ? t("{title} aufklappen", { title }) : t("{title} einklappen", { title })} onclick={() => lib.toggleSection(key)}>
     <span class="chev" class:closed><Icon name="chevron" size={11} /></span>
     <h2>{title}</h2>
     {#if closed && count}<span class="count">{count}</span>{/if}
@@ -118,14 +119,14 @@
   <nav class="scroll">
     <button class="item" class:active={lib.isScope({ type: "all" })} onclick={() => lib.setScope({ type: "all" })}>
       <Icon name="photos" size={15} />
-      <span>Alle Fotos</span>
+      <span>{t("Alle Fotos")}</span>
       <span class="count">{lib.roots.reduce((s, r) => s + r.imageCount, 0)}</span>
     </button>
 
     <section>
       <header>
-        {@render toggle("projects", "Projekte", lib.projects.length)}
-        <button class="icon-btn" aria-label="Neues Projekt" title="Neues Projekt" onclick={() => (newProject = "")}>
+        {@render toggle("projects", t("Projekte"), lib.projects.length)}
+        <button class="icon-btn" aria-label={t("Neues Projekt")} title={t("Neues Projekt")} onclick={() => (newProject = "")}>
           <Icon name="plus" size={14} />
         </button>
       </header>
@@ -134,7 +135,7 @@
           <!-- svelte-ignore a11y_autofocus -->
           <input
             type="text"
-            placeholder="Name des Projekts"
+            placeholder={t("Name des Projekts")}
             bind:value={newProject}
             autofocus
             onblur={submitNewProject}
@@ -181,7 +182,7 @@
             class:active={lib.isScope({ type: "project", id: p.id })}
             onclick={() => lib.setScope({ type: "project", id: p.id })}
             ondblclick={() => (renaming = p.id)}
-            title="{p.folders.length} Ordner. Doppelklick zum Umbenennen."
+            title={t("{n} Ordner. Doppelklick zum Umbenennen.", { n: String(p.folders.length) })}
           >
             <Icon name="stack" size={15} />
             <span>{p.name}</span>
@@ -190,15 +191,15 @@
         {/if}
       {:else}
         {#if newProject === null && !lib.collapsed.projects}
-          <p class="hint">Ein Projekt bündelt Ordner von beliebigen Orten. Rechtsklick auf einen Ordner fügt ihn hinzu – mit Strg- oder Umschalt-Klick auch mehrere auf einmal.</p>
+          <p class="hint">{t("Ein Projekt bündelt Ordner von beliebigen Orten. Rechtsklick auf einen Ordner fügt ihn hinzu – mit Strg- oder Umschalt-Klick auch mehrere auf einmal.")}</p>
         {/if}
       {/each}
     </section>
 
     <section>
       <header>
-        {@render toggle("people", "Personen", lib.people.filter((p) => p.name).length)}
-        <button class="icon-btn" aria-label="Alle Personen" title="Personen und Gruppen verwalten" onclick={() => { lib.mode = "library"; lib.view = "people"; }}>
+        {@render toggle("people", t("Personen"), lib.people.filter((p) => p.name).length)}
+        <button class="icon-btn" aria-label={t("Alle Personen")} title={t("Personen und Gruppen verwalten")} onclick={() => { lib.mode = "library"; lib.view = "people"; }}>
           <Icon name="stack" size={14} />
         </button>
       </header>
@@ -238,7 +239,7 @@
               e.preventDefault();
               renamingPerson = p.id;
             }}
-            title="Doppelklick oder Rechtsklick zum Umbenennen"
+            title={t("Doppelklick oder Rechtsklick zum Umbenennen")}
           >
             {#if p.coverFace}<img class="avatar" src={faceUrl(p.coverFace)} alt="" />{:else}<span class="avatar"></span>{/if}
             <span>{p.name}</span>
@@ -252,17 +253,17 @@
         {@const unnamed = lib.people.filter((p) => !p.name && p.faceCount >= 2).length}
         <button class="item" class:active={lib.view === "people" && lib.mode === "library"} onclick={() => { lib.mode = "library"; lib.view = "people"; }}>
           <Icon name="sparkle" size={15} />
-          <span>{unnamed ? `${unnamed} unbenannte Gruppen` : "Personen verwalten"}</span>
+          <span>{unnamed ? t("{n} unbenannte Gruppen", { n: String(unnamed) }) : t("Personen verwalten")}</span>
         </button>
       {:else}
-        <p class="hint">Erkennt Gesichter und gruppiert gleiche Personen – einrichten über „KI“ unten links.</p>
+        <p class="hint">{t("Erkennt Gesichter und gruppiert gleiche Personen – einrichten über „KI“ unten links.")}</p>
       {/if}
     </section>
 
     <section>
       <header>
-        {@render toggle("folders", "Ordner", lib.roots.length)}
-        <button class="icon-btn" aria-label="Ordner hinzufügen" title="Ordner hinzufügen" onclick={addFolder}>
+        {@render toggle("folders", t("Ordner"), lib.roots.length)}
+        <button class="icon-btn" aria-label={t("Ordner hinzufügen")} title={t("Ordner hinzufügen")} onclick={addFolder}>
           <Icon name="plus" size={14} />
         </button>
       </header>
@@ -275,31 +276,38 @@
         {/if}
       {:else}
         <div class="empty" hidden={lib.collapsed.folders}>
-          <p>Wähle einen Ordner auf deinem Rechner. Die Bilder bleiben, wo sie sind – Lumenkorn liest sie nur ein.</p>
-          <button class="btn primary" onclick={addFolder}><Icon name="folder" size={14} /> Ordner hinzufügen</button>
+          <p>{t("Wähle einen Ordner auf deinem Rechner. Die Bilder bleiben, wo sie sind – Lumenkorn liest sie nur ein.")}</p>
+          <button class="btn primary" onclick={addFolder}><Icon name="folder" size={14} /> {t("Ordner hinzufügen")}</button>
         </div>
       {/each}
     </section>
   </nav>
 
   <footer>
-    <button class="ai" onclick={() => (aiOpen = true)} title="Lokale KI: Verschlagwortung und Inhaltssuche">
-      <Icon name="sparkle" size={13} />
-      {#if lib.aiDownload}
-        <span>KI wird heruntergeladen …</span>
-      {:else if !lib.ai || !lib.ai.modelReady}
-        <span>KI einrichten</span>
-      {:else if lib.ai.analyzed < lib.ai.total}
-        <span>KI: {lib.ai.analyzed} von {lib.ai.total} analysiert</span>
-      {:else}
-        <span>KI: alle Fotos analysiert</span>
-      {/if}
-    </button>
+    <div class="foot-row">
+      <button class="ai" onclick={() => (aiOpen = true)} title={t("Lokale KI: Verschlagwortung und Inhaltssuche")}>
+        <Icon name="sparkle" size={13} />
+        {#if lib.aiDownload}
+          <span>{t("KI wird heruntergeladen …")}</span>
+        {:else if !lib.ai || !lib.ai.modelReady}
+          <span>{t("KI einrichten")}</span>
+        {:else if lib.ai.analyzed < lib.ai.total}
+          <span>{t("KI: {done} von {total} analysiert", { done: String(lib.ai.analyzed), total: String(lib.ai.total) })}</span>
+        {:else}
+          <span>{t("KI: alle Fotos analysiert")}</span>
+        {/if}
+      </button>
+      <!-- Sprache der Oberfläche (Wechsel lädt neu) -->
+      <div class="lang" role="group" aria-label="Sprache / Language">
+        <button class:on={lang === "de"} aria-pressed={lang === "de"} title="Deutsch" onclick={() => lang !== "de" && setLang("de")}>DE</button>
+        <button class:on={lang === "en"} aria-pressed={lang === "en"} title="English" onclick={() => lang !== "en" && setLang("en")}>EN</button>
+      </div>
+    </div>
     {#if lib.scan}
       <div class="scan">
         <span>
-          {scanningRoot?.name ?? "Ordner"}:
-          {lib.scan.phase === "walking" ? `${lib.scan.done} Dateien gefunden` : lib.scan.phase === "reading" ? "lese Metadaten" : "speichere"}
+          {scanningRoot?.name ?? tc("one", "Ordner")}:
+          {lib.scan.phase === "walking" ? t("{n} Dateien gefunden", { n: String(lib.scan.done) }) : lib.scan.phase === "reading" ? t("lese Metadaten") : t("speichere")}
         </span>
         {#if lib.scan.total}
           <progress max={lib.scan.total} value={lib.scan.done}></progress>
@@ -313,28 +321,28 @@
   {@const m = menu}
   {@const many = m.paths.length > 1}
   <div class="menu" role="menu" tabindex="-1" style:left="{m.x}px" style:top="{m.y}px" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
-    <div class="menu-title">{many ? `${m.paths.length} Ordner` : m.node.name}</div>
+    <div class="menu-title">{many ? t("{n} Ordner", { n: String(m.paths.length) }) : m.node.name}</div>
     {#each lib.projects as p (p.id)}
       {@const already = m.paths.every((path) => p.folders.some((f) => f.path === path))}
       <button role="menuitem" disabled={already} onclick={() => addToProject(p.id)}>
-        <Icon name="stack" size={14} /> Zu „{p.name}“ hinzufügen {already ? "(enthalten)" : ""}
+        <Icon name="stack" size={14} /> {t("Zu „{name}“ hinzufügen", { name: p.name })} {already ? t("(enthalten)") : ""}
       </button>
     {/each}
     <button role="menuitem" onclick={createProjectFromMenu}>
-      <Icon name="plus" size={14} /> {many ? "Neues Projekt aus diesen Ordnern" : "Neues Projekt aus diesem Ordner"}
+      <Icon name="plus" size={14} /> {many ? t("Neues Projekt aus diesen Ordnern") : t("Neues Projekt aus diesem Ordner")}
     </button>
     {#if many}
-      <p class="menu-note">Strg-/Umschalt-Klick ändert die Auswahl, Esc hebt sie auf.</p>
+      <p class="menu-note">{t("Strg-/Umschalt-Klick ändert die Auswahl, Esc hebt sie auf.")}</p>
     {:else if m.root}
       {@const root = m.root}
       <hr />
       <button role="menuitem" onclick={() => { menu = null; api.rescanRoot(root.id); }}>
-        <Icon name="refresh" size={14} /> Neu einlesen
+        <Icon name="refresh" size={14} /> {t("Neu einlesen")}
       </button>
       <button role="menuitem" class="danger" onclick={() => { menu = null; lib.removeRoot(root.id); }}>
-        <Icon name="trash" size={14} /> Aus Bibliothek entfernen
+        <Icon name="trash" size={14} /> {t("Aus Bibliothek entfernen")}
       </button>
-      <p class="menu-note">Dateien auf der Platte bleiben erhalten.</p>
+      <p class="menu-note">{t("Dateien auf der Platte bleiben erhalten.")}</p>
     {/if}
   </div>
 {/if}
@@ -345,8 +353,8 @@
 
 {#if pathDialog}
   <PathDialog
-    title="Ordner hinzufügen"
-    hint={platform === "android" ? "Zum Beispiel /storage/emulated/0/DCIM. Lumenkorn braucht dafür die Berechtigung „Zugriff auf alle Dateien“." : "Vollständiger Pfad des Ordners."}
+    title={t("Ordner hinzufügen")}
+    hint={platform === "android" ? t("Zum Beispiel /storage/emulated/0/DCIM. Lumenkorn braucht dafür die Berechtigung „Zugriff auf alle Dateien“.") : t("Vollständiger Pfad des Ordners.")}
     onsubmit={(p) => { pathDialog = false; lib.addRoot(p); }}
     oncancel={() => (pathDialog = false)}
   />
@@ -488,6 +496,31 @@
   footer {
     display: grid;
     gap: 8px;
+  }
+  .foot-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .foot-row .ai {
+    flex: 1;
+    min-width: 0;
+  }
+  .lang {
+    display: flex;
+    flex: none;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-s);
+    overflow: hidden;
+  }
+  .lang button {
+    padding: 2px 6px;
+    font-size: 11px;
+    color: var(--faint);
+  }
+  .lang button.on {
+    background: var(--raised);
+    color: inherit;
   }
   .ai {
     display: flex;

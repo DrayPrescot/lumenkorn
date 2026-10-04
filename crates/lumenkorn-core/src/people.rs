@@ -15,6 +15,7 @@
 
 use crate::catalog::{Catalog, now};
 use crate::error::{Error, Result};
+use lumenkorn_develop::{i18n::tr_s, tr};
 use rusqlite::{OptionalExtension, params};
 use serde::Serialize;
 use std::collections::HashMap;
@@ -346,7 +347,7 @@ impl Catalog {
             })
         })
         .optional()?
-        .ok_or_else(|| Error::NotFound(format!("Gesicht {face_id}")))
+        .ok_or_else(|| Error::NotFound(tr!("Gesicht {face_id}", "Face {face_id}")))
     }
 
     /// Alle Fotos erneut analysieren lassen. Benannte Personen bleiben; ihre
@@ -397,7 +398,11 @@ impl Catalog {
         }
         let ids = serde_json::to_string(face_ids)?;
         let person = match name.map(str::trim) {
-            Some("") => return Err(Error::Invalid("Bitte einen Namen eingeben".into())),
+            Some("") => {
+                return Err(Error::Invalid(
+                    tr_s("Bitte einen Namen eingeben", "Please enter a name").into(),
+                ));
+            }
             Some(name) => Some(match self.person_by_name(name)? {
                 Some(id) => id,
                 None => {
@@ -465,7 +470,9 @@ impl Catalog {
         self.invalidate_people_index();
         let name = name.trim();
         if name.is_empty() {
-            return Err(Error::Invalid("Bitte einen Namen eingeben".into()));
+            return Err(Error::Invalid(
+                tr_s("Bitte einen Namen eingeben", "Please enter a name").into(),
+            ));
         }
         let existing = self.person_by_name(name)?.filter(|id| *id != person_id);
         // Eine Gruppe benennen bestätigt ihre Gesichter. Eine schon benannte
@@ -506,7 +513,9 @@ impl Catalog {
     pub fn assign_face(&mut self, face_id: i64, name: &str) -> Result<i64> {
         let name = name.trim();
         if name.is_empty() {
-            return Err(Error::Invalid("Bitte einen Namen eingeben".into()));
+            return Err(Error::Invalid(
+                tr_s("Bitte einen Namen eingeben", "Please enter a name").into(),
+            ));
         }
         let person = match self.person_by_name(name)? {
             Some(id) => id,

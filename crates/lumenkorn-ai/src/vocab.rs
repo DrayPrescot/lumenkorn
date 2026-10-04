@@ -1,7 +1,8 @@
 //! Vokabular für die automatische Verschlagwortung.
 //!
-//! CLIP versteht Englisch am besten. Jedes Konzept hat deshalb ein deutsches
-//! Schlagwort (das im Katalog landet) und englische Formulierungen für das Modell.
+//! CLIP versteht Englisch am besten. Jedes Konzept hat deshalb ein Schlagwort
+//! (deutsch bzw. englisch je nach Sprache der Oberfläche – das landet im Katalog)
+//! und eine englische Formulierung für das Modell.
 //! Konzepte sind in Gruppen sortiert; innerhalb einer Gruppe konkurrieren sie
 //! miteinander und mit einer neutralen Formulierung – gewinnt die neutrale,
 //! wird aus dieser Gruppe nichts vergeben. Das verhindert, dass jedes Foto
@@ -9,8 +10,18 @@
 
 #[derive(Debug, Clone)]
 pub struct Concept {
+    /// Deutsches Schlagwort
     pub tag: &'static str,
+    /// Englisches Schlagwort
+    pub en: &'static str,
     pub phrase: &'static str,
+}
+
+impl Concept {
+    /// Schlagwort in der Sprache der Oberfläche
+    pub fn name(&self) -> &'static str {
+        lumenkorn_develop::i18n::tr_s(self.tag, self.en)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -29,9 +40,10 @@ pub struct Group {
 pub const TEMPLATES: &[&str] = &["a photo of {}.", "a picture of {}.", "{}"];
 
 macro_rules! c {
-    ($tag:expr, $phrase:expr) => {
+    ($tag:expr, $en:expr, $phrase:expr) => {
         Concept {
             tag: $tag,
+            en: $en,
             phrase: $phrase,
         }
     };
@@ -45,33 +57,33 @@ pub fn default_groups() -> Vec<Group> {
             min_p: 0.30,
             max_tags: 2,
             concepts: vec![
-                c!("Strand", "a sandy beach"),
-                c!("Meer", "the sea"),
-                c!("See", "a lake"),
-                c!("Fluss", "a river"),
-                c!("Wasserfall", "a waterfall"),
-                c!("Berge", "mountains"),
-                c!("Wald", "a forest"),
-                c!("Wiese", "a green meadow"),
-                c!("Feld", "farm fields"),
-                c!("Wüste", "a desert"),
-                c!("Stadt", "a city street"),
-                c!("Skyline", "a city skyline"),
-                c!("Dorf", "a village"),
-                c!("Park", "a park"),
-                c!("Garten", "a garden"),
-                c!("Innenraum", "an indoor room"),
-                c!("Küche", "a kitchen"),
-                c!("Restaurant", "a restaurant"),
-                c!("Bar", "a bar or pub"),
-                c!("Kirche", "a church"),
-                c!("Bühne", "a concert stage"),
-                c!("Studio", "a photo studio with a plain backdrop"),
-                c!("Hafen", "a harbor with boats"),
-                c!("Brücke", "a bridge"),
-                c!("Straße", "a road"),
-                c!("Bahnhof", "a train station"),
-                c!("Weltraum", "outer space or earth seen from orbit"),
+                c!("Strand", "Beach", "a sandy beach"),
+                c!("Meer", "Sea", "the sea"),
+                c!("See", "Lake", "a lake"),
+                c!("Fluss", "River", "a river"),
+                c!("Wasserfall", "Waterfall", "a waterfall"),
+                c!("Berge", "Mountains", "mountains"),
+                c!("Wald", "Forest", "a forest"),
+                c!("Wiese", "Meadow", "a green meadow"),
+                c!("Feld", "Fields", "farm fields"),
+                c!("Wüste", "Desert", "a desert"),
+                c!("Stadt", "City", "a city street"),
+                c!("Skyline", "Skyline", "a city skyline"),
+                c!("Dorf", "Village", "a village"),
+                c!("Park", "Park", "a park"),
+                c!("Garten", "Garden", "a garden"),
+                c!("Innenraum", "Indoor", "an indoor room"),
+                c!("Küche", "Kitchen", "a kitchen"),
+                c!("Restaurant", "Restaurant", "a restaurant"),
+                c!("Bar", "Bar", "a bar or pub"),
+                c!("Kirche", "Church", "a church"),
+                c!("Bühne", "Stage", "a concert stage"),
+                c!("Studio", "Studio", "a photo studio with a plain backdrop"),
+                c!("Hafen", "Harbor", "a harbor with boats"),
+                c!("Brücke", "Bridge", "a bridge"),
+                c!("Straße", "Road", "a road"),
+                c!("Bahnhof", "Train station", "a train station"),
+                c!("Weltraum", "Space", "outer space or earth seen from orbit"),
             ],
         },
         Group {
@@ -80,36 +92,36 @@ pub fn default_groups() -> Vec<Group> {
             min_p: 0.22,
             max_tags: 3,
             concepts: vec![
-                c!("Person", "a person"),
-                c!("Personengruppe", "a group of people"),
-                c!("Porträt", "a portrait of a face"),
-                c!("Kind", "a child"),
-                c!("Baby", "a baby"),
-                c!("Hochzeit", "a wedding couple"),
-                c!("Hund", "a dog"),
-                c!("Katze", "a cat"),
-                c!("Pferd", "a horse"),
-                c!("Vogel", "a bird"),
-                c!("Wildtier", "a wild animal"),
-                c!("Insekt", "an insect"),
-                c!("Blume", "a flower"),
-                c!("Baum", "a tree"),
-                c!("Essen", "a plate of food"),
-                c!("Getränk", "a drink in a glass"),
-                c!("Bier", "a glass of beer"),
-                c!("Auto", "a car"),
-                c!("Fahrrad", "a bicycle"),
-                c!("Motorrad", "a motorcycle"),
-                c!("Zug", "a train"),
-                c!("Flugzeug", "an airplane"),
-                c!("Boot", "a boat"),
-                c!("Gebäude", "a building"),
-                c!("Denkmal", "a monument or statue"),
-                c!("Schuhe", "shoes"),
-                c!("Produkt", "a product shot of an object"),
-                c!("Dokument", "a document with text"),
-                c!("Polarlicht", "the aurora borealis"),
-                c!("Feuerwerk", "fireworks"),
+                c!("Person", "Person", "a person"),
+                c!("Personengruppe", "Group of people", "a group of people"),
+                c!("Porträt", "Portrait", "a portrait of a face"),
+                c!("Kind", "Child", "a child"),
+                c!("Baby", "Baby", "a baby"),
+                c!("Hochzeit", "Wedding", "a wedding couple"),
+                c!("Hund", "Dog", "a dog"),
+                c!("Katze", "Cat", "a cat"),
+                c!("Pferd", "Horse", "a horse"),
+                c!("Vogel", "Bird", "a bird"),
+                c!("Wildtier", "Wildlife", "a wild animal"),
+                c!("Insekt", "Insect", "an insect"),
+                c!("Blume", "Flower", "a flower"),
+                c!("Baum", "Tree", "a tree"),
+                c!("Essen", "Food", "a plate of food"),
+                c!("Getränk", "Drink", "a drink in a glass"),
+                c!("Bier", "Beer", "a glass of beer"),
+                c!("Auto", "Car", "a car"),
+                c!("Fahrrad", "Bicycle", "a bicycle"),
+                c!("Motorrad", "Motorcycle", "a motorcycle"),
+                c!("Zug", "Train", "a train"),
+                c!("Flugzeug", "Airplane", "an airplane"),
+                c!("Boot", "Boat", "a boat"),
+                c!("Gebäude", "Building", "a building"),
+                c!("Denkmal", "Monument", "a monument or statue"),
+                c!("Schuhe", "Shoes", "shoes"),
+                c!("Produkt", "Product", "a product shot of an object"),
+                c!("Dokument", "Document", "a document with text"),
+                c!("Polarlicht", "Aurora", "the aurora borealis"),
+                c!("Feuerwerk", "Fireworks", "fireworks"),
             ],
         },
         Group {
@@ -118,11 +130,15 @@ pub fn default_groups() -> Vec<Group> {
             min_p: 0.40,
             max_tags: 1,
             concepts: vec![
-                c!("Sonnenuntergang", "a sunset or sunrise"),
-                c!("Nacht", "a photo taken at night"),
-                c!("Blaue Stunde", "the blue hour at dusk"),
-                c!("Gegenlicht", "a backlit scene against the sun"),
-                c!("Kunstlicht", "a scene lit by colored artificial light"),
+                c!("Sonnenuntergang", "Sunset", "a sunset or sunrise"),
+                c!("Nacht", "Night", "a photo taken at night"),
+                c!("Blaue Stunde", "Blue hour", "the blue hour at dusk"),
+                c!("Gegenlicht", "Backlight", "a backlit scene against the sun"),
+                c!(
+                    "Kunstlicht",
+                    "Artificial light",
+                    "a scene lit by colored artificial light"
+                ),
             ],
         },
         Group {
@@ -131,12 +147,12 @@ pub fn default_groups() -> Vec<Group> {
             min_p: 0.40,
             max_tags: 1,
             concepts: vec![
-                c!("Schnee", "snow"),
-                c!("Regen", "rain"),
-                c!("Nebel", "fog or mist"),
-                c!("Gewitter", "dramatic storm clouds"),
-                c!("Herbst", "autumn foliage"),
-                c!("Frühling", "spring blossoms"),
+                c!("Schnee", "Snow", "snow"),
+                c!("Regen", "Rain", "rain"),
+                c!("Nebel", "Fog", "fog or mist"),
+                c!("Gewitter", "Storm", "dramatic storm clouds"),
+                c!("Herbst", "Autumn", "autumn foliage"),
+                c!("Frühling", "Spring", "spring blossoms"),
             ],
         },
         Group {
@@ -145,15 +161,20 @@ pub fn default_groups() -> Vec<Group> {
             min_p: 0.45,
             max_tags: 1,
             concepts: vec![
-                c!("Schwarzweiß", "a black and white photo"),
-                c!("Makro", "a macro close-up photo"),
-                c!("Luftaufnahme", "an aerial drone photo"),
+                c!("Schwarzweiß", "Black and white", "a black and white photo"),
+                c!("Makro", "Macro", "a macro close-up photo"),
+                c!("Luftaufnahme", "Aerial", "an aerial drone photo"),
                 c!(
                     "Langzeitbelichtung",
+                    "Long exposure",
                     "a long exposure photo with motion blur"
                 ),
-                c!("Unscharf", "a blurry out of focus photo"),
-                c!("Screenshot", "a screenshot of a computer screen"),
+                c!("Unscharf", "Blurry", "a blurry out of focus photo"),
+                c!(
+                    "Screenshot",
+                    "Screenshot",
+                    "a screenshot of a computer screen"
+                ),
             ],
         },
     ]
@@ -171,7 +192,7 @@ pub fn translate_query(query: &str) -> String {
         let hit = groups
             .iter()
             .flat_map(|g| &g.concepts)
-            .find(|c| c.tag.to_lowercase() == w)
+            .find(|c| c.tag.to_lowercase() == w || c.en.to_lowercase() == w)
             .map(|c| strip_article(c.phrase).to_string())
             .or_else(|| {
                 EXTRA
@@ -267,13 +288,23 @@ mod tests {
 
     #[test]
     fn tags_are_unique() {
-        let mut tags: Vec<&str> = default_groups()
-            .iter()
-            .flat_map(|g| g.concepts.iter().map(|c| c.tag))
-            .collect();
-        let n = tags.len();
-        tags.sort();
-        tags.dedup();
-        assert_eq!(tags.len(), n);
+        for name in [|c: &Concept| c.tag, |c: &Concept| c.en] {
+            let mut tags: Vec<&str> = default_groups()
+                .iter()
+                .flat_map(|g| g.concepts.iter().map(name))
+                .collect();
+            let n = tags.len();
+            tags.sort();
+            tags.dedup();
+            assert_eq!(tags.len(), n);
+        }
+    }
+
+    #[test]
+    fn english_keywords_translate_too() {
+        assert_eq!(
+            translate_query("dog on the Beach"),
+            "dog on the sandy beach"
+        );
     }
 }

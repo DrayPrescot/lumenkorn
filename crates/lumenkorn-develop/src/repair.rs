@@ -15,6 +15,7 @@
 //! ```
 
 use crate::error::{Error, Result};
+use crate::i18n::tr_s;
 use crate::image_f32::ImageF32;
 use half::f16;
 use rayon::prelude::*;
@@ -105,12 +106,16 @@ impl Patch {
         let mut magic = [0u8; 4];
         f.read_exact(&mut magic)?;
         if &magic != MAGIC {
-            return Err(Error::Params("keine Lumenkorn-Reparatur".into()));
+            return Err(Error::Params(
+                tr_s("keine Lumenkorn-Reparatur", "not a Lumenkorn repair").into(),
+            ));
         }
         let head = u32s(4, &mut f)?;
         let (width, height, n) = (head[1], head[2], head[3]);
         if n > 10_000 {
-            return Err(Error::Params("Reparatur beschädigt".into()));
+            return Err(Error::Params(
+                tr_s("Reparatur beschädigt", "repair corrupted").into(),
+            ));
         }
         let mut parts = Vec::with_capacity(n);
         for _ in 0..n {
@@ -120,7 +125,9 @@ impl Patch {
                 || y.checked_add(h).is_none_or(|v| v > height)
                 || w.checked_mul(h).is_none_or(|n| n > 256 << 20)
             {
-                return Err(Error::Params("Reparatur beschädigt".into()));
+                return Err(Error::Params(
+                    tr_s("Reparatur beschädigt", "repair corrupted").into(),
+                ));
             }
             let mut raw = vec![0u8; w * h * 6];
             f.read_exact(&mut raw)?;
@@ -254,9 +261,12 @@ impl RepairFiles {
     }
 
     pub fn put(&self, id: &str, patch: Patch) -> Result<Arc<Patch>> {
-        let path = self
-            .path(id)
-            .ok_or_else(|| Error::Params(format!("ungültige Reparatur-ID {id}")))?;
+        let path = self.path(id).ok_or_else(|| {
+            Error::Params(crate::tr!(
+                "ungültige Reparatur-ID {id}",
+                "invalid repair ID {id}"
+            ))
+        })?;
         std::fs::create_dir_all(&self.dir)?;
         patch.write(&path)?;
         let p = Arc::new(patch);

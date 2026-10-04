@@ -17,6 +17,7 @@
   import type { ImageSummary } from "./lib/api";
   import { dev } from "./lib/develop.svelte";
   import { lib } from "./lib/store.svelte";
+  import { t } from "./lib/i18n";
 
   let sidebarOpen = $state(false); // nur schmale Bildschirme
   let infoOpen = $state(typeof window !== "undefined" ? window.innerWidth > 1100 : true);
@@ -25,14 +26,14 @@
   function openExport() {
     const ids = lib.targets();
     if (ids.length) exportIds = ids;
-    else lib.notify("Wähle zuerst Fotos zum Exportieren aus.");
+    else lib.notify(t("Wähle zuerst Fotos zum Exportieren aus."));
   }
 
   let deleteImages = $state<ImageSummary[] | null>(null);
 
   function openDeleteRejected() {
     if (lib.rejected.length) deleteImages = lib.rejected;
-    else lib.notify("In dieser Ansicht sind keine Fotos abgelehnt (X).");
+    else lib.notify(t("In dieser Ansicht sind keine Fotos abgelehnt (X)."));
   }
 
   // Beim Verlassen des Entwickeln-Modus offene Änderungen speichern.
@@ -108,7 +109,7 @@
     <Sidebar />
   </div>
   {#if sidebarOpen}
-    <button class="scrim" aria-label="Seitenleiste schließen" onclick={() => (sidebarOpen = false)}></button>
+    <button class="scrim" aria-label={t("Seitenleiste schließen")} onclick={() => (sidebarOpen = false)}></button>
   {/if}
 
   <main>
@@ -155,11 +156,13 @@
 
 {#if dev.exportProgress && !dev.exportProgress.finished}
   <div class="toast" role="status">
-    Exportiere {dev.exportProgress.done + 1} von {dev.exportProgress.total}{dev.exportProgress.current ? `: ${dev.exportProgress.current}` : ""}
+    {t("Exportiere {done} von {total}", { done: dev.exportProgress.done + 1, total: dev.exportProgress.total })}{dev.exportProgress.current ? `: ${dev.exportProgress.current}` : ""}
   </div>
 {:else if lib.mergeProgress && !lib.mergeProgress.finished && !lib.merge}
   <div class="toast" role="status">
-    Zusammenfügen: {lib.mergeProgress.stage}{lib.mergeProgress.total > 1 ? ` (${lib.mergeProgress.done} von ${lib.mergeProgress.total})` : " …"}
+    {t("Zusammenfügen: {stage}", { stage: lib.mergeProgress.stage })}{lib.mergeProgress.total > 1
+      ? ` (${t("{done} von {total}", { done: lib.mergeProgress.done, total: lib.mergeProgress.total })})`
+      : " …"}
   </div>
 {:else if lib.message}
   <div class="toast" class:error={lib.message.kind === "error"} role="status">{lib.message.text}</div>

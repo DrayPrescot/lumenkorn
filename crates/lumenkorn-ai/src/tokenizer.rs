@@ -3,6 +3,7 @@
 //! klein, ohne C-Abhängigkeiten und damit problemlos auf Android.
 
 use crate::error::{Error, Result};
+use lumenkorn_develop::i18n::tr_s;
 use regex::Regex;
 use std::collections::HashMap;
 use std::path::Path;
@@ -40,12 +41,12 @@ impl ClipTokenizer {
                 Some(((it.next()?.to_string(), it.next()?.to_string()), i))
             })
             .collect();
-        let sot = *encoder
-            .get("<|startoftext|>")
-            .ok_or_else(|| Error::Tokenizer("<|startoftext|> fehlt".into()))?;
-        let eot = *encoder
-            .get("<|endoftext|>")
-            .ok_or_else(|| Error::Tokenizer("<|endoftext|> fehlt".into()))?;
+        let sot = *encoder.get("<|startoftext|>").ok_or_else(|| {
+            Error::Tokenizer(tr_s("<|startoftext|> fehlt", "<|startoftext|> missing").into())
+        })?;
+        let eot = *encoder.get("<|endoftext|>").ok_or_else(|| {
+            Error::Tokenizer(tr_s("<|endoftext|> fehlt", "<|endoftext|> missing").into())
+        })?;
         let pattern = Regex::new(
             r"<\|startoftext\|>|<\|endoftext\|>|'s|'t|'re|'ve|'m|'ll|'d|[\p{L}]+|[\p{N}]|[^\s\p{L}\p{N}]+",
         )

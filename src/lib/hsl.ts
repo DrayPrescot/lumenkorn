@@ -2,17 +2,19 @@
 // (HSL_CENTERS, hsl_weights, oklab), damit die Pipette genau die Bereiche
 // trifft, die das Backend für diese Farbe verändert.
 
+import { t } from "./i18n";
+
 export type HslMode = "hue" | "saturation" | "luminance";
 
 export const HSL_BANDS: { name: string; color: string }[] = [
-  { name: "Rot", color: "#e0453a" },
-  { name: "Orange", color: "#ec8a2f" },
-  { name: "Gelb", color: "#e9cf3a" },
-  { name: "Grün", color: "#4fb04a" },
-  { name: "Aquamarin", color: "#37b9b0" },
-  { name: "Blau", color: "#3d6fe0" },
-  { name: "Lila", color: "#8a4fd8" },
-  { name: "Magenta", color: "#d24bb4" },
+  { name: t("Rot"), color: "#e0453a" },
+  { name: t("Orange"), color: "#ec8a2f" },
+  { name: t("Gelb"), color: "#e9cf3a" },
+  { name: t("Grün"), color: "#4fb04a" },
+  { name: t("Aquamarin"), color: "#37b9b0" },
+  { name: t("Blau"), color: "#3d6fe0" },
+  { name: t("Lila"), color: "#8a4fd8" },
+  { name: t("Magenta"), color: "#d24bb4" },
 ];
 
 const CENTERS = [29, 60, 110, 142, 195, 264, 294, 328];

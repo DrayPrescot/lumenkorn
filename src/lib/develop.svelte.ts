@@ -21,15 +21,16 @@ export type MaskTool = "linear" | "radial" | "brush" | "object" | "color";
 export type NewMaskKind = MaskTool | "subject" | "sky";
 
 const MASK_NAMES: Record<NewMaskKind, string> = {
-  linear: "Verlauf",
-  radial: "Radial",
-  brush: "Pinsel",
-  object: "Objekt",
-  color: "Farbe",
-  subject: "Motiv",
-  sky: "Himmel",
+  linear: t("Verlauf"),
+  radial: t("Radial"),
+  brush: t("Pinsel"),
+  object: t("Objekt"),
+  color: t("Farbe"),
+  subject: t("Motiv"),
+  sky: t("Himmel"),
 };
 import { lib } from "./store.svelte";
+import { isCanceled, t } from "./i18n";
 import type { HslMode } from "./hsl";
 
 const same = (a: DevelopParams, b: DevelopParams) => JSON.stringify(a) === JSON.stringify(b);
@@ -144,7 +145,7 @@ class Develop {
       }
       this.denoising = null;
       if (e.error) {
-        if (!e.error.includes("Abgebrochen")) lib.notify(`Rauschreduzierung: ${e.error}`, "error");
+        if (!isCanceled(e.error)) lib.notify(t("Rauschreduzierung: {error}", { error: e.error }), "error");
         return;
       }
       if (!e.denoiseId) return;
@@ -164,7 +165,7 @@ class Develop {
           lib.notify(String(err), "error");
         }
       }
-      lib.notify("Rauschreduzierung fertig.");
+      lib.notify(t("Rauschreduzierung fertig."));
     });
 
     listen("export-progress", (p) => {
@@ -173,8 +174,8 @@ class Develop {
         const ok = p.total - p.failed.length;
         lib.notify(
           p.failed.length
-            ? `${ok} von ${p.total} exportiert. Fehlgeschlagen: ${p.failed.join("; ")}`
-            : `${ok} ${ok === 1 ? "Foto" : "Fotos"} exportiert nach ${p.dir}`,
+            ? t("{ok} von {total} exportiert. Fehlgeschlagen: {failed}", { ok, total: p.total, failed: p.failed.join("; ") })
+            : t(ok === 1 ? "{n} Foto exportiert nach {dir}" : "{n} Fotos exportiert nach {dir}", { n: ok, dir: p.dir }),
           p.failed.length ? "error" : "info",
         );
         setTimeout(() => (this.exportProgress = null), 1500);
@@ -227,7 +228,7 @@ class Develop {
       await this.renderNow();
       this.renderBefore();
     } catch (e) {
-      if (token === this.#loadToken) lib.notify(`Bild kann nicht entwickelt werden: ${e}`, "error");
+      if (token === this.#loadToken) lib.notify(t("Bild kann nicht entwickelt werden: {error}", { error: String(e) }), "error");
     } finally {
       if (token === this.#loadToken) this.loading = false;
     }
@@ -483,10 +484,10 @@ class Develop {
 
   async autoStraighten() {
     if (this.imageId === null) return;
-    this.maskBusy = "Horizont wird gesucht …";
+    this.maskBusy = t("Horizont wird gesucht …");
     try {
       const fix = await api.developDetectTilt(this.imageId, this.params.rotate, this.params.flipHorizontal);
-      if (fix === null) lib.notify("Keine eindeutigen geraden Kanten gefunden.");
+      if (fix === null) lib.notify(t("Keine eindeutigen geraden Kanten gefunden."));
       else {
         this.params.straighten = Math.round(fix * 100) / 100;
         this.schedule();
@@ -518,7 +519,7 @@ class Develop {
     if (this.editsRepairs) {
       layer = {
         id: `r${Date.now().toString(36)}`,
-        name: `Reparatur ${list.length + 1}`,
+        name: t("Reparatur {n}", { n: list.length + 1 }),
         enabled: true,
         shapes: [],
         result: null,
@@ -582,11 +583,11 @@ class Develop {
 
   private async runAi(kind: "subject" | "sky"): Promise<MaskShape | null> {
     if (this.imageId === null) return null;
-    this.maskBusy = kind === "subject" ? "Motiv wird erkannt …" : "Himmel wird gesucht …";
+    this.maskBusy = kind === "subject" ? t("Motiv wird erkannt …") : t("Himmel wird gesucht …");
     try {
       const r = kind === "subject" ? await api.maskSubject(this.imageId) : await api.maskSky(this.imageId);
       if (r.coverage < 0.005) {
-        lib.notify(kind === "sky" ? "Kein Himmel gefunden." : "Kein Motiv gefunden.");
+        lib.notify(kind === "sky" ? t("Kein Himmel gefunden.") : t("Kein Motiv gefunden."));
       }
       return { type: "raster", maskId: r.maskId, kind };
     } catch (e) {
@@ -650,7 +651,7 @@ class Develop {
     const idx = !this.#newObject && last >= 0 && layer.shapes[last].type === "raster" && (layer.shapes[last] as { kind: string }).kind === "object" ? last : -1;
     const prev = idx >= 0 ? (layer.shapes[idx] as Extract<MaskShape, { type: "raster" }>) : null;
     const points = [...(prev?.prompt ?? []), point];
-    this.maskBusy = prev ? "Auswahl wird verfeinert …" : "Objekt wird erkannt …";
+    this.maskBusy = prev ? t("Auswahl wird verfeinert …") : t("Objekt wird erkannt …");
     try {
       const r = await api.maskObject(this.imageId, points, prev?.maskId ?? null);
       const shape: MaskShape = { type: "raster", kind: "object", maskId: r.maskId, prompt: points, subtract: prev?.subtract ?? subtract };
@@ -738,7 +739,7 @@ class Develop {
       this.commit();
       this.flush();
     } catch (e) {
-      if (!String(e).includes("Abgebrochen")) lib.notify(`Reparatur: ${e}`, "error");
+      if (!isCanceled(e)) lib.notify(t("Reparatur: {error}", { error: String(e) }), "error");
     } finally {
       this.repairing = null;
     }
@@ -772,7 +773,7 @@ class Develop {
     } catch (e) {
       // Beim nächsten Anlass erneut versuchen
       if (this.imageId === id) this.#saved = { ...p, version: -1 };
-      lib.notify(`Speichern fehlgeschlagen: ${e}`, "error");
+      lib.notify(t("Speichern fehlgeschlagen: {error}", { error: String(e) }), "error");
     }
   }
 
@@ -789,9 +790,9 @@ class Develop {
         this.imageId === id && this.ready
           ? clone($state.snapshot(this.params) as DevelopParams)
           : { ...clone(DEFAULT_PARAMS), ...(await api.developParams(id)) };
-      const name = lib.images.find((i) => i.id === id)?.fileName ?? "Foto";
+      const name = lib.images.find((i) => i.id === id)?.fileName ?? t("Foto");
       this.clipboard = { params, name };
-      lib.notify(`Basis-Einstellungen von ${name} kopiert`);
+      lib.notify(t("Basis-Einstellungen von {name} kopiert", { name }));
     } catch (e) {
       lib.notify(String(e), "error");
     }
@@ -801,7 +802,7 @@ class Develop {
   async pasteBasic(ids: number[]) {
     const clip = this.clipboard;
     if (!clip) {
-      lib.notify("Zuerst Basis-Einstellungen kopieren (Strg+Umschalt+C).");
+      lib.notify(t("Zuerst Basis-Einstellungen kopieren (Strg+Umschalt+C)."));
       return;
     }
     if (!ids.length) return;
@@ -825,7 +826,7 @@ class Develop {
       const set = new Set(others);
       lib.images = lib.images.map((i) => (set.has(i.id) ? { ...i, edited: true } : i));
     }
-    lib.notify(`Basis-Einstellungen auf ${ids.length} ${ids.length === 1 ? "Foto" : "Fotos"} übertragen`);
+    lib.notify(t(ids.length === 1 ? "Basis-Einstellungen auf {n} Foto übertragen" : "Basis-Einstellungen auf {n} Fotos übertragen", { n: ids.length }));
   }
 
   // --- Schnappschüsse --------------------------------------------------------
@@ -834,7 +835,7 @@ class Develop {
     if (this.imageId === null) return;
     await this.flush();
     if (this.isDefault) {
-      lib.notify("Ohne Bearbeitung gibt es nichts festzuhalten.");
+      lib.notify(t("Ohne Bearbeitung gibt es nichts festzuhalten."));
       return;
     }
     this.snapshots = await api.developSnapshot(this.imageId, name);

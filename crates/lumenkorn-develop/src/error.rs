@@ -1,16 +1,17 @@
+use crate::i18n::tr_s;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("Ein-/Ausgabefehler: {0}")]
+    #[error("{p}: {0}", p = tr_s("Ein-/Ausgabefehler", "I/O error"))]
     Io(#[from] std::io::Error),
-    #[error("Bildfehler: {0}")]
+    #[error("{p}: {0}", p = tr_s("Bildfehler", "Image error"))]
     Image(#[from] image::ImageError),
-    #[error("RAW-Datei konnte nicht entwickelt werden: {0}")]
+    #[error("{p}: {0}", p = tr_s("RAW-Datei konnte nicht entwickelt werden", "Could not develop RAW file"))]
     Raw(String),
-    #[error("Ungültige Parameter: {0}")]
+    #[error("{p}: {0}", p = tr_s("Ungültige Parameter", "Invalid parameters"))]
     Params(String),
-    #[error("JPEG-Kodierung: {0}")]
+    #[error("{p}: {0}", p = tr_s("JPEG-Kodierung", "JPEG encoding"))]
     Jpeg(#[from] jpeg_encoder::EncodingError),
 }
 

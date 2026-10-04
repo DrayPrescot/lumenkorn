@@ -1,24 +1,25 @@
+use lumenkorn_develop::i18n::tr_s;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("Datenbankfehler: {0}")]
+    #[error("{p}: {0}", p = tr_s("Datenbankfehler", "Database error"))]
     Db(#[from] rusqlite::Error),
-    #[error("Ein-/Ausgabefehler: {0}")]
+    #[error("{p}: {0}", p = tr_s("Ein-/Ausgabefehler", "I/O error"))]
     Io(#[from] std::io::Error),
-    #[error("Bildfehler: {0}")]
+    #[error("{p}: {0}", p = tr_s("Bildfehler", "Image error"))]
     Image(#[from] image::ImageError),
-    #[error("Dateiüberwachung: {0}")]
+    #[error("{p}: {0}", p = tr_s("Dateiüberwachung", "File watching"))]
     Watch(#[from] notify::Error),
     #[error("JSON: {0}")]
     Json(#[from] serde_json::Error),
     #[error("{0}")]
     Develop(#[from] lumenkorn_develop::Error),
-    #[error("Nicht gefunden: {0}")]
+    #[error("{p}: {0}", p = tr_s("Nicht gefunden", "Not found"))]
     NotFound(String),
-    #[error("Ungültige Eingabe: {0}")]
+    #[error("{p}: {0}", p = tr_s("Ungültige Eingabe", "Invalid input"))]
     Invalid(String),
-    #[error("Keine Vorschau im RAW gefunden: {0}")]
+    #[error("{p}: {0}", p = tr_s("Keine Vorschau im RAW gefunden", "No preview found in RAW"))]
     NoPreview(String),
 }
 

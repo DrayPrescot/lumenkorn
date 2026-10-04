@@ -1,5 +1,6 @@
 <script lang="ts">
   import { SLIDER_KEYS } from "../lib/keys";
+  import { t, locale } from "../lib/i18n";
   // Regler wie in Fotoeditoren: Doppelklick setzt zurück, Werte lassen sich
   // auch direkt eintippen, der Verlauf erhält erst beim Loslassen einen Schritt.
   let {
@@ -34,7 +35,7 @@
   const id = `s-${Math.random().toString(36).slice(2, 8)}`;
 
   const fmt = (v: number) => {
-    const s = v.toLocaleString("de-DE", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    const s = v.toLocaleString(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
     return v > 0 && neutral === 0 && min < 0 ? `+${s}` : s;
   };
   // Position des Neutralwerts, damit die Füllung von dort ausgeht
@@ -99,13 +100,13 @@
 </script>
 
 <div class="slider" class:changed={value !== neutral}>
-  <label for={id} ondblclick={reset} title="Doppelklick setzt zurück">{label}</label>
+  <label for={id} ondblclick={reset} title={t("Doppelklick setzt zurück")}>{label}</label>
   <input
     class="value"
     type="text"
     inputmode="decimal"
-    aria-label="{label} (Wert eingeben)"
-    title="Wert eingeben – Tab springt zum nächsten Regler, ↑/↓ verstellen"
+    aria-label={t("{label} (Wert eingeben)", { label })}
+    title={t("Wert eingeben – Tab springt zum nächsten Regler, ↑/↓ verstellen")}
     value={draft ?? `${fmt(value)}${unit}`}
     onfocus={focus}
     onmouseup={(e) => {

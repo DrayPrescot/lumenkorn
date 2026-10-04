@@ -26,6 +26,19 @@ pub fn app_info(state: State<AppState>) -> AppInfo {
     }
 }
 
+/// Sprache für Meldungen aus dem Hintergrund (Fehler, Hinweise): „de“ oder „en“.
+/// Wird gemerkt, damit schon Meldungen beim nächsten Start (Absturzhinweis,
+/// Grafikkarte) in dieser Sprache entstehen.
+#[tauri::command]
+pub fn set_language(state: State<AppState>, lang: String) {
+    let en = lang == "en";
+    lumenkorn_develop::i18n::set_english(en);
+    let _ = std::fs::write(
+        crate::language_file(&state.data_dir),
+        if en { "en" } else { "de" },
+    );
+}
+
 // --- Quellordner -----------------------------------------------------------
 
 #[tauri::command(async)]

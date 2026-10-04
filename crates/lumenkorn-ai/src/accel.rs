@@ -13,6 +13,9 @@
 //! wechseln. Nur eine andere Laufzeitbibliothek erfordert einen Neustart.
 
 use crate::error::{Error, Result};
+#[cfg(target_os = "linux")]
+use lumenkorn_develop::i18n::tr_s;
+use lumenkorn_develop::tr;
 use ort::session::Session;
 use ort::session::builder::{GraphOptimizationLevel, SessionBuilder};
 use serde::{Deserialize, Serialize};
@@ -328,7 +331,7 @@ fn vendor_name(id: u32) -> &'static str {
         0x8086 => "Intel",
         0x5143 => "Qualcomm",
         0x13b5 => "ARM",
-        _ => "Unbekannt",
+        _ => tr_s("Unbekannt", "Unknown"),
     }
 }
 
@@ -400,7 +403,7 @@ fn detect_platform() -> Vec<GpuDevice> {
             .filter(|s| !s.is_empty());
         let name = product
             .or_else(|| device_name(v, d).map(str::to_string))
-            .unwrap_or_else(|| format!("Grafikchip {d:04x}"));
+            .unwrap_or_else(|| tr!("Grafikchip {d:04x}", "Graphics chip {d:04x}"));
         // amdgpu: integrierte Chips haben wenig eigenen Speicher (meist ≤ 2 GB)
         let discrete = match v {
             0x10de => Some(true),
@@ -444,8 +447,9 @@ pub(crate) fn verify_sha256(path: &Path, expected: &str) -> Result<()> {
     if got.eq_ignore_ascii_case(expected) {
         Ok(())
     } else {
-        Err(Error::Download(format!(
+        Err(Error::Download(tr!(
             "Prüfsumme stimmt nicht ({}): erwartet {expected}, erhalten {got}",
+            "Checksum mismatch ({}): expected {expected}, got {got}",
             file_name(path)
         )))
     }

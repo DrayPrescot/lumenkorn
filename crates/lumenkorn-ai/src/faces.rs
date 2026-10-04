@@ -16,6 +16,7 @@
 use crate::error::{Error, Result};
 use image::imageops::FilterType;
 use image::{Rgb, RgbImage};
+use lumenkorn_develop::tr;
 use ort::session::Session;
 use ort::value::Tensor;
 use serde::{Deserialize, Serialize};
@@ -331,8 +332,9 @@ impl FaceEmbedder {
         let (_, v) = out["fc1"].try_extract_tensor::<f32>()?;
         let mut e = v.to_vec();
         if e.len() != EMBED_DIM {
-            return Err(Error::ModelFormat(format!(
+            return Err(Error::ModelFormat(tr!(
                 "SFace liefert {} statt {EMBED_DIM} Werte",
+                "SFace returns {} instead of {EMBED_DIM} values",
                 e.len()
             )));
         }

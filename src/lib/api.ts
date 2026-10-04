@@ -514,6 +514,7 @@ function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
 
 export const api = {
   appInfo: () => call<AppInfo>("app_info"),
+  setLanguage: (lang: "de" | "en") => call<void>("set_language", { lang }),
 
   listRoots: () => call<Root[]>("list_roots"),
   addRoot: (path: string) => call<Root>("add_root", { path }),

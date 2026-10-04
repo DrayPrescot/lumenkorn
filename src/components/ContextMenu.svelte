@@ -3,6 +3,7 @@
   // Basis-Einstellungen kopieren und einfügen, Fotos zusammenfügen.
   import { dev } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
+  import { t } from "../lib/i18n";
 
   let { x, y, onclose }: { x: number; y: number; onclose: () => void } = $props();
 
@@ -40,34 +41,34 @@
     disabled={!lib.focused}
     onclick={() => run(() => lib.focused && dev.copyBasic(lib.focused.id))}
   >
-    <span>Basis-Einstellungen kopieren</span>
-    <kbd>Strg+Umschalt+C</kbd>
+    <span>{t("Basis-Einstellungen kopieren")}</span>
+    <kbd>{t("Strg+Umschalt+C")}</kbd>
   </button>
   <button role="menuitem" disabled={!dev.clipboard || !targets.length} onclick={() => run(() => dev.pasteBasic(targets))}>
     <span>
-      Basis-Einstellungen einfügen{targets.length > 1 ? ` (${targets.length} Fotos)` : ""}
-      {#if dev.clipboard}<small>von {dev.clipboard.name}</small>{/if}
+      {targets.length > 1 ? t("Basis-Einstellungen einfügen ({n} Fotos)", { n: targets.length }) : t("Basis-Einstellungen einfügen")}
+      {#if dev.clipboard}<small>{t("von {name}", { name: dev.clipboard.name })}</small>{/if}
     </span>
-    <kbd>Strg+Umschalt+V</kbd>
+    <kbd>{t("Strg+Umschalt+V")}</kbd>
   </button>
   <hr />
   <button role="menuitem" disabled={!many} onclick={() => run(() => lib.compare())}>
-    <span>Groß nebeneinander vergleichen{many ? ` (${Math.min(lib.selection.size, 12)} Fotos)` : ""}</span>
+    <span>{many ? t("Groß nebeneinander vergleichen ({n} Fotos)", { n: Math.min(lib.selection.size, 12) }) : t("Groß nebeneinander vergleichen")}</span>
     <kbd>C</kbd>
   </button>
   <hr />
-  <div class="label">Zusammenfügen{many ? ` (${lib.selection.size} Fotos)` : ""}</div>
+  <div class="label">{many ? t("Zusammenfügen ({n} Fotos)", { n: lib.selection.size }) : t("Zusammenfügen")}</div>
   <button role="menuitem" disabled={!many || busy} onclick={() => run(() => lib.openMerge("hdr"))}>
-    <span>HDR aus Belichtungsreihe …</span>
-    <kbd>Strg+H</kbd>
+    <span>{t("HDR aus Belichtungsreihe …")}</span>
+    <kbd>{t("Strg+H")}</kbd>
   </button>
   <button role="menuitem" disabled={!many || busy} onclick={() => run(() => lib.openMerge("pano"))}>
-    <span>Panorama …</span>
-    <kbd>Strg+M</kbd>
+    <span>{t("Panorama …")}</span>
+    <kbd>{t("Strg+M")}</kbd>
   </button>
   <button role="menuitem" disabled={!many || busy} onclick={() => run(() => lib.openMerge("focus"))}>
-    <span>Focus Stacking …</span>
-    <kbd>Strg+Umschalt+F</kbd>
+    <span>{t("Focus Stacking …")}</span>
+    <kbd>{t("Strg+Umschalt+F")}</kbd>
   </button>
 </div>
 

@@ -2,18 +2,33 @@
   import { onMount, untrack } from "svelte";
   import { api, imageUrl, type MergeKind, type MergeOptions } from "../lib/api";
   import { lib } from "../lib/store.svelte";
+  import { t } from "../lib/i18n";
 
   let { kind, ids, onclose }: { kind: MergeKind; ids: number[]; onclose: () => void } = $props();
 
   const TITLES: Record<MergeKind, string> = {
-    hdr: "HDR aus Belichtungsreihe",
-    pano: "Panorama",
-    focus: "Focus Stacking",
+    hdr: t("HDR aus Belichtungsreihe"),
+    pano: t("Panorama"),
+    focus: t("Focus Stacking"),
   };
   const HINTS: Record<MergeKind, string> = {
-    hdr: "Die Fotos werden aufeinander ausgerichtet und zu einem Bild mit dem vollen Helligkeitsumfang aller Belichtungen verrechnet. Belichtungsunterschiede werden aus den Bildern selbst gemessen.",
-    pano: "Überlappende Aufnahmen (ca. 20–50 %) aus einem Standpunkt. Die Reihenfolge spielt keine Rolle, auch mehrere Reihen übereinander sind möglich.",
-    focus: "Aufnahmen mit verschobener Schärfeebene, in Reihenfolge von nah nach fern (oder umgekehrt). Die jeweils scharfen Bereiche werden zusammengesetzt.",
+    hdr: t("Die Fotos werden aufeinander ausgerichtet und zu einem Bild mit dem vollen Helligkeitsumfang aller Belichtungen verrechnet. Belichtungsunterschiede werden aus den Bildern selbst gemessen."),
+    pano: t("Überlappende Aufnahmen (ca. 20–50 %) aus einem Standpunkt. Die Reihenfolge spielt keine Rolle, auch mehrere Reihen übereinander sind möglich."),
+    focus: t("Aufnahmen mit verschobener Schärfeebene, in Reihenfolge von nah nach fern (oder umgekehrt). Die jeweils scharfen Bereiche werden zusammengesetzt."),
+  };
+  // Phasen kommen als deutscher Text vom Backend (merge.rs, merge/*.rs)
+  const STAGES: Record<string, string> = {
+    Vorbereiten: t("Vorbereiten"),
+    "Bilder laden": t("Bilder laden"),
+    Ausrichten: t("Ausrichten"),
+    "Belichtung messen": t("Belichtung messen"),
+    Zusammenführen: t("Zusammenführen"),
+    "Überlappungen suchen": t("Überlappungen suchen"),
+    "Helligkeit angleichen": t("Helligkeit angleichen"),
+    Zusammenfügen: t("Zusammenfügen"),
+    "Schärfe zusammenführen": t("Schärfe zusammenführen"),
+    Speichern: t("Speichern"),
+    Fertig: t("Fertig"),
   };
 
   // Gewählte Optionen für diese Sitzung merken
@@ -78,7 +93,7 @@
 <div class="backdrop" role="presentation" onclick={() => !started && onclose()}>
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_click_events_have_key_events -->
   <form class="dialog" onclick={(e) => e.stopPropagation()} onsubmit={(e) => { e.preventDefault(); start(); }}>
-    <h3>{TITLES[kind]} aus {ids.length} Fotos</h3>
+    <h3>{t("{title} aus {n} Fotos", { title: TITLES[kind], n: ids.length })}</h3>
 
     <div class="thumbs">
       {#each items.slice(0, 24) as im (im.id)}
@@ -91,18 +106,18 @@
 
     <fieldset disabled={started}>
       {#if kind === "hdr"}
-        <label><input type="checkbox" bind:checked={opts.hdr.align} /> Ausrichten (Freihand-Reihe)</label>
-        <label><input type="checkbox" bind:checked={opts.hdr.deghost} /> Geisterbilder entfernen (bewegte Motive)</label>
+        <label><input type="checkbox" bind:checked={opts.hdr.align} /> {t("Ausrichten (Freihand-Reihe)")}</label>
+        <label><input type="checkbox" bind:checked={opts.hdr.deghost} /> {t("Geisterbilder entfernen (bewegte Motive)")}</label>
       {:else if kind === "pano"}
         <div class="row">
-          <span>Projektion</span>
-          <label><input type="radio" bind:group={opts.pano.projection} value="cylindrical" /> Zylindrisch</label>
-          <label><input type="radio" bind:group={opts.pano.projection} value="spherical" /> Kugel</label>
-          <label><input type="radio" bind:group={opts.pano.projection} value="perspective" /> Perspektivisch</label>
+          <span>{t("Projektion")}</span>
+          <label><input type="radio" bind:group={opts.pano.projection} value="cylindrical" /> {t("Zylindrisch")}</label>
+          <label><input type="radio" bind:group={opts.pano.projection} value="spherical" /> {t("Kugel")}</label>
+          <label><input type="radio" bind:group={opts.pano.projection} value="perspective" /> {t("Perspektivisch")}</label>
         </div>
-        <label><input type="checkbox" bind:checked={opts.pano.autoCrop} /> Automatisch zuschneiden (keine leeren Ränder)</label>
+        <label><input type="checkbox" bind:checked={opts.pano.autoCrop} /> {t("Automatisch zuschneiden (keine leeren Ränder)")}</label>
       {:else}
-        <label><input type="checkbox" bind:checked={opts.focus.align} /> Ausrichten (Verwackeln, Objektiv-Atmen)</label>
+        <label><input type="checkbox" bind:checked={opts.focus.align} /> {t("Ausrichten (Verwackeln, Objektiv-Atmen)")}</label>
       {/if}
     </fieldset>
 
@@ -110,18 +125,18 @@
       <div class="progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
         <div class="bar" style:width="{pct}%"></div>
       </div>
-      <p class="meta">{progress.stage}{progress.total > 1 ? ` – ${progress.done} von ${progress.total}` : " …"}</p>
+      <p class="meta">{STAGES[progress.stage] ?? progress.stage}{progress.total > 1 ? t(" – {done} von {total}", { done: progress.done, total: progress.total }) : " …"}</p>
     {:else}
-      <p class="meta small">Das Ergebnis wird als EXR-Datei (linear, 16 Bit, mit Lichterreserve) neben dem ersten Foto gespeichert und danach ausgewählt.</p>
+      <p class="meta small">{t("Das Ergebnis wird als EXR-Datei (linear, 16 Bit, mit Lichterreserve) neben dem ersten Foto gespeichert und danach ausgewählt.")}</p>
     {/if}
 
     <div class="actions">
       {#if running}
-        <button type="button" class="btn quiet" onclick={() => api.mergeCancel()}>Abbrechen</button>
-        <button type="button" class="btn" onclick={onclose}>Im Hintergrund</button>
+        <button type="button" class="btn quiet" onclick={() => api.mergeCancel()}>{t("Abbrechen")}</button>
+        <button type="button" class="btn" onclick={onclose}>{t("Im Hintergrund")}</button>
       {:else}
-        <button type="button" class="btn quiet" onclick={onclose}>Abbrechen</button>
-        <button bind:this={startBtn} type="submit" class="btn primary">Zusammenfügen</button>
+        <button type="button" class="btn quiet" onclick={onclose}>{t("Abbrechen")}</button>
+        <button bind:this={startBtn} type="submit" class="btn primary">{t("Zusammenfügen")}</button>
       {/if}
     </div>
   </form>

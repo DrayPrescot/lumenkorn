@@ -3,6 +3,7 @@
 use crate::color::srgb_decode_lut_u16;
 use crate::error::{Error, Result};
 use crate::geometry::apply_exif_orientation;
+use crate::i18n::tr_s;
 use crate::image_f32::ImageF32;
 use rawler::imgop::develop::{Intermediate, ProcessingStep, RawDevelop};
 use rayon::prelude::*;
@@ -165,7 +166,7 @@ pub fn decode_raw_with(path: &Path, method: DemosaicMethod) -> Result<(ImageF32,
         None => rawler_pipeline(&raw)?,
     };
     if img.width == 0 || img.height == 0 {
-        return Err(Error::Raw("leeres Bild".into()));
+        return Err(Error::Raw(tr_s("leeres Bild", "empty image").into()));
     }
     Ok((img, orientation))
 }
@@ -196,7 +197,11 @@ fn rawler_pipeline(raw: &rawler::RawImage) -> Result<ImageF32> {
         },
         Intermediate::FourColor(_) => {
             return Err(Error::Raw(
-                "Vierfarb-Sensor nach der Kalibrierung nicht unterstützt".into(),
+                tr_s(
+                    "Vierfarb-Sensor nach der Kalibrierung nicht unterstützt",
+                    "Four-color sensor after calibration not supported",
+                )
+                .into(),
             ));
         }
     })

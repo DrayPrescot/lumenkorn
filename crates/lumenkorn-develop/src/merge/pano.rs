@@ -19,6 +19,7 @@
 use super::align::{self, Features, Mat3};
 use super::{Loader, Progress, check};
 use crate::error::{Error, Result};
+use crate::i18n::tr_s;
 use crate::image_f32::ImageF32;
 use rayon::prelude::*;
 use std::sync::atomic::AtomicBool;
@@ -265,7 +266,11 @@ pub fn merge(
 ) -> Result<ImageF32> {
     if n < 2 {
         return Err(Error::Params(
-            "Für ein Panorama mindestens zwei Fotos wählen".into(),
+            tr_s(
+                "Für ein Panorama mindestens zwei Fotos wählen",
+                "Select at least two photos for a panorama",
+            )
+            .into(),
         ));
     }
     // --- 1. Merkmale --------------------------------------------------------------
@@ -277,7 +282,7 @@ pub fn merge(
     let mut kept = 0;
     for i in 0..n {
         check(cancel)?;
-        progress("Bilder laden", i, n);
+        progress(tr_s("Bilder laden", "Loading images"), i, n);
         let img = load(i)?;
         feats.push(align::features(&img, 1200, 2500));
         smalls.push(img.downscale_to(800));
@@ -304,7 +309,11 @@ pub fn merge(
             }
             let fit = align::align(&feats[i], &feats[j], 20);
             let k = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-            progress("Überlappungen suchen", k, pairs.len());
+            progress(
+                tr_s("Überlappungen suchen", "Finding overlaps"),
+                k,
+                pairs.len(),
+            );
             // Wenige, aber dicht zusammenliegende Treffer sind oft Zufall
             fit.filter(|f| f.inliers as f64 >= 8.0 + 0.3 * f.matches as f64 || f.inliers >= 40)
                 .map(|f| (i, j, f))
@@ -343,8 +352,9 @@ pub fn merge(
     let root0 = find(&mut parent, 0);
     let lonely: Vec<usize> = (0..n).filter(|&i| find(&mut parent, i) != root0).collect();
     if !lonely.is_empty() {
-        return Err(Error::Params(format!(
+        return Err(Error::Params(crate::tr!(
             "{} von {n} Fotos überlappen mit keinem anderen ausreichend (mind. ~20 % Überlappung nötig): Nr. {}",
+            "{} of {n} photos do not overlap enough with any other (at least ~20% overlap needed): no. {}",
             lonely.len(),
             lonely
                 .iter()
@@ -508,14 +518,21 @@ pub fn merge(
     };
     let Some((mut u0, mut v0, mut u1, mut v1)) = bounds(&proj) else {
         return Err(Error::Params(
-            "Zu weitwinklig für die perspektivische Projektion – „Zylindrisch“ oder „Kugel“ wählen"
-                .into(),
+            tr_s(
+                "Zu weitwinklig für die perspektivische Projektion – „Zylindrisch“ oder „Kugel“ wählen",
+                "Too wide-angle for the perspective projection – choose “Cylindrical” or “Spherical”",
+            )
+            .into(),
         ));
     };
     if opts.projection != Projection::Perspective && u1 - u0 > 2.0 * std::f64::consts::PI * f * 0.98
     {
         return Err(Error::Params(
-            "360°-Panoramen werden noch nicht unterstützt".into(),
+            tr_s(
+                "360°-Panoramen werden noch nicht unterstützt",
+                "360° panoramas are not supported yet",
+            )
+            .into(),
         ));
     }
     let area = (u1 - u0) * (v1 - v0);
@@ -524,7 +541,11 @@ pub fn merge(
         && area > 25.0 * sizes.iter().map(|s| (s.0 * s.1) as f64).sum::<f64>()
     {
         return Err(Error::Params(
-            "Die perspektivische Projektion verzerrt diese Aufnahmen zu stark – „Zylindrisch“ wählen".into(),
+            tr_s(
+                "Die perspektivische Projektion verzerrt diese Aufnahmen zu stark – „Zylindrisch“ wählen",
+                "The perspective projection distorts these shots too much – choose “Cylindrical”",
+            )
+            .into(),
         ));
     }
     if area > cap {
@@ -541,7 +562,7 @@ pub fn merge(
 
     // --- 5. Helligkeitsausgleich ---------------------------------------------------
     {
-        progress("Helligkeit angleichen", 0, 1);
+        progress(tr_s("Helligkeit angleichen", "Matching brightness"), 0, 1);
         // Mittlere Helligkeit beider Bilder in ihrer Überlappung
         let overlap = |i: usize, j: usize| -> Option<(f64, f64, f64)> {
             let (si, sj) = (&smalls[i], &smalls[j]);
@@ -607,7 +628,7 @@ pub fn merge(
     let mut wsum = vec![0f32; out_w * out_h];
     for i in 0..n {
         check(cancel)?;
-        progress("Zusammenfügen", i, n);
+        progress(tr_s("Zusammenfügen", "Stitching"), i, n);
         let img = match full[i].take() {
             Some(img) => img,
             None => load(i)?,
@@ -658,7 +679,7 @@ pub fn merge(
                 }
             });
     }
-    progress("Zusammenfügen", n, n);
+    progress(tr_s("Zusammenfügen", "Stitching"), n, n);
     drop(full);
     drop(smalls);
     // Im Puffer selbst normieren – bei 150 MP spart das 1,8 GB

@@ -94,14 +94,17 @@ fn embeds_tags_and_searches() {
         concepts: vec![
             Concept {
                 tag: "Rot",
+                en: "Red",
                 phrase: "red",
             },
             Concept {
                 tag: "Grün",
+                en: "Green",
                 phrase: "green",
             },
             Concept {
                 tag: "Blau",
+                en: "Blue",
                 phrase: "blue",
             },
         ],

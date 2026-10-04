@@ -338,11 +338,12 @@ impl Gpu {
             power_preference: wgpu::PowerPreference::HighPerformance,
             ..Default::default()
         }))
-        .map_err(|e| format!("keine Grafikkarte gefunden ({e})"))?;
+        .map_err(|e| crate::tr!("keine Grafikkarte gefunden ({e})", "no GPU found ({e})"))?;
         let ai = adapter.get_info();
         if ai.device_type == wgpu::DeviceType::Cpu && !allow_software {
-            return Err(format!(
+            return Err(crate::tr!(
                 "nur Software-Rendering verfügbar ({}) – die CPU-Pipeline ist schneller",
+                "only software rendering available ({}) – the CPU pipeline is faster",
                 ai.name
             ));
         }
@@ -357,7 +358,7 @@ impl Gpu {
             required_limits: limits.clone(),
             ..Default::default()
         }))
-        .map_err(|e| format!("Grafikkarte nicht nutzbar ({e})"))?;
+        .map_err(|e| crate::tr!("Grafikkarte nicht nutzbar ({e})", "GPU not usable ({e})"))?;
         // Fehler nie als Absturz: sie werden über Fehlerbereiche abgefangen.
         device.on_uncaptured_error(Arc::new(|e| log::error!("wgpu: {e}")));
 
@@ -442,7 +443,10 @@ impl Gpu {
             })
             .collect();
         if let Some(e) = pollster::block_on(scope.pop()) {
-            return Err(format!("Shader nicht übersetzbar: {e}"));
+            return Err(crate::tr!(
+                "Shader nicht übersetzbar: {e}",
+                "Shader failed to compile: {e}"
+            ));
         }
         let dummies = (1..=8)
             .map(|i| storage(&device, &format!("leer{i}"), 16))
@@ -780,11 +784,12 @@ impl Gpu {
         let (w, h) = (src.image.width, src.image.height);
         let n = w * h;
         if n == 0 {
-            return Err("leeres Bild".into());
+            return Err(crate::i18n::tr_s("leeres Bild", "empty image").into());
         }
         if !self.fits(n) {
-            return Err(format!(
+            return Err(crate::tr!(
                 "Bild zu groß für einen GPU-Puffer ({w}×{h}, Grenze {} MB)",
+                "Image too large for a GPU buffer ({w}×{h}, limit {} MB)",
                 self.max_binding >> 20
             ));
         }
@@ -1221,10 +1226,10 @@ impl Gpu {
 
         let fail = |what: &str, e: wgpu::Error| format!("{what}: {e}");
         if let Some(e) = pollster::block_on(val.pop()) {
-            return Err(fail("Validierung", e));
+            return Err(fail(crate::i18n::tr_s("Validierung", "Validation"), e));
         }
         if let Some(e) = pollster::block_on(oom.pop()) {
-            return Err(fail("Grafikspeicher", e));
+            return Err(fail(crate::i18n::tr_s("Grafikspeicher", "GPU memory"), e));
         }
 
         let slice = set.staging.slice(0..copy_size);
@@ -1234,14 +1239,14 @@ impl Gpu {
         });
         self.device
             .poll(wgpu::PollType::wait_indefinitely())
-            .map_err(|e| format!("Warten auf die GPU: {e}"))?;
+            .map_err(|e| crate::tr!("Warten auf die GPU: {e}", "Waiting for the GPU: {e}"))?;
         rx.recv()
             .map_err(|e| e.to_string())?
-            .map_err(|e| format!("Rücklesen: {e}"))?;
+            .map_err(|e| crate::tr!("Rücklesen: {e}", "Readback: {e}"))?;
         let out = {
             let view = slice
                 .get_mapped_range()
-                .map_err(|e| format!("Rücklesen: {e}"))?;
+                .map_err(|e| crate::tr!("Rücklesen: {e}", "Readback: {e}"))?;
             if pack {
                 let px: &[u32] = bytemuck::cast_slice(&view);
                 let mut rgb = Vec::with_capacity(px.len() * 3);
@@ -1250,7 +1255,7 @@ impl Gpu {
                 }
                 Rendered::Rgb8(
                     image::RgbImage::from_raw(out_w as u32, out_h as u32, rgb)
-                        .ok_or("Puffergröße")?,
+                        .ok_or(crate::i18n::tr_s("Puffergröße", "buffer size"))?,
                 )
             } else {
                 let px: &[[f32; 4]] = bytemuck::cast_slice(&view);

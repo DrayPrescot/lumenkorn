@@ -19,6 +19,7 @@
 
 use crate::accel::{self, Backend};
 use crate::error::{Error, Result};
+use lumenkorn_develop::{i18n::tr_s, tr};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{Read, Write};
@@ -504,8 +505,9 @@ pub fn download_missing(
             .iter()
             .find(|g| g.backend == backend)
             .ok_or_else(|| {
-                Error::Download(format!(
+                Error::Download(tr!(
                     "{} gibt es für diese Plattform nicht",
+                    "{} is not available for this platform",
                     backend.label()
                 ))
             })?;
@@ -575,7 +577,7 @@ pub fn download_missing(
     // DRUNet: Original-Gewichte lokal in ONNX übersetzen, dann aufräumen.
     if component == Component::Denoise && !dir.join(DENOISE_MODEL).is_file() {
         progress(Progress {
-            item: "Modell wird vorbereitet".into(),
+            item: tr_s("Modell wird vorbereitet", "Preparing model").into(),
             index: count.max(1),
             count: count.max(1),
             done: 0,
@@ -696,8 +698,9 @@ fn download(
         && done != t
     {
         let _ = std::fs::remove_file(target);
-        return Err(Error::Download(format!(
-            "{url}: unvollständig ({done} von {t} Bytes)"
+        return Err(Error::Download(tr!(
+            "{url}: unvollständig ({done} von {t} Bytes)",
+            "{url}: incomplete ({done} of {t} bytes)"
         )));
     }
     Ok(())
@@ -742,7 +745,10 @@ fn extract_entry(archive: &Path, url: &str, entry: &str, target: &Path) -> Resul
         found
     };
     if !found {
-        return Err(Error::Download(format!("{entry} nicht im Archiv gefunden")));
+        return Err(Error::Download(tr!(
+            "{entry} nicht im Archiv gefunden",
+            "{entry} not found in archive"
+        )));
     }
     std::fs::rename(tmp, target)?;
     Ok(())

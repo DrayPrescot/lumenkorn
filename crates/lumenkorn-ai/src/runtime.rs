@@ -36,8 +36,10 @@ pub fn init_with(lib: &Path, backend: Backend) -> Result<()> {
         preload_companions(lib);
         let builder = ort::init_from(lib).map_err(|e| {
             if cfg!(windows) {
-                format!(
+                lumenkorn_develop::tr!(
                     "{e} – Ist das Microsoft Visual C++ Redistributable (x64) installiert? \
+                     https://aka.ms/vs/17/release/vc_redist.x64.exe",
+                    "{e} – Is the Microsoft Visual C++ Redistributable (x64) installed? \
                      https://aka.ms/vs/17/release/vc_redist.x64.exe"
                 )
             } else {

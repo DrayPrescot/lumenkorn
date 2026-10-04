@@ -3,6 +3,7 @@
   import { api, imageUrl, type ImageSummary, type RejectedSummary } from "../lib/api";
   import { dev } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
+  import { num, t } from "../lib/i18n";
 
   let { images, onclose }: { images: ImageSummary[]; onclose: () => void } = $props();
 
@@ -27,7 +28,7 @@
     confirmBtn?.focus();
   });
 
-  const fmt = (v: number, d: number) => v.toLocaleString("de-DE", { maximumFractionDigits: d });
+  const fmt = (v: number, d: number) => num(v, { maximumFractionDigits: d });
   const mb = (b: number) =>
     b >= 1e9 ? `${fmt(b / 1e9, 1)} GB` : b >= 1e6 ? `${fmt(b / 1e6, 0)} MB` : `${fmt(Math.max(1, b / 1e3), 0)} KB`;
 
@@ -69,9 +70,9 @@
   >
     <h3>
       {#if summary}
-        {summary.count} abgelehnte{summary.count === 1 ? "s Foto" : " Fotos"} löschen?
+        {t(summary.count === 1 ? "{n} abgelehntes Foto löschen?" : "{n} abgelehnte Fotos löschen?", { n: summary.count })}
       {:else}
-        Abgelehnte Fotos werden gezählt …
+        {t("Abgelehnte Fotos werden gezählt …")}
       {/if}
     </h3>
 
@@ -84,25 +85,29 @@
 
     {#if summary}
       <p class="meta">
-        {summary.count} {summary.count === 1 ? "Datei" : "Dateien"}, zusammen {mb(summary.bytes)}, aus „{lib.scopeTitle}“.
-        Zugehörige XMP-Dateien und Bearbeitungen werden mit entfernt.
+        {t(summary.count === 1 ? "{n} Datei, zusammen {size}, aus „{scope}“." : "{n} Dateien, zusammen {size}, aus „{scope}“.", {
+          n: summary.count,
+          size: mb(summary.bytes),
+          scope: lib.scopeTitle,
+        })}
+        {t("Zugehörige XMP-Dateien und Bearbeitungen werden mit entfernt.")}
       </p>
     {/if}
 
     {#if summary?.trashSupported}
       <fieldset>
-        <label><input type="radio" bind:group={toTrash} value={true} /> In den Papierkorb verschieben</label>
-        <label><input type="radio" bind:group={toTrash} value={false} /> Endgültig löschen</label>
+        <label><input type="radio" bind:group={toTrash} value={true} /> {t("In den Papierkorb verschieben")}</label>
+        <label><input type="radio" bind:group={toTrash} value={false} /> {t("Endgültig löschen")}</label>
       </fieldset>
     {/if}
     {#if !toTrash}
-      <p class="warn">Endgültig gelöschte Dateien lassen sich nicht wiederherstellen.</p>
+      <p class="warn">{t("Endgültig gelöschte Dateien lassen sich nicht wiederherstellen.")}</p>
     {/if}
 
     <div class="actions">
-      <button type="button" class="btn quiet" onclick={onclose} disabled={busy}>Abbrechen</button>
+      <button type="button" class="btn quiet" onclick={onclose} disabled={busy}>{t("Abbrechen")}</button>
       <button bind:this={confirmBtn} type="submit" class="btn danger" disabled={busy || !summary?.count}>
-        {busy ? "Lösche …" : toTrash ? "In den Papierkorb" : "Endgültig löschen"}
+        {busy ? t("Lösche …") : toTrash ? t("In den Papierkorb") : t("Endgültig löschen")}
       </button>
     </div>
   </form>

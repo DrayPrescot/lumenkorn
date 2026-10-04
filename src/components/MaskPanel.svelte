@@ -2,6 +2,7 @@
   import { oklabToCss, type LocalAdjust, type MaskShape } from "../lib/api";
   import { dev, type NewMaskKind } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
+  import { t } from "../lib/i18n";
   import Icon from "./Icon.svelte";
   import Slider from "./Slider.svelte";
 
@@ -11,24 +12,24 @@
   const aiReady = $derived(!!lib.ai?.masksReady);
 
   const kinds: { kind: NewMaskKind; label: string; hint: string; ai?: boolean }[] = [
-    { kind: "subject", label: "Motiv", hint: "Hauptmotiv automatisch erkennen", ai: true },
-    { kind: "sky", label: "Himmel", hint: "Himmel automatisch erkennen" },
-    { kind: "object", label: "Objekt", hint: "Auf ein Objekt klicken", ai: true },
-    { kind: "brush", label: "Pinsel", hint: "Bereich übermalen" },
-    { kind: "color", label: "Farbe", hint: "Farbe mit der Pipette wählen" },
-    { kind: "linear", label: "Verlauf", hint: "Auf dem Bild ziehen" },
-    { kind: "radial", label: "Radial", hint: "Ellipse auf dem Bild ziehen" },
+    { kind: "subject", label: t("Motiv"), hint: t("Hauptmotiv automatisch erkennen"), ai: true },
+    { kind: "sky", label: t("Himmel"), hint: t("Himmel automatisch erkennen") },
+    { kind: "object", label: t("Objekt"), hint: t("Auf ein Objekt klicken"), ai: true },
+    { kind: "brush", label: t("Pinsel"), hint: t("Bereich übermalen") },
+    { kind: "color", label: t("Farbe"), hint: t("Farbe mit der Pipette wählen") },
+    { kind: "linear", label: t("Verlauf"), hint: t("Auf dem Bild ziehen") },
+    { kind: "radial", label: t("Radial"), hint: t("Ellipse auf dem Bild ziehen") },
   ];
 
   const sliders: { key: keyof LocalAdjust; label: string; min: number; max: number; step?: number; decimals?: number; track?: string }[] = [
-    { key: "exposure", label: "Belichtung", min: -4, max: 4, step: 0.05, decimals: 2 },
-    { key: "contrast", label: "Kontrast", min: -100, max: 100 },
-    { key: "highlights", label: "Lichter", min: -100, max: 100 },
-    { key: "shadows", label: "Tiefen", min: -100, max: 100 },
-    { key: "clarity", label: "Klarheit", min: -100, max: 100 },
-    { key: "temperature", label: "Temperatur", min: -100, max: 100, track: "linear-gradient(to right, #4f78c4, #8a8a8a, #d6b04a)" },
-    { key: "tint", label: "Tönung", min: -100, max: 100, track: "linear-gradient(to right, #5aa35a, #8a8a8a, #b65aa8)" },
-    { key: "saturation", label: "Sättigung", min: -100, max: 100 },
+    { key: "exposure", label: t("Belichtung"), min: -4, max: 4, step: 0.05, decimals: 2 },
+    { key: "contrast", label: t("Kontrast"), min: -100, max: 100 },
+    { key: "highlights", label: t("Lichter"), min: -100, max: 100 },
+    { key: "shadows", label: t("Tiefen"), min: -100, max: 100 },
+    { key: "clarity", label: t("Klarheit"), min: -100, max: 100 },
+    { key: "temperature", label: t("Temperatur"), min: -100, max: 100, track: "linear-gradient(to right, #4f78c4, #8a8a8a, #d6b04a)" },
+    { key: "tint", label: t("Tönung"), min: -100, max: 100, track: "linear-gradient(to right, #5aa35a, #8a8a8a, #b65aa8)" },
+    { key: "saturation", label: t("Sättigung"), min: -100, max: 100 },
   ];
 
   function pick(kind: NewMaskKind) {
@@ -42,15 +43,15 @@
   function describe(s: MaskShape): string {
     switch (s.type) {
       case "linear":
-        return "Verlauf";
+        return t("Verlauf");
       case "radial":
-        return "Radial";
+        return t("Radial");
       case "brush":
-        return `Pinsel (${s.strokes.length} ${s.strokes.length === 1 ? "Strich" : "Striche"})`;
+        return t(s.strokes.length === 1 ? "Pinsel ({n} Strich)" : "Pinsel ({n} Striche)", { n: s.strokes.length });
       case "color":
-        return `Farbe (${s.samples.length} ${s.samples.length === 1 ? "Ton" : "Töne"})`;
+        return t(s.samples.length === 1 ? "Farbe ({n} Ton)" : "Farbe ({n} Töne)", { n: s.samples.length });
       case "raster":
-        return s.kind === "subject" ? "Motiv" : s.kind === "sky" ? "Himmel" : `Objekt (${s.prompt?.length ?? 0} ${(s.prompt?.length ?? 0) === 1 ? "Punkt" : "Punkte"})`;
+        return s.kind === "subject" ? t("Motiv") : s.kind === "sky" ? t("Himmel") : t((s.prompt?.length ?? 0) === 1 ? "Objekt ({n} Punkt)" : "Objekt ({n} Punkte)", { n: s.prompt?.length ?? 0 });
     }
   }
 
@@ -80,15 +81,15 @@
     if (dev.maskBusy) return dev.maskBusy;
     switch (dev.tool) {
       case "linear":
-        return "Ziehe auf dem Bild von der vollen zur ausgeblendeten Wirkung.";
+        return t("Ziehe auf dem Bild von der vollen zur ausgeblendeten Wirkung.");
       case "radial":
-        return "Ziehe vom Mittelpunkt nach außen.";
+        return t("Ziehe vom Mittelpunkt nach außen.");
       case "brush":
-        return "Male auf dem Bild. Mit gedrückter Alt-Taste radierst du.";
+        return t("Male auf dem Bild. Mit gedrückter Alt-Taste radierst du.");
       case "object":
-        return "Klicke auf das Objekt. Weitere Klicks verfeinern, Alt-Klick nimmt Bereiche heraus.";
+        return t("Klicke auf das Objekt. Weitere Klicks verfeinern, Alt-Klick nimmt Bereiche heraus.");
       case "color":
-        return "Klicke mit der Pipette auf die gewünschte Farbe. Weitere Klicks nehmen Farbtöne hinzu, Alt-Klick entfernt den nächstgelegenen.";
+        return t("Klicke mit der Pipette auf die gewünschte Farbe. Weitere Klicks nehmen Farbtöne hinzu, Alt-Klick entfernt den nächstgelegenen.");
     }
     return null;
   });
@@ -98,10 +99,10 @@
 
 <section class="masks">
   <header>
-    <h4>Masken</h4>
+    <h4>{t("Masken")}</h4>
     <div class="anchor">
       <button class="btn small" onclick={(e) => { e.stopPropagation(); menu = menu?.mode === "new" ? null : { mode: "new" }; }}>
-        <Icon name="plus" size={12} /> Neu
+        <Icon name="plus" size={12} /> {t("Neu")}
       </button>
       {#if menu?.mode === "new"}
         {@render kindMenu()}
@@ -115,8 +116,8 @@
         <li class:active={dev.activeMask === i} class:off={!m.enabled}>
           <button
             class="eye"
-            aria-label={m.enabled ? "Ebene ausblenden" : "Ebene einblenden"}
-            title={m.enabled ? "Ausblenden" : "Einblenden"}
+            aria-label={m.enabled ? t("Ebene ausblenden") : t("Ebene einblenden")}
+            title={m.enabled ? t("Ausblenden") : t("Einblenden")}
             onclick={() => { m.enabled = !m.enabled; dev.schedule(); dev.commit(); }}
           >
             <span class="dot"></span>
@@ -131,18 +132,18 @@
               onblur={(e) => { m.name = e.currentTarget.value.trim() || m.name; renaming = null; dev.commit(); }}
             />
           {:else}
-            <button class="name" onclick={() => dev.selectMask(dev.activeMask === i ? null : i)} ondblclick={() => (renaming = i)} title="Doppelklick zum Umbenennen">
+            <button class="name" onclick={() => dev.selectMask(dev.activeMask === i ? null : i)} ondblclick={() => (renaming = i)} title={t("Doppelklick zum Umbenennen")}>
               {m.name}
             </button>
           {/if}
-          <button class="icon-btn" aria-label="Maske löschen" title="Maske löschen" onclick={() => dev.removeMask(i)}>
+          <button class="icon-btn" aria-label={t("Maske löschen")} title={t("Maske löschen")} onclick={() => dev.removeMask(i)}>
             <Icon name="trash" size={13} />
           </button>
         </li>
       {/each}
     </ul>
   {:else}
-    <p class="empty">Lokale Anpassungen nur für einen Bereich: Himmel abdunkeln, Motiv aufhellen, Ecken abwedeln.</p>
+    <p class="empty">{t("Lokale Anpassungen nur für einen Bereich: Himmel abdunkeln, Motiv aufhellen, Ecken abwedeln.")}</p>
   {/if}
 
   {#if hint}
@@ -162,45 +163,45 @@
               </span>
             {/if}
             {#if s.type !== "brush"}
-              <button class="tog" class:on={s.invert} onclick={() => toggleShape(i, "invert")} title="Umkehren">Umkehren</button>
+              <button class="tog" class:on={s.invert} onclick={() => toggleShape(i, "invert")} title={t("Umkehren")}>{t("Umkehren")}</button>
             {/if}
-            <button class="icon-btn" aria-label="Form entfernen" onclick={() => removeShape(i)}><Icon name="close" size={11} /></button>
+            <button class="icon-btn" aria-label={t("Form entfernen")} onclick={() => removeShape(i)}><Icon name="close" size={11} /></button>
           </li>
         {:else}
-          <li class="muted">Noch keine Form – {dev.tool ? "siehe Hinweis oben" : "füge eine hinzu"}.</li>
+          <li class="muted">{dev.tool ? t("Noch keine Form – siehe Hinweis oben.") : t("Noch keine Form – füge eine hinzu.")}</li>
         {/each}
       </ul>
 
       <div class="row">
         <div class="anchor">
-          <button class="btn small" onclick={(e) => { e.stopPropagation(); menu = menu?.mode === "add" ? null : { mode: "add" }; }}>Hinzufügen</button>
+          <button class="btn small" onclick={(e) => { e.stopPropagation(); menu = menu?.mode === "add" ? null : { mode: "add" }; }}>{t("Hinzufügen")}</button>
           {#if menu?.mode === "add"}{@render kindMenu()}{/if}
         </div>
         <div class="anchor">
-          <button class="btn small" onclick={(e) => { e.stopPropagation(); menu = menu?.mode === "subtract" ? null : { mode: "subtract" }; }}>Abziehen</button>
+          <button class="btn small" onclick={(e) => { e.stopPropagation(); menu = menu?.mode === "subtract" ? null : { mode: "subtract" }; }}>{t("Abziehen")}</button>
           {#if menu?.mode === "subtract"}{@render kindMenu()}{/if}
         </div>
-        <button class="btn small" class:on={dev.showOverlay} onclick={() => dev.toggleOverlay()} title="Maske rot anzeigen (O)">Maske zeigen</button>
+        <button class="btn small" class:on={dev.showOverlay} onclick={() => dev.toggleOverlay()} title={t("Maske rot anzeigen (O)")}>{t("Maske zeigen")}</button>
       </div>
 
       {#if dev.tool === "brush"}
         <div class="brush">
           <div class="seg">
-            <button class:on={!dev.brush.erase} onclick={() => (dev.brush.erase = false)}>Malen</button>
-            <button class:on={dev.brush.erase} onclick={() => (dev.brush.erase = true)}>Radieren</button>
+            <button class:on={!dev.brush.erase} onclick={() => (dev.brush.erase = false)}>{t("Malen")}</button>
+            <button class:on={dev.brush.erase} onclick={() => (dev.brush.erase = true)}>{t("Radieren")}</button>
           </div>
-          <Slider label="Größe" value={Math.round(dev.brush.size * 1000) / 10} min={0.3} max={20} step={0.1} decimals={1} oninput={(v) => (dev.brush.size = v / 100)} oncommit={() => {}} neutral={3} />
-          <Slider label="Weiche Kante" value={Math.round(dev.brush.feather * 100)} min={0} max={100} oninput={(v) => (dev.brush.feather = v / 100)} oncommit={() => {}} neutral={60} />
+          <Slider label={t("Größe")} value={Math.round(dev.brush.size * 1000) / 10} min={0.3} max={20} step={0.1} decimals={1} oninput={(v) => (dev.brush.size = v / 100)} oncommit={() => {}} neutral={3} />
+          <Slider label={t("Weiche Kante")} value={Math.round(dev.brush.feather * 100)} min={0} max={100} oninput={(v) => (dev.brush.feather = v / 100)} oncommit={() => {}} neutral={60} />
         </div>
       {:else if layer.shapes.some((s) => s.type === "brush")}
-        <button class="btn small wide" onclick={() => (dev.tool = "brush")}>Weiter malen</button>
+        <button class="btn small wide" onclick={() => (dev.tool = "brush")}>{t("Weiter malen")}</button>
       {/if}
 
       {#each layer.shapes as s, i}
         {#if s.type === "color"}
           {@const n = layer.shapes.filter((x) => x.type === "color").length}
           <Slider
-            label={n > 1 ? `Farbbereich ${layer.shapes.slice(0, i + 1).filter((x) => x.type === "color").length}` : "Farbbereich"}
+            label={n > 1 ? t("Farbbereich {n}", { n: layer.shapes.slice(0, i + 1).filter((x) => x.type === "color").length }) : t("Farbbereich")}
             value={s.range}
             min={0}
             max={100}
@@ -211,7 +212,7 @@
         {/if}
       {/each}
       {#if dev.tool !== "color" && layer.shapes.some((s) => s.type === "color")}
-        <button class="btn small wide" onclick={() => (dev.tool = "color")}>Weitere Farbtöne wählen</button>
+        <button class="btn small wide" onclick={() => (dev.tool = "color")}>{t("Weitere Farbtöne wählen")}</button>
       {/if}
 
       <div class="sliders">
@@ -237,10 +238,10 @@
   <div class="menu" role="menu" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
     {#each kinds as k (k.kind)}
       {@const disabled = k.ai && !aiReady}
-      <button role="menuitem" {disabled} onclick={() => pick(k.kind)} title={disabled ? "Benötigt die KI-Masken (unten links unter „KI“)" : k.hint}>
+      <button role="menuitem" {disabled} onclick={() => pick(k.kind)} title={disabled ? t("Benötigt die KI-Masken (unten links unter „KI“)") : k.hint}>
         {#if k.ai || k.kind === "sky"}<Icon name="sparkle" size={12} />{:else}<span class="sp"></span>{/if}
         <span class="l">{k.label}</span>
-        <span class="h">{disabled ? "KI-Masken fehlen" : k.hint}</span>
+        <span class="h">{disabled ? t("KI-Masken fehlen") : k.hint}</span>
       </button>
     {/each}
   </div>

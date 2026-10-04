@@ -13,7 +13,8 @@ use lumenkorn_ai::{Clip, EmbeddingIndex, Tagger, runtime, vocab};
 use lumenkorn_core::maskstore::MaskFiles;
 use lumenkorn_core::thumbs::Variant;
 use lumenkorn_core::{Error, ImageSummary, Scope};
-use lumenkorn_develop::{DevelopParams, PromptPoint, Source};
+use lumenkorn_develop::i18n::tr_s;
+use lumenkorn_develop::{DevelopParams, PromptPoint, Source, tr};
 use serde::{Deserialize, Serialize};
 use std::path::Path as StdPath;
 use std::path::{Path, PathBuf};
@@ -100,22 +101,27 @@ fn backend_from_id(id: &str) -> Option<Backend> {
 /// Lumenkorn sicher startet. Liefert die Meldung für die Oberfläche.
 fn handle_previous_crashes(ai_dir: &Path, settings: &mut AiSettings) -> Option<String> {
     let log = crate::logfile::path()
-        .map(|p| format!(" Details stehen in {}.", p.display()))
+        .map(|p| tr!(" Details stehen in {}.", " Details are in {}.", p.display()))
         .unwrap_or_default();
     let mut notes = Vec::new();
     for c in guard::take_previous(ai_dir) {
         let what = match c.stage {
-            Stage::KiLaufzeit => "beim Laden der KI-Laufzeit",
-            Stage::KiModell => "beim Öffnen eines KI-Modells",
-            Stage::KiAnalyse => "beim Analysieren der Fotos",
-            Stage::GpuBearbeitung => "beim Öffnen der Grafikkarte für die Bildbearbeitung",
+            Stage::KiLaufzeit => tr_s("beim Laden der KI-Laufzeit", "while loading the AI runtime"),
+            Stage::KiModell => tr_s("beim Öffnen eines KI-Modells", "while opening an AI model"),
+            Stage::KiAnalyse => tr_s("beim Analysieren der Fotos", "while analyzing photos"),
+            Stage::GpuBearbeitung => tr_s(
+                "beim Öffnen der Grafikkarte für die Bildbearbeitung",
+                "while opening the GPU for image editing",
+            ),
         };
         if c.stage == Stage::GpuBearbeitung {
             settings.develop_gpu = false;
-            notes.push(format!(
+            notes.push(tr!(
                 "Lumenkorn ist beim letzten Start {what} abgestürzt. Die Bildbearbeitung rechnet \
                  jetzt auf dem Prozessor; im KI-Dialog unter „Grafikkarte“ lässt sie sich wieder \
-                 einschalten."
+                 einschalten.",
+                "Lumenkorn crashed {what} during the last launch. Image editing now runs on the \
+                 CPU; you can turn the GPU back on in the AI dialog under “GPU”."
             ));
             continue;
         }
@@ -129,19 +135,23 @@ fn handle_previous_crashes(ai_dir: &Path, settings: &mut AiSettings) -> Option<S
                     log::warn!("{} nicht deaktiviert: {e}", dir.display());
                 }
                 settings.accel = Preference::Cpu;
-                notes.push(format!(
+                notes.push(tr!(
                     "Lumenkorn ist beim letzten Start {what} mit der Grafikkarte ({}) \
                      abgestürzt. Die GPU-Laufzeit wurde deaktiviert, die KI rechnet jetzt auf dem \
                      Prozessor.{log}",
+                    "Lumenkorn crashed {what} on the GPU ({}) during the last launch. The GPU \
+                     runtime has been disabled; AI now runs on the CPU.{log}",
                     b.label()
                 ));
             }
             _ => {
                 settings.auto_tag = false;
-                notes.push(format!(
+                notes.push(tr!(
                     "Lumenkorn ist beim letzten Start {what} abgestürzt ({}). Die automatische \
                      Verschlagwortung ist pausiert – im KI-Dialog lässt sie sich wieder \
                      einschalten.{log}",
+                    "Lumenkorn crashed {what} during the last launch ({}). Automatic keywording \
+                     is paused – you can turn it back on in the AI dialog.{log}",
                     c.detail
                 ));
             }
@@ -262,8 +272,15 @@ pub(crate) fn ensure_runtime(state: &AppState) -> Result<(), Error> {
     if runtime::is_loaded() {
         return Ok(());
     }
-    let (lib, backend) = desired_library(state)
-        .ok_or_else(|| Error::Invalid("ONNX Runtime ist nicht installiert".into()))?;
+    let (lib, backend) = desired_library(state).ok_or_else(|| {
+        Error::Invalid(
+            tr_s(
+                "ONNX Runtime ist nicht installiert",
+                "ONNX Runtime is not installed",
+            )
+            .into(),
+        )
+    })?;
     let _g = Guard::begin(
         &state.ai.guard_dir,
         Stage::KiLaufzeit,
@@ -342,12 +359,18 @@ fn ensure_loaded(state: &AppState) -> Result<Loaded, Error> {
     }
     let status = models::status(&state.data_dir);
     if !status.model_ready {
-        return Err(Error::Invalid("KI-Modell ist nicht installiert".into()));
+        return Err(Error::Invalid(
+            tr_s(
+                "KI-Modell ist nicht installiert",
+                "AI model is not installed",
+            )
+            .into(),
+        ));
     }
     ensure_runtime(state)?;
     let result = (|| -> lumenkorn_ai::Result<Loaded> {
         let t = std::time::Instant::now();
-        let _g = model_guard(state, "CLIP (Verschlagwortung)");
+        let _g = model_guard(state, tr_s("CLIP (Verschlagwortung)", "CLIP (keywording)"));
         let clip = Arc::new(Clip::load(&models::model_dir(&state.data_dir))?);
         let tagger = Arc::new(Tagger::new(&clip, vocab::default_groups())?);
         log::info!("KI-Modell geladen in {:.2?}", t.elapsed());
@@ -679,7 +702,7 @@ pub async fn ai_benchmark(app: AppHandle) -> Result<Benchmark, Error> {
             data: &data,
         };
         let never = AtomicBool::new(false);
-        let _g = analysis_guard(state, "Geschwindigkeitstest");
+        let _g = analysis_guard(state, tr_s("Geschwindigkeitstest", "Speed test"));
         // Erster Lauf: Shader übersetzen, Speicher anlegen
         d.denoise(&img, 1.0, &|_, _| {}, &never).map_err(err)?;
         let t = std::time::Instant::now();
@@ -776,7 +799,11 @@ fn segmentation_input(state: &AppState, id: i64) -> Result<image::DynamicImage, 
 fn masks_needed(state: &AppState) -> Result<(), Error> {
     if !models::status(&state.data_dir).masks_ready {
         return Err(Error::Invalid(
-            "Die KI-Masken sind noch nicht installiert. Lade sie über „KI“ unten links.".into(),
+            tr_s(
+                "Die KI-Masken sind noch nicht installiert. Lade sie über „KI“ unten links.",
+                "The AI masks are not installed yet. Download them via “AI” at the bottom left.",
+            )
+            .into(),
         ));
     }
     ensure_runtime(state)
@@ -789,7 +816,7 @@ fn subject_model(state: &AppState) -> Result<Arc<SubjectModel>, Error> {
     if let Some(m) = guard.as_ref() {
         return Ok(m.clone());
     }
-    let _g = model_guard(state, "IS-Net (Motiv)");
+    let _g = model_guard(state, tr_s("IS-Net (Motiv)", "IS-Net (subject)"));
     let m = Arc::new(
         SubjectModel::load(&models::masks_dir(&state.data_dir).join("subject.onnx"))
             .map_err(err)?,
@@ -806,7 +833,10 @@ fn sam_model(state: &AppState) -> Result<Arc<Sam>, Error> {
         return Ok(m.clone());
     }
     let dir = models::masks_dir(&state.data_dir);
-    let _g = model_guard(state, "Segment Anything (Objekt)");
+    let _g = model_guard(
+        state,
+        tr_s("Segment Anything (Objekt)", "Segment Anything (object)"),
+    );
     let m = Arc::new(
         Sam::load(&dir.join("sam-encoder.onnx"), &dir.join("sam-decoder.onnx")).map_err(err)?,
     );
@@ -860,7 +890,7 @@ pub async fn mask_subject(app: AppHandle, id: i64) -> Result<MaskResult, Error> 
     spawn(app, move |state| {
         let model = subject_model(state)?;
         let t = std::time::Instant::now();
-        let _g = analysis_guard(state, "Motiv");
+        let _g = analysis_guard(state, tr_s("Motiv", "Subject"));
         let mask = model
             .predict(&segmentation_input(state, id)?)
             .map_err(err)?;
@@ -938,8 +968,11 @@ fn denoiser(state: &AppState) -> Result<Arc<lumenkorn_ai::denoise::Denoiser>, Er
     state.usage.touch(Slot::Interactive);
     if !models::status(&state.data_dir).denoise_ready {
         return Err(Error::Invalid(
-            "Die KI-Rauschreduzierung ist noch nicht installiert. Lade sie über „KI“ unten links."
-                .into(),
+            tr_s(
+                "Die KI-Rauschreduzierung ist noch nicht installiert. Lade sie über „KI“ unten links.",
+                "AI denoise is not installed yet. Download it via “AI” at the bottom left.",
+            )
+            .into(),
         ));
     }
     ensure_runtime(state)?;
@@ -948,7 +981,10 @@ fn denoiser(state: &AppState) -> Result<Arc<lumenkorn_ai::denoise::Denoiser>, Er
         return Ok(d.clone());
     }
     let path = models::denoise_dir(&state.data_dir).join(models::DENOISE_MODEL);
-    let _g = model_guard(state, "DRUNet (Rauschreduzierung)");
+    let _g = model_guard(
+        state,
+        tr_s("DRUNet (Rauschreduzierung)", "DRUNet (denoise)"),
+    );
     let d = Arc::new(lumenkorn_ai::denoise::Denoiser::load(&path).map_err(err)?);
     *g = Some(d.clone());
     Ok(d)
@@ -964,7 +1000,11 @@ pub fn denoise_start(app: AppHandle, id: i64, strength: Option<f32>) -> Result<(
         let mut running = state.ai.denoising.lock().unwrap();
         if running.is_some() {
             return Err(Error::Invalid(
-                "Es wird bereits ein Foto entrauscht.".into(),
+                tr_s(
+                    "Es wird bereits ein Foto entrauscht.",
+                    "A photo is already being denoised.",
+                )
+                .into(),
             ));
         }
         *running = Some(id);
@@ -1001,7 +1041,7 @@ pub fn denoise_start(app: AppHandle, id: i64, strength: Option<f32>) -> Result<(
                     None,
                 )?;
                 let img = &src.image;
-                let _g = analysis_guard(&state, "Rauschreduzierung");
+                let _g = analysis_guard(&state, tr_s("Rauschreduzierung", "Denoise"));
                 let out = d
                     .denoise(
                         &lumenkorn_ai::denoise::Rgb {
@@ -1017,7 +1057,7 @@ pub fn denoise_start(app: AppHandle, id: i64, strength: Option<f32>) -> Result<(
                 let denoise_id = MaskFiles::new_id(id, "dn");
                 std::fs::create_dir_all(&state.denoised_dir)?;
                 let path = lumenkorn_develop::denoised::path(&state.denoised_dir, &denoise_id)
-                    .ok_or_else(|| Error::Invalid("ungültige ID".into()))?;
+                    .ok_or_else(|| Error::Invalid(tr_s("ungültige ID", "invalid ID").into()))?;
                 lumenkorn_develop::denoised::write(&path, img.width, img.height, &out)?;
                 log::info!(
                     "Bild {id} entrauscht in {:.1?} ({}×{})",

@@ -7,6 +7,7 @@
 use crate::error::{Error, Result};
 use image::imageops::FilterType;
 use image::{DynamicImage, GrayImage, Luma, RgbImage};
+use lumenkorn_develop::{i18n::tr_s, tr};
 use ort::session::Session;
 use ort::value::Tensor;
 use std::collections::VecDeque;
@@ -56,12 +57,12 @@ impl SubjectModel {
             .inputs()
             .first()
             .map(|i| i.name().to_string())
-            .ok_or_else(|| Error::ModelFormat("kein Eingang".into()))?;
+            .ok_or_else(|| Error::ModelFormat(tr_s("kein Eingang", "no input").into()))?;
         let output = session
             .outputs()
             .first()
             .map(|o| o.name().to_string())
-            .ok_or_else(|| Error::ModelFormat("kein Ausgang".into()))?;
+            .ok_or_else(|| Error::ModelFormat(tr_s("kein Ausgang", "no output").into()))?;
         Ok(Self {
             session: Mutex::new(session),
             input,
@@ -169,7 +170,7 @@ impl Sam {
     /// geschätzten Qualität.
     pub fn predict(&self, emb: &SamEmbedding, points: &[Point]) -> Result<GrayImage> {
         if points.is_empty() {
-            return Err(Error::ModelFormat("keine Punkte".into()));
+            return Err(Error::ModelFormat(tr_s("keine Punkte", "no points").into()));
         }
         let mut coords = Vec::with_capacity((points.len() + 1) * 2);
         let mut labels = Vec::with_capacity(points.len() + 1);
@@ -221,8 +222,9 @@ impl Sam {
         let (w, h) = (emb.width, emb.height);
         let plane = (w * h) as usize;
         if masks.len() < (best + 1) * plane {
-            return Err(Error::ModelFormat(format!(
-                "unerwartete Maskenform {shape:?}"
+            return Err(Error::ModelFormat(tr!(
+                "unerwartete Maskenform {shape:?}",
+                "unexpected mask shape {shape:?}"
             )));
         }
         let m = &masks[best * plane..(best + 1) * plane];

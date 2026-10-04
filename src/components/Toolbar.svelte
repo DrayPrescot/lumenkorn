@@ -1,6 +1,7 @@
 <script lang="ts">
   import { lib } from "../lib/store.svelte";
   import { dev } from "../lib/develop.svelte";
+  import { t } from "../lib/i18n";
   import Icon from "./Icon.svelte";
   import ProjectFolders from "./ProjectFolders.svelte";
 
@@ -16,23 +17,23 @@
 </script>
 
 <div class="bar">
-  <button class="icon-btn sidebar-toggle" aria-label="Seitenleiste" onclick={ontogglesidebar}><Icon name="menu" /></button>
+  <button class="icon-btn sidebar-toggle" aria-label={t("Seitenleiste")} onclick={ontogglesidebar}><Icon name="menu" /></button>
 
-  <div class="modes" role="tablist" aria-label="Modus">
-    <button role="tab" aria-selected={lib.mode === "library"} class:on={lib.mode === "library"} onclick={() => { lib.mode = "library"; lib.view = "grid"; }} title="Bibliothek (G)">
-      Bibliothek
+  <div class="modes" role="tablist" aria-label={t("Modus")}>
+    <button role="tab" aria-selected={lib.mode === "library"} class:on={lib.mode === "library"} onclick={() => { lib.mode = "library"; lib.view = "grid"; }} title={t("Bibliothek (G)")}>
+      {t("Bibliothek")}
     </button>
-    <button role="tab" aria-selected={lib.mode === "develop"} class:on={lib.mode === "develop"} onclick={() => lib.enterDevelop()} disabled={!lib.images.length} title="Entwickeln (D)">
-      Entwickeln
+    <button role="tab" aria-selected={lib.mode === "develop"} class:on={lib.mode === "develop"} onclick={() => lib.enterDevelop()} disabled={!lib.images.length} title={t("Entwickeln (D)")}>
+      {t("Entwickeln")}
     </button>
   </div>
 
   {#if lib.mode === "library" && (lib.view === "loupe" || lib.view === "compare" || lib.view === "people")}
-    <button class="btn quiet" onclick={() => (lib.view = "grid")}><Icon name="back" size={14} /> Raster</button>
+    <button class="btn quiet" onclick={() => (lib.view = "grid")}><Icon name="back" size={14} /> {t("Raster")}</button>
   {/if}
   {#if lib.scope.type === "person" && lib.view !== "people"}
-    <button class="btn quiet" onclick={() => lib.openPeople()} title="Zurück zur Übersicht aller Personen">
-      <Icon name="back" size={14} /> Personen
+    <button class="btn quiet" onclick={() => lib.openPeople()} title={t("Zurück zur Übersicht aller Personen")}>
+      <Icon name="back" size={14} /> {t("Personen")}
     </button>
   {/if}
   {#if lib.mode === "develop"}
@@ -51,32 +52,32 @@
         // Lang gedrückt: nur kurzer Vergleich, nicht umschalten
         if (performance.now() - holdStart < 300) dev.showBefore = !dev.showBefore;
       }}
-      title="Bild ohne Bearbeitung zeigen (Taste \). Klick schaltet um, gedrückt halten zeigt es kurz."
+      title={t("Bild ohne Bearbeitung zeigen (Taste \\). Klick schaltet um, gedrückt halten zeigt es kurz.")}
     >
       <Icon name="develop" size={14} />
-      {dev.showBefore ? "Bearbeitung zeigen" : "Original zeigen"}
+      {dev.showBefore ? t("Bearbeitung zeigen") : t("Original zeigen")}
     </button>
   {/if}
   {#if lib.mode === "library" && lib.selection.size > 1 && lib.view !== "compare"}
-    <button class="btn" onclick={() => lib.compare()} title="Ausgewählte Fotos groß nebeneinander vergleichen (C)">
-      Vergleichen ({Math.min(lib.selection.size, 12)})
+    <button class="btn" onclick={() => lib.compare()} title={t("Ausgewählte Fotos groß nebeneinander vergleichen (C)")}>
+      {t("Vergleichen ({n})", { n: Math.min(lib.selection.size, 12) })}
     </button>
   {/if}
 
   <div class="title">
     {#if lib.view === "people" && lib.mode === "library"}
-      <h1>Personen</h1>
-      <span class="muted">{lib.people.filter((p) => p.name).length} benannt</span>
+      <h1>{t("Personen")}</h1>
+      <span class="muted">{t("{n} benannt", { n: String(lib.people.filter((p) => p.name).length) })}</span>
     {:else}
       <h1>{lib.scopeTitle}</h1>
-      <span class="muted">{lib.images.length} {lib.images.length === 1 ? "Foto" : "Fotos"}{lib.selection.size > 1 ? `, ${lib.selection.size} ausgewählt` : ""}</span>
+      <span class="muted">{t(lib.images.length === 1 ? "{n} Foto" : "{n} Fotos", { n: String(lib.images.length) })}{lib.selection.size > 1 ? t(", {n} ausgewählt", { n: String(lib.selection.size) }) : ""}</span>
     {/if}
   </div>
 
   {#if project}
     <div class="pf">
       <button class="btn" onclick={(e) => { e.stopPropagation(); foldersOpen = !foldersOpen; }} aria-expanded={foldersOpen}>
-        <Icon name="folder" size={14} /> {project.folders.length} Ordner
+        <Icon name="folder" size={14} /> {t("{n} Ordner", { n: String(project.folders.length) })}
       </button>
       {#if foldersOpen}
         <ProjectFolders {project} onclose={() => (foldersOpen = false)} />
@@ -87,8 +88,8 @@
   <div class="spacer"></div>
 
   {#if lib.rejected.length && lib.view !== "people"}
-    <button class="btn reject-btn" onclick={ondeleterejected} title="Abgelehnte Fotos dieser Ansicht von der Festplatte löschen (Strg+Entf)">
-      <Icon name="trash" size={14} /> {lib.rejected.length} abgelehnt
+    <button class="btn reject-btn" onclick={ondeleterejected} title={t("Abgelehnte Fotos dieser Ansicht von der Festplatte löschen (Strg+Entf)")}>
+      <Icon name="trash" size={14} /> {t("{n} abgelehnt", { n: String(lib.rejected.length) })}
     </button>
   {/if}
 
@@ -96,10 +97,10 @@
     <Icon name={lib.semantic ? "sparkle" : "search"} size={14} />
     <input
       type="search"
-      placeholder={lib.semantic ? "Bildinhalt beschreiben" : "Suchen"}
+      placeholder={lib.semantic ? t("Bildinhalt beschreiben") : t("Suchen")}
       title={lib.semantic
-        ? "Sucht nach dem, was auf den Fotos zu sehen ist, z. B. „Hund am Strand“"
-        : "Sucht in Dateiname, Kamera, Objektiv und Schlagworten"}
+        ? t("Sucht nach dem, was auf den Fotos zu sehen ist, z. B. „Hund am Strand“")
+        : t("Sucht in Dateiname, Kamera, Objektiv und Schlagworten")}
       bind:value={lib.search}
       oninput={() => lib.reloadSoon()}
       onkeydown={(e) => e.stopPropagation()}
@@ -109,20 +110,20 @@
         class="mode"
         class:on={lib.semantic}
         aria-pressed={lib.semantic}
-        title={lib.semantic ? "Zur Textsuche wechseln" : "Nach Bildinhalt suchen (KI)"}
+        title={lib.semantic ? t("Zur Textsuche wechseln") : t("Nach Bildinhalt suchen (KI)")}
         onclick={(e) => { e.preventDefault(); lib.semantic = !lib.semantic; if (lib.search.trim()) lib.loadImages(); }}
       >
-        KI
+        {t("KI")}
       </button>
     {/if}
   </label>
 
-  <div class="stars" role="group" aria-label="Mindestbewertung">
+  <div class="stars" role="group" aria-label={t("Mindestbewertung")}>
     {#each [1, 2, 3, 4, 5] as n}
       <button
         class:on={lib.minRating >= n}
-        aria-label="Mindestens {n} Sterne"
-        title="Mindestens {n} {n === 1 ? 'Stern' : 'Sterne'}"
+        aria-label={t(n === 1 ? "Mindestens {n} Stern" : "Mindestens {n} Sterne", { n })}
+        title={t(n === 1 ? "Mindestens {n} Stern" : "Mindestens {n} Sterne", { n })}
         onclick={() => { lib.minRating = lib.minRating === n ? 0 : n; lib.loadImages(); }}
       >
         <Icon name="star" size={13} fill={lib.minRating >= n} />
@@ -130,19 +131,19 @@
     {/each}
   </div>
 
-  <select bind:value={lib.sort} onchange={() => lib.loadImages(true)} aria-label="Sortierung">
-    <option value="capturedAsc">Älteste zuerst</option>
-    <option value="capturedDesc">Neueste zuerst</option>
-    <option value="nameAsc">Dateiname</option>
-    <option value="ratingDesc">Bewertung</option>
+  <select bind:value={lib.sort} onchange={() => lib.loadImages(true)} aria-label={t("Sortierung")}>
+    <option value="capturedAsc">{t("Älteste zuerst")}</option>
+    <option value="capturedDesc">{t("Neueste zuerst")}</option>
+    <option value="nameAsc">{t("Dateiname")}</option>
+    <option value="ratingDesc">{t("Bewertung")}</option>
   </select>
 
   {#if lib.mode === "library" && lib.view === "grid"}
-    <input class="size" type="range" min="110" max="420" step="10" bind:value={lib.rowHeight} aria-label="Vorschaugröße" />
+    <input class="size" type="range" min="110" max="420" step="10" bind:value={lib.rowHeight} aria-label={t("Vorschaugröße")} />
   {/if}
 
   {#if lib.mode === "library"}
-    <button class="icon-btn" aria-label="Informationen" title="Informationen (I)" onclick={ontoggleinfo}><Icon name="info" /></button>
+    <button class="icon-btn" aria-label={t("Informationen")} title={t("Informationen (I)")} onclick={ontoggleinfo}><Icon name="info" /></button>
   {/if}
 </div>
 

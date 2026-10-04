@@ -6,6 +6,7 @@
   import Icon from "./Icon.svelte";
   import { isTyping } from "../lib/keys";
   import { onMount } from "svelte";
+  import { t } from "../lib/i18n";
 
   const named = $derived(lib.people.filter((p) => p.name));
   const groups = $derived(lib.people.filter((p) => !p.name));
@@ -36,7 +37,7 @@
     if (!name) return;
     names[p.id] = "";
     await act(() => api.personRename(p.id, name));
-    lib.notify(`„${name}“ gespeichert. Ähnliche Gesichter werden als Vorschläge zugeordnet.`);
+    lib.notify(t("„{name}“ gespeichert. Ähnliche Gesichter werden als Vorschläge zugeordnet.", { name }));
   }
 
   async function openReview(p: Person) {
@@ -67,14 +68,14 @@
     if (!ids.length) return;
     await act(() => api.facesConfirm(ids));
     picked = new Set();
-    lib.notify(`${ids.length} ${ids.length === 1 ? "Gesicht" : "Gesichter"} bestätigt`);
+    lib.notify(t(ids.length === 1 ? "{n} Gesicht bestätigt" : "{n} Gesichter bestätigt", { n: ids.length }));
   }
 
   async function rejectFaces(ids: number[]) {
     if (!ids.length) return;
     await act(() => api.facesReassign(ids, null));
     picked = new Set();
-    lib.notify(`${ids.length} ${ids.length === 1 ? "Gesicht" : "Gesichter"} herausgenommen`);
+    lib.notify(t(ids.length === 1 ? "{n} Gesicht herausgenommen" : "{n} Gesichter herausgenommen", { n: ids.length }));
   }
 
   function onkeydown(e: KeyboardEvent) {
@@ -112,44 +113,48 @@
   {#if review}
     {@const p = review.person}
     <div class="review-head">
-      <button class="btn quiet" onclick={() => (review = null)}><Icon name="back" size={14} /> Personen</button>
-      <h2>{p.name ?? "Unbenannte Gruppe"}</h2>
-      <span class="muted">{p.faceCount} Gesichter auf {p.imageCount} Fotos{p.suggested ? `, ${p.suggested} vorgeschlagen` : ""}</span>
+      <button class="btn quiet" onclick={() => (review = null)}><Icon name="back" size={14} /> {t("Personen")}</button>
+      <h2>{p.name ?? t("Unbenannte Gruppe")}</h2>
+      <span class="muted"
+        >{p.suggested
+          ? t("{faces} Gesichter auf {images} Fotos, {n} vorgeschlagen", { faces: p.faceCount, images: p.imageCount, n: p.suggested })
+          : t("{faces} Gesichter auf {images} Fotos", { faces: p.faceCount, images: p.imageCount })}</span
+      >
       <span class="spacer"></span>
       {#if p.suggested}
         <button class="btn" onclick={() => confirmFaces(review!.faces.filter((x) => !x.confirmed).map((x) => x.id))}>
-          Alle {p.suggested} Vorschläge bestätigen
+          {t("Alle {n} Vorschläge bestätigen", { n: p.suggested })}
         </button>
       {/if}
-      <button class="btn" onclick={() => open(p)}>Fotos anzeigen</button>
+      <button class="btn" onclick={() => open(p)}>{t("Fotos anzeigen")}</button>
     </div>
     {#if picked.size}
-      <div class="pickbar" role="toolbar" aria-label="Auswahl">
-        <span>{picked.size} ausgewählt</span>
+      <div class="pickbar" role="toolbar" aria-label={t("Auswahl")}>
+        <span>{t("{n} ausgewählt", { n: picked.size })}</span>
         <button class="btn primary" disabled={!pickedOpen.length} onclick={() => confirmFaces(pickedOpen)}>
-          ✓ {pickedOpen.length ? `${pickedOpen.length} bestätigen` : "alle schon bestätigt"}
+          ✓ {pickedOpen.length ? t("{n} bestätigen", { n: pickedOpen.length }) : t("alle schon bestätigt")}
         </button>
-        <button class="btn" onclick={() => rejectFaces([...picked])}>✕ Herausnehmen</button>
-        <button class="btn quiet" onclick={() => (picked = new Set())}>Auswahl aufheben</button>
+        <button class="btn" onclick={() => rejectFaces([...picked])}>✕ {t("Herausnehmen")}</button>
+        <button class="btn quiet" onclick={() => (picked = new Set())}>{t("Auswahl aufheben")}</button>
       </div>
     {:else}
       <p class="muted hint">
-        Gesichter anklicken, um mehrere auszuwählen (Umschalt-Klick: Bereich, Strg+A: alle) – dann gemeinsam bestätigen
-        oder herausnehmen. Einzeln: ✓ bestätigt, ✕ nimmt heraus (wird dieser Person nicht erneut vorgeschlagen).
+        {t("Gesichter anklicken, um mehrere auszuwählen (Umschalt-Klick: Bereich, Strg+A: alle) – dann gemeinsam bestätigen oder herausnehmen.")}
+        {t("Einzeln: ✓ bestätigt, ✕ nimmt heraus (wird dieser Person nicht erneut vorgeschlagen).")}
       </p>
     {/if}
     <div class="faces">
       {#each review.faces as f (f.id)}
         <div class="face" class:suggested={!f.confirmed} class:picked={picked.has(f.id)}>
-          <button class="pick" aria-pressed={picked.has(f.id)} aria-label="Auswählen" onclick={(e) => pick(e, f.id)}>
+          <button class="pick" aria-pressed={picked.has(f.id)} aria-label={t("Auswählen")} onclick={(e) => pick(e, f.id)}>
             <img src={faceUrl(f.id)} alt="" loading="lazy" />
           </button>
           {#if picked.has(f.id)}<span class="tick" aria-hidden="true">✓</span>{/if}
           <div class="face-actions">
             {#if !f.confirmed}
-              <button title="Bestätigen" aria-label="Bestätigen" onclick={() => act(() => api.faceConfirm(f.id))}>✓</button>
+              <button title={t("Bestätigen")} aria-label={t("Bestätigen")} onclick={() => act(() => api.faceConfirm(f.id))}>✓</button>
             {/if}
-            <button title="Nicht {p.name ?? 'diese Person'}" aria-label="Herausnehmen" onclick={() => act(() => api.faceReject(f.id))}>✕</button>
+            <button title={p.name ? t("Nicht {name}", { name: p.name }) : t("Nicht diese Person")} aria-label={t("Herausnehmen")} onclick={() => act(() => api.faceReject(f.id))}>✕</button>
           </div>
         </div>
       {/each}
@@ -157,20 +162,20 @@
   {:else}
     {#if st && !st.ready}
       <div class="box">
-        <p>Die Personenerkennung ist noch nicht installiert. Öffne „KI“ unten links und lade sie herunter (etwa {Math.round(st.downloadSize / 1e6)} MB).</p>
+        <p>{t("Die Personenerkennung ist noch nicht installiert. Öffne „KI“ unten links und lade sie herunter (etwa {mb} MB).", { mb: Math.round(st.downloadSize / 1e6) })}</p>
       </div>
     {:else if st && st.analyzed < st.total}
-      <p class="muted progress">Gesichter werden gesucht: {st.analyzed} von {st.total} Fotos, {st.faces} Gesichter gefunden …</p>
+      <p class="muted progress">{t("Gesichter werden gesucht: {done} von {total} Fotos, {faces} Gesichter gefunden …", { done: st.analyzed, total: st.total, faces: st.faces })}</p>
     {/if}
 
-    <h3>Personen <span class="muted">{named.length}</span></h3>
+    <h3>{t("Personen")} <span class="muted">{named.length}</span></h3>
     {#if !named.length}
-      <p class="muted hint">Gib unten einer Gruppe einen Namen – ähnliche Gesichter auf anderen Fotos werden dann dieser Person vorgeschlagen.</p>
+      <p class="muted hint">{t("Gib unten einer Gruppe einen Namen – ähnliche Gesichter auf anderen Fotos werden dann dieser Person vorgeschlagen.")}</p>
     {/if}
     <div class="cards">
       {#each named as p (p.id)}
         <div class="card">
-          <button class="avatar" onclick={() => open(p)} title="Fotos von {p.name}">
+          <button class="avatar" onclick={() => open(p)} title={t("Fotos von {name}", { name: p.name ?? "" })}>
             {#if p.coverFace}<img src={faceUrl(p.coverFace)} alt="" />{/if}
           </button>
           {#if editing === p.id}
@@ -197,20 +202,20 @@
               />
             </form>
           {:else}
-            <button class="name" title="Klicken zum Umbenennen" onclick={() => (editing = p.id)}>{p.name}</button>
+            <button class="name" title={t("Klicken zum Umbenennen")} onclick={() => (editing = p.id)}>{p.name}</button>
           {/if}
-          <div class="muted small">{p.imageCount} {p.imageCount === 1 ? "Foto" : "Fotos"}</div>
+          <div class="muted small">{t(p.imageCount === 1 ? "{n} Foto" : "{n} Fotos", { n: p.imageCount })}</div>
           <div class="row">
             {#if p.suggested}
-              <button class="btn small accent" onclick={() => openReview(p)}>{p.suggested} prüfen</button>
+              <button class="btn small accent" onclick={() => openReview(p)}>{t("{n} prüfen", { n: p.suggested })}</button>
             {:else}
-              <button class="btn small quiet" onclick={() => openReview(p)}>Gesichter</button>
+              <button class="btn small quiet" onclick={() => openReview(p)}>{t("Gesichter")}</button>
             {/if}
             <button
               class="icon-btn"
-              title="Person löschen (Fotos bleiben)"
-              aria-label="Person löschen"
-              onclick={() => confirm(`„${p.name}“ löschen? Die Gesichter werden wieder unbenannt.`) && act(() => api.personDelete(p.id))}
+              title={t("Person löschen (Fotos bleiben)")}
+              aria-label={t("Person löschen")}
+              onclick={() => confirm(t("„{name}“ löschen? Die Gesichter werden wieder unbenannt.", { name: p.name ?? "" })) && act(() => api.personDelete(p.id))}
             >
               <Icon name="close" size={12} />
             </button>
@@ -220,32 +225,34 @@
     </div>
 
     <h3>
-      Unbenannte Gruppen <span class="muted">{shownGroups.length}</span>
+      {t("Unbenannte Gruppen")} <span class="muted">{shownGroups.length}</span>
       {#if groups.length !== shownGroups.length || showSmall}
         <label class="check">
-          <input type="checkbox" bind:checked={showSmall} /> Einzelne Gesichter zeigen ({groups.length - groups.filter((g) => g.faceCount >= 2).length})
+          <input type="checkbox" bind:checked={showSmall} /> {t("Einzelne Gesichter zeigen ({n})", { n: groups.length - groups.filter((g) => g.faceCount >= 2).length })}
         </label>
       {/if}
     </h3>
     <div class="cards">
       {#each shownGroups as p (p.id)}
         <div class="card">
-          <button class="avatar" onclick={() => openReview(p)} title="Gesichter dieser Gruppe">
+          <button class="avatar" onclick={() => openReview(p)} title={t("Gesichter dieser Gruppe")}>
             {#if p.coverFace}<img src={faceUrl(p.coverFace)} alt="" loading="lazy" />{/if}
           </button>
           <form onsubmit={(e) => (e.preventDefault(), rename(p))}>
             <input
               type="text"
-              placeholder="Wer ist das?"
+              placeholder={t("Wer ist das?")}
               list="person-names"
               bind:value={names[p.id]}
               onkeydown={(e) => e.stopPropagation()}
             />
           </form>
-          <div class="muted small">{p.faceCount} {p.faceCount === 1 ? "Gesicht" : "Gesichter"}, {p.imageCount} {p.imageCount === 1 ? "Foto" : "Fotos"}</div>
+          <div class="muted small">
+            {t(p.faceCount === 1 ? "{n} Gesicht" : "{n} Gesichter", { n: p.faceCount })}, {t(p.imageCount === 1 ? "{n} Foto" : "{n} Fotos", { n: p.imageCount })}
+          </div>
         </div>
       {:else}
-        <p class="muted hint">Keine unbenannten Gruppen.</p>
+        <p class="muted hint">{t("Keine unbenannten Gruppen.")}</p>
       {/each}
     </div>
     <datalist id="person-names">
