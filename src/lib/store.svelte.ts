@@ -61,6 +61,15 @@ class Library {
     listen("library-changed", async (r) => {
       this.scan = null;
       const changes = r.added + r.updated + r.moved + r.missing;
+      const root = this.roots.find((x) => x.id === r.rootId)?.name ?? "Ordner";
+      const skipped = (r.unsupported ?? []).filter(([, n]) => n > 0);
+      const skippedText = [
+        skipped.length &&
+          `${skipped.reduce((s, [, n]) => s + n, 0)} Dateien übersprungen (${skipped.map(([e]) => e.toUpperCase()).join(", ")} – Format noch nicht unterstützt)`,
+        r.unreadable && `${r.unreadable} Einträge nicht lesbar (Berechtigung? Details im Protokoll)`,
+      ]
+        .filter(Boolean)
+        .join(". ");
       if (changes > 0) {
         const parts = [
           r.added && `${r.added} neu`,
@@ -68,13 +77,17 @@ class Library {
           r.updated && `${r.updated} geändert`,
           r.missing && `${r.missing} fehlen`,
         ].filter(Boolean);
-        this.notify(`Ordner abgeglichen: ${parts.join(", ")}`);
+        this.notify(`„${root}“ abgeglichen: ${parts.join(", ")}${skippedText ? `. ${skippedText}` : ""}`);
+      } else if ((r.requested || r.foldersChanged) && skippedText) {
+        this.notify(`„${root}“: keine neuen Fotos. ${skippedText}`);
+      } else if (r.requested && !r.foldersChanged) {
+        // Rückmeldung, dass „Neu einlesen“ gelaufen ist
+        this.notify(`„${root}“ neu eingelesen: keine Änderungen`);
       }
-      // Nichts geändert (z. B. nur eine XMP-Datei gespeichert): die Liste mit
-      // bis zu 50 000 Fotos nicht neu laden
-      if (changes === 0) return;
-      await Promise.all([this.loadRoots(), this.loadProjects()]);
-      await this.loadImages(true);
+      if (changes > 0 || r.foldersChanged) await Promise.all([this.loadRoots(), this.loadProjects()]);
+      // Nichts an den Fotos geändert (z. B. nur eine XMP-Datei oder ein leerer
+      // Ordner): die Liste mit bis zu 50 000 Fotos nicht neu laden
+      if (changes > 0) await this.loadImages(true);
     });
     listen("catalog-updated", () => this.loadImages(true));
     // Einzelne Schlüssel ändern statt das ganze Objekt zu kopieren (O(1) statt O(n))

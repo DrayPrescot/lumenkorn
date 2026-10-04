@@ -23,6 +23,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
   several photos selected, and the context menu.
 
 ### Fixed
+- New folders always appear in the folder tree, also when they are empty or
+  contain only unsupported files. Previously a folder only showed up once it
+  held a supported photo.
+- Scans report skipped files in unsupported formats (e.g. HEIC from phones)
+  and unreadable entries; “Neu einlesen” always confirms that it ran.
+- `.jfif` / `.jpe` files are recognized as JPEG.
 - Person view now refreshes after changing assignments, so wrongly assigned
   photos disappear immediately; if a person ends up without photos, the view
   switches to the new person (or to all photos).

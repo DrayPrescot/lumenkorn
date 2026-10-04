@@ -16,6 +16,8 @@ use tauri::{AppHandle, Emitter, Manager};
 pub enum Job {
     /// Quellordner vollständig abgleichen
     Scan(i64),
+    /// Wie `Scan`, aber vom Nutzer angestoßen („Neu einlesen“): Ergebnis melden
+    Rescan(i64),
     /// Nur die von der Dateiüberwachung gemeldeten Pfade abgleichen
     /// (gesammelt in `Worker::changes`)
     Changes(i64),
@@ -78,12 +80,13 @@ impl Worker {
                         .remove(&job);
                     // Ein Fehler in einem Auftrag darf den Worker nicht beenden.
                     let run = std::panic::AssertUnwindSafe(|| match job {
-                        Job::Scan(root_id) => {
+                        Job::Scan(root_id) | Job::Rescan(root_id) => {
                             let progress = |p| {
                                 let _ = app.emit("scan-progress", p);
                             };
                             match scan_root(&catalog, root_id, &progress) {
-                                Ok(report) => {
+                                Ok(mut report) => {
+                                    report.requested = matches!(job, Job::Rescan(_));
                                     log::info!("Scan: {report:?}");
                                     let _ = app.emit("library-changed", report);
                                     me.submit(Job::Thumbs);

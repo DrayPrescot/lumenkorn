@@ -183,6 +183,14 @@ const MIGRATIONS: &[&str] = &[
         UPDATE image_id_floor SET v = MAX(v, OLD.id);
     END;
     "#,
+    // v8: Ordner auf der Platte – auch ohne (unterstützte) Bilder im Ordnerbaum
+    r#"
+    CREATE TABLE folders (
+        root_id INTEGER NOT NULL REFERENCES roots(id) ON DELETE CASCADE,
+        path    TEXT NOT NULL,
+        PRIMARY KEY (root_id, path)
+    );
+    "#,
 ];
 
 /// Volltextindex der Suche: je Foto ein Eintrag aus Dateiname, Ordner (relativ
@@ -435,6 +443,15 @@ impl Catalog {
         // Pfad -> direkte Anzahl. Zwischenordner ohne Bilder werden mit 0 ergänzt.
         let mut nodes: BTreeMap<String, i64> = BTreeMap::new();
         nodes.insert(root.path.clone(), 0);
+        // Ordner von der Platte (auch leere) mit 0 Fotos
+        let folders: Vec<String> = self
+            .conn
+            .prepare_cached("SELECT path FROM folders WHERE root_id = ?1")?
+            .query_map([root_id], |r| r.get(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        let counts = counts
+            .into_iter()
+            .chain(folders.into_iter().map(|f| (f, 0)));
         for (dir, n) in counts {
             if !paths::is_within(&dir, &root.path) {
                 continue;
@@ -454,6 +471,61 @@ impl Catalog {
             }
         }
         Ok(build_tree(&root.path, &root.name, &nodes))
+    }
+
+    /// Ordner eines Quellordners nach einem vollständigen Scan ersetzen.
+    /// `true`, wenn sich etwas geändert hat.
+    pub(crate) fn set_folders(&mut self, root_id: i64, dirs: &[String]) -> Result<bool> {
+        let before: std::collections::HashSet<String> = self
+            .conn
+            .prepare("SELECT path FROM folders WHERE root_id = ?1")?
+            .query_map([root_id], |r| r.get(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        let after: std::collections::HashSet<String> = dirs.iter().cloned().collect();
+        if before == after {
+            return Ok(false);
+        }
+        self.with_tx(|tx| {
+            tx.execute("DELETE FROM folders WHERE root_id = ?1", [root_id])?;
+            let mut st =
+                tx.prepare("INSERT OR IGNORE INTO folders (root_id, path) VALUES (?1, ?2)")?;
+            for d in &after {
+                st.execute(params![root_id, d])?;
+            }
+            Ok(())
+        })?;
+        Ok(true)
+    }
+
+    /// Ordner nach gemeldeten Änderungen: `added` neu bzw. noch vorhanden,
+    /// `gone` samt allem darunter entfernt. `true`, wenn sich etwas geändert hat.
+    pub(crate) fn update_folders(
+        &mut self,
+        root_id: i64,
+        added: &[String],
+        gone: &[String],
+    ) -> Result<bool> {
+        if added.is_empty() && gone.is_empty() {
+            return Ok(false);
+        }
+        let sep = SEP.to_string();
+        self.with_tx(|tx| {
+            let mut n = 0;
+            for g in gone {
+                // Der Ordner selbst und alles darunter (Bereichsabfrage wie beim Ordnerfilter)
+                let prefix = format!("{}{sep}", paths::trim_dir(g));
+                let upper = format!("{}{}", paths::trim_dir(g), char::from_u32(SEP as u32 + 1).unwrap_or('~'));
+                n += tx.execute(
+                    "DELETE FROM folders WHERE root_id = ?1 AND (path = ?2 OR (path >= ?3 AND path < ?4))",
+                    params![root_id, paths::trim_dir(g), prefix, upper],
+                )?;
+            }
+            let mut st = tx.prepare("INSERT OR IGNORE INTO folders (root_id, path) VALUES (?1, ?2)")?;
+            for d in added {
+                n += st.execute(params![root_id, d])?;
+            }
+            Ok(n > 0)
+        })
     }
 
     // ------------------------------------------------------------------

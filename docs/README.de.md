@@ -14,6 +14,10 @@ und lokale KI für Verschlagwortung und Inhaltssuche.
 
 - **Ordner statt Import.** Du fügst einen Ordner hinzu, Lumenkorn liest ihn ein. Nichts wird kopiert, verschoben oder verändert.
 - **Live-Abgleich.** Neue, geänderte, gelöschte Dateien werden per Dateiüberwachung erkannt (1,5 s nach der letzten Änderung, gebündelt). Abgeglichen werden nur die gemeldeten Dateien und Ordner, nicht der ganze Quellordner – eine neue Datei neben 50 000 anderen kostet einen Dateizugriff statt 50 000 (wichtig bei NAS und Netzlaufwerken). Umbenannte oder verschobene Ordner werden am Inhalt wiedererkannt, Bearbeitungen bleiben erhalten. Nur wenn das System Ereignisse verliert (Pufferüberlauf), wird vollständig abgeglichen; beim Start ebenfalls.
+- **Neue Ordner** erscheinen sofort im Ordnerbaum – auch leere oder solche mit Dateien in nicht
+  unterstützten Formaten. Übersprungene Bilddateien (z. B. HEIC vom Handy) und nicht lesbare
+  Einträge meldet Lumenkorn nach dem Abgleich; „Neu einlesen“ (Rechtsklick auf den Quellordner)
+  bestätigt immer, dass es gelaufen ist.
 - **Umbenennen und Verschieben** außerhalb der App wird über einen Inhalts-Hash erkannt. Bewertung, Schlagworte und Bearbeitungen bleiben am Bild.
 - **Projekte** bündeln beliebig viele Ordner, auch von verschiedenen Laufwerken. Pro Ordner wählbar, ob Unterordner dazugehören. Neue Fotos in diesen Ordnern landen automatisch im Projekt; überlappende Ordner führen nicht zu Dubletten.
 - **Thumbnails** für JPEG, PNG, TIFF, WebP und RAW (NEF, CR2, CR3, ARW, RAF, DNG, ORF, RW2 …). Unbearbeitete RAWs nutzen das eingebettete Kamera-JPEG (schnell); bearbeitete Bilder zeigen die Bearbeitung.

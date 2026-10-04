@@ -60,7 +60,7 @@ pub fn remove_root(state: State<AppState>, id: i64) -> CmdResult<()> {
 
 #[tauri::command]
 pub fn rescan_root(state: State<AppState>, id: i64) {
-    state.worker.submit(Job::Scan(id));
+    state.worker.submit(Job::Rescan(id));
 }
 
 #[tauri::command(async)]

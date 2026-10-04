@@ -580,3 +580,57 @@ fn deleted_ids_are_never_reused() {
         "ID {new_id} wiederverwendet (gelöscht: {newest})"
     );
 }
+
+#[test]
+fn new_and_empty_folders_appear_in_tree() {
+    use lumenkorn_core::scanner::scan_paths;
+    let tmp = tempfile::tempdir().unwrap();
+    let a = tmp.path().join("Fotos");
+    write_jpeg(&a.join("2025/alt.jpg"), 64, 64, 1);
+    let cat = Mutex::new(Catalog::open_in_memory().unwrap());
+    let root = cat.lock().unwrap().add_root(&a).unwrap();
+    scan_root(&cat, root.id, &no_progress).unwrap();
+    let names = |c: &Catalog| -> Vec<String> {
+        fn walk(n: &FolderNode, out: &mut Vec<String>) {
+            for c in &n.children {
+                out.push(format!("{}:{}", c.name, c.total));
+                walk(c, out);
+            }
+        }
+        let mut v = Vec::new();
+        walk(&c.folder_tree(root.id).unwrap(), &mut v);
+        v
+    };
+
+    // Neuer, leerer Ordner und einer nur mit HEIC-Dateien (Handy) – über die
+    // Dateiüberwachung gemeldet
+    let leer = a.join("Neu angelegt");
+    std::fs::create_dir_all(&leer).unwrap();
+    let handy = a.join("Handy");
+    std::fs::create_dir_all(&handy).unwrap();
+    std::fs::write(handy.join("IMG_0001.HEIC"), b"x").unwrap();
+    std::fs::write(handy.join("IMG_0002.heic"), b"x").unwrap();
+    let rep = scan_paths(&cat, root.id, &[leer.clone(), handy.clone()], &no_progress).unwrap();
+    assert!(rep.folders_changed);
+    assert_eq!(rep.unsupported, vec![("heic".to_string(), 2)]);
+    let t = names(&cat.lock().unwrap());
+    assert!(t.contains(&"Neu angelegt:0".to_string()), "{t:?}");
+    assert!(t.contains(&"Handy:0".to_string()), "{t:?}");
+
+    // Fotos in einen neuen Unterordner: beim vollständigen Neu-Einlesen gefunden
+    write_jpeg(&a.join("2025/Urlaub/neu.jpg"), 64, 64, 2);
+    let rep = scan_root(&cat, root.id, &no_progress).unwrap();
+    assert_eq!(rep.added, 1);
+    let t = names(&cat.lock().unwrap());
+    assert!(t.contains(&"Urlaub:1".to_string()), "{t:?}");
+
+    // Gelöschter Ordner verschwindet aus dem Baum
+    std::fs::remove_dir_all(&leer).unwrap();
+    let rep = scan_paths(&cat, root.id, &[leer], &no_progress).unwrap();
+    assert!(rep.folders_changed);
+    let t = names(&cat.lock().unwrap());
+    assert!(!t.iter().any(|n| n.starts_with("Neu angelegt")), "{t:?}");
+    // Erneuter vollständiger Scan ohne Änderungen meldet keine Ordneränderung
+    let rep = scan_root(&cat, root.id, &no_progress).unwrap();
+    assert!(!rep.folders_changed);
+}

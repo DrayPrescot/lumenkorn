@@ -104,8 +104,8 @@ pub fn scan_root(
         (cat.root(root_id)?, cat.known_images(root_id)?)
     };
     ensure_online(Path::new(&root.path))?;
-    let mut found = Vec::new();
-    walk(Path::new(&root.path), &mut found, &|n| {
+    let mut w = Walked::default();
+    walk(Path::new(&root.path), &mut w, &|n| {
         progress(ScanProgress {
             root_id,
             phase: ScanPhase::Walking,
@@ -113,7 +113,18 @@ pub fn scan_root(
             total: 0,
         })
     });
-    reconcile(catalog, root_id, found, known, progress)
+    let mut report = reconcile(catalog, root_id, w.files, known, progress)?;
+    // Alle Ordner auf der Platte merken – auch leere oder solche mit nur
+    // nicht unterstützten Dateien erscheinen so im Ordnerbaum
+    let dirs: Vec<String> = w
+        .dirs
+        .iter()
+        .map(|d| d.to_string_lossy().into_owned())
+        .collect();
+    report.folders_changed = catalog.lock().unwrap().set_folders(root_id, &dirs)?;
+    report.unsupported = w.unsupported.into_iter().collect();
+    report.unreadable = w.unreadable;
+    Ok(report)
 }
 
 /// Gleicht nur die gemeldeten Pfade ab statt den ganzen Quellordner.
@@ -153,19 +164,30 @@ pub fn scan_paths(
         }
     }
 
-    let mut found = Vec::new();
+    let mut w = Walked::default();
+    // Gemeldete Ordner, die es nicht mehr gibt (gelöscht, umbenannt)
+    let mut gone: Vec<String> = Vec::new();
     for p in &tops {
         match std::fs::symlink_metadata(p) {
-            Ok(m) if m.is_dir() => walk(p, &mut found, &|_| {}),
+            Ok(m) if m.is_dir() => {
+                if p.as_path() != root_path {
+                    w.dirs.push(p.to_path_buf());
+                }
+                walk(p, &mut w, &|_| {});
+            }
             Ok(m) if m.is_file() => {
                 if let Some(f) = found_file(p.to_path_buf(), &m) {
-                    found.push(f);
+                    w.files.push(f);
+                } else if let Some(ext) = formats::unsupported_image(p) {
+                    *w.unsupported.entry(ext).or_default() += 1;
                 }
             }
-            // Gelöscht, umbenannt oder Symlink: nur bekannte Bilder betroffen
+            // Gelöscht oder umbenannt: bekannte Bilder und Ordner darunter betroffen
+            Err(_) => gone.push(p.to_string_lossy().into_owned()),
             _ => {}
         }
     }
+    let found = std::mem::take(&mut w.files);
 
     // Betroffen sind die bekannten Bilder, die selbst oder deren Ordner (auf
     // irgendeiner Ebene) gemeldet wurden – per Nachschlagen statt jeden
@@ -185,7 +207,19 @@ pub fn scan_paths(
                     .any(|a| reported.contains(a))
         })
         .collect();
-    reconcile(catalog, root_id, found, affected, progress)
+    let mut report = reconcile(catalog, root_id, found, affected, progress)?;
+    let dirs: Vec<String> = w
+        .dirs
+        .iter()
+        .map(|d| d.to_string_lossy().into_owned())
+        .collect();
+    report.folders_changed = catalog
+        .lock()
+        .unwrap()
+        .update_folders(root_id, &dirs, &gone)?;
+    report.unsupported = w.unsupported.into_iter().collect();
+    report.unreadable = w.unreadable;
+    Ok(report)
 }
 
 /// Liegt `p` in einem Ordner, den der Scan überspringt (versteckt, System)?
@@ -210,8 +244,20 @@ fn found_file(path: PathBuf, meta: &std::fs::Metadata) -> Option<FoundFile> {
     })
 }
 
-/// Sammelt alle Bilddateien unter `dir` ein.
-fn walk(dir: &Path, found: &mut Vec<FoundFile>, progress: &dyn Fn(usize)) {
+/// Ergebnis eines Durchlaufs durch einen Ordner.
+#[derive(Default)]
+struct Walked {
+    files: Vec<FoundFile>,
+    /// Unterordner (ohne den Startordner)
+    dirs: Vec<PathBuf>,
+    /// Bilder in nicht unterstützten Formaten, je Endung
+    unsupported: std::collections::BTreeMap<String, usize>,
+    /// Nicht lesbare Einträge (z. B. fehlende Berechtigung)
+    unreadable: usize,
+}
+
+/// Sammelt alle Bilddateien und Unterordner unter `dir` ein.
+fn walk(dir: &Path, out: &mut Walked, progress: &dyn Fn(usize)) {
     for entry in WalkDir::new(dir)
         .follow_links(false)
         .into_iter()
@@ -221,18 +267,28 @@ fn walk(dir: &Path, found: &mut Vec<FoundFile>, progress: &dyn Fn(usize)) {
             Ok(e) => e,
             Err(err) => {
                 log::warn!("Überspringe: {err}");
+                out.unreadable += 1;
                 continue;
             }
         };
+        if entry.file_type().is_dir() {
+            if entry.depth() > 0 {
+                out.dirs.push(entry.into_path());
+            }
+            continue;
+        }
         if !entry.file_type().is_file() {
             continue;
         }
         let Ok(meta) = entry.metadata() else { continue };
-        if let Some(f) = found_file(entry.into_path(), &meta) {
-            found.push(f);
-            if found.len().is_multiple_of(500) {
-                progress(found.len());
+        let path = entry.into_path();
+        if let Some(f) = found_file(path.clone(), &meta) {
+            out.files.push(f);
+            if out.files.len().is_multiple_of(500) {
+                progress(out.files.len());
             }
+        } else if let Some(ext) = formats::unsupported_image(&path) {
+            *out.unsupported.entry(ext).or_default() += 1;
         }
     }
 }

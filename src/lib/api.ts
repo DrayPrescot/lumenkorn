@@ -149,6 +149,14 @@ export interface ScanReport {
   moved: number;
   missing: number;
   unchanged: number;
+  /** Ordnerstruktur geändert (auch Ordner ohne Fotos) */
+  foldersChanged: boolean;
+  /** Übersprungene Bilder in nicht unterstützten Formaten: [Endung, Anzahl] */
+  unsupported: [string, number][];
+  /** Nicht lesbare Ordner/Dateien (z. B. fehlende Berechtigung) */
+  unreadable: number;
+  /** Vom Nutzer ausgelöst („Neu einlesen“) */
+  requested: boolean;
 }
 
 export interface ScanProgress {

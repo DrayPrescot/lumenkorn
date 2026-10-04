@@ -32,7 +32,19 @@ impl ImageKind {
 
 /// `exr`: lineare Ergebnisse von HDR, Panorama und Focus Stacking (szenenbezogen
 /// wie ein RAW, nicht für die Anzeige gerendert).
-const RASTER: &[&str] = &["jpg", "jpeg", "png", "tif", "tiff", "webp", "exr"];
+const RASTER: &[&str] = &[
+    "jpg", "jpeg", "jpe", "jfif", "png", "tif", "tiff", "webp", "exr",
+];
+
+/// Bildformate, die (noch) nicht gelesen werden – beim Scan gezählt und
+/// gemeldet, damit ein Ordner voller Handy-Fotos (HEIC) nicht „leer“ wirkt.
+const UNSUPPORTED: &[&str] = &["heic", "heif", "avif", "jxl", "psd", "gif", "bmp"];
+
+/// Endung, wenn die Datei ein Bild in einem nicht unterstützten Format ist.
+pub fn unsupported_image(path: &Path) -> Option<String> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    UNSUPPORTED.contains(&ext.as_str()).then_some(ext)
+}
 
 const RAW: &[&str] = &[
     "3fr", "arw", "cr2", "cr3", "crw", "dng", "erf", "iiq", "kdc", "mef", "mos", "mrw", "nef",

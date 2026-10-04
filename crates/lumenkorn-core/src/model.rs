@@ -188,6 +188,18 @@ pub struct ScanReport {
     pub moved: usize,
     pub missing: usize,
     pub unchanged: usize,
+    /// Ordnerstruktur hat sich geändert (neue, leere oder entfernte Ordner)
+    #[serde(default)]
+    pub folders_changed: bool,
+    /// Bilddateien in nicht unterstützten Formaten (z. B. HEIC), je Endung
+    #[serde(default)]
+    pub unsupported: Vec<(String, usize)>,
+    /// Nicht lesbare Ordner/Dateien (z. B. fehlende Berechtigung)
+    #[serde(default)]
+    pub unreadable: usize,
+    /// Vom Nutzer ausgelöst („Neu einlesen“): Ergebnis immer melden.
+    #[serde(default)]
+    pub requested: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
