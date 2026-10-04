@@ -66,3 +66,59 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Tests
         run: cargo test --workspace
+
+  # Every green push to main builds a Windows installer (MSI). It is kept as a
+  # workflow artifact and published as the rolling pre-release "nightly", which
+  # always points at the latest main. Versioned releases come from release.yml.
+  msi:
+    name: Windows installer (MSI)
+    needs: [frontend, rust]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: msi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Build MSI
+        run: npm run tauri build -- --bundles msi
+
+      - name: Collect MSI
+        id: msi
+        shell: bash
+        run: |
+          f=$(ls target/release/bundle/msi/*.msi | head -1)
+          test -n "$f"
+          echo "path=$f" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$f")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lumenkorn-msi-${{ github.sha }}
+          path: ${{ steps.msi.outputs.path }}
+          retention-days: 30
+
+      - name: Publish as "nightly" pre-release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete nightly --yes --cleanup-tag || true
+          gh release create nightly "${{ steps.msi.outputs.path }}" \
+            --target "$GITHUB_SHA" --prerelease \
+            --title "Lumenkorn – aktueller Stand (main)" \
+            --notes "Automatisch gebaut aus ${GITHUB_SHA::7} am $(date -u '+%Y-%m-%d %H:%M') UTC.
+
+          Installer für Windows: **${{ steps.msi.outputs.name }}**. Ein neuer Stand lässt sich einfach über
+          den alten installieren; Katalog und Bearbeitungen bleiben erhalten.
+
+          Nicht signiert: Windows SmartScreen fragt beim ersten Start nach (\"Weitere Informationen\" → \"Trotzdem ausführen\")."

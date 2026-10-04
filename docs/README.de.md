@@ -10,6 +10,12 @@ Bildbearbeitung und KI nutzen die Grafikkarte (AMD, NVIDIA, Intel) über Vulkan 
 (Verlauf, Radial, Pinsel, KI: Motiv, Himmel, Objekt per Klick), KI-Rauschreduzierung
 und lokale KI für Verschlagwortung und Inhaltssuche.
 
+**Installer:** Den aktuellen Stand von `main` gibt es immer als Windows-MSI unter
+[Releases → nightly](https://github.com/DrayPrescot/lumenkorn/releases/tag/nightly). Er wird nach
+jedem Push automatisch neu gebaut, sobald alle Prüfungen grün sind. Ein neuer Stand lässt sich über
+den alten installieren. Die MSI ist nicht signiert, daher fragt Windows SmartScreen beim ersten Start
+nach („Weitere Informationen“ → „Trotzdem ausführen“).
+
 ## Bibliothek
 
 - **Ordner statt Import.** Du fügst einen Ordner hinzu, Lumenkorn liest ihn ein. Nichts wird kopiert, verschoben oder verändert.

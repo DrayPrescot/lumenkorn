@@ -108,6 +108,11 @@ developed like a RAW file, with recoverable highlights.
 Installers for Windows (`.msi` / `.exe`) and Linux (`.deb`, `.AppImage`) are published on the
 [Releases](https://github.com/DrayPrescot/lumenkorn/releases) page once a version is tagged.
 
+The latest state of `main` is always available as a Windows MSI under the
+[nightly](https://github.com/DrayPrescot/lumenkorn/releases/tag/nightly) pre-release. It is rebuilt
+automatically after every push that passes CI. The installers are not code-signed yet, so Windows
+SmartScreen asks for confirmation on first launch.
+
 ### First steps
 1. Click **+** next to *Ordner* (folders) and choose a folder with photos.
 2. Rate with `0`–`5`, pick or reject with `P` / `X`, and press `D` to develop.

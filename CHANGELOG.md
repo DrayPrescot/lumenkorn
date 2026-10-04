@@ -26,6 +26,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Develop: `Tab` moves through the sliders with the value selected, ready to
   type; `Enter` applies, `Esc` reverts, arrow keys nudge (`Shift` ×10).
 
+- CI builds a Windows MSI after every green push to `main` and publishes it
+  as the rolling “nightly” pre-release.
+
 ### Changed
 - AI noise reduction is much stronger. The noise estimate now also looks at
   half resolution (camera noise is spatially correlated and was underestimated
