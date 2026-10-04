@@ -11,6 +11,7 @@
   let quality = $state(90);
   let resize = $state(false);
   let longEdge = $state(2560);
+  // null: Unterordner „Export“ neben dem jeweiligen Original
   let dir = $state<string | null>(null);
   let pathDialog = $state(false);
   let form = $state<HTMLFormElement>();
@@ -32,7 +33,6 @@
   }
 
   async function start() {
-    if (!dir) return;
     await dev.flush();
     try {
       await api.exportImages(ids, dir, { format, quality, longEdge: resize ? longEdge : null });
@@ -78,15 +78,26 @@
     </label>
 
     <div class="line">
-      <button type="button" class="btn" onclick={choose}>Zielordner wählen …</button>
-      <span class="dir" title={dir ?? ""}>{dir ?? "Noch kein Ordner gewählt"}</span>
+      <span class="label">Ziel</span>
+      <span class="dir" class:chosen={dir} title={dir ?? "Im Ordner jedes Fotos wird bei Bedarf ein Unterordner „Export“ angelegt."}>
+        {dir ?? "Unterordner „Export“ neben dem Original"}
+      </span>
+    </div>
+    <div class="line">
+      <button type="button" class="btn small" onclick={choose}>Anderer Ordner …</button>
+      {#if dir}
+        <button type="button" class="btn small quiet" onclick={() => (dir = null)}>Zurück zu „Export“</button>
+      {/if}
     </div>
 
-    <p class="hint">Exportiert in voller Auflösung mit allen Bearbeitungen. Vorhandene Dateien werden nicht überschrieben.</p>
+    <p class="hint">
+      Exportiert in voller Auflösung mit allen Bearbeitungen. Vorhandene Dateien werden nicht überschrieben.
+      {#if !dir}Von Lumenkorn angelegte „Export“-Ordner erscheinen nicht in der Bibliothek.{/if}
+    </p>
 
     <div class="actions">
       <button type="button" class="btn quiet" onclick={onclose}>Abbrechen</button>
-      <button type="submit" class="btn primary" disabled={!dir}>Exportieren</button>
+      <button type="submit" class="btn primary">Exportieren</button>
     </div>
   </form>
 </div>
@@ -167,6 +178,9 @@
     min-width: 3ch;
     text-align: right;
   }
+  .label {
+    color: var(--muted);
+  }
   .dir {
     flex: 1;
     min-width: 0;
@@ -174,6 +188,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .dir.chosen {
+    color: inherit;
   }
   .hint {
     margin: 0;

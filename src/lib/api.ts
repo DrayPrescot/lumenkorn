@@ -578,7 +578,8 @@ export const api = {
   developRestore: (editId: number) => call<DevelopParams>("develop_restore", { editId }),
   developDeleteSnapshot: (id: number, editId: number) =>
     call<Edit[]>("develop_delete_snapshot", { id, editId }),
-  exportImages: (ids: number[], dir: string, options: ExportOptions) =>
+  /** `dir` null: Unterordner „Export“ neben dem jeweiligen Original. */
+  exportImages: (ids: number[], dir: string | null, options: ExportOptions) =>
     call<void>("export_images", { ids, dir, options }),
 
   aiStatus: () => call<AiStatus>("ai_status"),

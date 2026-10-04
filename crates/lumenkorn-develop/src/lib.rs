@@ -21,7 +21,9 @@
 //! Grafikkarte ([`gpu`], wgpu-Compute-Shader mit denselben Formeln).
 //! [`render_auto`] wählt und fällt bei GPU-Problemen auf die CPU zurück.
 
+pub mod capture_sharpen;
 mod color;
+pub mod demosaic;
 pub mod denoised;
 mod error;
 pub mod exr_io;

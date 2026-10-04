@@ -564,23 +564,35 @@ struct ExportProgress {
 }
 
 /// Exportiert in voller Auflösung im Hintergrund. Fortschritt per `export-progress`.
+/// Ohne `dir` landet jedes Foto im Unterordner „Export“ neben dem Original.
 #[tauri::command(async)]
 pub fn export_images(
     app: AppHandle,
     ids: Vec<i64>,
-    dir: String,
+    dir: Option<String>,
     options: ExportOptions,
 ) -> Result<(), Error> {
-    let dir = PathBuf::from(dir);
-    if !dir.is_dir() {
-        return Err(Error::Invalid(format!("{} ist kein Ordner", dir.display())));
+    let dir = dir.map(PathBuf::from);
+    if let Some(d) = &dir
+        && !d.is_dir()
+    {
+        return Err(Error::Invalid(format!("{} ist kein Ordner", d.display())));
     }
+    // Anzeige des Ziels: gewählter Ordner bzw. die tatsächlich benutzten
+    let chosen = dir.clone();
+    let shown = move |used: &std::collections::BTreeSet<PathBuf>| match (&chosen, used.len()) {
+        (Some(d), _) => d.display().to_string(),
+        (None, 1) => used.first().unwrap().display().to_string(),
+        (None, 0) => "Unterordner „Export“".to_string(),
+        (None, n) => format!("„Export“ in {n} Ordnern"),
+    };
     std::thread::Builder::new()
         .name("lumenkorn-export".into())
         .spawn(move || {
             let state = app.state::<AppState>();
             let total = ids.len();
             let mut failed = Vec::new();
+            let mut used = std::collections::BTreeSet::new();
             for (i, id) in ids.iter().enumerate() {
                 let res = (|| -> Result<String, Error> {
                     let (job, params) = {
@@ -599,7 +611,7 @@ pub fn export_images(
                             current: Some(name.clone()),
                             failed: failed.clone(),
                             finished: false,
-                            dir: dir.display().to_string(),
+                            dir: shown(&used),
                         },
                     );
                     // Mit begrenzter Kantenlänge nicht in voller Auflösung
@@ -629,7 +641,13 @@ pub fn export_images(
                         repairs: state.repairs.as_ref(),
                     };
                     let img = lumenkorn_develop::render_auto(&src, &params, &opts);
-                    let target = unique_path(&dir, &name, options.format.extension());
+                    let target_dir = match &dir {
+                        Some(d) => d.clone(),
+                        None => lumenkorn_core::scanner::export_dir_for(Path::new(&job.path))
+                            .map_err(|e| Error::Invalid(format!("Export-Ordner: {e}")))?,
+                    };
+                    let target = unique_path(&target_dir, &name, options.format.extension());
+                    used.insert(target_dir);
                     output::write(&img, &target, &options)?;
                     Ok(name)
                 })();
@@ -648,7 +666,7 @@ pub fn export_images(
                     current: None,
                     failed,
                     finished: true,
-                    dir: dir.display().to_string(),
+                    dir: shown(&used),
                 },
             );
         })?;

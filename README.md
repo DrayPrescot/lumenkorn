@@ -49,6 +49,9 @@ and uses the GPU (AMD, NVIDIA, Intel) through Vulkan or DirectX 12 where availab
   that section.
 
 ### Develop (non-destructive)
+- **RAW detail:** RCD demosaicing for Bayer sensors (the default in RawTherapee and darktable) and
+  Markesteijn for Fujifilm X-Trans, plus noise-aware capture sharpening at sensor resolution, as
+  Lightroom applies by default.
 - **Linear floating-point RAW pipeline** ([rawler](https://github.com/dnglab/dnglab)) with:
   - white balance and exposure;
   - highlights, shadows, whites and blacks;
@@ -66,7 +69,8 @@ and uses the GPU (AMD, NVIDIA, Intel) through Vulkan or DirectX 12 where availab
 - **Keyboard entry:** `Tab` moves from slider to slider with the value selected, ready to type;
   arrow keys nudge it (`Shift` ×10).
 - **History, snapshots**, and **copy/paste of basic settings** (`Ctrl+Shift+C` / `Ctrl+Shift+V`).
-- **Export** to JPEG, 16-bit TIFF or PNG.
+- **Export** to JPEG, 16-bit TIFF or PNG. By default into an `Export` subfolder next to each
+  original; folders Lumenkorn creates for this stay out of the library.
 - **GPU processing** with [wgpu](https://wgpu.rs). A test checks that GPU and CPU produce
   matching pixels, and Lumenkorn falls back to the CPU automatically when needed.
 

@@ -25,11 +25,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
   edits (click toggles, press and hold for a quick look; `\` still works).
 - Develop: `Tab` moves through the sliders with the value selected, ready to
   type; `Enter` applies, `Esc` reverts, arrow keys nudge (`Shift` ×10).
-
 - CI builds a Windows MSI after every green push to `main` and publishes it
   as the rolling “nightly” pre-release.
 
 ### Changed
+- RAW detail: Bayer sensors are demosaiced with RCD instead of PPG (sharper
+  fine detail, far fewer maze and false-color artifacts), Fujifilm X-Trans with
+  Markesteijn instead of bilinear. RAWs also get capture sharpening at sensor
+  resolution (luminance only, halo-limited, threshold adapts to the measured
+  noise), as Lightroom applies by default.
+- Export defaults to an `Export` subfolder next to each original. Folders
+  Lumenkorn creates for this are marked (`.lumenkorn-export`) and not added to
+  the library.
+- Crop opens with the aspect ratio “Original” (or the ratio of an existing crop).
 - AI noise reduction is much stronger. The noise estimate now also looks at
   half resolution (camera noise is spatially correlated and was underestimated
   about 2×), color noise gets an extra half-resolution pass, and the strength

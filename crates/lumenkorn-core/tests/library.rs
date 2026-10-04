@@ -664,3 +664,42 @@ fn scan_paths_accepts_other_spellings_of_the_root() {
     let rep = scan_paths(&cat, root.id, &[tmp.path().to_path_buf()], &no_progress).unwrap();
     assert_eq!((rep.added, rep.missing), (0, 0));
 }
+
+/// Von Lumenkorn angelegte Export-Ordner landen nicht in der Bibliothek; ein
+/// schon vorhandener Ordner „Export“ mit eigenen Fotos schon.
+#[test]
+fn export_folders_stay_out_of_the_library() {
+    use lumenkorn_core::scanner::{export_dir_for, scan_paths};
+    let tmp = tempfile::tempdir().unwrap();
+    let a = tmp.path().join("Fotos");
+    write_jpeg(&a.join("Reise/eins.jpg"), 64, 64, 1);
+    write_jpeg(&a.join("Alt/Export/eigen.jpg"), 64, 64, 2);
+    let cat = Mutex::new(Catalog::open_in_memory().unwrap());
+    let root = cat.lock().unwrap().add_root(&a).unwrap();
+    scan_root(&cat, root.id, &no_progress).unwrap();
+
+    let out = export_dir_for(&a.join("Reise/eins.jpg")).unwrap();
+    assert_eq!(out, a.join("Reise/Export"));
+    write_jpeg(&out.join("eins.jpg"), 64, 64, 3);
+    // Über die Dateiüberwachung gemeldet und beim vollständigen Abgleich
+    let rep = scan_paths(
+        &cat,
+        root.id,
+        &[out.clone(), out.join("eins.jpg")],
+        &no_progress,
+    )
+    .unwrap();
+    assert_eq!(rep.added, 0);
+    assert_eq!(scan_root(&cat, root.id, &no_progress).unwrap().added, 0);
+    let mut n = names(&cat.lock().unwrap(), Scope::All);
+    n.sort();
+    assert_eq!(n, vec!["eigen.jpg", "eins.jpg"]);
+
+    // Vorhandener Ordner wird nicht markiert
+    let existing = export_dir_for(&a.join("Alt/x.jpg")).unwrap();
+    assert!(
+        !existing
+            .join(lumenkorn_core::scanner::EXPORT_MARKER)
+            .exists()
+    );
+}

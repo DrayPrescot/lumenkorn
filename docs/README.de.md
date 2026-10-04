@@ -39,7 +39,15 @@ nach („Weitere Informationen“ → „Trotzdem ausführen“).
 Taste **D** oder „Entwickeln“ oben. Die Originaldatei wird nie verändert; gespeichert wird nur
 der Parametersatz (JSON im Katalog). Änderungen werden automatisch gespeichert.
 
-- **RAW-Dekodierung** mit [rawler](https://github.com/dnglab/dnglab) (reines Rust, auch für Android), getestet mit Canon CR2 und Nikon NEF.
+- **RAW-Dekodierung** mit [rawler](https://github.com/dnglab/dnglab) (reines Rust, auch für Android), getestet mit Canon, Nikon, Sony, Panasonic, Olympus und Fujifilm.
+- **Demosaicing:** Bayer-Sensoren mit **RCD** (Ratio Corrected Demosaicing, Standard in RawTherapee
+  und darktable) statt PPG – feine Muster bleiben erhalten, kaum Labyrinth- und Farbsaum-Artefakte
+  (im Test mit Referenzbildern 0,6–2,5 dB, bei feinen Strukturen rund 4 dB besser). Fujifilm X-Trans
+  mit **Markesteijn** (3 Durchgänge) statt bilinear.
+- **Eingangsschärfung** für RAWs, wie Lightroom sie standardmäßig anwendet: einmal in
+  Sensorauflösung direkt nach dem Demosaicing, nur auf der Helligkeit, mit Begrenzung gegen Säume.
+  Die Schwelle richtet sich nach dem gemessenen Rauschen, damit Aufnahmen mit hoher ISO nicht
+  körniger werden. Der Regler „Schärfen“ wirkt zusätzlich.
 - **Pipeline in linearem Float:** Weißabgleich und Belichtung szenenbezogen, eine Basiskurve mit weichem Lichter-Rolloff für RAWs, danach Tonwerte und Farbe. Unbearbeitete JPEGs bleiben exakt wie sie sind.
 - **Regler:** Temperatur, Tönung · Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz · Klarheit, Dynamik, Sättigung · Schärfen · Drehen und Spiegeln.
 - **HSL** (im Reiter Basis): Farbton, Sättigung und Luminanz für acht Farbbereiche (Rot, Orange,
@@ -49,13 +57,18 @@ der Parametersatz (JSON im Katalog). Änderungen werden automatisch gespeichert.
   Mit der **Pipette** auf eine Farbe im Bild klicken und nach oben (mehr) oder unten (weniger)
   ziehen – verstellt werden die getroffenen Bereiche anteilig (eine Anzeige nennt sie, z. B.
   „Blau 70 % · Lila 30 %“); gemessen wird im angezeigten, bearbeiteten Bild. Esc beendet die Pipette.
-- **Zuschneiden** (Taste R): Rahmen über dem ganzen Bild ziehen, mit Drittel-Raster und festen Seitenverhältnissen (Original, 1:1, 4:5, 3:2, 16:9, per ⇄ hoch/quer). Enter übernimmt, Esc bricht ab.
+- **Zuschneiden** (Taste R): Rahmen über dem ganzen Bild ziehen, mit Drittel-Raster und festen Seitenverhältnissen (Original, 1:1, 4:5, 3:2, 16:9, per ⇄ hoch/quer). Vorgewählt ist „Original“, bei einem bestehenden Zuschnitt dessen Verhältnis. Enter übernimmt, Esc bricht ab.
 - **Geraderichten** um beliebige Winkel (±45°) ohne leere Ecken, mit **Auto**-Funktion: Lumenkorn sucht Horizont und gerade Kanten und schlägt die Korrektur vor (im Test auf ±0,6° genau).
 - Lichter, Tiefen und Klarheit arbeiten **lokal** über weichgezeichnete Helligkeitskarten, deren Radius relativ zur Bildgröße ist – die Vorschau sieht aus wie der Export.
 - **Live-Vorschau** aus einem 2048-px-Proxy im Speicher (RAW einmal dekodieren, danach ~100–250 ms pro Änderung), Histogramm mit Clipping-Anteil, **Vorher/Nachher**: „Original zeigen“ oben in der Leiste (Klick schaltet um, gedrückt halten zeigt kurz) oder Taste `\`.
 - **Werte per Tastatur:** Tab springt von Regler zu Regler, der Wert ist sofort markiert und kann überschrieben werden (Enter übernimmt, Esc verwirft, ↑/↓ ändern schrittweise, mit Umschalt ×10).
 - **Verlauf** (Strg+Z / Strg+Umschalt+Z), **Schnappschüsse**, **Kopieren/Einfügen** von Einstellungen auf beliebig viele ausgewählte Fotos.
 - **Export** in voller Auflösung als JPEG, 16-Bit-TIFF oder PNG, optional verkleinert, im Hintergrund mit Fortschritt. Vorhandene Dateien werden nie überschrieben.
+  Standardziel ist der Unterordner **„Export“** neben dem Original (bei Fotos aus mehreren Ordnern
+  jeweils dort); „Anderer Ordner …“ wählt ein festes Ziel. Von Lumenkorn angelegte Export-Ordner
+  tragen eine versteckte Markierung (`.lumenkorn-export`) und erscheinen nicht in der Bibliothek –
+  wird die Datei gelöscht, nimmt Lumenkorn die Fotos dort auf. Ein schon vorhandener Ordner „Export“
+  bleibt unverändert.
 
 ## Masken (lokale Anpassungen)
 

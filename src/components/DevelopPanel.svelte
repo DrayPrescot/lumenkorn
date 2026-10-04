@@ -73,7 +73,7 @@
     { label: "3:2", value: 3 / 2 },
     { label: "16:9", value: 16 / 9 },
   ];
-  let aspectKey = $state("Frei");
+  let aspectKey = $state("Original");
   const frame = $derived(frameSize(dev.params, [dev.fullSize[0] || 1, dev.fullSize[1] || 1]));
 
   function setAspect(a: (typeof aspects)[number]) {
@@ -126,6 +126,32 @@
       wasCrop = c;
     });
   });
+  // Beim Öffnen des Zuschnitts das Seitenverhältnis vorwählen: ohne Zuschnitt
+  // „Original“, sonst das passende Verhältnis des bestehenden Zuschnitts
+  // (auch hochkant), ansonsten „Frei“.
+  $effect(() => {
+    if (!dev.cropMode || !dev.fullSize[0]) return;
+    untrack(() => {
+      const c = dev.params.crop;
+      const orig = frame[0] / frame[1];
+      const r = c ? (c.w * frame[0]) / (c.h * frame[1]) : orig;
+      const near = (v: number) => Math.abs(r / v - 1) < 0.01;
+      let key = "Frei";
+      let lock: number | null = null;
+      if (near(orig)) [key, lock] = ["Original", orig];
+      else {
+        for (const a of aspects) {
+          if (typeof a.value !== "number") continue;
+          if (near(a.value)) [key, lock] = [a.label, a.value];
+          else if (near(1 / a.value)) [key, lock] = [a.label, 1 / a.value];
+          if (lock) break;
+        }
+      }
+      aspectKey = key;
+      dev.cropAspect = lock;
+    });
+  });
+
   // Maskenwerkzeug oder Maske auf dem Bild gewählt → Reiter „Masken“
   $effect(() => {
     const t = untrack(() => dev.tab);

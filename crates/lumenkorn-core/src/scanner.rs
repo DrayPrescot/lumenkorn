@@ -60,13 +60,51 @@ pub fn is_excluded(p: &Path) -> bool {
         .any(|d| p.starts_with(d))
 }
 
+/// Markierung in Export-Ordnern, die Lumenkorn selbst angelegt hat. Solche
+/// Ordner werden nicht katalogisiert – sonst tauchte jedes exportierte Foto als
+/// neues Foto in der Bibliothek auf (wie in Lightroom landen Exporte nicht im
+/// Katalog).
+pub const EXPORT_MARKER: &str = ".lumenkorn-export";
+
+/// Standard-Exportziel: Unterordner „Export“ neben dem Foto. Legt ihn an, falls
+/// nötig, und markiert ihn dann als Export-Ordner. Ein schon vorhandener
+/// Ordner dieses Namens bleibt unmarkiert (er kann eigene Fotos enthalten).
+pub fn export_dir_for(photo: &Path) -> std::io::Result<PathBuf> {
+    let dir = photo
+        .parent()
+        .ok_or_else(|| std::io::Error::other("Foto ohne Ordner"))?
+        .join("Export");
+    if !dir.is_dir() {
+        std::fs::create_dir_all(&dir)?;
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            opts.attributes(0x2); // FILE_ATTRIBUTE_HIDDEN
+        }
+        use std::io::Write;
+        opts.open(dir.join(EXPORT_MARKER))?.write_all(
+            b"Von Lumenkorn angelegter Export-Ordner. Diese Datei loeschen, damit Lumenkorn die Fotos hier aufnimmt.\n",
+        )?;
+    }
+    Ok(dir)
+}
+
+fn is_export_dir(dir: &Path) -> bool {
+    dir.join(EXPORT_MARKER).is_file()
+}
+
 fn is_skipped(e: &DirEntry) -> bool {
     if e.depth() == 0 {
         return false;
     }
     let name = e.file_name().to_string_lossy();
     name.starts_with('.')
-        || (e.file_type().is_dir() && (SKIP_DIRS.contains(&name.as_ref()) || is_excluded(e.path())))
+        || (e.file_type().is_dir()
+            && (SKIP_DIRS.contains(&name.as_ref())
+                || is_excluded(e.path())
+                || is_export_dir(e.path())))
 }
 
 /// Quellordner nicht erreichbar (Laufwerk abgesteckt, NAS schläft)? Dann
@@ -254,6 +292,11 @@ fn in_skipped_dir(root: &Path, p: &Path) -> bool {
                 n.starts_with('.') || SKIP_DIRS.contains(&n.as_ref())
             })
         })
+        // Export-Ordner (auch der gemeldete Ordner selbst)
+        || p
+            .ancestors()
+            .take_while(|a| *a != root && a.starts_with(root))
+            .any(is_export_dir)
 }
 
 fn found_file(path: PathBuf, meta: &std::fs::Metadata) -> Option<FoundFile> {

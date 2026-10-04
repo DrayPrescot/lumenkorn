@@ -5,6 +5,7 @@ use crate::error::{Error, Result};
 use crate::geometry::apply_exif_orientation;
 use crate::image_f32::ImageF32;
 use rawler::imgop::develop::{Intermediate, ProcessingStep, RawDevelop};
+use rayon::prelude::*;
 use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,11 +139,39 @@ fn decode_raster(path: &Path) -> Result<ImageF32> {
     })
 }
 
+/// Demosaicing-Verfahren für Bayer-Sensoren.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DemosaicMethod {
+    /// PPG wie in rawler – nur zum Vergleich und für Tests
+    Ppg,
+    /// Ratio Corrected Demosaicing (Standard)
+    Rcd,
+}
+
 /// Entwickelt ein RAW bis zum linearen Rec.709-Bild mit Kamera-Weißabgleich.
+/// Mit Eingangsschärfung (siehe [`crate::capture_sharpen`]).
 fn decode_raw(path: &Path) -> Result<(ImageF32, u16)> {
+    let (mut img, o) = decode_raw_with(path, DemosaicMethod::Rcd)?;
+    crate::capture_sharpen::apply(&mut img);
+    Ok((img, o))
+}
+
+/// Wie [`Source::load`] für RAWs, aber mit wählbarem Demosaicing (Vergleiche).
+pub fn decode_raw_with(path: &Path, method: DemosaicMethod) -> Result<(ImageF32, u16)> {
     let raw = rawler::decode_file(path)?;
     let orientation = raw.orientation.to_u16();
+    let img = match own_pipeline(&raw, method)? {
+        Some(img) => img,
+        None => rawler_pipeline(&raw)?,
+    };
+    if img.width == 0 || img.height == 0 {
+        return Err(Error::Raw("leeres Bild".into()));
+    }
+    Ok((img, orientation))
+}
 
+/// rawler komplett: Sonderfälle (Fuji SuperCCD, Vierfarb-Sensoren, Monochrom)
+fn rawler_pipeline(raw: &rawler::RawImage) -> Result<ImageF32> {
     // Alles außer der sRGB-Gammakurve – die Tonwertabbildung macht unsere Pipeline.
     let develop = RawDevelop::new_with(&[
         ProcessingStep::Rescale,
@@ -153,8 +182,8 @@ fn decode_raw(path: &Path) -> Result<(ImageF32, u16)> {
         ProcessingStep::Calibrate,
         ProcessingStep::CropDefault,
     ]);
-    let out = develop.develop_intermediate(&raw)?;
-    let img = match out {
+    let out = develop.develop_intermediate(raw)?;
+    Ok(match out {
         Intermediate::ThreeColor(px) => ImageF32 {
             width: px.width,
             height: px.height,
@@ -170,15 +199,194 @@ fn decode_raw(path: &Path) -> Result<(ImageF32, u16)> {
                 "Vierfarb-Sensor nach der Kalibrierung nicht unterstützt".into(),
             ));
         }
+    })
+}
+
+/// Eigenes Demosaicing für RGB-Bayer (RCD) und X-Trans (Markesteijn, 3 Durchgänge;
+/// rawler nimmt dort nur bilinear). Farbumrechnung und Standard-Zuschnitt wie in
+/// rawler (`develop_intermediate`). `None`: Sonderfall, rawler übernimmt.
+fn own_pipeline(raw: &rawler::RawImage, method: DemosaicMethod) -> Result<Option<ImageF32>> {
+    use rawler::imgop::sensor::{Demosaic, SensorType};
+    use rawler::pixarray::{Color2D, PixF32};
+    use rawler::rawimage::RawPhotometricInterpretation;
+
+    let RawPhotometricInterpretation::Cfa(config) = &raw.photometric else {
+        return Ok(None);
     };
-    if img.width == 0 || img.height == 0 {
-        return Err(Error::Raw("leeres Bild".into()));
+    if raw.cpp != 1 || !config.cfa.is_rgb() || raw.fuji_rotation_width.is_some() {
+        return Ok(None);
     }
-    Ok((img, orientation))
+    let bayer = config.sensor == SensorType::Bayer;
+    if !bayer && config.sensor != SensorType::Xtrans {
+        return Ok(None);
+    }
+
+    let mut raw = raw.clone();
+    raw.apply_scaling()?;
+    let pixels = PixF32::new_with(raw.data.as_f32().into_owned(), raw.width, raw.height);
+    let roi = raw.active_area.unwrap_or(pixels.rect());
+    let wb = if raw.wb_coeffs[0].is_nan() {
+        [1.0; 4]
+    } else {
+        raw.wb_coeffs
+    };
+
+    let rgb: Color2D<f32, 3> = if bayer && method == DemosaicMethod::Ppg {
+        rawler::imgop::sensor::bayer::ppg::PPGDemosaic::new().demosaic(
+            &pixels,
+            &config.cfa,
+            &config.colors,
+            roi,
+        )
+    } else if bayer {
+        let cfa = config.cfa.shift(roi.p.x, roi.p.y);
+        let pattern = [
+            [cfa.color_at(0, 0), cfa.color_at(0, 1)],
+            [cfa.color_at(1, 0), cfa.color_at(1, 1)],
+        ];
+        if pattern.iter().flatten().any(|c| *c > 2) || roi.width() < 32 || roi.height() < 32 {
+            return Ok(None);
+        }
+        // Mit Weißabgleich demosaikieren (graue Kanten = gleiche Kanäle, so
+        // arbeiten die Farbdifferenz-Schätzungen am besten), danach zurück –
+        // die Farbumrechnung unten wendet ihn wie bei rawler erneut an.
+        let mut m = pixels.data;
+        let w = raw.width;
+        m.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+            if y < roi.p.y {
+                return;
+            }
+            for (x, v) in row.iter_mut().enumerate().skip(roi.p.x) {
+                *v *= wb[pattern[(y - roi.p.y) & 1][(x - roi.p.x) & 1]];
+            }
+        });
+        let mut out = crate::demosaic::rcd(
+            &m,
+            w,
+            (roi.p.x, roi.p.y, roi.width(), roi.height()),
+            pattern,
+        );
+        out.par_iter_mut().for_each(|p| {
+            for c in 0..3 {
+                p[c] = p[c].max(0.0) / wb[c];
+            }
+        });
+        Color2D::new_with(out, roi.width(), roi.height())
+    } else {
+        rawler::imgop::sensor::xtrans::markesteijn::XTransMarkesteijnDemosaic::new_pass_3()
+            .demosaic(&pixels, &config.cfa, &config.colors, roi)
+    };
+
+    let rgb = calibrate(&raw, &rgb, &wb);
+
+    // Standard-Zuschnitt, angepasst an den bereits abgeschnittenen aktiven Bereich
+    let mut img = rgb;
+    if let Some(mut crop) = raw.crop_area.or(raw.active_area) {
+        if let Some(active) = &raw.active_area {
+            crop = crop.adapt(active);
+        }
+        if crop.d != img.dim() {
+            img = img.crop(crop);
+        }
+    }
+    Ok(Some(ImageF32 {
+        width: img.width,
+        height: img.height,
+        data: img.data.iter().map(|p| sanitize(*p)).collect(),
+    }))
+}
+
+/// Kamera-RGB → lineares Rec.709 mit Weißabgleich, wie rawler (`Calibrate`).
+fn calibrate(
+    raw: &rawler::RawImage,
+    src: &rawler::pixarray::Color2D<f32, 3>,
+    wb: &[f32; 4],
+) -> rawler::pixarray::Color2D<f32, 3> {
+    use rawler::imgop::matrix::{multiply, normalize, pseudo_inverse, transform_1d};
+    use rawler::imgop::xyz::{Illuminant, SRGB_TO_XYZ_D65};
+
+    let identity = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0f32]];
+    let (illu, matrix) = raw
+        .color_matrix_find_first([
+            Illuminant::D65,
+            Illuminant::A,
+            Illuminant::B,
+            Illuminant::C,
+            Illuminant::D50,
+            Illuminant::D55,
+            Illuminant::D75,
+            Illuminant::Daylight,
+            Illuminant::Flash,
+        ])
+        .unwrap_or_else(|| (Illuminant::D65, identity.as_flattened().to_vec()));
+    let d65: Vec<f32> = if illu == Illuminant::D65 || matrix.len() != 9 {
+        matrix
+    } else {
+        let m = transform_1d::<3, 3>(&matrix).unwrap_or(identity);
+        rawler::imgop::chromatic_adaption::adapt_bradford(&illu, &Illuminant::D65, &m)
+            .as_flattened()
+            .to_vec()
+    };
+    let mut xyz2cam = [[0f32; 3]; 4];
+    for i in 0..(d65.len() / 3).min(4) {
+        for j in 0..3 {
+            xyz2cam[i][j] = d65[i * 3 + j];
+        }
+    }
+    let rgb2cam = normalize(multiply(&xyz2cam, &SRGB_TO_XYZ_D65));
+    let cam2rgb = pseudo_inverse(rgb2cam);
+    let data = src
+        .data
+        .par_iter()
+        .map(|p| {
+            let (r, g, b) = (p[0] * wb[0], p[1] * wb[1], p[2] * wb[2]);
+            let out = [
+                cam2rgb[0][0] * r + cam2rgb[0][1] * g + cam2rgb[0][2] * b,
+                cam2rgb[1][0] * r + cam2rgb[1][1] * g + cam2rgb[1][2] * b,
+                cam2rgb[2][0] * r + cam2rgb[2][1] * g + cam2rgb[2][2] * b,
+            ];
+            rawler::imgop::raw::clip_euclidean_norm_avg(&out)
+        })
+        .collect();
+    rawler::pixarray::Color2D::new_with(data, src.width, src.height)
 }
 
 #[inline]
 fn sanitize(p: [f32; 3]) -> [f32; 3] {
     let f = |v: f32| if v.is_finite() { v.max(0.0) } else { 0.0 };
     [f(p[0]), f(p[1]), f(p[2])]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Eigene Pipeline mit rawlers PPG ergibt exakt rawlers Ergebnis (Farb-
+    /// umrechnung, Zuschnitt). Braucht echte RAWs: `LUMENKORN_TEST_RAW=a.nef:b.cr2`.
+    #[test]
+    fn own_pipeline_matches_rawler() {
+        let Ok(list) = std::env::var("LUMENKORN_TEST_RAW") else {
+            eprintln!("übersprungen: LUMENKORN_TEST_RAW nicht gesetzt");
+            return;
+        };
+        for f in list.split(':').filter(|f| !f.is_empty()) {
+            let raw = rawler::decode_file(Path::new(f)).unwrap();
+            let theirs = rawler_pipeline(&raw).unwrap();
+            let ours = own_pipeline(&raw, DemosaicMethod::Ppg)
+                .unwrap()
+                .expect("eigene Pipeline");
+            assert_eq!(
+                (ours.width, ours.height),
+                (theirs.width, theirs.height),
+                "{f}"
+            );
+            let max = ours
+                .data
+                .iter()
+                .zip(&theirs.data)
+                .flat_map(|(a, b)| (0..3).map(move |c| (a[c] - b[c]).abs()))
+                .fold(0f32, f32::max);
+            assert!(max < 1e-5, "{f}: Abweichung {max}");
+        }
+    }
 }
