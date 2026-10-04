@@ -29,7 +29,8 @@
     oncommit: () => void;
   } = $props();
 
-  let editing = $state(false);
+  /** Text im Eingabefeld, solange es den Fokus hat (sonst der formatierte Wert) */
+  let draft = $state<string | null>(null);
   const id = `s-${Math.random().toString(36).slice(2, 8)}`;
 
   const fmt = (v: number) => {
@@ -49,36 +50,76 @@
     oncommit();
   }
 
-  function typed(e: Event) {
-    const raw = (e.currentTarget as HTMLInputElement).value.replace(",", ".").replace("+", "");
+  const clamp = (v: number) => Math.min(max, Math.max(min, v));
+
+  // Mit Tab erreichbar und sofort beschreibbar: Beim Fokus wird der Wert
+  // markiert, Tippen ersetzt ihn, Enter/Tab übernimmt, Esc verwirft.
+  let justFocused = false;
+  function focus(e: FocusEvent) {
+    draft = fmt(value);
+    const el = e.currentTarget as HTMLInputElement;
+    el.value = draft;
+    el.select();
+    justFocused = true;
+  }
+
+  function typed() {
+    if (draft === null) return;
+    const raw = draft.replace(",", ".").replace("+", "").trim();
+    draft = null;
     const v = Number(raw);
-    editing = false;
-    if (Number.isFinite(v)) {
-      oninput(Math.min(max, Math.max(min, v)));
+    if (raw !== "" && Number.isFinite(v) && clamp(v) !== value) {
+      oninput(clamp(v));
       oncommit();
+    }
+  }
+
+  function keydown(e: KeyboardEvent) {
+    // Tastenkürzel der Ansicht nicht auslösen, während hier getippt wird
+    e.stopPropagation();
+    const el = e.currentTarget as HTMLInputElement;
+    if (e.key === "Enter") {
+      typed();
+      draft = fmt(value);
+      el.select();
+    } else if (e.key === "Escape") {
+      draft = null;
+      el.blur();
+    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      // Pfeiltasten verstellen in Schritten (mit Umschalt zehnfach)
+      e.preventDefault();
+      const d = (e.key === "ArrowUp" ? 1 : -1) * step * (e.shiftKey ? 10 : 1);
+      oninput(clamp(value + d));
+      oncommit();
+      draft = fmt(clamp(value + d));
+      el.value = draft;
+      el.select();
     }
   }
 </script>
 
 <div class="slider" class:changed={value !== neutral}>
   <label for={id} ondblclick={reset} title="Doppelklick setzt zurück">{label}</label>
-  {#if editing}
-    <!-- svelte-ignore a11y_autofocus -->
-    <input
-      class="num"
-      type="text"
-      value={fmt(value)}
-      autofocus
-      onblur={typed}
-      onkeydown={(e) => {
-        e.stopPropagation();
-        if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
-        if (e.key === "Escape") editing = false;
-      }}
-    />
-  {:else}
-    <button class="value" onclick={() => (editing = true)} title="Wert eingeben">{fmt(value)}{unit}</button>
-  {/if}
+  <input
+    class="value"
+    type="text"
+    inputmode="decimal"
+    aria-label="{label} (Wert eingeben)"
+    title="Wert eingeben – Tab springt zum nächsten Regler, ↑/↓ verstellen"
+    value={draft ?? `${fmt(value)}${unit}`}
+    onfocus={focus}
+    onmouseup={(e) => {
+      // Der Klick, der fokussiert hat, soll die Markierung nicht aufheben
+      if (justFocused) e.preventDefault();
+      justFocused = false;
+    }}
+    oninput={(e) => {
+      draft = e.currentTarget.value;
+      justFocused = false;
+    }}
+    onblur={typed}
+    onkeydown={keydown}
+  />
   <input
     {id}
     type="range"
@@ -90,6 +131,7 @@
     oninput={(e) => oninput(Number(e.currentTarget.value))}
     onchange={oncommit}
     ondblclick={reset}
+    tabindex="-1"
     onkeydown={(e) => SLIDER_KEYS.has(e.key) && e.stopPropagation()}
     onkeyup={(e) => SLIDER_KEYS.has(e.key) && oncommit()}
   />
@@ -110,27 +152,29 @@
   .changed label {
     color: var(--text);
   }
-  .value,
-  .num {
+  .value {
+    font: inherit;
     font-size: var(--step--1);
     color: var(--muted);
     text-align: right;
-    min-width: 46px;
+    width: 60px;
     padding: 1px 4px;
     border-radius: var(--radius-s);
+    border: 1px solid transparent;
+    background: transparent;
+    outline: none;
   }
   .value:hover {
     background: var(--raised);
     color: var(--text);
   }
-  .changed .value {
+  .value:focus {
+    background: var(--raised);
+    border-color: var(--accent);
     color: var(--text);
   }
-  .num {
-    width: 56px;
-    background: var(--raised);
-    border: 1px solid var(--faint);
-    outline: none;
+  .changed .value {
+    color: var(--text);
   }
   input[type="range"] {
     grid-column: 1 / -1;

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { lib } from "../lib/store.svelte";
+  import { dev } from "../lib/develop.svelte";
   import Icon from "./Icon.svelte";
   import ProjectFolders from "./ProjectFolders.svelte";
 
@@ -10,6 +11,7 @@
   }: { ontogglesidebar: () => void; ontoggleinfo: () => void; ondeleterejected: () => void } = $props();
 
   let foldersOpen = $state(false);
+  let holdStart = 0;
   const project = $derived(lib.scope.type === "project" ? lib.projects.find((p) => p.id === (lib.scope as { id: number }).id) : undefined);
 </script>
 
@@ -31,6 +33,28 @@
   {#if lib.scope.type === "person" && lib.view !== "people"}
     <button class="btn quiet" onclick={() => lib.openPeople()} title="Zurück zur Übersicht aller Personen">
       <Icon name="back" size={14} /> Personen
+    </button>
+  {/if}
+  {#if lib.mode === "develop"}
+    <!-- Vorher/Nachher: Klick schaltet um, gedrückt halten zeigt kurz das Original -->
+    <button
+      class="btn before"
+      class:on={dev.showBefore || dev.holdBefore}
+      aria-pressed={dev.showBefore}
+      onpointerdown={() => {
+        holdStart = performance.now();
+        dev.holdBefore = true;
+      }}
+      onpointerup={() => (dev.holdBefore = false)}
+      onpointerleave={() => (dev.holdBefore = false)}
+      onclick={() => {
+        // Lang gedrückt: nur kurzer Vergleich, nicht umschalten
+        if (performance.now() - holdStart < 300) dev.showBefore = !dev.showBefore;
+      }}
+      title="Bild ohne Bearbeitung zeigen (Taste \). Klick schaltet um, gedrückt halten zeigt es kurz."
+    >
+      <Icon name="develop" size={14} />
+      {dev.showBefore ? "Bearbeitung zeigen" : "Original zeigen"}
     </button>
   {/if}
   {#if lib.mode === "library" && lib.selection.size > 1 && lib.view !== "compare"}
@@ -123,6 +147,10 @@
 </div>
 
 <style>
+  .btn.before.on {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
   .reject-btn {
     color: var(--reject);
     white-space: nowrap;

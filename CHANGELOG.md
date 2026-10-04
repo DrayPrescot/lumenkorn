@@ -21,6 +21,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
   across restarts.
 - Compare is reachable from everywhere: `C` also in Develop, `Enter`/`E` with
   several photos selected, and the context menu.
+- Develop: “Original zeigen” button in the toolbar shows the photo without
+  edits (click toggles, press and hold for a quick look; `\` still works).
+- Develop: `Tab` moves through the sliders with the value selected, ready to
+  type; `Enter` applies, `Esc` reverts, arrow keys nudge (`Shift` ×10).
+
+### Changed
+- AI noise reduction is much stronger. The noise estimate now also looks at
+  half resolution (camera noise is spatially correlated and was underestimated
+  about 2×), color noise gets an extra half-resolution pass, and the strength
+  slider maps 0 / 50 / 100 to 0.75× / 1.5× / 3× the estimate (default 50).
+  Already denoised photos keep their old result until recomputed.
 
 ### Fixed
 - New folders always appear in the folder tree, also when they are empty or

@@ -19,7 +19,6 @@
 
   let stageW = $state(0);
   let stageH = $state(0);
-  let holdBefore = $state(false);
   let imgW = $state(0);
   let imgH = $state(0);
 
@@ -44,7 +43,7 @@
     if (f) dev.open(f.id);
   });
 
-  const before = $derived(dev.showBefore || holdBefore);
+  const before = $derived(dev.showBefore || dev.holdBefore);
   const shown = $derived(before ? (dev.beforeUrl ?? dev.url) : dev.url);
   const fallback = $derived(lib.focused ? imageUrl("preview", lib.focused.id, lib.thumbVersion[lib.focused.id] ?? 0) : null);
 
@@ -120,17 +119,6 @@
       <div class="tag">Vorher</div>
     {/if}
 
-    <button
-      class="compare"
-      class:on={dev.showBefore}
-      onpointerdown={() => (holdBefore = true)}
-      onpointerup={() => (holdBefore = false)}
-      onpointerleave={() => (holdBefore = false)}
-      onclick={() => (dev.showBefore = !dev.showBefore)}
-      title="Vorher/Nachher (\). Gedrückt halten zum kurzen Vergleich."
-    >
-      Vorher / Nachher
-    </button>
   </div>
   <Filmstrip />
 </div>
@@ -172,21 +160,5 @@
   }
   .tag {
     top: 8px;
-  }
-  .compare {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    padding: 5px 10px;
-    border-radius: var(--radius-s);
-    background: rgb(20 20 22 / 0.7);
-    border: 1px solid var(--line);
-    color: var(--muted);
-    font-size: var(--step--1);
-  }
-  .compare:hover,
-  .compare.on {
-    color: var(--text);
-    border-color: var(--faint);
   }
 </style>

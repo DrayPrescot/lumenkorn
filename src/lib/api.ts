@@ -601,7 +601,8 @@ export const api = {
   faceHide: (faceId: number) => call<void>("face_hide", { faceId }),
   personDelete: (id: number) => call<void>("person_delete", { id }),
   peopleRescan: () => call<void>("people_rescan"),
-  denoiseStart: (id: number, strength = 1) => call<void>("denoise_start", { id, strength }),
+  /** `strength`: Reglerwert 0–100 (50 = Standard) */
+  denoiseStart: (id: number, strength = 50) => call<void>("denoise_start", { id, strength }),
   denoiseCancel: () => call<void>("denoise_cancel"),
   mergeStart: (kind: MergeKind, ids: number[], options: MergeOptions) =>
     call<void>("merge_start", { kind, ids, options }),

@@ -35,16 +35,18 @@
 </script>
 
 <details open class="hsl">
-  <summary>HSL</summary>
+  <summary tabindex="-1">HSL</summary>
   <div class="head">
     <div class="seg" role="tablist" aria-label="HSL-Regler">
       {#each modes as m (m.id)}
-        <button role="tab" aria-selected={dev.hslMode === m.id} class:on={dev.hslMode === m.id} onclick={() => (dev.hslMode = m.id)}>
+        <!-- Tab springt von Regler zu Regler; Knöpfe per Maus -->
+        <button role="tab" tabindex="-1" aria-selected={dev.hslMode === m.id} class:on={dev.hslMode === m.id} onclick={() => (dev.hslMode = m.id)}>
           {m.label}
         </button>
       {/each}
     </div>
     <button
+      tabindex="-1"
       class="icon-btn pick"
       class:on={dev.hslPick}
       aria-pressed={dev.hslPick}
@@ -78,7 +80,7 @@
     {/each}
   </div>
   {#if changed}
-    <button class="btn small reset" onclick={reset}>HSL zurücksetzen</button>
+    <button class="btn small reset" tabindex="-1" onclick={reset}>HSL zurücksetzen</button>
   {/if}
 </details>
 

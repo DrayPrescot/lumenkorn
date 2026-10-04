@@ -160,7 +160,7 @@
   {:else}
     {#each groups as g (g.title)}
       <details open>
-        <summary>{g.title}</summary>
+        <summary tabindex="-1">{g.title}</summary>
         <div class="sliders">
           {#each g.sliders as s (s.key)}
             <Slider
@@ -239,7 +239,7 @@
         oncommit={() => dev.commit()}
       />
       <div class="dn-again">
-        <Slider label="Stärke" value={dev.denoiseStrength} min={0} max={100} neutral={65} oninput={(v) => (dev.denoiseStrength = v)} oncommit={() => {}} />
+        <Slider label="Stärke" value={dev.denoiseStrength} min={0} max={100} neutral={50} oninput={(v) => (dev.denoiseStrength = v)} oncommit={() => {}} />
         <button class="btn small" onclick={() => dev.startDenoise()} title="Mit dieser Stärke neu berechnen">Neu berechnen</button>
       </div>
     {:else if !lib.ai?.denoiseReady}
@@ -248,7 +248,7 @@
         {lib.aiDownload ? "Wird geladen …" : "Herunterladen"}
       </button>
     {:else}
-      <Slider label="Stärke" value={dev.denoiseStrength} min={0} max={100} neutral={65} oninput={(v) => (dev.denoiseStrength = v)} oncommit={() => {}} />
+      <Slider label="Stärke" value={dev.denoiseStrength} min={0} max={100} neutral={50} oninput={(v) => (dev.denoiseStrength = v)} oncommit={() => {}} />
       <p class="dn-note">Berechnet das Foto in voller Auflösung – je nach Größe und Rechner eine bis mehrere Minuten. Danach lässt sich die Wirkung ohne Neuberechnung abschwächen.</p>
       <button class="btn small" disabled={!!dev.denoising} onclick={() => dev.startDenoise()}>Entrauschen</button>
     {/if}

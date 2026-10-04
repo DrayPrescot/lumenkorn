@@ -46,7 +46,8 @@ der Parametersatz (JSON im Katalog). Änderungen werden automatisch gespeichert.
 - **Zuschneiden** (Taste R): Rahmen über dem ganzen Bild ziehen, mit Drittel-Raster und festen Seitenverhältnissen (Original, 1:1, 4:5, 3:2, 16:9, per ⇄ hoch/quer). Enter übernimmt, Esc bricht ab.
 - **Geraderichten** um beliebige Winkel (±45°) ohne leere Ecken, mit **Auto**-Funktion: Lumenkorn sucht Horizont und gerade Kanten und schlägt die Korrektur vor (im Test auf ±0,6° genau).
 - Lichter, Tiefen und Klarheit arbeiten **lokal** über weichgezeichnete Helligkeitskarten, deren Radius relativ zur Bildgröße ist – die Vorschau sieht aus wie der Export.
-- **Live-Vorschau** aus einem 2048-px-Proxy im Speicher (RAW einmal dekodieren, danach ~100–250 ms pro Änderung), Histogramm mit Clipping-Anteil, **Vorher/Nachher**.
+- **Live-Vorschau** aus einem 2048-px-Proxy im Speicher (RAW einmal dekodieren, danach ~100–250 ms pro Änderung), Histogramm mit Clipping-Anteil, **Vorher/Nachher**: „Original zeigen“ oben in der Leiste (Klick schaltet um, gedrückt halten zeigt kurz) oder Taste `\`.
+- **Werte per Tastatur:** Tab springt von Regler zu Regler, der Wert ist sofort markiert und kann überschrieben werden (Enter übernimmt, Esc verwirft, ↑/↓ ändern schrittweise, mit Umschalt ×10).
 - **Verlauf** (Strg+Z / Strg+Umschalt+Z), **Schnappschüsse**, **Kopieren/Einfügen** von Einstellungen auf beliebig viele ausgewählte Fotos.
 - **Export** in voller Auflösung als JPEG, 16-Bit-TIFF oder PNG, optional verkleinert, im Hintergrund mit Fortschritt. Vorhandene Dateien werden nie überschrieben.
 
@@ -88,8 +89,13 @@ Im Entwickeln-Modus unter „Details“. Verwendet **DRUNet** (Zhang et al., KAI
 - **Kein inoffiziell gehostetes Modell:** Lumenkorn lädt die Original-Gewichte (130 MB) aus dem
   GitHub-Release von KAIR und baut daraus lokal ein ONNX-Modell. Dafür enthält `lumenkorn-ai` einen
   kleinen Leser für das alte PyTorch-Format und einen ONNX-Schreiber – PyTorch wird nicht gebraucht.
-- **Rauschstärke wird geschätzt**, getrennt nach Helligkeit (Schatten rauschen stärker). Der Regler
-  **Stärke** skaliert diese Schätzung vor der Berechnung (50 = Schätzung, 65 = Standard, höher = glatter).
+- **Rauschstärke wird geschätzt**, getrennt nach Helligkeit (Schatten rauschen stärker) und auf zwei
+  Skalen: Echtes Kamerarauschen ist durch das Demosaicing räumlich korreliert und würde in voller
+  Auflösung allein deutlich unterschätzt.
+- **Farbrauschen** (bunte Flecken) wird zusätzlich in halber Auflösung und kräftiger entfernt;
+  Helligkeitsdetails kommen aus dem Durchgang in voller Auflösung.
+- Der Regler **Stärke** skaliert die Schätzung vor der Berechnung: 0 = ¾ der Schätzung, 50 (Standard)
+  = 1,5-fach, 100 = 3-fach. Nach einer Änderung „Neu berechnen“.
 - Gerechnet wird **einmal in voller Auflösung** im Hintergrund, mit Fortschrittsanzeige und Abbrechen.
   Das Ergebnis liegt als Zwischenstufe in `<daten>/entrauscht/` (lineares RGB, f16) und wird von
   Vorschau, Thumbnails und Export genutzt. **Mischung** blendet danach ohne Neuberechnung zum Original.

@@ -970,7 +970,8 @@ pub fn denoise_start(app: AppHandle, id: i64, strength: Option<f32>) -> Result<(
         *running = Some(id);
     }
     state.ai.denoise_cancel.store(false, Ordering::SeqCst);
-    let strength = strength.unwrap_or(1.0).clamp(0.25, 3.0);
+    // Reglerwert „Stärke“ (0–100) → Faktor auf die geschätzte Rauschstärke
+    let strength = lumenkorn_ai::denoise::strength_factor(strength.unwrap_or(50.0));
     std::thread::Builder::new()
         .name("lumenkorn-denoise".into())
         .spawn(move || {

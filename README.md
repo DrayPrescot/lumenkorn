@@ -62,6 +62,9 @@ and uses the GPU (AMD, NVIDIA, Intel) through Vulkan or DirectX 12 where availab
   - brush;
   - color range with eyedropper;
   - AI masks for **subject**, **sky** and **object** (click to select).
+- **Before/after:** "Original zeigen" in the toolbar (click toggles, press and hold for a quick look) or `\`.
+- **Keyboard entry:** `Tab` moves from slider to slider with the value selected, ready to type;
+  arrow keys nudge it (`Shift` ×10).
 - **History, snapshots**, and **copy/paste of basic settings** (`Ctrl+Shift+C` / `Ctrl+Shift+V`).
 - **Export** to JPEG, 16-bit TIFF or PNG.
 - **GPU processing** with [wgpu](https://wgpu.rs). A test checks that GPU and CPU produce
@@ -69,7 +72,8 @@ and uses the GPU (AMD, NVIDIA, Intel) through Vulkan or DirectX 12 where availab
 
 ### Local AI (optional, runs offline after a one-time download)
 - **Automatic keywords** and **semantic search** ("dog on the beach") with CLIP.
-- **AI noise reduction** with DRUNet. Lumenkorn downloads the original weights and converts
+- **AI noise reduction** with DRUNet, with a noise estimate on two scales and an extra pass
+  against color blotches. Lumenkorn downloads the original weights and converts
   them to ONNX locally.
 - **AI repair** removes objects, dust spots, power lines and other distractions (LaMa).
 - **People:** finds faces, groups them and suggests names (YuNet and SFace). The models used

@@ -50,6 +50,8 @@ class Develop {
   url = $state<string | null>(null);
   beforeUrl = $state<string | null>(null);
   showBefore = $state(false);
+  /** Vorher-Knopf gedrückt gehalten (kurzer Vergleich) */
+  holdBefore = $state(false);
   loading = $state(false);
   rendering = $state(false);
 
@@ -63,7 +65,7 @@ class Develop {
   /** Laufende Berechnung: Bild und Fortschritt */
   denoising = $state<{ imageId: number; done: number; total: number } | null>(null);
   /** Stärke für die nächste Berechnung, 0…100; 50 = geschätztes Rauschen */
-  denoiseStrength = $state(65);
+  denoiseStrength = $state(50);
 
   /** Reiter im Entwickeln-Bereich */
   tab = $state<"basic" | "masks" | "repair" | "crop">("basic");
@@ -406,9 +408,8 @@ class Develop {
     if (this.imageId === null) return;
     try {
       this.denoising = { imageId: this.imageId, done: 0, total: 0 };
-      // 0 → halbe, 50 → geschätzte, 100 → doppelte Rauschstärke
-      const factor = 0.5 * Math.pow(4, this.denoiseStrength / 100);
-      await api.denoiseStart(this.imageId, factor);
+      // Reglerwert 0–100; das Backend rechnet ihn in die Rauschstärke um
+      await api.denoiseStart(this.imageId, this.denoiseStrength);
     } catch (e) {
       this.denoising = null;
       lib.notify(String(e), "error");

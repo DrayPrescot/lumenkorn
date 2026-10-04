@@ -247,16 +247,86 @@ impl Denoiser {
             .iter()
             .map(|p| p.map(|v| encode(v * gain)))
             .collect();
-        let curve = estimate_noise(&enc, w, h);
+
+        // Rauschen echter Kameras ist durch das Demosaicing räumlich korreliert:
+        // Die Schätzung in voller Auflösung sieht nur den feinen Anteil. Auf
+        // halber Auflösung gemessen (×2 = gleichwertig in voller Auflösung)
+        // kommt der gröbere Anteil hinzu – maßgeblich ist der größere Wert.
+        let (hw, hh) = (w.div_ceil(2), h.div_ceil(2));
+        let half = downsample2(&enc, w, h);
+        let fine = estimate_noise(&enc, w, h);
+        let coarse = estimate_noise(&half, hw, hh);
+        let curve: [f32; BINS] = std::array::from_fn(|i| fine[i].max(2.0 * coarse[i]));
         log::info!(
-            "Rauschschätzung (σ×255 je Helligkeitsstufe): {:?}",
-            curve
-                .iter()
-                .map(|s| (s * 255.0 * 10.0).round() / 10.0)
-                .collect::<Vec<_>>()
+            "Rauschschätzung (σ×255 je Helligkeitsstufe): fein {:?}, grob×2 {:?}",
+            fine.map(|s| (s * 2550.0).round() / 10.0),
+            coarse.map(|s| (s * 5100.0).round() / 10.0),
         );
 
-        // Rand spiegeln, damit auch Randkacheln Kontext haben
+        // Zwei Durchgänge: volle Auflösung für Helligkeit und Details, halbe
+        // Auflösung für Farbrauschen (bunte Flecken sind grob und brauchen
+        // mehr Kraft; dort kostet der Durchgang nur ein Viertel).
+        let tiles = |tw: usize, th: usize| {
+            let tile = if self.gpu { TILE_GPU } else { TILE_CPU };
+            tw.div_ceil(tile.min(tw.div_ceil(8) * 8)) * th.div_ceil(tile.min(th.div_ceil(8) * 8))
+        };
+        let total = tiles(w, h) + tiles(hw, hh);
+        let done = std::cell::Cell::new(0usize);
+        let step = || {
+            done.set(done.get() + 1);
+            progress(done.get(), total);
+        };
+        progress(0, total);
+        let full = self.run_tiled(
+            &enc,
+            w,
+            h,
+            &|y| sigma_at(&curve, y) * strength,
+            &step,
+            cancel,
+        )?;
+        let chroma_sigma =
+            |y: f32| (sigma_at(&coarse, y) * strength * CHROMA_BOOST).min(75.0 / 255.0);
+        let half_out = self.run_tiled(&half, hw, hh, &chroma_sigma, &step, cancel)?;
+
+        // Zusammensetzen: Helligkeit aus der vollen Auflösung, Farbe aus der
+        // halben (hochskaliert) plus deren feine Farbdetails aus der vollen.
+        let half_full = upsample2(&half_out, hw, hh, w, h);
+        let full_low = upsample2(&downsample2(&full, w, h), hw, hh, w, h);
+        let mut out = vec![[0f32; 3]; w * h];
+        for (i, o) in out.iter_mut().enumerate() {
+            let f = full[i];
+            let y = luma(f);
+            let c = |p: [f32; 3]| [p[0] - luma(p), p[2] - luma(p)];
+            let (cf, cl, ch2) = (c(f), c(full_low[i]), c(half_full[i]));
+            // Feine Farbdetails nur gedämpft übernehmen (dort steckt Restrauschen)
+            let cr = ch2[0] + 0.5 * (cf[0] - cl[0]);
+            let cb = ch2[1] + 0.5 * (cf[1] - cl[1]);
+            let rgb = from_ycc(y, cr, cb);
+            let orig = img.data[i];
+            for k in 0..3 {
+                o[k] = if enc[i][k] >= 0.999 {
+                    // Über dem Kodierbereich: Original behalten
+                    orig[k]
+                } else {
+                    decode(rgb[k].clamp(0.0, 1.0)) / gain
+                };
+            }
+        }
+        Ok(out)
+    }
+
+    /// Ein Durchgang des Netzes über ein kodiertes Bild, in Kacheln mit
+    /// gespiegeltem Rand. `sigma_of(helligkeit)` liefert die Rauschstärke.
+    fn run_tiled(
+        &self,
+        enc: &[[f32; 3]],
+        w: usize,
+        h: usize,
+        sigma_of: &dyn Fn(f32) -> f32,
+        step: &dyn Fn(),
+        cancel: &AtomicBool,
+    ) -> Result<Vec<[f32; 3]>> {
         let tile = if self.gpu { TILE_GPU } else { TILE_CPU };
         let reflect = |i: isize, n: usize| -> usize {
             let n = n as isize;
@@ -269,20 +339,13 @@ impl Denoiser {
             }
             i.clamp(0, n - 1) as usize
         };
-
         // Kachelgröße an kleine Bilder anpassen (Vielfache von 8 fürs Netz)
         let tile_w = tile.min(w.div_ceil(8) * 8);
         let tile_h = tile.min(h.div_ceil(8) * 8);
-        let tiles_x = w.div_ceil(tile_w);
-        let tiles_y = h.div_ceil(tile_h);
-        let total = tiles_x * tiles_y;
-        let mut out = vec![[0f32; 3]; w * h];
         let (tw, th) = (tile_w + 2 * MARGIN, tile_h + 2 * MARGIN);
-        let mut done = 0;
-        progress(0, total);
-
-        for ty in 0..tiles_y {
-            for tx in 0..tiles_x {
+        let mut out = vec![[0f32; 3]; w * h];
+        for ty in 0..h.div_ceil(tile_h) {
+            for tx in 0..w.div_ceil(tile_w) {
                 if cancel.load(Ordering::Relaxed) {
                     return Err(Error::Cancelled);
                 }
@@ -299,35 +362,95 @@ impl Denoiser {
                         for c in 0..3 {
                             image[c * n + i] = p[c];
                         }
-                        let y = 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
-                        sigma[i] = sigma_at(&curve, y) * strength;
+                        sigma[i] = sigma_of(luma(p));
                     }
                 }
                 let res = self.run(image, sigma, th, tw)?;
                 for yy in 0..tile_h.min(h - y0) {
                     for xx in 0..tile_w.min(w - x0) {
                         let i = (yy + MARGIN) * tw + xx + MARGIN;
-                        let (x, y) = (x0 + xx, y0 + yy);
-                        let orig = img.data[y * w + x];
-                        let mut px = [0f32; 3];
-                        for c in 0..3 {
-                            let e = enc[y * w + x][c];
-                            px[c] = if e >= 0.999 {
-                                // Über dem Kodierbereich: Original behalten
-                                orig[c]
-                            } else {
-                                decode(res[c * n + i].clamp(0.0, 1.0)) / gain
-                            };
-                        }
-                        out[y * w + x] = px;
+                        out[(y0 + yy) * w + x0 + xx] = [0, 1, 2].map(|c| res[c * n + i]);
                     }
                 }
-                done += 1;
-                progress(done, total);
+                step();
             }
         }
         Ok(out)
     }
+}
+
+/// Wie viel kräftiger das Farbrauschen behandelt wird als die Helligkeit.
+const CHROMA_BOOST: f32 = 2.0;
+
+#[inline]
+fn luma(p: [f32; 3]) -> f32 {
+    0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]
+}
+
+/// Aus Helligkeit und den Differenzen R−Y, B−Y zurück nach RGB.
+#[inline]
+fn from_ycc(y: f32, cr: f32, cb: f32) -> [f32; 3] {
+    let r = y + cr;
+    let b = y + cb;
+    let g = (y - 0.2126 * r - 0.0722 * b) / 0.7152;
+    [r, g, b]
+}
+
+/// 2×2-Mittel (halbe Auflösung, aufgerundet).
+fn downsample2(img: &[[f32; 3]], w: usize, h: usize) -> Vec<[f32; 3]> {
+    let (hw, hh) = (w.div_ceil(2), h.div_ceil(2));
+    let mut out = vec![[0f32; 3]; hw * hh];
+    for y in 0..hh {
+        for x in 0..hw {
+            let mut s = [0f32; 3];
+            let mut n = 0.0;
+            for dy in 0..2 {
+                for dx in 0..2 {
+                    let (sx, sy) = (2 * x + dx, 2 * y + dy);
+                    if sx < w && sy < h {
+                        let p = img[sy * w + sx];
+                        for c in 0..3 {
+                            s[c] += p[c];
+                        }
+                        n += 1.0;
+                    }
+                }
+            }
+            out[y * hw + x] = s.map(|v| v / n);
+        }
+    }
+    out
+}
+
+/// Bilinear von halber auf volle Auflösung (Pixelmitten übereinander).
+fn upsample2(img: &[[f32; 3]], hw: usize, hh: usize, w: usize, h: usize) -> Vec<[f32; 3]> {
+    let mut out = vec![[0f32; 3]; w * h];
+    for y in 0..h {
+        let fy = ((y as f32 + 0.5) / 2.0 - 0.5).clamp(0.0, (hh - 1) as f32);
+        let y0 = fy as usize;
+        let y1 = (y0 + 1).min(hh - 1);
+        let ty = fy - y0 as f32;
+        for x in 0..w {
+            let fx = ((x as f32 + 0.5) / 2.0 - 0.5).clamp(0.0, (hw - 1) as f32);
+            let x0 = fx as usize;
+            let x1 = (x0 + 1).min(hw - 1);
+            let tx = fx - x0 as f32;
+            let (a, b) = (img[y0 * hw + x0], img[y0 * hw + x1]);
+            let (c, d) = (img[y1 * hw + x0], img[y1 * hw + x1]);
+            out[y * w + x] = [0, 1, 2].map(|k| {
+                let top = a[k] + (b[k] - a[k]) * tx;
+                let bot = c[k] + (d[k] - c[k]) * tx;
+                top + (bot - top) * ty
+            });
+        }
+    }
+    out
+}
+
+/// Reglerwert „Stärke“ (0–100) → Faktor auf die geschätzte Rauschstärke:
+/// 0 → 0,75×, 50 → 1,5×, 100 → 3× (logarithmisch).
+pub fn strength_factor(slider: f32) -> f32 {
+    0.75 * 4f32.powf(slider.clamp(0.0, 100.0) / 100.0)
 }
 
 /// Verstärkung, damit fast alle Werte in 0…1 liegen (RAWs haben Reserven über 1).
