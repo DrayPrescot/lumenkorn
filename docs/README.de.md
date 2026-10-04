@@ -404,6 +404,7 @@ Histogramm, Kopieren/Einfügen/Zurücksetzen und Export bleiben in allen Reitern
 | Entf | Foto aus dem Vergleich nehmen |
 | I | Infobereich ein/aus |
 | \ | Vorher/Nachher (Entwickeln) |
+| F11 | Vollbild ein/aus (das Fenster startet maximiert) |
 | [ / ] | Links/rechts drehen (Entwickeln) |
 | Strg+Z / Strg+Umschalt+Z | Rückgängig / Wiederholen (Entwickeln) |
 | Strg+Umschalt+C / Strg+Umschalt+V | Basis-Einstellungen kopieren / einfügen (auch per Rechtsklick) |

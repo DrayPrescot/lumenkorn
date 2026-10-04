@@ -14,7 +14,8 @@
   import DeleteRejectedDialog from "./components/DeleteRejectedDialog.svelte";
   import ContextMenu from "./components/ContextMenu.svelte";
   import MergeDialog from "./components/MergeDialog.svelte";
-  import type { ImageSummary } from "./lib/api";
+  import { isTauri, type ImageSummary } from "./lib/api";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import { dev } from "./lib/develop.svelte";
   import { lib } from "./lib/store.svelte";
   import { t } from "./lib/i18n";
@@ -46,7 +47,22 @@
   });
 
   // Tastenkürzel wie in gängigen Fotoverwaltungen
+  /** F11: echtes Vollbild (ohne Titelleiste und Taskleiste) ein/aus. Das
+   *  Fenster startet maximiert. */
+  async function toggleFullscreen() {
+    if (isTauri) {
+      const w = getCurrentWindow();
+      await w.setFullscreen(!(await w.isFullscreen()));
+    } else if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen().catch(() => {});
+  }
+
   function onkeydown(e: KeyboardEvent) {
+    if (e.key === "F11") {
+      e.preventDefault();
+      toggleFullscreen();
+      return;
+    }
     if (isTyping(e) || exportIds || deleteImages || lib.merge) return;
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "e") {
       e.preventDefault();
