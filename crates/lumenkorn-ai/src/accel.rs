@@ -319,6 +319,8 @@ pub struct GpuDevice {
     pub discrete: Option<bool>,
 }
 
+// Only the Linux GPU listing (sysfs) needs the PCI tables below
+#[cfg(target_os = "linux")]
 fn vendor_name(id: u32) -> &'static str {
     match id {
         0x1002 => "AMD",
@@ -330,6 +332,7 @@ fn vendor_name(id: u32) -> &'static str {
     }
 }
 
+#[cfg(target_os = "linux")]
 /// Bekannte Bezeichnungen häufiger Grafikchips (PCI-Geräte-ID). Unbekannte
 /// Chips werden mit Hersteller und ID angezeigt.
 fn device_name(vendor: u32, device: u32) -> Option<&'static str> {
