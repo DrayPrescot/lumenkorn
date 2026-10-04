@@ -526,6 +526,17 @@ impl Catalog {
         Ok(person)
     }
 
+    /// Mehrere vorgeschlagene Gesichter auf einmal bestätigen (nur solche,
+    /// die einer Person zugeordnet sind). Liefert die Anzahl.
+    pub fn confirm_faces(&self, face_ids: &[i64]) -> Result<usize> {
+        let ids = serde_json::to_string(face_ids)?;
+        Ok(self.conn.execute(
+            "UPDATE faces SET confirmed = 1
+             WHERE id IN (SELECT value FROM json_each(?1)) AND person_id IS NOT NULL AND confirmed = 0",
+            [ids],
+        )?)
+    }
+
     pub fn confirm_face(&self, face_id: i64) -> Result<()> {
         self.conn
             .execute("UPDATE faces SET confirmed = 1 WHERE id = ?1", [face_id])?;
@@ -818,5 +829,37 @@ mod tests {
         let erika = cat.name_person(g2, "Erika").unwrap();
         assert_eq!(cat.name_person(erika, "max mustermann").unwrap(), max);
         assert_eq!(cat.person_faces(max).unwrap().len(), 3);
+    }
+
+    /// Mehrere Vorschläge auf einmal bestätigen; lose Gesichter bleiben lose.
+    #[test]
+    fn confirms_several_suggestions() {
+        let (mut cat, imgs) = catalog_with_images(4);
+        let mut idx = cat.people_index().unwrap();
+        add(&mut cat, &mut idx, imgs[0], face(0, 0.1));
+        let group = cat.image_faces(imgs[0]).unwrap()[0].person_id.unwrap();
+        let max = cat.name_person(group, "Max").unwrap();
+        let mut idx = cat.people_index().unwrap();
+        add(&mut cat, &mut idx, imgs[1], face(0, 0.12));
+        add(&mut cat, &mut idx, imgs[2], face(0, 0.14));
+        let loose = add(&mut cat, &mut idx, imgs[3], face(9, 0.0));
+        cat.reject_face(loose).unwrap();
+        let open: Vec<i64> = cat
+            .person_faces(max)
+            .unwrap()
+            .iter()
+            .filter(|f| !f.confirmed)
+            .map(|f| f.id)
+            .collect();
+        assert_eq!(open.len(), 2);
+        let mut ids = open.clone();
+        ids.push(loose);
+        assert_eq!(cat.confirm_faces(&ids).unwrap(), 2);
+        assert!(cat.person_faces(max).unwrap().iter().all(|f| f.confirmed));
+        let l = cat.image_faces(imgs[3]).unwrap();
+        assert!(
+            l[0].person_id.is_none() && !l[0].confirmed,
+            "loses Gesicht unverändert"
+        );
     }
 }

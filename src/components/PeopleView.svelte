@@ -4,6 +4,8 @@
   import { api, faceUrl, type FaceInfo, type Person } from "../lib/api";
   import { lib } from "../lib/store.svelte";
   import Icon from "./Icon.svelte";
+  import { isTyping } from "../lib/keys";
+  import { onMount } from "svelte";
 
   const named = $derived(lib.people.filter((p) => p.name));
   const groups = $derived(lib.people.filter((p) => !p.name));
@@ -38,16 +40,73 @@
   }
 
   async function openReview(p: Person) {
+    picked = new Set();
     review = { person: p, faces: await api.personFaces(p.id) };
   }
 
+  // --- Mehrere Gesichter auswählen (Klick, Strg-Klick, Umschalt-Klick) ---------
+  let picked = $state<Set<number>>(new Set());
+  let anchor: number | null = null;
+  function pick(e: MouseEvent, faceId: number) {
+    const faces = review?.faces ?? [];
+    const next = new Set(picked);
+    if (e.shiftKey && anchor !== null) {
+      const [a, b] = [faces.findIndex((f) => f.id === anchor), faces.findIndex((f) => f.id === faceId)].sort((x, y) => x - y);
+      for (const f of faces.slice(a, b + 1)) next.add(f.id);
+    } else if (next.has(faceId)) {
+      next.delete(faceId);
+    } else {
+      next.add(faceId);
+    }
+    anchor = faceId;
+    picked = next;
+  }
+  const pickedOpen = $derived(review ? review.faces.filter((f) => picked.has(f.id) && !f.confirmed).map((f) => f.id) : []);
+
+  async function confirmFaces(ids: number[]) {
+    if (!ids.length) return;
+    await act(() => api.facesConfirm(ids));
+    picked = new Set();
+    lib.notify(`${ids.length} ${ids.length === 1 ? "Gesicht" : "Gesichter"} bestätigt`);
+  }
+
+  async function rejectFaces(ids: number[]) {
+    if (!ids.length) return;
+    await act(() => api.facesReassign(ids, null));
+    picked = new Set();
+    lib.notify(`${ids.length} ${ids.length === 1 ? "Gesicht" : "Gesichter"} herausgenommen`);
+  }
+
+  function onkeydown(e: KeyboardEvent) {
+    if (!review || isTyping(e)) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      picked = new Set(review.faces.map((f) => f.id));
+    } else if (e.key === "Escape" && picked.size) {
+      e.stopPropagation();
+      picked = new Set();
+    }
+  }
+
   function open(p: Person) {
+    // Aus der Gesichter-Prüfung heraus: „Zurück zu Personen“ kehrt hierher zurück
+    lib.reviewPerson = review ? p.id : null;
     lib.setScope({ type: "person", id: p.id });
     lib.view = "grid";
   }
 
+  // Rückkehr aus den Fotos einer Person: deren Prüfung wieder öffnen
+  onMount(() => {
+    const id = lib.reviewPerson;
+    lib.reviewPerson = null;
+    const p = id === null ? undefined : lib.people.find((x) => x.id === id);
+    if (p) openReview(p);
+  });
+
   const st = $derived(lib.peopleStatus);
 </script>
+
+<svelte:window {onkeydown} />
 
 <div class="people scroll">
   {#if review}
@@ -58,17 +117,34 @@
       <span class="muted">{p.faceCount} Gesichter auf {p.imageCount} Fotos{p.suggested ? `, ${p.suggested} vorgeschlagen` : ""}</span>
       <span class="spacer"></span>
       {#if p.suggested}
-        <button class="btn" onclick={() => act(async () => { for (const f of review!.faces.filter((x) => !x.confirmed)) await api.faceConfirm(f.id); })}>
-          Alle bestätigen
+        <button class="btn" onclick={() => confirmFaces(review!.faces.filter((x) => !x.confirmed).map((x) => x.id))}>
+          Alle {p.suggested} Vorschläge bestätigen
         </button>
       {/if}
       <button class="btn" onclick={() => open(p)}>Fotos anzeigen</button>
     </div>
-    <p class="muted hint">✓ bestätigt das Gesicht, ✕ nimmt es heraus (es wird dieser Person nicht erneut vorgeschlagen).</p>
+    {#if picked.size}
+      <div class="pickbar" role="toolbar" aria-label="Auswahl">
+        <span>{picked.size} ausgewählt</span>
+        <button class="btn primary" disabled={!pickedOpen.length} onclick={() => confirmFaces(pickedOpen)}>
+          ✓ {pickedOpen.length ? `${pickedOpen.length} bestätigen` : "alle schon bestätigt"}
+        </button>
+        <button class="btn" onclick={() => rejectFaces([...picked])}>✕ Herausnehmen</button>
+        <button class="btn quiet" onclick={() => (picked = new Set())}>Auswahl aufheben</button>
+      </div>
+    {:else}
+      <p class="muted hint">
+        Gesichter anklicken, um mehrere auszuwählen (Umschalt-Klick: Bereich, Strg+A: alle) – dann gemeinsam bestätigen
+        oder herausnehmen. Einzeln: ✓ bestätigt, ✕ nimmt heraus (wird dieser Person nicht erneut vorgeschlagen).
+      </p>
+    {/if}
     <div class="faces">
       {#each review.faces as f (f.id)}
-        <div class="face" class:suggested={!f.confirmed}>
-          <img src={faceUrl(f.id)} alt="" loading="lazy" />
+        <div class="face" class:suggested={!f.confirmed} class:picked={picked.has(f.id)}>
+          <button class="pick" aria-pressed={picked.has(f.id)} aria-label="Auswählen" onclick={(e) => pick(e, f.id)}>
+            <img src={faceUrl(f.id)} alt="" loading="lazy" />
+          </button>
+          {#if picked.has(f.id)}<span class="tick" aria-hidden="true">✓</span>{/if}
           <div class="face-actions">
             {#if !f.confirmed}
               <button title="Bestätigen" aria-label="Bestätigen" onclick={() => act(() => api.faceConfirm(f.id))}>✓</button>
@@ -308,6 +384,49 @@
   .face.suggested {
     outline: 2px dashed var(--accent);
     outline-offset: -2px;
+  }
+  .face.picked {
+    outline: 3px solid var(--accent);
+    outline-offset: -3px;
+  }
+  .face.picked img {
+    opacity: 0.8;
+  }
+  .pick {
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+  }
+  .tick {
+    position: absolute;
+    left: 6px;
+    top: 6px;
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #111;
+    font-size: 13px;
+    font-weight: 700;
+    pointer-events: none;
+  }
+  .pickbar {
+    position: sticky;
+    top: -16px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 8px 0;
+    margin-bottom: 8px;
+    background: var(--bg);
+  }
+  .pickbar span {
+    margin-right: 4px;
   }
   .face img {
     width: 100%;

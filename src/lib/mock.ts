@@ -29,19 +29,19 @@ const tagPool = ["Berge", "Meer", "Himmel", "Person", "Gebäude", "Straße", "Na
 let nextId = 1;
 const images: Img[] = [];
 
-// Beispiel-Gesichter: die ersten zwölf Fotos je ein Gesicht, gerade IDs „Anna“
+// Beispiel-Gesichter: die ersten zwölf Fotos je ein Gesicht – „Anna“ (bestätigt oder vorgeschlagen) oder ohne Zuordnung
 const mockPersons: { id: number; name: string }[] = [{ id: 1, name: "Anna" }];
 const mockFaces: { id: number; imageId: number; rect: [number, number, number, number]; score: number; personId: number | null; personName: string | null; confirmed: boolean }[] = [];
 function mockPeople() {
   if (!mockFaces.length) {
     images.slice(0, 12).forEach((im, i) =>
-      mockFaces.push({ id: i + 1, imageId: im.id, rect: [0.4, 0.3, 0.2, 0.3], score: 0.9, personId: i % 2 ? null : 1, personName: i % 2 ? null : "Anna", confirmed: i % 2 === 0 }),
+      mockFaces.push({ id: i + 1, imageId: im.id, rect: [0.4, 0.3, 0.2, 0.3], score: 0.9, personId: i % 4 === 3 ? null : 1, personName: i % 4 === 3 ? null : "Anna", confirmed: i % 2 === 0 }),
     );
   }
   return mockPersons
     .map((p) => {
       const fs = mockFaces.filter((f) => f.personId === p.id);
-      return { id: p.id, name: p.name, faceCount: fs.length, suggested: 0, imageCount: fs.length, coverFace: fs[0]?.id ?? null };
+      return { id: p.id, name: p.name, faceCount: fs.length, suggested: fs.filter((f) => !f.confirmed).length, imageCount: fs.length, coverFace: fs[0]?.id ?? null };
     })
     .filter((p) => p.faceCount > 0);
 }
@@ -231,7 +231,7 @@ export const mock = {
       case "ai_status":
         return out({ runtimePath: null, runtimeLoaded: false, runtimeDownloadable: true, modelReady: false, missing: ["vision.onnx", "text.onnx", "vocab.json", "merges.txt"], downloadSize: 161_000_000, modelDir: "(Mock)", masksReady: false, masksMissing: ["subject.onnx", "sam-encoder.onnx", "sam-decoder.onnx"], masksDownloadSize: 287_000_000, repairReady: false, repairDownloadSize: 92_600_000, denoiseReady: false, denoiseDownloadSize: 131_000_000, gpuRuntimes: [{ backend: "webgpu", label: "WebGPU (Vulkan)", version: "1.27.0", installed: false, downloadSize: 25_163_729 }], accel: { active: { library: null, gpuEnabled: false, gpuError: null, placements: [] }, devices: [{ vendor: "AMD", name: "Radeon RX 7900 XTX / XT / GRE", memory: 25_753_026_560, discrete: true }], restartRequired: false, develop: { enabled: true, available: true, info: { name: "AMD Radeon RX 7900 XTX (RADV NAVI31)", backend: "Vulkan", kind: "discrete", driver: "radv Mesa" }, error: null } }, crashNotice: null, downloading: false, loaded: false, error: null, analyzed: 0, total: images.length, settings: { autoTag: true, accel: "auto", developGpu: true, faces: true } });
       case "people_status":
-        return out({ ready: false, downloadSize: 38_929_000, enabled: true, analyzed: 0, total: images.length, faces: 0, error: null });
+        return out({ ready: true, downloadSize: 38_929_000, enabled: true, analyzed: images.length, total: images.length, faces: 12, error: null });
       case "people_list":
         return out(mockPeople());
       case "person_faces":
@@ -255,6 +255,17 @@ export const mock = {
         for (const f of mockFaces.filter((f) => f.personId === a.id)) f.personName = name;
         return out(a.id);
       }
+      case "faces_confirm": {
+        const fs = mockFaces.filter((f) => a.faceIds.includes(f.id) && f.personId !== null && !f.confirmed);
+        fs.forEach((f) => (f.confirmed = true));
+        return out(fs.length);
+      }
+      case "face_confirm":
+        mockFaces.filter((f) => f.id === a.faceId).forEach((f) => (f.confirmed = true));
+        return out(null);
+      case "face_reject":
+        mockFaces.filter((f) => f.id === a.faceId).forEach((f) => ((f.personId = null), (f.personName = null), (f.confirmed = false)));
+        return out(null);
       case "faces_reassign": {
         const name: string | null = a.name;
         let pid: number | null = null;

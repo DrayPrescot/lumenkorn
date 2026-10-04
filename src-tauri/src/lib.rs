@@ -178,6 +178,7 @@ pub fn run() {
             people::face_confirm,
             people::faces_of_images,
             people::faces_reassign,
+            people::faces_confirm,
             people::face_reject,
             people::face_hide,
             people::person_delete,

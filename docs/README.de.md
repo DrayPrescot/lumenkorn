@@ -241,6 +241,12 @@ Hintergrund in allen Fotos nach Gesichtern (nach der Verschlagwortung).
   Fotos werden der Person danach **vorgeschlagen** (gestrichelt bzw. „Lena?“) – ✓ bestätigt, ✕ nimmt
   heraus und schlägt dieses Gesicht der Person nie wieder vor. Ein gleicher Name führt zwei Personen
   zusammen. Einzelne Gesichter lassen sich im Infobereich direkt benennen oder ignorieren.
+- **Mehrere Vorschläge auf einmal bestätigen:** In „Gesichter prüfen“ Gesichter anklicken
+  (Umschalt-Klick: Bereich, Strg+A: alle), dann „✓ bestätigen“ oder „✕ Herausnehmen“ für alle
+  gewählten; „Alle Vorschläge bestätigen“ übernimmt sämtliche offenen. Im Raster einer Person:
+  Fotos auswählen, im Infobereich „✓ N bestätigen“.
+- **Zurück zur Übersicht:** In der Fotoansicht einer Person führt „‹ Personen“ oben zur
+  Personenübersicht bzw. zur Gesichter-Prüfung, aus der man gekommen ist.
 - **Umbenennen:** Doppel- oder Rechtsklick auf eine Person in der Seitenleiste bzw. Klick auf den
   Namen in „Personen verwalten“, z. B. „Max“ → „Max Mustermann“. Bestätigte Gesichter bleiben
   bestätigt, offene Vorschläge bleiben zu prüfen. Gibt es den neuen Namen schon, werden beide

@@ -585,6 +585,7 @@ export const api = {
   personRename: (id: number, name: string) => call<number>("person_rename", { id, name }),
   faceAssign: (faceId: number, name: string) => call<number>("face_assign", { faceId, name }),
   faceConfirm: (faceId: number) => call<void>("face_confirm", { faceId }),
+  facesConfirm: (faceIds: number[]) => call<number>("faces_confirm", { faceIds }),
   facesOfImages: (ids: number[]) => call<FaceInfo[]>("faces_of_images", { ids }),
   /** Mit Namen: diesen Gesichtern die Person zuordnen; ohne: Zuordnung lösen. */
   facesReassign: (faceIds: number[], name: string | null) => call<number | null>("faces_reassign", { faceIds, name }),

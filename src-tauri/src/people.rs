@@ -298,6 +298,14 @@ pub fn faces_reassign(
     r
 }
 
+/// Mehrere Vorschläge auf einmal bestätigen.
+#[tauri::command(async)]
+pub fn faces_confirm(state: State<AppState>, face_ids: Vec<i64>) -> Result<usize, Error> {
+    let n = state.catalog.lock().unwrap().confirm_faces(&face_ids)?;
+    state.people.invalidate();
+    Ok(n)
+}
+
 #[tauri::command(async)]
 pub fn face_confirm(state: State<AppState>, face_id: i64) -> Result<(), Error> {
     state.catalog.lock().unwrap().confirm_face(face_id)?;

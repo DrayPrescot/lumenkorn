@@ -40,7 +40,9 @@ and uses the GPU (AMD, NVIDIA, Intel) through Vulkan or DirectX 12 where availab
 - **Culling:** `X` rejects a photo, `Shift+X` rejects it and moves to the next.
   Rejected photos can then be moved to the trash in one step.
 - **Compare** up to 12 photos side by side with linked zoom, and view any photo at 1:1.
-- **People:** fix assignments for many photos at once. Select them and reassign or remove
+- **People:** confirm many suggested faces at once (click to select, `Shift`-click for a range,
+  `Ctrl+A` for all). "‹ Personen" in a person's photo view leads back to the people overview.
+  Fix assignments for many photos at once. Select them and reassign or remove
   a person in the info panel. To rename a person (e.g. "Max" → "Max Mustermann"), double-click
   or right-click their name in the sidebar.
 - **Collapsible sidebar:** click the *Projekte*, *Personen* or *Ordner* heading to collapse

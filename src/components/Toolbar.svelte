@@ -28,6 +28,11 @@
   {#if lib.mode === "library" && (lib.view === "loupe" || lib.view === "compare" || lib.view === "people")}
     <button class="btn quiet" onclick={() => (lib.view = "grid")}><Icon name="back" size={14} /> Raster</button>
   {/if}
+  {#if lib.scope.type === "person" && lib.view !== "people"}
+    <button class="btn quiet" onclick={() => lib.openPeople()} title="Zurück zur Übersicht aller Personen">
+      <Icon name="back" size={14} /> Personen
+    </button>
+  {/if}
   {#if lib.mode === "library" && lib.selection.size > 1 && lib.view !== "compare"}
     <button class="btn" onclick={() => lib.compare()} title="Ausgewählte Fotos groß nebeneinander vergleichen (C)">
       Vergleichen ({Math.min(lib.selection.size, 12)})

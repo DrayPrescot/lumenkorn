@@ -79,7 +79,16 @@
     return () => clearTimeout(t);
   });
 
-  type FaceGroup = { key: string; personId: number | null; label: string; named: boolean; faceIds: number[]; images: number };
+  type FaceGroup = {
+    key: string;
+    personId: number | null;
+    label: string;
+    named: boolean;
+    faceIds: number[];
+    /** davon nur vorgeschlagen (noch zu bestätigen) */
+    open: number[];
+    images: number;
+  };
   /** Gesichter der Auswahl nach Person: benannte, dann Gruppen, dann ohne Zuordnung.
    *  In der Ansicht einer Person steht diese zuerst. */
   const selGroups = $derived.by((): FaceGroup[] => {
@@ -89,10 +98,11 @@
       let g = by.get(key);
       if (!g) {
         const label = f.personName ?? (f.personId === null ? "Ohne Zuordnung" : "Unbenannte Gruppe");
-        g = { key, personId: f.personId, label, named: !!f.personName, faceIds: [], images: 0, imgs: new Set() };
+        g = { key, personId: f.personId, label, named: !!f.personName, faceIds: [], open: [], images: 0, imgs: new Set() };
         by.set(key, g);
       }
       g.faceIds.push(f.id);
+      if (f.personId !== null && !f.confirmed) g.open.push(f.id);
       g.imgs.add(f.imageId);
     }
     const scopePerson = lib.scope.type === "person" ? lib.scope.id : null;
@@ -102,6 +112,20 @@
       .map(({ imgs, ...g }) => ({ ...g, images: imgs.size }))
       .sort((a, b) => rank(a) - rank(b) || b.images - a.images || a.label.localeCompare(b.label));
   });
+
+  /** Vorschläge einer Person in allen ausgewählten Fotos bestätigen. */
+  async function confirmGroup(g: FaceGroup) {
+    if (selBusy || !g.open.length) return;
+    selBusy = true;
+    try {
+      const n = await api.facesConfirm(g.open);
+      lib.notify(`${n} ${n === 1 ? "Vorschlag" : "Vorschläge"} für ${g.label} bestätigt`);
+    } catch (e) {
+      lib.notify(String(e), "error");
+    }
+    selBusy = false;
+    await facesChanged();
+  }
 
   /** Alle Gesichter einer Gruppe in der Auswahl einer Person zuordnen
    *  (`name`) oder aus ihrer Person herausnehmen (`null`). */
@@ -217,6 +241,11 @@
               <div class="selhead">
                 <span class="pname-static">{g.label}</span>
                 <span class="muted">{g.images} {g.images === 1 ? "Foto" : "Fotos"}</span>
+                {#if g.open.length}
+                  <button class="btn small confirm" disabled={selBusy} title="Vorschläge für {g.label} in allen ausgewählten Fotos bestätigen" onclick={() => confirmGroup(g)}>
+                    ✓ {g.open.length} bestätigen
+                  </button>
+                {/if}
                 {#if g.personId !== null}
                   <button class="icon-btn" disabled={selBusy} title="{g.label} aus allen ausgewählten Fotos entfernen" aria-label="Aus allen entfernen" onclick={() => reassignGroup(g, null)}>
                     <Icon name="close" size={11} />
@@ -516,6 +545,12 @@
   .selhead .muted {
     margin-left: auto;
     font-size: var(--step--1);
+  }
+  .btn.small.confirm {
+    padding: 1px 7px;
+    font-size: var(--step--1);
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .pname-static {
     font-weight: 500;

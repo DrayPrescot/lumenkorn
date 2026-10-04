@@ -9,6 +9,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ### Added
 - People: reassign or remove a person for all selected photos at once
   (info panel → “Personen in der Auswahl”).
+- Confirm several suggested faces at once: select faces in the review
+  (click, `Shift`-click, `Ctrl+A`) or photos in a person's grid (info panel).
+- “‹ Personen” in a person's photo view returns to the people overview, or
+  to the face review it was opened from.
 - Rename people who already have a name, e.g. “Max” → “Max Mustermann”:
   double-click or right-click the name in the sidebar, or click it under
   “Personen verwalten”. Open suggestions stay open, and an existing name

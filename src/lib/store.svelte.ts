@@ -184,6 +184,8 @@ class Library {
   }
 
   setScope(scope: Scope) {
+    // Rücksprung zur Gesichter-Prüfung nur für die Person, deren Fotos man öffnet
+    if (scope.type !== "person" || scope.id !== this.reviewPerson) this.reviewPerson = null;
     this.scope = scope;
     this.view = "grid";
     this.mode = "library";
@@ -541,6 +543,16 @@ class Library {
       this.notify(String(e), "error");
       return false;
     }
+  }
+
+  /** Gesichter-Prüfung dieser Person war offen, als ihre Fotos geöffnet wurden
+   *  („Zurück zu Personen“ kehrt dorthin zurück). */
+  reviewPerson = $state<number | null>(null);
+
+  /** Zur Personenübersicht (bzw. zur zuletzt geprüften Person). */
+  openPeople() {
+    this.mode = "library";
+    this.view = "people";
   }
 
   // --- Seitenleiste ----------------------------------------------------------
