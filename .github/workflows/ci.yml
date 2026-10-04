@@ -20,8 +20,8 @@ jobs:
     name: Frontend (svelte-check)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -37,7 +37,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -52,7 +52,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       # The Tauri crate embeds the built frontend at compile time
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -62,10 +62,27 @@ jobs:
       - name: Format
         if: runner.os == 'Linux'
         run: cargo fmt --all --check
+      # Errors are also emitted as annotations so they show up on the run summary
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        shell: bash
+        run: |
+          set +e
+          cargo clippy --workspace --all-targets --message-format=short -- -D warnings 2>&1 | tee clippy.txt
+          code=${PIPESTATUS[0]}
+          if [ "$code" != 0 ]; then
+            grep -E '(^|: )error(\[|:)|panicked' clippy.txt | head -20 | sed 's/^/::error::/'
+          fi
+          exit $code
       - name: Tests
-        run: cargo test --workspace
+        shell: bash
+        run: |
+          set +e
+          cargo test --workspace 2>&1 | tee tests.txt
+          code=${PIPESTATUS[0]}
+          if [ "$code" != 0 ]; then
+            grep -E "panicked at|^error|FAILED|failures:$" -A3 tests.txt | head -40 | sed 's/^/::error::/'
+          fi
+          exit $code
 
   # Every green push to main builds a Windows installer (MSI). It is kept as a
   # workflow artifact and published as the rolling pre-release "nightly", which
@@ -78,12 +95,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           key: msi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
