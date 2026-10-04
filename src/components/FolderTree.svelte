@@ -15,6 +15,20 @@
   let open = $state(depth === 0);
   const scope = $derived({ type: "folder" as const, path: node.path, recursive: true });
   const active = $derived(lib.isScope(scope));
+  const picked = $derived(lib.folderSel.has(node.path));
+
+  /** Sichtbare Ordner in Anzeigereihenfolge (für Umschalt-Klick) */
+  const visibleOrder = () =>
+    [...document.querySelectorAll<HTMLElement>(".tree [data-folder]")].map((e) => e.dataset.folder!);
+
+  function onclick(e: MouseEvent) {
+    if (e.ctrlKey || e.metaKey) lib.selectFolder(node.path, "toggle", visibleOrder());
+    else if (e.shiftKey) lib.selectFolder(node.path, "range", visibleOrder());
+    else {
+      lib.clearFolderSel();
+      lib.setScope(scope);
+    }
+  }
 </script>
 
 <li>
@@ -25,6 +39,8 @@
     aria-selected={active}
     aria-expanded={node.children.length ? open : undefined}
     class:active
+    class:picked
+    data-folder={node.path}
     style:padding-left="{6 + depth * 14}px"
     oncontextmenu={(e) => {
       e.preventDefault();
@@ -38,7 +54,7 @@
     {:else}
       <span class="twisty"></span>
     {/if}
-    <button class="label" title={node.path} onclick={() => lib.setScope(scope)}>
+    <button class="label" title="{node.path}&#10;Strg-/Umschalt-Klick wählt mehrere Ordner" {onclick}>
       <span class="name">{node.name}</span>
       <span class="count">{node.total}</span>
     </button>
@@ -74,6 +90,9 @@
   .row.active {
     background: var(--raised);
     box-shadow: inset 2px 0 0 var(--accent);
+  }
+  .row.picked {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
   }
   .twisty {
     flex: none;

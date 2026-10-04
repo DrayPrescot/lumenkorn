@@ -25,7 +25,7 @@ nach („Weitere Informationen“ → „Trotzdem ausführen“).
   Einträge meldet Lumenkorn nach dem Abgleich; „Neu einlesen“ (Rechtsklick auf den Quellordner)
   bestätigt immer, dass es gelaufen ist.
 - **Umbenennen und Verschieben** außerhalb der App wird über einen Inhalts-Hash erkannt. Bewertung, Schlagworte und Bearbeitungen bleiben am Bild.
-- **Projekte** bündeln beliebig viele Ordner, auch von verschiedenen Laufwerken. Pro Ordner wählbar, ob Unterordner dazugehören. Neue Fotos in diesen Ordnern landen automatisch im Projekt; überlappende Ordner führen nicht zu Dubletten.
+- **Projekte** bündeln beliebig viele Ordner, auch von verschiedenen Laufwerken. Mehrere Ordner auf einmal: in der Seitenleiste mit Strg-Klick (oder Umschalt-Klick für einen Bereich) auswählen, dann Rechtsklick → „Zu … hinzufügen“ oder „Neues Projekt aus diesen Ordnern“ (der Name lässt sich gleich eingeben). Esc hebt die Auswahl auf. Pro Ordner wählbar, ob Unterordner dazugehören. Neue Fotos in diesen Ordnern landen automatisch im Projekt; überlappende Ordner führen nicht zu Dubletten.
 - **Thumbnails** für JPEG, PNG, TIFF, WebP und RAW (NEF, CR2, CR3, ARW, RAF, DNG, ORF, RW2 …). Unbearbeitete RAWs nutzen das eingebettete Kamera-JPEG (schnell); bearbeitete Bilder zeigen die Bearbeitung.
 - **EXIF:** Aufnahmezeit, Kamera, Objektiv, ISO, Belichtung, Blende, Brennweite, Orientierung.
 - **Seitenleiste:** Die Bereiche „Projekte“, „Personen“ und „Ordner“ lassen sich per Klick auf die

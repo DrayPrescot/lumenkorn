@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api, faceUrl, isTauri, pickFolder, type FolderNode, type Root } from "../lib/api";
-  import { lib } from "../lib/store.svelte";
+  import { lib, topFolders } from "../lib/store.svelte";
   import FolderTree from "./FolderTree.svelte";
   import Icon from "./Icon.svelte";
   import PathDialog from "./PathDialog.svelte";
@@ -19,7 +19,8 @@
   });
   let pathDialog = $state(false);
   let newProject = $state<string | null>(null);
-  let menu = $state<{ x: number; y: number; node: FolderNode; root?: Root } | null>(null);
+  // `paths`: mehrere gewählte Ordner (Strg-/Umschalt-Klick), sonst nur `node`
+  let menu = $state<{ x: number; y: number; node: FolderNode; root?: Root; paths: string[] } | null>(null);
   let renaming = $state<number | null>(null);
   let renamingPerson = $state<number | null>(null);
 
@@ -43,18 +44,36 @@
     const r = (e.currentTarget as HTMLElement | null)?.getBoundingClientRect();
     const x = e.type === "contextmenu" || !r ? e.clientX : r.right;
     const y = e.type === "contextmenu" || !r ? e.clientY : r.top;
-    menu = { x: Math.max(8, Math.min(x, window.innerWidth - 330)), y: Math.max(8, Math.min(y, window.innerHeight - 280)), node, root };
+    // Rechtsklick in die Mehrfachauswahl: gilt für alle; außerhalb: nur dieser Ordner
+    const many = lib.folderSel.size > 1 && lib.folderSel.has(node.path);
+    if (!many) lib.clearFolderSel();
+    const paths = many ? topFolders([...lib.folderSel]) : [node.path];
+    menu = { x: Math.max(8, Math.min(x, window.innerWidth - 330)), y: Math.max(8, Math.min(y, window.innerHeight - 280)), node, root, paths };
   }
 
   async function createProjectFromMenu() {
     if (!menu) return;
-    const node = menu.node;
+    const { node, paths } = menu;
     menu = null;
-    const p = await lib.createProject(node.name);
+    // Mehrere Ordner mit gemeinsamem Elternordner: nach diesem benennen
+    const parent = (p: string) => p.replace(/[\\/]+$/, "").replace(/[\\/][^\\/]*$/, "");
+    const common = paths.length > 1 && paths.every((p) => parent(p) === parent(paths[0])) ? parent(paths[0]) : null;
+    const name = paths.length > 1 ? (common?.split(/[\\/]/).pop() || "Neues Projekt") : node.name;
+    const p = await lib.createProject(name);
     if (p) {
-      await lib.addFolderToProject(p.id, node.path, true);
+      await lib.addFoldersToProject(p.id, paths);
+      lib.clearFolderSel();
       lib.setScope({ type: "project", id: p.id });
+      // Bei mehreren Ordnern passt der Vorschlag selten: Namen gleich bearbeiten
+      if (paths.length > 1) renaming = p.id;
     }
+  }
+
+  function addToProject(projectId: number) {
+    if (!menu) return;
+    const paths = menu.paths;
+    menu = null;
+    lib.addFoldersToProject(projectId, paths).then(() => lib.clearFolderSel());
   }
 
   async function submitNewProject() {
@@ -81,7 +100,14 @@
   </button>
 {/snippet}
 
-<svelte:window onclick={() => (menu = null)} onkeydown={(e) => e.key === "Escape" && (menu = null)} />
+<svelte:window
+  onclick={() => (menu = null)}
+  onkeydown={(e) => {
+    if (e.key !== "Escape") return;
+    if (menu) menu = null;
+    else lib.clearFolderSel();
+  }}
+/>
 
 <aside>
   <div class="brand">
@@ -122,14 +148,32 @@
         {:else if renaming === p.id}
           <form
             onsubmit={(e) => {
+              // Übernehmen über onblur (eine Stelle für Enter und Wegklicken)
               e.preventDefault();
-              const v = (e.currentTarget.elements.namedItem("n") as HTMLInputElement).value;
-              renaming = null;
-              lib.renameProject(p.id, v);
+              (e.currentTarget.elements.namedItem("n") as HTMLInputElement).blur();
             }}
           >
             <!-- svelte-ignore a11y_autofocus -->
-            <input type="text" name="n" value={p.name} autofocus onblur={() => (renaming = null)} />
+            <input
+              type="text"
+              name="n"
+              value={p.name}
+              autofocus
+              onfocus={(e) => e.currentTarget.select()}
+              onblur={(e) => {
+                // Verlassen übernimmt wie Enter
+                const v = e.currentTarget.value;
+                renaming = null;
+                if (v.trim() && v !== p.name) lib.renameProject(p.id, v);
+              }}
+              onkeydown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Escape") {
+                  e.currentTarget.value = p.name; // verwerfen
+                  e.currentTarget.blur();
+                }
+              }}
+            />
           </form>
         {:else}
           <button
@@ -146,7 +190,7 @@
         {/if}
       {:else}
         {#if newProject === null && !lib.collapsed.projects}
-          <p class="hint">Ein Projekt bündelt Ordner von beliebigen Orten. Rechtsklick auf einen Ordner fügt ihn hinzu.</p>
+          <p class="hint">Ein Projekt bündelt Ordner von beliebigen Orten. Rechtsklick auf einen Ordner fügt ihn hinzu – mit Strg- oder Umschalt-Klick auch mehrere auf einmal.</p>
         {/if}
       {/each}
     </section>
@@ -267,16 +311,21 @@
 
 {#if menu}
   {@const m = menu}
+  {@const many = m.paths.length > 1}
   <div class="menu" role="menu" tabindex="-1" style:left="{m.x}px" style:top="{m.y}px" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
-    <div class="menu-title">{m.node.name}</div>
+    <div class="menu-title">{many ? `${m.paths.length} Ordner` : m.node.name}</div>
     {#each lib.projects as p (p.id)}
-      {@const already = p.folders.some((f) => f.path === m.node.path)}
-      <button role="menuitem" disabled={already} onclick={() => { menu = null; lib.addFolderToProject(p.id, m.node.path, true); }}>
+      {@const already = m.paths.every((path) => p.folders.some((f) => f.path === path))}
+      <button role="menuitem" disabled={already} onclick={() => addToProject(p.id)}>
         <Icon name="stack" size={14} /> Zu „{p.name}“ hinzufügen {already ? "(enthalten)" : ""}
       </button>
     {/each}
-    <button role="menuitem" onclick={createProjectFromMenu}><Icon name="plus" size={14} /> Neues Projekt aus diesem Ordner</button>
-    {#if m.root}
+    <button role="menuitem" onclick={createProjectFromMenu}>
+      <Icon name="plus" size={14} /> {many ? "Neues Projekt aus diesen Ordnern" : "Neues Projekt aus diesem Ordner"}
+    </button>
+    {#if many}
+      <p class="menu-note">Strg-/Umschalt-Klick ändert die Auswahl, Esc hebt sie auf.</p>
+    {:else if m.root}
       {@const root = m.root}
       <hr />
       <button role="menuitem" onclick={() => { menu = null; api.rescanRoot(root.id); }}>

@@ -221,6 +221,60 @@ class Library {
     return true;
   }
 
+  // --- Ordner-Mehrfachauswahl (Seitenleiste) --------------------------------
+
+  /** Per Strg-/Umschalt-Klick gewählte Ordner, z. B. um sie gemeinsam einem
+   *  Projekt zuzuordnen. Leer: keine Mehrfachauswahl. */
+  folderSel = $state<Set<string>>(new Set());
+  #folderAnchor: string | null = null;
+
+  /** Klick auf einen Ordner: `toggle` (Strg) nimmt ihn dazu/heraus, `range`
+   *  (Umschalt) wählt alle sichtbaren Ordner zwischen Anker und Klick (`order`). */
+  selectFolder(path: string, mode: "toggle" | "range", order: string[]) {
+    const s = new Set(this.folderSel);
+    // Der gerade angezeigte Ordner zählt als Startpunkt der Auswahl
+    if (!s.size && this.scope.type === "folder" && this.scope.path !== path) {
+      s.add(this.scope.path);
+      this.#folderAnchor ??= this.scope.path;
+    }
+    if (mode === "range" && this.#folderAnchor && order.includes(this.#folderAnchor)) {
+      const [a, b] = [order.indexOf(this.#folderAnchor), order.indexOf(path)].sort((x, y) => x - y);
+      for (const p of order.slice(a, b + 1)) s.add(p);
+    } else {
+      s.has(path) ? s.delete(path) : s.add(path);
+      this.#folderAnchor = path;
+    }
+    this.folderSel = s;
+  }
+
+  clearFolderSel() {
+    if (this.folderSel.size) this.folderSel = new Set();
+    this.#folderAnchor = null;
+  }
+
+  /** Mehrere Ordner (mit Unterordnern) einem Projekt zuordnen. Unterordner
+   *  eines ebenfalls gewählten Ordners sind schon enthalten. */
+  async addFoldersToProject(projectId: number, paths: string[]) {
+    const top = topFolders(paths);
+    const project = this.projects.find((p) => p.id === projectId);
+    const todo = top.filter((p) => !project?.folders.some((f) => f.path === p));
+    if (!todo.length) {
+      this.notify(`Alle gewählten Ordner sind schon in „${project?.name ?? "dem Projekt"}“`);
+      return;
+    }
+    try {
+      let p: Project | null = null;
+      for (const path of todo) p = await api.addProjectFolder(projectId, path, true);
+      this.projects = this.projects.map((x) => (x.id === p!.id ? p! : x));
+      this.notify(todo.length === 1 ? `Zu „${p!.name}“ hinzugefügt` : `${todo.length} Ordner zu „${p!.name}“ hinzugefügt`);
+      if (this.scope.type === "project" && this.scope.id === projectId) await this.loadImages(true);
+    } catch (e) {
+      // Bis zum Fehler hinzugefügte Ordner anzeigen
+      await this.loadProjects();
+      this.notify(String(e), "error");
+    }
+  }
+
   // --- Auswahl --------------------------------------------------------------
 
   select(index: number, mode: "single" | "toggle" | "range" = "single") {
@@ -614,4 +668,14 @@ function loadCollapsed(): Record<string, boolean> {
   } catch {
     return {};
   }
+}
+
+/** Ordner ohne die, die schon in einem anderen gewählten Ordner liegen. */
+export function topFolders(paths: string[]): string[] {
+  const inside = (child: string, parent: string) => {
+    const p = parent.replace(/[\\/]+$/, "");
+    return child.length > p.length && child.startsWith(p) && /[\\/]/.test(child[p.length]);
+  };
+  const unique = [...new Set(paths)];
+  return unique.filter((c) => !unique.some((p) => p !== c && inside(c, p)));
 }

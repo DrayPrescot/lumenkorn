@@ -32,7 +32,8 @@ and uses the GPU (AMD, NVIDIA, Intel) through Vulkan or DirectX 12 where availab
 - **Folders instead of imports.** Add a folder and Lumenkorn indexes it. Nothing is copied or moved.
 - **Live sync.** File watching picks up new, changed, renamed and moved files.
   Moves are recognized by content hash, so ratings and edits stay with the photo.
-- **Projects** group any number of folders, even across drives.
+- **Projects** group any number of folders, even across drives. `Ctrl`-/`Shift`-click several
+  folders in the sidebar and right-click to add them to a project in one go.
 - **Fast thumbnails** for JPEG, PNG, TIFF, WebP and RAW (NEF, CR2, CR3, ARW, RAF, DNG, ORF, RW2, …).
   For unedited RAW files Lumenkorn uses the camera's embedded preview.
 - **Search** by file name, folder, camera, lens, keywords and people, backed by a

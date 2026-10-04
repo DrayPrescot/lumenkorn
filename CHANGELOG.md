@@ -25,6 +25,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   edits (click toggles, press and hold for a quick look; `\` still works).
 - Develop: `Tab` moves through the sliders with the value selected, ready to
   type; `Enter` applies, `Esc` reverts, arrow keys nudge (`Shift` ×10).
+- Select several folders in the sidebar with `Ctrl`-click (or a range with
+  `Shift`-click) and add them to a project at once, or create a new project
+  from them, via right-click. `Esc` clears the selection.
 - CI builds a Windows MSI after every green push to `main` and publishes it
   as the rolling “nightly” pre-release.
 
