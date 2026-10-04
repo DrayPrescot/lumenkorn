@@ -43,6 +43,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Scans report skipped files in unsupported formats (e.g. HEIC from phones)
   and unreadable entries; “Neu einlesen” always confirms that it ran.
 - `.jfif` / `.jpe` files are recognized as JPEG.
+- File-watcher updates also apply when a reported path is spelled differently
+  from the source folder (Windows 8.3 short names, symlinks).
 - Person view now refreshes after changing assignments, so wrongly assigned
   photos disappear immediately; if a person ends up without photos, the view
   switches to the new person (or to all photos).

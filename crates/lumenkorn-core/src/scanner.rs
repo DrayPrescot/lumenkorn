@@ -149,16 +149,17 @@ pub fn scan_paths(
     let root_path = Path::new(&root.path);
     ensure_online(root_path)?;
     // Nur Pfade in diesem Quellordner, keine versteckten oder übersprungenen
-    let mut changed: Vec<&PathBuf> = changed
+    let mut changed: Vec<PathBuf> = changed
         .iter()
-        .filter(|p| p.starts_with(root_path) && !in_skipped_dir(root_path, p))
+        .filter_map(|p| within_root(root_path, p))
+        .filter(|p| !in_skipped_dir(root_path, p))
         .collect();
     changed.sort();
     changed.dedup();
     // Pfade unterhalb eines ebenfalls gemeldeten Ordners werden mit ihm
     // erfasst. Sortiert folgen Unterpfade direkt auf ihren Ordner.
     let mut tops: Vec<&PathBuf> = Vec::new();
-    for p in changed {
+    for p in &changed {
         if tops.last().is_none_or(|t| !p.starts_with(t)) {
             tops.push(p);
         }
@@ -223,6 +224,28 @@ pub fn scan_paths(
 }
 
 /// Liegt `p` in einem Ordner, den der Scan überspringt (versteckt, System)?
+/// Ein gemeldeter Pfad in der Schreibweise des Quellordners, falls er darin
+/// liegt. Der Quellordner ist normiert (`canonicalize`); gemeldete Pfade können
+/// anders geschrieben sein – unter Windows etwa mit Kurznamen („RUNNER~1“) oder
+/// über eine Verknüpfung. Dann wird der tiefste noch vorhandene Ordner normiert
+/// und der Rest (z. B. eine gelöschte Datei) wieder angehängt.
+fn within_root(root: &Path, p: &Path) -> Option<PathBuf> {
+    if p.starts_with(root) {
+        return Some(p.to_path_buf());
+    }
+    let mut base = p;
+    let mut rest = Vec::new();
+    loop {
+        if std::fs::canonicalize(base).is_ok() {
+            let mut full = PathBuf::from(crate::paths::normalize_dir(base));
+            full.extend(rest.iter().rev());
+            return full.starts_with(root).then_some(full);
+        }
+        rest.push(base.file_name()?);
+        base = base.parent()?;
+    }
+}
+
 fn in_skipped_dir(root: &Path, p: &Path) -> bool {
     is_excluded(p)
         || p.strip_prefix(root).is_ok_and(|rel| {

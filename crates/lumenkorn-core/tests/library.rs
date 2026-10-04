@@ -634,3 +634,32 @@ fn new_and_empty_folders_appear_in_tree() {
     let rep = scan_root(&cat, root.id, &no_progress).unwrap();
     assert!(!rep.folders_changed);
 }
+
+/// Gemeldete Pfade in anderer Schreibweise als der normierte Quellordner
+/// (Windows-Kurznamen, Verknüpfungen) werden trotzdem abgeglichen – auch
+/// gelöschte Dateien, deren Pfad sich nicht mehr normieren lässt.
+#[cfg(unix)]
+#[test]
+fn scan_paths_accepts_other_spellings_of_the_root() {
+    use lumenkorn_core::scanner::scan_paths;
+    let tmp = tempfile::tempdir().unwrap();
+    let a = tmp.path().join("Fotos");
+    write_jpeg(&a.join("alt.jpg"), 64, 64, 1);
+    let cat = Mutex::new(Catalog::open_in_memory().unwrap());
+    let root = cat.lock().unwrap().add_root(&a).unwrap();
+    scan_root(&cat, root.id, &no_progress).unwrap();
+
+    let link = tmp.path().join("Verknüpfung");
+    std::os::unix::fs::symlink(&a, &link).unwrap();
+    write_jpeg(&a.join("Neu/neu.jpg"), 64, 64, 2);
+    let rep = scan_paths(&cat, root.id, &[link.join("Neu")], &no_progress).unwrap();
+    assert_eq!(rep.added, 1);
+
+    std::fs::remove_file(a.join("alt.jpg")).unwrap();
+    let rep = scan_paths(&cat, root.id, &[link.join("alt.jpg")], &no_progress).unwrap();
+    assert_eq!(rep.missing, 1);
+
+    // Pfade außerhalb bleiben außen vor
+    let rep = scan_paths(&cat, root.id, &[tmp.path().to_path_buf()], &no_progress).unwrap();
+    assert_eq!((rep.added, rep.missing), (0, 0));
+}

@@ -84,7 +84,12 @@ jobs:
           cargo test --workspace --no-fail-fast 2>&1 | tee tests.txt
           code=${PIPESTATUS[0]}
           if [ "$code" != 0 ]; then
-            grep -E "panicked at|^error|FAILED|failures:$" -A3 tests.txt | head -40 | sed 's/^/::error::/'
+            # GitHub shows at most 10 error annotations per step, so the panic
+            # messages go into one multi-line annotation
+            grep -E "FAILED$" tests.txt | head -9 | sed 's/^/::error::/'
+            msg=$(grep -E "panicked at" -A4 tests.txt | head -120 | tr -d '\r' \
+              | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=Panics::$msg"
           fi
           exit $code
 
