@@ -365,7 +365,16 @@ fn fingerprint(img: &ImageF32) -> u64 {
     h.finish()
 }
 
-/// Malt Pinselstriche. Jeder Strich wird nur in seinem Begrenzungsrahmen berechnet.
+/// Malt Pinselstriche. Jeder Strich wird nur in seinem Begrenzungsrahmen berechnet,
+/// und darin jedes Segment nur in seinem eigenen Rahmen (Segment ± Radius):
+/// Ein diagonaler Strich deckt mit seinem Rahmen fast das ganze Bild ab – alle
+/// Segmente für jedes Pixel darin zu prüfen kostete bei 2 MP und 200 Segmenten
+/// rund eine Sekunde pro Rendern.
+///
+/// Je Zeile wird der kleinste Abstand zu allen Segmenten gesammelt, deren Rahmen
+/// die Zeile berührt; außerhalb seines Rahmens ist ein Segment mindestens `r`
+/// entfernt und hätte (wegen `d >= r`) ohnehin nichts beigetragen. Das Minimum
+/// ist exakt – das Ergebnis ist bitgleich mit der Prüfung aller Segmente.
 fn paint(strokes: &[Stroke], w: usize, h: usize) -> Vec<f32> {
     let long = w.max(h) as f32;
     let mut alpha = vec![0f32; w * h];
@@ -399,28 +408,59 @@ fn paint(strokes: &[Stroke], w: usize, h: usize) -> Vec<f32> {
         } else {
             pts.windows(2).map(|p| (p[0], p[1])).collect()
         };
+        // Rahmen je Segment in Pixelindizes, auf den Strichrahmen begrenzt. Ein
+        // Pixel Reserve, damit Rundung in `dist_to_segment` nie einen Treffer
+        // am Rand abschneidet. Nicht endliche Punkte ergäben NaN-Abstände, die
+        // das Minimum ohnehin ignoriert – solche Segmente entfallen.
+        let boxes: Vec<(usize, usize, usize, usize)> = segs
+            .iter()
+            .map(|(a, b)| {
+                let fin = [a.0, a.1, b.0, b.1].iter().all(|v| v.is_finite());
+                if !fin {
+                    return (0, 0, 0, 0);
+                }
+                let bx0 = ((a.0.min(b.0) - r).floor() - 1.0).max(x0 as f32) as usize;
+                let by0 = ((a.1.min(b.1) - r).floor() - 1.0).max(y0 as f32) as usize;
+                let bx1 = (((a.0.max(b.0) + r).ceil() + 1.0).max(0.0) as usize).min(x1);
+                let by1 = (((a.1.max(b.1) + r).ceil() + 1.0).max(0.0) as usize).min(y1);
+                (bx0, by0, bx1, by1)
+            })
+            .collect();
         alpha[y0 * w..y1 * w]
             .par_chunks_mut(w)
             .enumerate()
-            .for_each(|(row, line)| {
-                let py = (y0 + row) as f32 + 0.5;
-                for (x, out) in line.iter_mut().enumerate().take(x1).skip(x0) {
-                    let px = x as f32 + 0.5;
-                    let d = segs
-                        .iter()
-                        .map(|(a, b)| dist_to_segment(px, py, *a, *b))
-                        .fold(f32::MAX, f32::min);
-                    if d >= r {
-                        continue;
+            .for_each_init(
+                || vec![f32::MAX; x1 - x0],
+                |dmin, (row, line)| {
+                    let y = y0 + row;
+                    let py = y as f32 + 0.5;
+                    dmin.fill(f32::MAX);
+                    let mut any = false;
+                    for ((a, b), &(bx0, by0, bx1, by1)) in segs.iter().zip(&boxes) {
+                        if y < by0 || y >= by1 || bx0 >= bx1 {
+                            continue;
+                        }
+                        any = true;
+                        for (x, d) in (bx0..bx1).zip(&mut dmin[bx0 - x0..bx1 - x0]) {
+                            *d = d.min(dist_to_segment(x as f32 + 0.5, py, *a, *b));
+                        }
                     }
-                    let a = (1.0 - smoothstep(inner, r, d)) * s.opacity;
-                    *out = if s.erase {
-                        *out * (1.0 - a)
-                    } else {
-                        out.max(a)
-                    };
-                }
-            });
+                    if !any {
+                        return;
+                    }
+                    for (out, &d) in line[x0..x1].iter_mut().zip(dmin.iter()) {
+                        if d >= r {
+                            continue;
+                        }
+                        let a = (1.0 - smoothstep(inner, r, d)) * s.opacity;
+                        *out = if s.erase {
+                            *out * (1.0 - a)
+                        } else {
+                            out.max(a)
+                        };
+                    }
+                },
+            );
     }
     alpha
 }
@@ -513,6 +553,113 @@ mod tests {
         };
         let b = evaluate(&layer(vec![full, sub]), 100, 100, &NoMasks, None);
         assert!(b[50 * 100 + 50] < 0.01 && b[0] > 0.99);
+    }
+
+    /// Bisherige Fassung von `paint` (jedes Pixel im Strichrahmen gegen alle
+    /// Segmente) als Referenz für die schnelle.
+    fn paint_reference(strokes: &[Stroke], w: usize, h: usize) -> Vec<f32> {
+        let long = w.max(h) as f32;
+        let mut alpha = vec![0f32; w * h];
+        for s in strokes {
+            let r = (s.radius * long).max(0.5);
+            let inner = r * (1.0 - s.feather.clamp(0.0, 1.0));
+            let pts: Vec<(f32, f32)> = s
+                .points
+                .iter()
+                .map(|p| (p[0] * w as f32, p[1] * h as f32))
+                .collect();
+            if pts.is_empty() {
+                continue;
+            }
+            let (mut minx, mut miny, mut maxx, mut maxy) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+            for (x, y) in &pts {
+                minx = minx.min(*x);
+                miny = miny.min(*y);
+                maxx = maxx.max(*x);
+                maxy = maxy.max(*y);
+            }
+            let x0 = ((minx - r).floor().max(0.0)) as usize;
+            let y0 = ((miny - r).floor().max(0.0)) as usize;
+            let x1 = ((maxx + r).ceil() as usize).min(w);
+            let y1 = ((maxy + r).ceil() as usize).min(h);
+            if x0 >= x1 || y0 >= y1 {
+                continue;
+            }
+            let segs: Vec<((f32, f32), (f32, f32))> = if pts.len() == 1 {
+                vec![(pts[0], pts[0])]
+            } else {
+                pts.windows(2).map(|p| (p[0], p[1])).collect()
+            };
+            for y in y0..y1 {
+                let py = y as f32 + 0.5;
+                for x in x0..x1 {
+                    let px = x as f32 + 0.5;
+                    let d = segs
+                        .iter()
+                        .map(|(a, b)| dist_to_segment(px, py, *a, *b))
+                        .fold(f32::MAX, f32::min);
+                    if d >= r {
+                        continue;
+                    }
+                    let a = (1.0 - smoothstep(inner, r, d)) * s.opacity;
+                    let out = &mut alpha[y * w + x];
+                    *out = if s.erase {
+                        *out * (1.0 - a)
+                    } else {
+                        out.max(a)
+                    };
+                }
+            }
+        }
+        alpha
+    }
+
+    #[test]
+    fn fast_brush_matches_reference_exactly() {
+        // Einfacher Zufallsgenerator (LCG) – reproduzierbar ohne Abhängigkeit
+        let mut seed = 0x2545_f491_4f6c_dd1du64;
+        let mut rnd = move || {
+            seed = seed
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (seed >> 40) as f32 / (1u64 << 24) as f32
+        };
+        for (case, (w, h)) in [(97, 61), (200, 133), (64, 256), (300, 300)]
+            .into_iter()
+            .enumerate()
+        {
+            let strokes: Vec<Stroke> = (0..6 + case)
+                .map(|i| {
+                    let n = 1 + (rnd() * 40.0) as usize;
+                    // Punkte teils außerhalb des Bildes (Strich am Rand)
+                    let (mut x, mut y) = (rnd() * 1.2 - 0.1, rnd() * 1.2 - 0.1);
+                    let points = (0..n)
+                        .map(|_| {
+                            x += (rnd() - 0.5) * 0.15;
+                            y += (rnd() - 0.5) * 0.15;
+                            [x, y]
+                        })
+                        .collect();
+                    Stroke {
+                        points,
+                        radius: 0.002 + rnd() * 0.12,
+                        feather: [0.0, 1.0, rnd()][i % 3],
+                        opacity: [1.0, rnd()][i % 2],
+                        erase: i % 4 == 3,
+                    }
+                })
+                .collect();
+            let a = paint(&strokes, w, h);
+            let b = paint_reference(&strokes, w, h);
+            assert!(a.iter().any(|v| *v > 0.0), "Testaufbau: es wird gemalt");
+            for (i, (x, y)) in a.iter().zip(&b).enumerate() {
+                assert_eq!(
+                    x.to_bits(),
+                    y.to_bits(),
+                    "{w}×{h}, Pixel {i}: {x} statt {y}"
+                );
+            }
+        }
     }
 
     #[test]

@@ -15,7 +15,6 @@ use crate::masks;
 use crate::params::DevelopParams;
 use crate::pipeline::{RAW_BASE_CONTRAST, RenderOptions, white_balance};
 use crate::source::{Source, SourceKind};
-use rayon::prelude::*;
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -314,12 +313,12 @@ struct State {
 /// reparierten Quelle eine fortlaufende Nummer (`pipeline::repaired_source`).
 /// Ein vollständiger Inhalts-Hash wäre bei jedem Reglerzug zu teuer.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-struct ImageKey(usize, usize, usize, u64, u64);
+pub(crate) struct ImageKey(usize, usize, usize, u64, u64);
 
 /// Zahl der Stichproben für [`image_key`].
 const KEY_SAMPLES: usize = 4096;
 
-fn image_key(img: &ImageF32, ident: u64) -> ImageKey {
+pub(crate) fn image_key(img: &ImageF32, ident: u64) -> ImageKey {
     let n = img.data.len();
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     if n > 0 {
@@ -584,19 +583,63 @@ impl State {
     }
 }
 
-fn to_vec4(img: &ImageF32) -> Vec<[f32; 4]> {
-    img.data
-        .par_iter()
-        .map(|p| [p[0], p[1], p[2], 1.0])
-        .collect()
+/// Pixel je Hochlade-Block: 64 MB RGBA-f32.
+const UPLOAD_BLOCK: usize = (64 << 20) / 16;
+
+/// Teilt `out` (je Einheit `ko` Elemente) und `inp` (je Einheit `ki`) in
+/// gleich große Stücke und rechnet sie auf eigenen Threads um.
+///
+/// Bewusst ohne rayon: Hochladen und Rücklesen laufen unter der
+/// Zustandssperre, und parallele Arbeit mit rayon unter einer Sperre kann sich
+/// verklemmen – wartet ein rayon-Thread in `par_iter`, übernimmt er womöglich
+/// ein anderes Rendern (z. B. ein Thumbnail), das dieselbe Sperre will.
+fn par_scoped<T: Send, U: Sync>(
+    out: &mut [T],
+    ko: usize,
+    inp: &[U],
+    ki: usize,
+    f: impl Fn(&mut [T], &[U]) + Sync,
+) {
+    let units = (out.len() / ko).min(inp.len() / ki);
+    let threads = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(units.div_ceil(1 << 16))
+        .max(1);
+    if threads == 1 {
+        f(out, inp);
+        return;
+    }
+    let per = units.div_ceil(threads);
+    std::thread::scope(|sc| {
+        for (o, i) in out.chunks_mut(per * ko).zip(inp.chunks(per * ki)) {
+            let f = &f;
+            sc.spawn(move || f(o, i));
+        }
+    });
 }
 
-/// Ohne rayon – für den Fall, dass unter der Zustandssperre umgerechnet
-/// werden muss. Parallele Arbeit unter einer Sperre kann sich verklemmen:
-/// Wartet ein rayon-Thread in `par_iter`, übernimmt er womöglich ein anderes
-/// Rendern (z. B. ein Thumbnail), das dieselbe Sperre will.
-fn to_vec4_seq(img: &ImageF32) -> Vec<[f32; 4]> {
-    img.data.iter().map(|p| [p[0], p[1], p[2], 1.0]).collect()
+impl Gpu {
+    /// Lädt ein Bild als RGBA-f32 hoch – in Blöcken statt über eine volle
+    /// RGBA-Kopie (16 B/Pixel, bei 60 MP 960 MB nur für das Hochladen).
+    /// Nach jedem Block wird abgeschickt, damit wgpu nicht alle
+    /// Zwischenpuffer bis zum nächsten Rendern festhält.
+    fn upload_rgba(&self, buf: &Buffer, img: &ImageF32) {
+        let mut block = vec![[0f32; 4]; img.data.len().min(UPLOAD_BLOCK)];
+        for (b, chunk) in img.data.chunks(UPLOAD_BLOCK).enumerate() {
+            let out = &mut block[..chunk.len()];
+            par_scoped(out, 1, chunk, 1, |o, i| {
+                for (o, p) in o.iter_mut().zip(i) {
+                    *o = [p[0], p[1], p[2], 1.0];
+                }
+            });
+            self.queue.write_buffer(
+                buf,
+                (b * UPLOAD_BLOCK * 16) as u64,
+                bytemuck::cast_slice(out),
+            );
+            self.queue.submit([]);
+        }
+    }
 }
 
 /// Tonwert-Parameter, wie `Tone` in pipeline.rs (normiert auf −1…1).
@@ -866,28 +909,7 @@ impl Gpu {
             _ => None,
         };
 
-        // Quelle (und entrauschte Fassung) vorab ohne Sperre umrechnen, falls
-        // kein Puffer sie schon enthält – siehe `to_vec4_seq`.
         let key = image_key(&src.image, ident);
-        let dn_key = denoised.map(|(_, dn)| image_key(dn, 0));
-        let (have_src, have_dn) = {
-            let st = self.state.lock().unwrap();
-            let fits = |s: &&Bufs| s.cap >= n;
-            (
-                st.sets.iter().filter(fits).any(|s| s.src.key == Some(key)),
-                dn_key.is_none_or(|k| {
-                    st.sets
-                        .iter()
-                        .filter(fits)
-                        .any(|s| s.dn.as_ref().is_some_and(|d| d.key == Some(k)))
-                }),
-            )
-        };
-        let src4 = (!have_src).then(|| to_vec4(&src.image));
-        let dn4 = match (have_dn, denoised) {
-            (false, Some((_, dn))) => Some(to_vec4(dn)),
-            _ => None,
-        };
 
         let oom = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
         let val = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
@@ -896,9 +918,7 @@ impl Gpu {
 
         // Quelle und entrauschte Fassung hochladen, falls nicht schon da
         if st.sets[si].src.key != Some(key) {
-            let data = src4.unwrap_or_else(|| to_vec4_seq(&src.image));
-            self.queue
-                .write_buffer(&st.sets[si].src.buf, 0, bytemuck::cast_slice(&data));
+            self.upload_rgba(&st.sets[si].src.buf, &src.image);
             st.sets[si].src.key = Some(key);
         }
         if let Some((_, dn)) = denoised {
@@ -910,9 +930,7 @@ impl Gpu {
                 key: None,
             });
             if slot.key != Some(key) {
-                let data = dn4.unwrap_or_else(|| to_vec4_seq(dn));
-                self.queue
-                    .write_buffer(&slot.buf, 0, bytemuck::cast_slice(&data));
+                self.upload_rgba(&slot.buf, dn);
                 slot.key = Some(key);
             }
         }
@@ -1273,22 +1291,32 @@ impl Gpu {
             let view = slice
                 .get_mapped_range()
                 .map_err(|e| crate::tr!("Rücklesen: {e}", "Readback: {e}"))?;
+            // Umrechnen parallel (ohne rayon, siehe `par_scoped`)
             if pack {
                 let px: &[u32] = bytemuck::cast_slice(&view);
-                let mut rgb = Vec::with_capacity(px.len() * 3);
-                for v in px {
-                    rgb.extend_from_slice(&v.to_le_bytes()[..3]);
-                }
+                let mut rgb = vec![0u8; px.len() * 3];
+                par_scoped(&mut rgb, 3, px, 1, |o, i| {
+                    for (o, v) in o.as_chunks_mut::<3>().0.iter_mut().zip(i) {
+                        let b = v.to_le_bytes();
+                        *o = [b[0], b[1], b[2]];
+                    }
+                });
                 Rendered::Rgb8(
                     image::RgbImage::from_raw(out_w as u32, out_h as u32, rgb)
                         .ok_or(crate::i18n::tr_s("Puffergröße", "buffer size"))?,
                 )
             } else {
                 let px: &[[f32; 4]] = bytemuck::cast_slice(&view);
+                let mut data = vec![[0f32; 3]; px.len()];
+                par_scoped(&mut data, 1, px, 1, |o, i| {
+                    for (o, p) in o.iter_mut().zip(i) {
+                        *o = [p[0], p[1], p[2]];
+                    }
+                });
                 Rendered::Float(ImageF32 {
                     width: out_w,
                     height: out_h,
-                    data: px.iter().map(|p| [p[0], p[1], p[2]]).collect(),
+                    data,
                 })
             }
         };

@@ -17,7 +17,6 @@
 use crate::error::{Error, Result};
 use crate::i18n::tr_s;
 use crate::image_f32::ImageF32;
-use half::f16;
 use rayon::prelude::*;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -79,11 +78,7 @@ impl Patch {
                 for v in [p.x, p.y, p.w, p.h] {
                     f.write_all(&(v as u32).to_le_bytes())?;
                 }
-                for c in &p.rgb {
-                    for v in c {
-                        f.write_all(&f16::from_f32(*v).to_le_bytes())?;
-                    }
-                }
+                crate::denoised::write_f16(&mut f, &p.rgb)?;
                 f.write_all(&p.alpha)?;
             }
             f.flush()?;
@@ -129,14 +124,7 @@ impl Patch {
                     tr_s("Reparatur beschädigt", "repair corrupted").into(),
                 ));
             }
-            let mut raw = vec![0u8; w * h * 6];
-            f.read_exact(&mut raw)?;
-            let rgb = raw
-                .as_chunks::<6>()
-                .0
-                .iter()
-                .map(|c| [0, 2, 4].map(|i| f16::from_le_bytes([c[i], c[i + 1]]).to_f32()))
-                .collect();
+            let rgb = crate::denoised::read_f16(&mut f, w * h)?;
             let mut alpha = vec![0u8; w * h];
             f.read_exact(&mut alpha)?;
             parts.push(PatchPart {

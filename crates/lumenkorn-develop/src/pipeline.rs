@@ -95,10 +95,13 @@ fn has_repairs(p: &DevelopParams) -> bool {
     p.repairs.iter().any(|r| r.enabled && r.result.is_some())
 }
 
-/// Für die GPU: Quellbild mit bereits eingesetzten Reparaturen (und
+/// Für GPU und CPU: Quellbild mit bereits eingesetzten Reparaturen (und
 /// eingemischter Rauschreduzierung), zwischengespeichert – beim Ziehen eines
 /// Reglers ändert sich daran nichts.
-type RepairedKey = (usize, usize, usize, String);
+/// Schlüssel: Quelle und entrauschte Fassung wie für die GPU (Adresse, Größe
+/// und Stichproben – eine freigegebene Quelle kann an derselben Adresse durch
+/// ein anderes Bild ersetzt werden) plus Stärke und Flicken.
+type RepairedKey = (crate::gpu::ImageKey, Option<crate::gpu::ImageKey>, String);
 /// Zwei Einträge: Vorschau (Proxy) und Zoomansicht (volle Auflösung) wechseln
 /// sich ab – mit nur einem würde jeder Wechsel alles neu einsetzen.
 /// Die Zahl ist die Kennung der Fassung für den GPU-Puffer-Cache.
@@ -132,9 +135,8 @@ fn repaired_source(src: &Source, p: &DevelopParams, opts: &RenderOptions) -> (Ar
         .filter_map(|r| r.result.as_deref())
         .collect();
     let key: Key = (
-        src.image.data.as_ptr() as usize,
-        src.image.width,
-        opts.denoised.map_or(0, |d| d.data.as_ptr() as usize),
+        crate::gpu::image_key(&src.image, 0),
+        opts.denoised.map(|d| crate::gpu::image_key(d, 0)),
         format!(
             "{:?}|{}",
             p.denoise.as_ref().map(|d| d.amount),
@@ -243,11 +245,19 @@ pub fn render_auto_rgb8(
 pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -> ImageF32 {
     let p = params.sanitized();
     let raw = src.kind == SourceKind::Raw;
-    let mut img = src.image.clone();
-    let (w, h) = (img.width, img.height);
 
     // --- Rauschreduzierung und Reparaturen (lineares Quellbild) -------------
-    prepare_source(&mut img, &p, opts);
+    // Mit Reparaturen aus demselben Zwischenspeicher wie die GPU: Flicken
+    // einsetzen kostet bei jedem Rendern (Reglerzug) sonst erneut, obwohl
+    // sich an der reparierten Quelle nichts ändert.
+    let mut img = if has_repairs(&p) {
+        repaired_source(src, &p, opts).0.image.clone()
+    } else {
+        let mut img = src.image.clone();
+        prepare_source(&mut img, &p, opts);
+        img
+    };
+    let (w, h) = (img.width, img.height);
 
     // --- Szenenbezogene Stufen und Kodierung -------------------------------
     let wb = white_balance(p.temperature / 100.0, p.tint / 100.0);
@@ -295,19 +305,7 @@ pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -
         }
         let alpha = masks::evaluate_cached(layer, w, h, opts.masks, Some(&src.image));
         if layer.enabled && !layer.adjust.is_neutral() {
-            let mut local = img.clone();
-            apply_local(&mut local, &layer.adjust);
-            img.data
-                .par_iter_mut()
-                .zip(local.data.par_iter())
-                .zip(alpha.par_iter())
-                .for_each(|((o, l), a)| {
-                    if *a > 0.0 {
-                        for k in 0..3 {
-                            o[k] += (l[k] - o[k]) * a;
-                        }
-                    }
-                });
+            apply_local_masked(&mut img, &layer.adjust, &alpha);
         }
         if want_overlay {
             overlay_alpha = Some(alpha.clone());
@@ -372,81 +370,113 @@ struct Tone {
     clarity: f32,
 }
 
+impl Tone {
+    fn active(&self) -> bool {
+        self.highlights != 0.0
+            || self.shadows != 0.0
+            || self.whites != 0.0
+            || self.blacks != 0.0
+            || self.clarity != 0.0
+            || self.contrast != 0.0
+    }
+
+    /// Braucht die Stufe weichgezeichnete Helligkeitskarten (Nachbarschaft)?
+    fn needs_maps(&self) -> bool {
+        self.highlights != 0.0 || self.shadows != 0.0 || self.clarity != 0.0
+    }
+}
+
+/// Helligkeitskarten für [`tone_px`], aus der Helligkeit des *ganzen* Bildes.
+struct ToneMaps {
+    base: Option<LumaMap>,
+    detail: Option<LumaMap>,
+}
+
+impl ToneMaps {
+    fn build(y: &[f32], w: usize, h: usize, t: &Tone) -> Self {
+        // Grobe Karte (~ 5 % der Bildbreite) für Lichter/Tiefen, feinere für Klarheit.
+        Self {
+            base: (t.highlights != 0.0 || t.shadows != 0.0)
+                .then(|| LumaMap::build(y, w, h, 128, 3)),
+            detail: (t.clarity != 0.0).then(|| LumaMap::build(y, w, h, 640, 3)),
+        }
+    }
+}
+
 fn tone(img: &mut ImageF32, t: &Tone) {
-    let active = t.highlights != 0.0
-        || t.shadows != 0.0
-        || t.whites != 0.0
-        || t.blacks != 0.0
-        || t.clarity != 0.0
-        || t.contrast != 0.0;
-    if !active {
+    if !t.active() {
         return;
     }
     let (w, h) = (img.width, img.height);
     let y: Vec<f32> = img.data.par_iter().map(|c| luma(*c)).collect();
-    // Grobe Karte (~ 5 % der Bildbreite) für Lichter/Tiefen, feinere für Klarheit.
-    let base = (t.highlights != 0.0 || t.shadows != 0.0).then(|| LumaMap::build(&y, w, h, 128, 3));
-    let detail = (t.clarity != 0.0).then(|| LumaMap::build(&y, w, h, 640, 3));
+    let maps = ToneMaps::build(&y, w, h, t);
+    img.data.par_iter_mut().enumerate().for_each(|(i, px)| {
+        *px = tone_px(*px, y[i], i % w, i / w, t, &maps);
+    });
+}
 
+/// Tonwerte für ein Pixel an (x, yy) mit Helligkeit `y0`.
+#[inline]
+fn tone_px(px: [f32; 3], y0: f32, x: usize, yy: usize, t: &Tone, maps: &ToneMaps) -> [f32; 3] {
     let (sh, hi) = (t.shadows, t.highlights);
     let black_point = -t.blacks * 0.12;
     let white_point = 1.0 - t.whites * 0.15;
+    let mut v = (y0 - black_point) / (white_point - black_point);
 
-    img.data.par_iter_mut().enumerate().for_each(|(i, px)| {
-        let (x, yy) = (i % w, i / w);
-        let y0 = y[i];
-        let mut v = (y0 - black_point) / (white_point - black_point);
-
-        // Lichter und Tiefen: Gewicht nach der *lokalen* Helligkeit, damit
-        // Strukturen in Schatten und Lichtern erhalten bleiben.
-        if let Some(m) = &base {
-            let b = m.sample(x, yy);
-            if sh != 0.0 {
-                let ws = (1.0 - smoothstep(0.0, 0.55, b)).powi(2);
-                v *= (sh * 1.1 * ws * (1.0 - v).max(0.0)).exp();
-            }
-            if hi != 0.0 {
-                let wh = smoothstep(0.4, 1.0, b).powi(2);
-                v = 1.0 - (1.0 - v) * (-hi * 1.1 * wh * v.max(0.0)).exp();
-            }
+    // Lichter und Tiefen: Gewicht nach der *lokalen* Helligkeit, damit
+    // Strukturen in Schatten und Lichtern erhalten bleiben.
+    if let Some(m) = &maps.base {
+        let b = m.sample(x, yy);
+        if sh != 0.0 {
+            let ws = (1.0 - smoothstep(0.0, 0.55, b)).powi(2);
+            v *= (sh * 1.1 * ws * (1.0 - v).max(0.0)).exp();
         }
-
-        v = s_curve(v.clamp(0.0, 1.0), t.contrast);
-
-        if let Some(m) = &detail {
-            let d = m.sample(x, yy);
-            let mid = 4.0 * v * (1.0 - v);
-            v += t.clarity * 0.8 * (y0 - d) * mid;
+        if hi != 0.0 {
+            let wh = smoothstep(0.4, 1.0, b).powi(2);
+            v = 1.0 - (1.0 - v) * (-hi * 1.1 * wh * v.max(0.0)).exp();
         }
+    }
 
-        *px = apply_luma(*px, y0, v.clamp(0.0, 1.0));
-    });
+    v = s_curve(v.clamp(0.0, 1.0), t.contrast);
+
+    if let Some(m) = &maps.detail {
+        let d = m.sample(x, yy);
+        let mid = 4.0 * v * (1.0 - v);
+        v += t.clarity * 0.8 * (y0 - d) * mid;
+    }
+
+    apply_luma(px, y0, v.clamp(0.0, 1.0))
 }
 
 fn color(img: &mut ImageF32, sat: f32, vib: f32) {
     if sat == 0.0 && vib == 0.0 {
         return;
     }
-    img.data.par_iter_mut().for_each(|px| {
-        let y = luma(*px);
-        let max = px[0].max(px[1]).max(px[2]);
-        let min = px[0].min(px[1]).min(px[2]);
-        let chroma = max - min;
-        // Dynamik wirkt stark auf blasse und schwach auf kräftige Farben.
-        // Hauttöne (R > G > B) werden zusätzlich geschont.
-        let skin = if px[0] > px[1] && px[1] > px[2] {
-            0.5
-        } else {
-            1.0
-        };
-        let f = 1.0 + sat + vib * (1.0 - chroma).powi(2) * if vib > 0.0 { skin } else { 1.0 };
-        let c = [
-            y + (px[0] - y) * f,
-            y + (px[1] - y) * f,
-            y + (px[2] - y) * f,
-        ];
-        *px = fit_gamut(c, y);
-    });
+    img.data
+        .par_iter_mut()
+        .for_each(|px| *px = color_px(*px, sat, vib));
+}
+
+#[inline]
+fn color_px(px: [f32; 3], sat: f32, vib: f32) -> [f32; 3] {
+    let y = luma(px);
+    let max = px[0].max(px[1]).max(px[2]);
+    let min = px[0].min(px[1]).min(px[2]);
+    let chroma = max - min;
+    // Dynamik wirkt stark auf blasse und schwach auf kräftige Farben.
+    // Hauttöne (R > G > B) werden zusätzlich geschont.
+    let skin = if px[0] > px[1] && px[1] > px[2] {
+        0.5
+    } else {
+        1.0
+    };
+    let f = 1.0 + sat + vib * (1.0 - chroma).powi(2) * if vib > 0.0 { skin } else { 1.0 };
+    let c = [
+        y + (px[0] - y) * f,
+        y + (px[1] - y) * f,
+        y + (px[2] - y) * f,
+    ];
+    fit_gamut(c, y)
 }
 
 /// HSL-Werkzeug (siehe `color::hsl_pixel`), in place auf dem kodierten Bild.
@@ -468,36 +498,109 @@ pub(crate) fn hsl_adjust(h: &crate::params::Hsl) -> crate::color::HslAdjust {
     }
 }
 
-/// Regler einer Maskenebene auf ein (bereits entwickeltes) Bild anwenden.
-fn apply_local(img: &mut ImageF32, a: &LocalAdjust) {
-    if a.exposure != 0.0 || a.temperature != 0.0 || a.tint != 0.0 {
-        let wb = white_balance(a.temperature / 100.0, a.tint / 100.0);
-        let gain = 2f32.powf(a.exposure);
-        img.data.par_iter_mut().for_each(|px| {
-            let lin = [0, 1, 2].map(|k| soft_clip(srgb_to_linear(px[k]) * wb[k] * gain));
-            let y = luma(lin);
-            *px = fit_gamut(
-                [
-                    linear_to_srgb(lin[0]),
-                    linear_to_srgb(lin[1]),
-                    linear_to_srgb(lin[2]),
-                ],
-                linear_to_srgb(y),
-            );
+/// Regler einer Maskenebene auf ein (bereits entwickeltes) Bild anwenden und
+/// mit der Deckkraft `alpha` überblenden.
+///
+/// Gerechnet wird nur im Rahmen der Pixel mit Deckkraft > 0 – eine kleine
+/// Radialmaske kostete sonst eine volle Bildkopie und alle Stufen auf allen
+/// Pixeln. Bis auf eine Ausnahme wirken die Stufen pixelweise: Lichter/Tiefen
+/// und Klarheit tasten weichgezeichnete Helligkeitskarten ab, deren Größe und
+/// Weichzeichner relativ zum *ganzen* Bild sind und die auch Helligkeit von
+/// außerhalb der Maske einbeziehen. Diese Karten entstehen deshalb wie bisher
+/// aus dem ganzen Bild (nach Belichtung/Weißabgleich der Ebene – dafür genügt
+/// die Helligkeit, keine Bildkopie). So bleibt das Ergebnis bitgleich mit der
+/// Rechnung über das ganze Bild.
+fn apply_local_masked(img: &mut ImageF32, a: &LocalAdjust, alpha: &[f32]) {
+    let (w, h) = (img.width, img.height);
+    let Some((x0, y0, x1, y1)) = alpha_bounds(alpha, w, h) else {
+        return;
+    };
+    let expo = a.exposure != 0.0 || a.temperature != 0.0 || a.tint != 0.0;
+    let wb = white_balance(a.temperature / 100.0, a.tint / 100.0);
+    let gain = 2f32.powf(a.exposure);
+    let exposure = |px: [f32; 3]| -> [f32; 3] {
+        let lin = [0, 1, 2].map(|k| soft_clip(srgb_to_linear(px[k]) * wb[k] * gain));
+        let y = luma(lin);
+        fit_gamut(
+            [
+                linear_to_srgb(lin[0]),
+                linear_to_srgb(lin[1]),
+                linear_to_srgb(lin[2]),
+            ],
+            linear_to_srgb(y),
+        )
+    };
+    let t = Tone {
+        contrast: a.contrast / 100.0,
+        highlights: a.highlights / 100.0,
+        shadows: a.shadows / 100.0,
+        whites: 0.0,
+        blacks: 0.0,
+        clarity: a.clarity / 100.0,
+    };
+    let maps = if t.needs_maps() {
+        let y: Vec<f32> = img
+            .data
+            .par_iter()
+            .map(|p| luma(if expo { exposure(*p) } else { *p }))
+            .collect();
+        ToneMaps::build(&y, w, h, &t)
+    } else {
+        ToneMaps {
+            base: None,
+            detail: None,
+        }
+    };
+    let (tone_on, sat) = (t.active(), a.saturation / 100.0);
+    img.data[y0 * w..y1 * w]
+        .par_chunks_mut(w)
+        .zip(alpha[y0 * w..y1 * w].par_chunks(w))
+        .enumerate()
+        .for_each(|(r, (row, arow))| {
+            let yy = y0 + r;
+            for x in x0..x1 {
+                let al = arow[x];
+                if al.is_nan() || al <= 0.0 {
+                    continue;
+                }
+                let o = &mut row[x];
+                let mut l = *o;
+                if expo {
+                    l = exposure(l);
+                }
+                if tone_on {
+                    l = tone_px(l, luma(l), x, yy, &t, &maps);
+                }
+                if sat != 0.0 {
+                    l = color_px(l, sat, 0.0);
+                }
+                for k in 0..3 {
+                    o[k] += (l[k] - o[k]) * al;
+                }
+            }
         });
+}
+
+/// Rahmen (x0, y0, x1, y1; Ende exklusiv) aller Pixel mit Deckkraft > 0.
+fn alpha_bounds(alpha: &[f32], w: usize, h: usize) -> Option<(usize, usize, usize, usize)> {
+    if w == 0 {
+        return None;
     }
-    tone(
-        img,
-        &Tone {
-            contrast: a.contrast / 100.0,
-            highlights: a.highlights / 100.0,
-            shadows: a.shadows / 100.0,
-            whites: 0.0,
-            blacks: 0.0,
-            clarity: a.clarity / 100.0,
-        },
-    );
-    color(img, a.saturation / 100.0, 0.0);
+    let rows: Vec<Option<(usize, usize)>> = alpha[..w * h]
+        .par_chunks(w)
+        .map(|row| {
+            let first = row.iter().position(|a| *a > 0.0)?;
+            let last = row.iter().rposition(|a| *a > 0.0)?;
+            Some((first, last + 1))
+        })
+        .collect();
+    let y0 = rows.iter().position(Option::is_some)?;
+    let y1 = rows.iter().rposition(Option::is_some)? + 1;
+    let (x0, x1) = rows[y0..y1]
+        .iter()
+        .flatten()
+        .fold((usize::MAX, 0), |(a, b), (f, l)| (a.min(*f), b.max(*l)));
+    Some((x0, y0, x1, y1))
 }
 
 /// Weiche Schulter über 0,8: helle Bereiche laufen nicht abrupt ins Weiß.
@@ -833,6 +936,122 @@ mod tests {
             hl[0] - hl[1] < 0.08,
             "Lichter sollten nahezu neutral sein: {hl:?}"
         );
+    }
+
+    /// Bisherige Rechnung einer Maskenebene: alle Stufen auf einer Kopie des
+    /// ganzen Bildes, danach überblenden.
+    fn apply_local_full(img: &mut ImageF32, a: &LocalAdjust, alpha: &[f32]) {
+        let mut local = img.clone();
+        if a.exposure != 0.0 || a.temperature != 0.0 || a.tint != 0.0 {
+            let wb = white_balance(a.temperature / 100.0, a.tint / 100.0);
+            let gain = 2f32.powf(a.exposure);
+            local.data.iter_mut().for_each(|px| {
+                let lin = [0, 1, 2].map(|k| soft_clip(srgb_to_linear(px[k]) * wb[k] * gain));
+                let y = luma(lin);
+                *px = fit_gamut(
+                    [
+                        linear_to_srgb(lin[0]),
+                        linear_to_srgb(lin[1]),
+                        linear_to_srgb(lin[2]),
+                    ],
+                    linear_to_srgb(y),
+                );
+            });
+        }
+        tone(
+            &mut local,
+            &Tone {
+                contrast: a.contrast / 100.0,
+                highlights: a.highlights / 100.0,
+                shadows: a.shadows / 100.0,
+                whites: 0.0,
+                blacks: 0.0,
+                clarity: a.clarity / 100.0,
+            },
+        );
+        color(&mut local, a.saturation / 100.0, 0.0);
+        for ((o, l), a) in img.data.iter_mut().zip(&local.data).zip(alpha) {
+            if *a > 0.0 {
+                for k in 0..3 {
+                    o[k] += (l[k] - o[k]) * a;
+                }
+            }
+        }
+    }
+
+    /// Kleine Radialmaske: Rechnung nur im Rahmen der Maske ist bitgleich mit
+    /// der über das ganze Bild – auch mit Klarheit/Lichtern/Tiefen, deren
+    /// Helligkeitskarten Nachbarschaft außerhalb der Maske einbeziehen.
+    #[test]
+    fn masked_local_matches_full_image() {
+        use crate::params::{MaskLayer, MaskShape};
+        let (w, h) = (300, 200);
+        // Entwickeltes (sRGB-kodiertes) Bild mit Struktur und Kanten
+        let img = ImageF32::from_fn(w, h, |x, y| {
+            let n = ((x * 7 + y * 13) % 17) as f32 / 17.0 * 0.1;
+            let edge = if (x / 40 + y / 30) % 2 == 0 {
+                0.25
+            } else {
+                0.0
+            };
+            [
+                (0.2 + x as f32 / w as f32 * 0.6 + n + edge).min(1.0),
+                (0.3 + y as f32 / h as f32 * 0.4 + n).min(1.0),
+                (0.5 - edge + n).max(0.0),
+            ]
+        });
+        let adjusts = [
+            LocalAdjust {
+                exposure: 0.7,
+                contrast: 25.0,
+                highlights: -40.0,
+                shadows: 50.0,
+                clarity: 60.0,
+                saturation: 30.0,
+                temperature: 20.0,
+                tint: -10.0,
+            },
+            LocalAdjust {
+                clarity: -50.0,
+                ..Default::default()
+            },
+            LocalAdjust {
+                contrast: -30.0,
+                saturation: -60.0,
+                ..Default::default()
+            },
+        ];
+        for (cx, cy, invert) in [(0.3, 0.4, false), (0.02, 0.97, false), (0.5, 0.5, true)] {
+            let layer = MaskLayer {
+                shapes: vec![MaskShape::Radial {
+                    cx,
+                    cy,
+                    rx: 0.06,
+                    ry: 0.04,
+                    angle: 25.0,
+                    feather: 0.5,
+                    invert,
+                    subtract: false,
+                }],
+                ..Default::default()
+            };
+            let alpha = masks::evaluate(&layer, w, h, &NoMasks, None);
+            assert!(alpha.iter().any(|a| *a > 0.0) && alpha.contains(&0.0));
+            for a in &adjusts {
+                let mut fast = img.clone();
+                let mut full = img.clone();
+                apply_local_masked(&mut fast, a, &alpha);
+                apply_local_full(&mut full, a, &alpha);
+                for (p, q) in fast.data.iter().zip(&full.data) {
+                    assert_eq!(p.map(f32::to_bits), q.map(f32::to_bits), "{cx},{cy}: {a:?}");
+                }
+                assert!(fast.data != img.data, "Testaufbau: Ebene wirkt");
+            }
+        }
+        // Leere Maske: nichts geschieht
+        let mut same = img.clone();
+        apply_local_masked(&mut same, &adjusts[0], &vec![0.0; w * h]);
+        assert!(same.data == img.data);
     }
 
     #[test]
