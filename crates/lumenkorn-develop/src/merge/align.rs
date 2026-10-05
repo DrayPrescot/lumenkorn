@@ -8,6 +8,10 @@
 //! - Zuordnung: Hamming-Abstand, Verhältnistest und gegenseitig beste Treffer.
 //! - Homografie: RANSAC über 4-Punkt-Lösungen, danach Ausgleich über alle
 //!   passenden Paare (mit Hartley-Normierung für numerische Stabilität).
+//!
+//! Richtungen: [`Fit::h`] bildet das *zweite* Bild auf das erste ab (b → a),
+//! [`refine`] erwartet dagegen a → b. Die Aufrufer brauchen meist
+//! „Referenz → Bild“ und invertieren entsprechend.
 
 use crate::image_f32::ImageF32;
 use rayon::prelude::*;
@@ -126,11 +130,7 @@ pub fn feature_gray(img: &ImageF32) -> Gray {
     let mut data: Vec<f32> = img
         .data
         .par_iter()
-        .map(|p| {
-            (0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2])
-                .max(1e-4)
-                .ln()
-        })
+        .map(|p| crate::color::luma(*p).max(1e-4).ln())
         .collect();
     let n = data.len().max(1) as f32;
     let mean = data.iter().sum::<f32>() / n;
@@ -215,21 +215,12 @@ pub fn detect(g: &Gray, max_points: usize) -> Vec<Keypoint> {
     }
     let s = blur(g, 1.0);
     // Gradienten und Strukturtensor
-    let grads: Vec<(f32, f32)> = (0..w * h)
-        .into_par_iter()
-        .map(|i| {
-            let (x, y) = ((i % w) as isize, (i / w) as isize);
-            (
-                (s.at(x + 1, y) - s.at(x - 1, y)) * 0.5,
-                (s.at(x, y + 1) - s.at(x, y - 1)) * 0.5,
-            )
-        })
-        .collect();
+    let (gx, gy) = gradients(&s);
     let xx = blur(
         &Gray {
             w,
             h,
-            data: grads.iter().map(|g| g.0 * g.0).collect(),
+            data: gx.iter().map(|a| a * a).collect(),
         },
         1.5,
     );
@@ -237,7 +228,7 @@ pub fn detect(g: &Gray, max_points: usize) -> Vec<Keypoint> {
         &Gray {
             w,
             h,
-            data: grads.iter().map(|g| g.1 * g.1).collect(),
+            data: gy.iter().map(|b| b * b).collect(),
         },
         1.5,
     );
@@ -245,7 +236,7 @@ pub fn detect(g: &Gray, max_points: usize) -> Vec<Keypoint> {
         &Gray {
             w,
             h,
-            data: grads.iter().map(|g| g.0 * g.1).collect(),
+            data: gx.iter().zip(&gy).map(|(a, b)| a * b).collect(),
         },
         1.5,
     );
@@ -258,7 +249,9 @@ pub fn detect(g: &Gray, max_points: usize) -> Vec<Keypoint> {
         .collect();
     let r = Gray { w, h, data: resp };
 
-    // Je Zelle die besten lokalen Maxima
+    // Je Zelle die besten lokalen Maxima. Zellgröße so, dass es etwa
+    // max_points/4 Zellen gibt: Mit 4 Punkten je Zelle reicht das gerade für
+    // max_points, und starke Bildteile können schwache nicht verdrängen.
     let cell = ((w * h) as f32 / max_points as f32 * 4.0).sqrt().max(8.0) as usize;
     let per_cell = 4;
     let max_resp = r.data.iter().cloned().fold(0.0f32, f32::max);
@@ -336,6 +329,8 @@ pub fn match_points(a: &[Keypoint], b: &[Keypoint]) -> Vec<(usize, usize)> {
                         b2 = d;
                     }
                 }
+                // Höchstens 64 von 256 Bits verschieden, und deutlich besser als der
+                // Zweitbeste (Verhältnistest nach Lowe) – sonst mehrdeutig
                 (b1 < 64 && (b1 as f32) < 0.8 * b2 as f32).then_some(bi)
             })
             .collect()
@@ -573,25 +568,31 @@ pub fn dense(img: &ImageF32, edge: usize) -> Dense {
             let small = img.downscale_to(e.max(64));
             let scale = small.width as f64 / img.width as f64;
             let g = blur(&feature_gray(&small), 1.2);
-            let (w, h) = (g.w, g.h);
-            let gx = (0..w * h)
-                .into_par_iter()
-                .map(|i| {
-                    let (x, y) = ((i % w) as isize, (i / w) as isize);
-                    (g.at(x + 1, y) - g.at(x - 1, y)) * 0.5
-                })
-                .collect();
-            let gy = (0..w * h)
-                .into_par_iter()
-                .map(|i| {
-                    let (x, y) = ((i % w) as isize, (i / w) as isize);
-                    (g.at(x, y + 1) - g.at(x, y - 1)) * 0.5
-                })
-                .collect();
+            let (gx, gy) = gradients(&g);
             (g, gx, gy, scale)
         })
         .collect();
     Dense { levels }
+}
+
+/// Gradienten x und y (zentrale Differenzen, am Rand wiederholt).
+fn gradients(g: &Gray) -> (Vec<f32>, Vec<f32>) {
+    let (w, h) = (g.w, g.h);
+    let gx = (0..w * h)
+        .into_par_iter()
+        .map(|i| {
+            let (x, y) = ((i % w) as isize, (i / w) as isize);
+            (g.at(x + 1, y) - g.at(x - 1, y)) * 0.5
+        })
+        .collect();
+    let gy = (0..w * h)
+        .into_par_iter()
+        .map(|i| {
+            let (x, y) = ((i % w) as isize, (i / w) as isize);
+            (g.at(x, y + 1) - g.at(x, y - 1)) * 0.5
+        })
+        .collect();
+    (gx, gy)
 }
 
 fn bilinear(data: &[f32], w: usize, h: usize, x: f64, y: f64) -> Option<f32> {
@@ -633,86 +634,13 @@ pub fn refine(a: &Dense, b: &Dense, h: &Mat3) -> Mat3 {
             return h;
         }
         hn = hn.map(|r| r.map(|v| v / z));
-        let cb = gb.w as f64 / 2.0;
-        let (ocx, ocy) = ((gb.w as f64 - 1.0) / 2.0, (gb.h as f64 - 1.0) / 2.0);
-        let ca = ga.w as f64 / 2.0;
-        let (acx, acy) = ((ga.w as f64 - 1.0) / 2.0, (ga.h as f64 - 1.0) / 2.0);
-        // Normalgleichungen, Anzahl und mittlere (robuste) Abweichung für `hc`
-        let eval = |hc: Mat3| {
-            (0..ga.h)
-                .into_par_iter()
-                .map(|y| {
-                    let mut jtj = [[0f64; 8]; 8];
-                    let mut jtr = [0f64; 8];
-                    let mut cnt = 0usize;
-                    let mut cost = 0f64;
-                    let yn = (y as f64 - acy) / ca;
-                    for x in 0..ga.w {
-                        let xn = (x as f64 - acx) / ca;
-                        let zz = hc[2][0] * xn + hc[2][1] * yn + 1.0;
-                        if zz.abs() < 1e-6 {
-                            continue;
-                        }
-                        let u = (hc[0][0] * xn + hc[0][1] * yn + hc[0][2]) / zz;
-                        let v = (hc[1][0] * xn + hc[1][1] * yn + hc[1][2]) / zz;
-                        let (px, py) = (u * cb + ocx, v * cb + ocy);
-                        let Some(ib) = bilinear(&gb.data, gb.w, gb.h, px, py) else {
-                            continue;
-                        };
-                        let gx = bilinear(bx, gb.w, gb.h, px, py).unwrap_or(0.0) as f64 * cb;
-                        let gy = bilinear(by, gb.w, gb.h, px, py).unwrap_or(0.0) as f64 * cb;
-                        if gx * gx + gy * gy < 1e-6 {
-                            continue;
-                        }
-                        let r = ib as f64 - ga.data[y * ga.w + x] as f64;
-                        let j = [
-                            gx * xn / zz,
-                            gx * yn / zz,
-                            gx / zz,
-                            gy * xn / zz,
-                            gy * yn / zz,
-                            gy / zz,
-                            -(gx * u + gy * v) * xn / zz,
-                            -(gx * u + gy * v) * yn / zz,
-                        ];
-                        // Robust (Huber): starke Abweichungen zählen weniger
-                        let wgt = if r.abs() > 0.5 { 0.5 / r.abs() } else { 1.0 };
-                        cost += if r.abs() > 0.5 {
-                            0.5 * (r.abs() - 0.25)
-                        } else {
-                            0.5 * r * r
-                        };
-                        for p in 0..8 {
-                            jtr[p] += wgt * j[p] * r;
-                            for q in p..8 {
-                                jtj[p][q] += wgt * j[p] * j[q];
-                            }
-                        }
-                        cnt += 1;
-                    }
-                    (jtj, jtr, cnt, cost)
-                })
-                .reduce(
-                    || ([[0f64; 8]; 8], [0f64; 8], 0, 0.0),
-                    |mut x, y| {
-                        for p in 0..8 {
-                            x.1[p] += y.1[p];
-                            for q in 0..8 {
-                                x.0[p][q] += y.0[p][q];
-                            }
-                        }
-                        x.2 += y.2;
-                        x.3 += y.3;
-                        x
-                    },
-                )
-        };
         // Bestes Ergebnis merken: Bei sich wiederholenden Mustern oder sehr
         // unterschiedlicher Schärfe kann die Iteration abdriften.
         let mut best: Option<(f64, Mat3)> = None;
         for it in 0..=25 {
             let hc = hn;
-            let (jtj, jtr, cnt, cost) = eval(hc);
+            let (jtj, jtr, cnt, cost) = normal_equations(ga, gb, bx, by, &hc);
+            // Zu wenig gemeinsame, strukturierte Fläche für 8 Unbekannte
             if cnt < 500 {
                 break;
             }
@@ -730,6 +658,8 @@ pub fn refine(a: &Dense, b: &Dense, h: &Mat3) -> Mat3 {
                         .collect()
                 })
                 .collect();
+            // Diagonale leicht anheben (Levenberg-Marquardt-artige Dämpfung):
+            // hält den Schritt klein, wenn eine Richtung kaum bestimmt ist
             for (p, row) in m.iter_mut().enumerate() {
                 row[p] *= 1.0 + 1e-3;
             }
@@ -749,9 +679,6 @@ pub fn refine(a: &Dense, b: &Dense, h: &Mat3) -> Mat3 {
             for (k, &(r, c)) in idx.iter().enumerate() {
                 hn[r][c] += dp[k];
             }
-            if !dp.iter().all(|v| v.is_finite()) {
-                break;
-            }
             if dp.iter().map(|v| v.abs()).fold(0.0, f64::max) < 1e-6 {
                 // Konvergiert: das letzte Ergebnis ist praktisch gleich gut
                 best = Some((f64::MIN, hn));
@@ -764,6 +691,93 @@ pub fn refine(a: &Dense, b: &Dense, h: &Mat3) -> Mat3 {
         h = mul(&tb_inv, &mul(&hn, &ta));
     }
     h
+}
+
+/// Normalgleichungen (JᵀJ, Jᵀr), Anzahl genutzter Pixel und robuste
+/// Kostensumme für `hc` (normierte Koordinaten, h33 = 1) – ein Gauß-Newton-
+/// Schritt von [`refine`].
+fn normal_equations(
+    ga: &Gray,
+    gb: &Gray,
+    bx: &[f32],
+    by: &[f32],
+    hc: &Mat3,
+) -> ([[f64; 8]; 8], [f64; 8], usize, f64) {
+    let cb = gb.w as f64 / 2.0;
+    let (ocx, ocy) = ((gb.w as f64 - 1.0) / 2.0, (gb.h as f64 - 1.0) / 2.0);
+    let ca = ga.w as f64 / 2.0;
+    let (acx, acy) = ((ga.w as f64 - 1.0) / 2.0, (ga.h as f64 - 1.0) / 2.0);
+    (0..ga.h)
+        .into_par_iter()
+        .map(|y| {
+            let mut jtj = [[0f64; 8]; 8];
+            let mut jtr = [0f64; 8];
+            let mut cnt = 0usize;
+            let mut cost = 0f64;
+            let yn = (y as f64 - acy) / ca;
+            for x in 0..ga.w {
+                let xn = (x as f64 - acx) / ca;
+                let zz = hc[2][0] * xn + hc[2][1] * yn + 1.0;
+                if zz.abs() < 1e-6 {
+                    continue;
+                }
+                let u = (hc[0][0] * xn + hc[0][1] * yn + hc[0][2]) / zz;
+                let v = (hc[1][0] * xn + hc[1][1] * yn + hc[1][2]) / zz;
+                let (px, py) = (u * cb + ocx, v * cb + ocy);
+                let Some(ib) = bilinear(&gb.data, gb.w, gb.h, px, py) else {
+                    continue;
+                };
+                let gx = bilinear(bx, gb.w, gb.h, px, py).unwrap_or(0.0) as f64 * cb;
+                let gy = bilinear(by, gb.w, gb.h, px, py).unwrap_or(0.0) as f64 * cb;
+                if gx * gx + gy * gy < 1e-6 {
+                    continue;
+                }
+                let r = ib as f64 - ga.data[y * ga.w + x] as f64;
+                // r = I_b(H·x) − I_a(x) mit (u, v) = (h0·x, h1·x) / zz:
+                // ∂u/∂h = (xn, yn, 1, 0, 0, 0, −u·xn, −u·yn) / zz, ∂v/∂h
+                // entsprechend; per Kettenregel mit ∇I_b = (gx, gy).
+                let j = [
+                    gx * xn / zz,
+                    gx * yn / zz,
+                    gx / zz,
+                    gy * xn / zz,
+                    gy * yn / zz,
+                    gy / zz,
+                    -(gx * u + gy * v) * xn / zz,
+                    -(gx * u + gy * v) * yn / zz,
+                ];
+                // Robust (Huber, Schwelle 0,5 im normierten Graubild):
+                // starke Abweichungen zählen weniger
+                let wgt = if r.abs() > 0.5 { 0.5 / r.abs() } else { 1.0 };
+                cost += if r.abs() > 0.5 {
+                    0.5 * (r.abs() - 0.25)
+                } else {
+                    0.5 * r * r
+                };
+                for p in 0..8 {
+                    jtr[p] += wgt * j[p] * r;
+                    for q in p..8 {
+                        jtj[p][q] += wgt * j[p] * j[q];
+                    }
+                }
+                cnt += 1;
+            }
+            (jtj, jtr, cnt, cost)
+        })
+        .reduce(
+            || ([[0f64; 8]; 8], [0f64; 8], 0, 0.0),
+            |mut x, y| {
+                for p in 0..8 {
+                    x.1[p] += y.1[p];
+                    for q in 0..8 {
+                        x.0[p][q] += y.0[p][q];
+                    }
+                }
+                x.2 += y.2;
+                x.3 += y.3;
+                x
+            },
+        )
 }
 
 /// Bilineares Abtasten; `None` außerhalb.

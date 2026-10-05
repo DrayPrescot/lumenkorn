@@ -10,6 +10,7 @@
 //!
 //! Ergebnisse als EXR und entwickeltes JPEG im Ausgabeordner.
 
+use lumenkorn_develop::color::luma;
 use lumenkorn_develop::merge::align::{self, Mat3};
 use lumenkorn_develop::merge::{focus, hdr, pano};
 use lumenkorn_develop::output::{ExportFormat, ExportOptions};
@@ -17,10 +18,6 @@ use lumenkorn_develop::*;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::Instant;
-
-fn luma(p: [f32; 3]) -> f32 {
-    0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]
-}
 
 /// Deterministisches Rauschen
 fn noise(i: usize, seed: u32) -> f32 {

@@ -16,6 +16,7 @@
 
 use super::align::{self, Features};
 use super::{Loader, Progress, check};
+use crate::color::luma;
 use crate::error::{Error, Result};
 use crate::i18n::tr_s;
 use crate::image_f32::ImageF32;
@@ -33,10 +34,6 @@ impl Default for FocusOptions {
     fn default() -> Self {
         Self { align: true }
     }
-}
-
-fn luma(p: [f32; 3]) -> f32 {
-    0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]
 }
 
 /// Weichzeichnen mit [1 4 6 4 1]/16 (getrennt) und halbieren.
@@ -343,6 +340,8 @@ pub fn merge(
     progress(step, 0, n);
     let refimg = load(r)?;
     let (w, h) = (refimg.width, refimg.height);
+    // Halbieren, bis die kürzere Seite höchstens 48 px misst (Grundstufe ohne
+    // nennenswerte Details), höchstens 9 Stufen – das reicht bis ~25 000 px.
     let levels = {
         let mut l = 0;
         let mut m = w.min(h);

@@ -17,7 +17,8 @@
 //!    größte vollständig gefüllte Rechteck zuschneiden.
 
 use super::align::{self, Features, Mat3};
-use super::{Loader, Progress, check};
+use super::{FrameCache, Loader, Progress, check};
+use crate::color::luma;
 use crate::error::{Error, Result};
 use crate::i18n::tr_s;
 use crate::image_f32::ImageF32;
@@ -115,6 +116,8 @@ fn focals_from_h(h: &Mat3) -> Option<f64> {
     let h = [
         h[0][0], h[0][1], h[0][2], h[1][0], h[1][1], h[1][2], h[2][0], h[2][1], h[2][2],
     ];
+    // Je zwei Schätzungen für f²; die größere zuerst (wie OpenCV). Sind beide
+    // positiv, gilt die mit dem betragsgrößeren Nenner – numerisch stabiler.
     let pick = |v1: f64, v2: f64, d1: f64, d2: f64| -> Option<f64> {
         let (v1, v2) = if v1 < v2 { (v2, v1) } else { (v1, v2) };
         if v1 > 0.0 && v2 > 0.0 {
@@ -200,7 +203,10 @@ fn level_and_center(mut rot: Vec<Mat3>) -> Vec<Mat3> {
         let (up, ev) = smallest_eigen(c);
         let mut sorted = ev;
         sorted.sort_by(|a, b| a.total_cmp(b));
-        // Nur bei klarer Schwenkebene (sonst z. B. senkrechtes Panorama)
+        // Nur bei klarer Schwenkebene: Die x-Achsen müssen eine Ebene
+        // aufspannen (mittlerer Eigenwert nicht unter 5 % des größten). Liegen
+        // sie fast auf einer Linie (z. B. senkrechtes Panorama), ist die
+        // Normale – die Hochachse – nicht bestimmt.
         if sorted[1] > 0.05 * sorted[2] {
             let ys: V3 = rot.iter().fold([0.0; 3], |a, r| {
                 [a[0] + r[0][1], a[1] + r[1][1], a[2] + r[2][1]]
@@ -296,6 +302,9 @@ impl Proj {
     }
 }
 
+/// Spannbaum der Bilder: je Bild (Nachbar, Homografie Nachbar → Bild).
+type Tree = Vec<Vec<(usize, Mat3)>>;
+
 /// Kamera eines Eingangsbildes im Panorama.
 #[derive(Clone)]
 struct Cam {
@@ -320,6 +329,24 @@ impl Cam {
                 f * c[1] / c[2] + (self.h as f64 - 1.0) / 2.0,
             )
         })
+    }
+
+    /// Ausdehnung im Panorama (u0, v0, u1, v1), abgetastet an 61 Punkten je
+    /// Bildkante; `None`, wenn ein Randpunkt nicht abbildbar ist.
+    fn bounds(&self, f: f64, proj: &Proj) -> Option<(f64, f64, f64, f64)> {
+        let (mut u0, mut v0, mut u1, mut v1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        let (w, h) = ((self.w - 1) as f64, (self.h - 1) as f64);
+        for t in 0..=60 {
+            let t = t as f64 / 60.0;
+            for (x, y) in [(t * w, 0.0), (t * w, h), (0.0, t * h), (w, t * h)] {
+                let (u, v) = proj.forward(self.ray(f, x, y))?;
+                u0 = u0.min(u);
+                u1 = u1.max(u);
+                v0 = v0.min(v);
+                v1 = v1.max(v);
+            }
+        }
+        Some((u0, v0, u1, v1))
     }
 
     fn ray(&self, f: f64, x: f64, y: f64) -> V3 {
@@ -351,12 +378,10 @@ pub fn merge(
         ));
     }
     // --- 1. Merkmale --------------------------------------------------------------
-    let keep_bytes = super::keep_bytes();
-    let mut full: Vec<Option<ImageF32>> = Vec::new();
+    let mut cache = FrameCache::new(load);
     let mut feats: Vec<Features> = Vec::new();
     let mut smalls: Vec<ImageF32> = Vec::new();
     let mut sizes = Vec::new();
-    let mut kept = 0;
     for i in 0..n {
         check(cancel)?;
         progress(tr_s("Bilder laden", "Loading images"), i, n);
@@ -364,13 +389,7 @@ pub fn merge(
         feats.push(align::features(&img, 1200, 2500));
         smalls.push(img.downscale_to(800));
         sizes.push((img.width, img.height));
-        let bytes = img.data.len() * 12;
-        if kept + bytes <= keep_bytes {
-            kept += bytes;
-            full.push(Some(img));
-        } else {
-            full.push(None);
-        }
+        cache.offer(img);
     }
 
     // Paarweise Homografien (j → i). Bei vielen Fotos nicht jedes Paar voll
@@ -391,126 +410,21 @@ pub fn merge(
                 k,
                 pairs.len(),
             );
-            // Wenige, aber dicht zusammenliegende Treffer sind oft Zufall
+            // Prüfung nach Brown & Lowe (α = 8, β = 0,3): echte Überlappung,
+            // wenn die passenden Paare einen festen Anteil aller Zuordnungen
+            // ausmachen – wenige Treffer unter vielen Zuordnungen sind oft
+            // Zufall. Ab 40 passenden Paaren gilt die Überlappung als sicher.
             fit.filter(|f| f.inliers as f64 >= 8.0 + 0.3 * f.matches as f64 || f.inliers >= 40)
                 .map(|f| (i, j, f))
         })
         .collect();
     check(cancel)?;
 
-    // Maximaler Spannbaum (Kruskal)
-    let mut edges: Vec<&(usize, usize, align::Fit)> = fits.iter().collect();
-    edges.sort_by_key(|e| std::cmp::Reverse(e.2.inliers));
-    let mut parent: Vec<usize> = (0..n).collect();
-    fn find(p: &mut [usize], x: usize) -> usize {
-        let mut r = x;
-        while p[r] != r {
-            r = p[r];
-        }
-        let mut y = x;
-        while p[y] != r {
-            let nx = p[y];
-            p[y] = r;
-            y = nx;
-        }
-        r
-    }
-    let mut tree: Vec<Vec<(usize, Mat3)>> = vec![vec![]; n]; // Nachbar, H Nachbar → ich
-    for e in &edges {
-        let (i, j, fit) = (e.0, e.1, &e.2);
-        let (a, b) = (find(&mut parent, i), find(&mut parent, j));
-        if a != b {
-            parent[a] = b;
-            let inv = align::invert(&fit.h).unwrap_or(align::IDENTITY);
-            tree[i].push((j, fit.h)); // j → i
-            tree[j].push((i, inv)); // i → j
-        }
-    }
-    let root0 = find(&mut parent, 0);
-    let lonely: Vec<usize> = (0..n).filter(|&i| find(&mut parent, i) != root0).collect();
-    if !lonely.is_empty() {
-        return Err(Error::Params(crate::tr!(
-            "{} von {n} Fotos überlappen mit keinem anderen ausreichend (mind. ~20 % Überlappung nötig): Nr. {}",
-            "{} of {n} photos do not overlap enough with any other (at least ~20% overlap needed): no. {}",
-            lonely.len(),
-            lonely
-                .iter()
-                .map(|i| (i + 1).to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )));
-    }
-
-    // Referenz: Mitte des Baums (kleinste größte Entfernung)
-    let hops = |s: usize| -> usize {
-        let mut d = vec![usize::MAX; n];
-        d[s] = 0;
-        let mut q = std::collections::VecDeque::from([s]);
-        while let Some(x) = q.pop_front() {
-            for &(y, _) in &tree[x] {
-                if d[y] == usize::MAX {
-                    d[y] = d[x] + 1;
-                    q.push_back(y);
-                }
-            }
-        }
-        d.into_iter().max().unwrap_or(0)
-    };
-    let reference = (0..n)
-        .min_by_key(|&i| (hops(i), usize::MAX - tree[i].len()))
-        .unwrap();
+    let (tree, reference) = spanning_tree(n, &fits)?;
 
     // --- 2. Brennweite und Drehungen ---------------------------------------------
-    let center = |i: usize| -> Mat3 {
-        let (w, h) = sizes[i];
-        [
-            [1.0, 0.0, (w as f64 - 1.0) / 2.0],
-            [0.0, 1.0, (h as f64 - 1.0) / 2.0],
-            [0.0, 0.0, 1.0],
-        ]
-    };
-    let centered = |h: &Mat3, to: usize, from: usize| -> Mat3 {
-        align::mul(
-            &align::invert(&center(to)).unwrap(),
-            &align::mul(h, &center(from)),
-        )
-    };
-    let long = sizes.iter().map(|s| s.0.max(s.1)).max().unwrap_or(1) as f64;
-    let mut fs: Vec<f64> = fits
-        .iter()
-        .filter_map(|(i, j, fit)| focals_from_h(&centered(&fit.h, *i, *j)))
-        .filter(|f| *f > 0.3 * long && *f < 30.0 * long)
-        .collect();
-    fs.sort_by(|a, b| a.total_cmp(b));
-    let f = if fs.is_empty() {
-        log::warn!("Panorama: Brennweite nicht schätzbar, nehme Normalobjektiv an");
-        long * 1.2
-    } else {
-        fs[fs.len() / 2]
-    };
-    let k = [[f, 0.0, 0.0], [0.0, f, 0.0], [0.0, 0.0, 1.0]];
-    let kinv = [[1.0 / f, 0.0, 0.0], [0.0, 1.0 / f, 0.0], [0.0, 0.0, 1.0]];
-
-    let mut rot: Vec<Option<Mat3>> = vec![None; n];
-    rot[reference] = Some(align::IDENTITY);
-    let mut queue = std::collections::VecDeque::from([reference]);
-    while let Some(p) = queue.pop_front() {
-        let rp = rot[p].unwrap();
-        for &(c, h_cp) in &tree[p] {
-            // tree[p] enthält (c, H c → p)
-            if rot[c].is_some() {
-                continue;
-            }
-            let m = align::mul(&kinv, &align::mul(&centered(&h_cp, p, c), &k));
-            let r_pc = orthonormalize(&m).unwrap_or(align::IDENTITY);
-            rot[c] = Some(align::mul(&rp, &r_pc));
-            queue.push_back(c);
-        }
-    }
-    let rot: Vec<Mat3> = rot
-        .into_iter()
-        .map(|r| r.unwrap_or(align::IDENTITY))
-        .collect();
+    let f = estimate_focal(&fits, &sizes);
+    let rot = rotations(&tree, reference, f, &sizes);
 
     // --- 3. Horizont ausgleichen und zentrieren -------------------------------------
     let rot = level_and_center(rot);
@@ -529,24 +443,14 @@ pub fn merge(
         kind: opts.projection,
         f,
     };
-    let bounds = |proj: &Proj| -> Option<(f64, f64, f64, f64)> {
-        let (mut u0, mut v0, mut u1, mut v1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-        for cam in &cams {
-            for t in 0..=60 {
-                let t = t as f64 / 60.0;
-                let (w, h) = ((cam.w - 1) as f64, (cam.h - 1) as f64);
-                for (x, y) in [(t * w, 0.0), (t * w, h), (0.0, t * h), (w, t * h)] {
-                    let (u, v) = proj.forward(cam.ray(f, x, y))?;
-                    u0 = u0.min(u);
-                    u1 = u1.max(u);
-                    v0 = v0.min(v);
-                    v1 = v1.max(v);
-                }
-            }
-        }
-        Some((u0, v0, u1, v1))
-    };
-    let Some((mut u0, mut v0, mut u1, mut v1)) = bounds(&proj) else {
+    let bounds = cams.iter().try_fold(
+        (f64::MAX, f64::MAX, f64::MIN, f64::MIN),
+        |(u0, v0, u1, v1), cam| {
+            let (a, b, c, d) = cam.bounds(f, &proj)?;
+            Some((u0.min(a), v0.min(b), u1.max(c), v1.max(d)))
+        },
+    );
+    let Some((mut u0, mut v0, mut u1, mut v1)) = bounds else {
         return Err(Error::Params(
             tr_s(
                 "Zu weitwinklig für die perspektivische Projektion – „Zylindrisch“ oder „Kugel“ wählen",
@@ -592,105 +496,25 @@ pub fn merge(
     // Zwischengespeicherte Bilder und Ergebnispuffer (acc + wsum, 16 Byte je
     // Pixel – bei 150 MP 2,4 GB) teilen sich das Budget: überzählige Bilder
     // freigeben, sie werden beim Zusammenfügen neu geladen.
-    let out_bytes = out_w * out_h * 16;
-    for slot in full.iter_mut().rev() {
-        if kept + out_bytes <= keep_bytes {
-            break;
-        }
-        if let Some(img) = slot.take() {
-            kept -= img.data.len() * 12;
-        }
-    }
+    cache.reserve(out_w * out_h * 16);
 
     // --- 5. Helligkeitsausgleich ---------------------------------------------------
-    {
-        progress(tr_s("Helligkeit angleichen", "Matching brightness"), 0, 1);
-        // Mittlere Helligkeit beider Bilder in ihrer Überlappung
-        let overlap = |i: usize, j: usize| -> Option<(f64, f64, f64)> {
-            let (si, sj) = (&smalls[i], &smalls[j]);
-            let (fi, fj) = (
-                si.width as f64 / cams[i].w as f64,
-                sj.width as f64 / cams[j].w as f64,
-            );
-            let (mut a, mut b, mut cnt) = (0.0, 0.0, 0.0);
-            for y in (0..sj.height).step_by(3) {
-                for x in (0..sj.width).step_by(3) {
-                    let pj = sj.data[y * sj.width + x];
-                    let ray = cams[j].ray(f, x as f64 / fj, y as f64 / fj);
-                    let Some((xi, yi)) = cams[i].to_pixel(f, ray) else {
-                        continue;
-                    };
-                    let Some(pi) = align::sample(si, xi * fi, yi * fi) else {
-                        continue;
-                    };
-                    let (li, lj) = (luma(pi) as f64, luma(pj) as f64);
-                    if (0.01..0.9).contains(&li) && (0.01..0.9).contains(&lj) {
-                        a += li;
-                        b += lj;
-                        cnt += 1.0;
-                    }
-                }
-            }
-            (cnt > 30.0).then(|| (a / cnt, b / cnt, cnt))
-        };
-        // Minimiere Σ N_ij [(g_i·I_ij − g_j·I_ji)² / σn² + (1 − g_i)² / σg²]
-        // (Brown & Lowe; Helligkeiten wie dort in 0..255)
-        let (an, bg) = (1.0 / (10.0f64 * 10.0), 1.0 / (0.1f64 * 0.1));
-        let mut a = vec![vec![0.0; n]; n];
-        let mut b = vec![0.0; n];
-        for i in 0..n {
-            a[i][i] += 1e-3;
-            b[i] += 1e-3;
-        }
-        for (i, j, _) in &fits {
-            let Some((ii, jj, cnt)) = overlap(*i, *j) else {
-                continue;
-            };
-            let (ii, jj) = (ii * 255.0, jj * 255.0);
-            a[*i][*i] += cnt * (an * ii * ii + bg);
-            a[*j][*j] += cnt * (an * jj * jj + bg);
-            a[*i][*j] -= cnt * an * ii * jj;
-            a[*j][*i] -= cnt * an * ii * jj;
-            b[*i] += cnt * bg;
-            b[*j] += cnt * bg;
-        }
-        if let Some(g) = align::solve(a, b) {
-            for (cam, g) in cams.iter_mut().zip(g) {
-                cam.gain = g.clamp(0.25, 4.0) as f32;
-            }
-        }
-        log::info!(
-            "Panorama: Helligkeitsfaktoren {:?}",
-            cams.iter().map(|c| c.gain).collect::<Vec<_>>()
-        );
-    }
+    progress(tr_s("Helligkeit angleichen", "Matching brightness"), 0, 1);
+    gain_compensation(&mut cams, &smalls, &fits, f);
 
     // --- 6. Überblenden ------------------------------------------------------------
     let mut acc = vec![[0f32; 3]; out_w * out_h];
     let mut wsum = vec![0f32; out_w * out_h];
     let cols: Vec<(f64, f64)> = (0..out_w).map(|x| proj.column(x as f64 + u0)).collect();
-    for i in 0..n {
+    for (i, cam) in cams.iter().enumerate() {
         check(cancel)?;
         progress(tr_s("Zusammenfügen", "Stitching"), i, n);
-        let img = match full[i].take() {
-            Some(img) => img,
-            None => load(i)?,
+        let img = cache.take(i)?;
+        // Ausdehnung dieses Bildes im Panorama (abbildbar, das wurde oben für
+        // alle Bilder geprüft; der Maßstab von `proj` ändert daran nichts)
+        let Some((bu0, bv0, bu1, bv1)) = cam.bounds(f, &proj) else {
+            continue;
         };
-        let cam = &cams[i];
-        // Ausdehnung dieses Bildes im Panorama
-        let (mut bu0, mut bv0, mut bu1, mut bv1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-        for t in 0..=60 {
-            let t = t as f64 / 60.0;
-            let (w, h) = ((cam.w - 1) as f64, (cam.h - 1) as f64);
-            for (x, y) in [(t * w, 0.0), (t * w, h), (0.0, t * h), (w, t * h)] {
-                if let Some((u, v)) = proj.forward(cam.ray(f, x, y)) {
-                    bu0 = bu0.min(u);
-                    bu1 = bu1.max(u);
-                    bv0 = bv0.min(v);
-                    bv1 = bv1.max(v);
-                }
-            }
-        }
         let x0 = ((bu0 - u0).floor().max(0.0)) as usize;
         let x1 = (((bu1 - u0).ceil() + 1.0) as usize).min(out_w);
         let y0 = ((bv0 - v0).floor().max(0.0)) as usize;
@@ -723,7 +547,7 @@ pub fn merge(
             });
     }
     progress(tr_s("Zusammenfügen", "Stitching"), n, n);
-    drop(full);
+    drop(cache);
     drop(smalls);
     // Im Puffer selbst normieren – bei 150 MP spart das 1,8 GB
     acc.par_iter_mut().zip(wsum.par_iter()).for_each(|(a, w)| {
@@ -746,6 +570,212 @@ pub fn merge(
     Ok(out)
 }
 
+/// Maximaler Spannbaum (Kruskal) über die Anzahl passender Punkte: je Bild die
+/// Nachbarn samt Homografie Nachbar → Bild. Dazu die Referenz: die Mitte des
+/// Baums (kleinste größte Entfernung, bei Gleichstand die meisten Nachbarn).
+/// Fehler, wenn nicht alle Bilder verbunden sind.
+fn spanning_tree(n: usize, fits: &[(usize, usize, align::Fit)]) -> Result<(Tree, usize)> {
+    let mut edges: Vec<&(usize, usize, align::Fit)> = fits.iter().collect();
+    edges.sort_by_key(|e| std::cmp::Reverse(e.2.inliers));
+    let mut parent: Vec<usize> = (0..n).collect();
+    fn find(p: &mut [usize], x: usize) -> usize {
+        let mut r = x;
+        while p[r] != r {
+            r = p[r];
+        }
+        let mut y = x;
+        while p[y] != r {
+            let nx = p[y];
+            p[y] = r;
+            y = nx;
+        }
+        r
+    }
+    let mut tree: Tree = vec![vec![]; n];
+    for e in &edges {
+        let (i, j, fit) = (e.0, e.1, &e.2);
+        let (a, b) = (find(&mut parent, i), find(&mut parent, j));
+        if a != b {
+            parent[a] = b;
+            let inv = align::invert(&fit.h).unwrap_or(align::IDENTITY);
+            tree[i].push((j, fit.h)); // j → i
+            tree[j].push((i, inv)); // i → j
+        }
+    }
+    let root0 = find(&mut parent, 0);
+    let lonely: Vec<usize> = (0..n).filter(|&i| find(&mut parent, i) != root0).collect();
+    if !lonely.is_empty() {
+        return Err(Error::Params(crate::tr!(
+            "{} von {n} Fotos überlappen mit keinem anderen ausreichend (mind. ~20 % Überlappung nötig): Nr. {}",
+            "{} of {n} photos do not overlap enough with any other (at least ~20% overlap needed): no. {}",
+            lonely.len(),
+            lonely
+                .iter()
+                .map(|i| (i + 1).to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )));
+    }
+
+    // Referenz: Mitte des Baums (kleinste größte Entfernung)
+    let hops = |s: usize| -> usize {
+        let mut d = vec![usize::MAX; n];
+        d[s] = 0;
+        let mut q = std::collections::VecDeque::from([s]);
+        while let Some(x) = q.pop_front() {
+            for &(y, _) in &tree[x] {
+                if d[y] == usize::MAX {
+                    d[y] = d[x] + 1;
+                    q.push_back(y);
+                }
+            }
+        }
+        d.into_iter().max().unwrap_or(0)
+    };
+    let reference = (0..n)
+        .min_by_key(|&i| (hops(i), usize::MAX - tree[i].len()))
+        .unwrap();
+    Ok((tree, reference))
+}
+
+/// Homografie `h` (Bild `from` → Bild `to`, Pixel) in bildmittigen Koordinaten.
+fn centered(h: &Mat3, sizes: &[(usize, usize)], to: usize, from: usize) -> Mat3 {
+    let center = |i: usize| -> Mat3 {
+        let (w, h) = sizes[i];
+        [
+            [1.0, 0.0, (w as f64 - 1.0) / 2.0],
+            [0.0, 1.0, (h as f64 - 1.0) / 2.0],
+            [0.0, 0.0, 1.0],
+        ]
+    };
+    align::mul(
+        &align::invert(&center(to)).unwrap(),
+        &align::mul(h, &center(from)),
+    )
+}
+
+/// Brennweite in Pixeln: Median der Schätzungen aus allen Bildpaaren
+/// (unplausible verworfen); ohne Schätzung ein Normalobjektiv.
+fn estimate_focal(fits: &[(usize, usize, align::Fit)], sizes: &[(usize, usize)]) -> f64 {
+    let long = sizes.iter().map(|s| s.0.max(s.1)).max().unwrap_or(1) as f64;
+    let mut fs: Vec<f64> = fits
+        .iter()
+        .filter_map(|(i, j, fit)| focals_from_h(&centered(&fit.h, sizes, *i, *j)))
+        .filter(|f| *f > 0.3 * long && *f < 30.0 * long)
+        .collect();
+    fs.sort_by(|a, b| a.total_cmp(b));
+    if fs.is_empty() {
+        log::warn!("Panorama: Brennweite nicht schätzbar, nehme Normalobjektiv an");
+        long * 1.2
+    } else {
+        fs[fs.len() / 2]
+    }
+}
+
+/// Drehung jeder Kamera relativ zur Referenz, entlang des Spannbaums
+/// verkettet (H = K·R·K⁻¹ ⇒ R = K⁻¹·H·K, auf die nächste Drehmatrix gebracht).
+fn rotations(
+    tree: &[Vec<(usize, Mat3)>],
+    reference: usize,
+    f: f64,
+    sizes: &[(usize, usize)],
+) -> Vec<Mat3> {
+    let n = tree.len();
+    let k = [[f, 0.0, 0.0], [0.0, f, 0.0], [0.0, 0.0, 1.0]];
+    let kinv = [[1.0 / f, 0.0, 0.0], [0.0, 1.0 / f, 0.0], [0.0, 0.0, 1.0]];
+
+    let mut rot: Vec<Option<Mat3>> = vec![None; n];
+    rot[reference] = Some(align::IDENTITY);
+    let mut queue = std::collections::VecDeque::from([reference]);
+    while let Some(p) = queue.pop_front() {
+        let rp = rot[p].unwrap();
+        for &(c, h_cp) in &tree[p] {
+            // tree[p] enthält (c, H c → p)
+            if rot[c].is_some() {
+                continue;
+            }
+            let m = align::mul(&kinv, &align::mul(&centered(&h_cp, sizes, p, c), &k));
+            let r_pc = orthonormalize(&m).unwrap_or(align::IDENTITY);
+            rot[c] = Some(align::mul(&rp, &r_pc));
+            queue.push_back(c);
+        }
+    }
+    rot.into_iter()
+        .map(|r| r.unwrap_or(align::IDENTITY))
+        .collect()
+}
+
+/// Helligkeitsausgleich: je Bild ein Faktor (`Cam::gain`), damit
+/// Überlappungen gleich hell sind; gemessen auf den verkleinerten Bildern.
+fn gain_compensation(
+    cams: &mut [Cam],
+    smalls: &[ImageF32],
+    fits: &[(usize, usize, align::Fit)],
+    f: f64,
+) {
+    let n = cams.len();
+    // Mittlere Helligkeit beider Bilder in ihrer Überlappung
+    let overlap = |i: usize, j: usize| -> Option<(f64, f64, f64)> {
+        let (si, sj) = (&smalls[i], &smalls[j]);
+        let (fi, fj) = (
+            si.width as f64 / cams[i].w as f64,
+            sj.width as f64 / cams[j].w as f64,
+        );
+        let (mut a, mut b, mut cnt) = (0.0, 0.0, 0.0);
+        for y in (0..sj.height).step_by(3) {
+            for x in (0..sj.width).step_by(3) {
+                let pj = sj.data[y * sj.width + x];
+                let ray = cams[j].ray(f, x as f64 / fj, y as f64 / fj);
+                let Some((xi, yi)) = cams[i].to_pixel(f, ray) else {
+                    continue;
+                };
+                let Some(pi) = align::sample(si, xi * fi, yi * fi) else {
+                    continue;
+                };
+                let (li, lj) = (luma(pi) as f64, luma(pj) as f64);
+                if (0.01..0.9).contains(&li) && (0.01..0.9).contains(&lj) {
+                    a += li;
+                    b += lj;
+                    cnt += 1.0;
+                }
+            }
+        }
+        (cnt > 30.0).then(|| (a / cnt, b / cnt, cnt))
+    };
+    // Minimiere Σ N_ij [(g_i·I_ij − g_j·I_ji)² / σn² + (1 − g_i)² / σg²]
+    // (Brown & Lowe; Helligkeiten wie dort in 0..255)
+    let (an, bg) = (1.0 / (10.0f64 * 10.0), 1.0 / (0.1f64 * 0.1));
+    let mut a = vec![vec![0.0; n]; n];
+    let mut b = vec![0.0; n];
+    // Schwache Regularisierung (zieht die Faktoren zu 1): hält das System
+    // lösbar, auch für Bilder ohne messbare Überlappung
+    for i in 0..n {
+        a[i][i] += 1e-3;
+        b[i] += 1e-3;
+    }
+    for (i, j, _) in fits {
+        let Some((ii, jj, cnt)) = overlap(*i, *j) else {
+            continue;
+        };
+        let (ii, jj) = (ii * 255.0, jj * 255.0);
+        a[*i][*i] += cnt * (an * ii * ii + bg);
+        a[*j][*j] += cnt * (an * jj * jj + bg);
+        a[*i][*j] -= cnt * an * ii * jj;
+        a[*j][*i] -= cnt * an * ii * jj;
+        b[*i] += cnt * bg;
+        b[*j] += cnt * bg;
+    }
+    if let Some(g) = align::solve(a, b) {
+        for (cam, g) in cams.iter_mut().zip(g) {
+            cam.gain = g.clamp(0.25, 4.0) as f32;
+        }
+    }
+    log::info!(
+        "Panorama: Helligkeitsfaktoren {:?}",
+        cams.iter().map(|c| c.gain).collect::<Vec<_>>()
+    );
+}
+
 /// Bildpaare, für die sich die volle Ausrichtung lohnt. Bis 10 Fotos alle;
 /// darüber je Foto die 6 Partner mit den meisten übereinstimmenden Merkmalen
 /// in einer groben Vorauswahl (gleichmäßig verteilte Teilmenge der Punkte).
@@ -762,7 +792,8 @@ fn candidate_pairs(feats: &[Features], cancel: &AtomicBool) -> Vec<(usize, usize
     let subsets: Vec<Vec<align::Keypoint>> = feats
         .iter()
         .map(|f| {
-            // Punkte liegen nach Rasterzellen geordnet: jede k-te Ecke deckt das ganze Bild ab
+            // Punkte sind nach Stärke sortiert, je Rasterzelle aber höchstens 4
+            // (`detect`) – auch jede k-te liegt daher über das ganze Bild verteilt
             let step = (f.points.len() / SUBSET).max(1);
             f.points.iter().step_by(step).copied().collect()
         })
@@ -791,10 +822,6 @@ fn candidate_pairs(feats: &[Features], cancel: &AtomicBool) -> Vec<(usize, usize
         }
     }
     keep.into_iter().collect()
-}
-
-fn luma(p: [f32; 3]) -> f32 {
-    0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]
 }
 
 /// Zuschneiden ohne zweiten Puffer: Zeilen nach vorn schieben, Rest abschneiden.
