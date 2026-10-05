@@ -11,9 +11,11 @@
 use crate::error::{Error, Result};
 use crate::onnx_writer::{Attr, Graph, Initializer, Io, Node};
 use crate::torch_legacy::{self, Tensor as TorchTensor};
+use lumenkorn_develop::color::{self, luma};
 use lumenkorn_develop::tr;
 use ort::session::Session;
 use ort::value::Tensor;
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
@@ -245,7 +247,7 @@ impl Denoiser {
         let gain = encoding_gain(img.data);
         let enc: Vec<[f32; 3]> = img
             .data
-            .iter()
+            .par_iter()
             .map(|p| p.map(|v| encode(v * gain)))
             .collect();
 
@@ -278,7 +280,7 @@ impl Denoiser {
             progress(done.get(), total);
         };
         progress(0, total);
-        let full = self.run_tiled(
+        let mut full = self.run_tiled(
             &enc,
             w,
             h,
@@ -286,35 +288,49 @@ impl Denoiser {
             &step,
             cancel,
         )?;
+        // Speicher: `enc` (12 B/px) wird nicht mehr gebraucht – die Prüfung auf
+        // den Kodierbereich unten rechnet aus dem Original nach.
+        drop(enc);
         let chroma_sigma =
             |y: f32| (sigma_at(&coarse, y) * strength * CHROMA_BOOST).min(75.0 / 255.0);
         let half_out = self.run_tiled(&half, hw, hh, &chroma_sigma, &step, cancel)?;
+        drop(half);
 
         // Zusammensetzen: Helligkeit aus der vollen Auflösung, Farbe aus der
         // halben (hochskaliert) plus deren feine Farbdetails aus der vollen.
-        let half_full = upsample2(&half_out, hw, hh, w, h);
-        let full_low = upsample2(&downsample2(&full, w, h), hw, hh, w, h);
-        let mut out = vec![[0f32; 3]; w * h];
-        for (i, o) in out.iter_mut().enumerate() {
-            let f = full[i];
-            let y = luma(f);
-            let c = |p: [f32; 3]| [p[0] - luma(p), p[2] - luma(p)];
-            let (cf, cl, ch2) = (c(f), c(full_low[i]), c(half_full[i]));
-            // Feine Farbdetails nur gedämpft übernehmen (dort steckt Restrauschen)
-            let cr = ch2[0] + 0.5 * (cf[0] - cl[0]);
-            let cb = ch2[1] + 0.5 * (cf[1] - cl[1]);
-            let rgb = from_ycc(y, cr, cb);
-            let orig = img.data[i];
-            for k in 0..3 {
-                o[k] = if enc[i][k] >= 0.999 {
-                    // Über dem Kodierbereich: Original behalten
-                    orig[k]
-                } else {
-                    decode(rgb[k].clamp(0.0, 1.0)) / gain
-                };
+        // Die hochskalierten Bilder werden nicht als Vollbild angelegt (je
+        // 12 B/px), sondern pro Pixel bilinear aus der halben Auflösung gelesen;
+        // das Ergebnis landet direkt in `full`.
+        let full_half = downsample2(&full, w, h);
+        let c = |p: [f32; 3]| [p[0] - luma(p), p[2] - luma(p)];
+        full.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+            let vy = UpAxis::new(y, hh);
+            for (x, o) in row.iter_mut().enumerate() {
+                let vx = UpAxis::new(x, hw);
+                let i = y * w + x;
+                let f = *o;
+                let yl = luma(f);
+                let (cf, cl, ch2) = (
+                    c(f),
+                    c(sample_up(&full_half, hw, vx, vy)),
+                    c(sample_up(&half_out, hw, vx, vy)),
+                );
+                // Feine Farbdetails nur gedämpft übernehmen (dort steckt Restrauschen)
+                let cr = ch2[0] + 0.5 * (cf[0] - cl[0]);
+                let cb = ch2[1] + 0.5 * (cf[1] - cl[1]);
+                let rgb = from_ycc(yl, cr, cb);
+                let orig = img.data[i];
+                for k in 0..3 {
+                    o[k] = if encode(orig[k] * gain) >= 0.999 {
+                        // Über dem Kodierbereich: Original behalten
+                        orig[k]
+                    } else {
+                        srgb_decode(rgb[k].clamp(0.0, 1.0)) / gain
+                    };
+                }
             }
-        }
-        Ok(out)
+        });
+        Ok(full)
     }
 
     /// Ein Durchgang des Netzes über ein kodiertes Bild, in Kacheln mit
@@ -383,11 +399,6 @@ impl Denoiser {
 /// Wie viel kräftiger das Farbrauschen behandelt wird als die Helligkeit.
 const CHROMA_BOOST: f32 = 2.0;
 
-#[inline]
-fn luma(p: [f32; 3]) -> f32 {
-    0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2]
-}
-
 /// Aus Helligkeit und den Differenzen R−Y, B−Y zurück nach RGB.
 #[inline]
 fn from_ycc(y: f32, cr: f32, cb: f32) -> [f32; 3] {
@@ -397,12 +408,12 @@ fn from_ycc(y: f32, cr: f32, cb: f32) -> [f32; 3] {
     [r, g, b]
 }
 
-/// 2×2-Mittel (halbe Auflösung, aufgerundet).
+/// 2×2-Mittel (halbe Auflösung, aufgerundet), zeilenweise parallel.
 fn downsample2(img: &[[f32; 3]], w: usize, h: usize) -> Vec<[f32; 3]> {
     let (hw, hh) = (w.div_ceil(2), h.div_ceil(2));
     let mut out = vec![[0f32; 3]; hw * hh];
-    for y in 0..hh {
-        for x in 0..hw {
+    out.par_chunks_mut(hw).enumerate().for_each(|(y, row)| {
+        for (x, o) in row.iter_mut().enumerate() {
             let mut s = [0f32; 3];
             let mut n = 0.0;
             for dy in 0..2 {
@@ -417,35 +428,46 @@ fn downsample2(img: &[[f32; 3]], w: usize, h: usize) -> Vec<[f32; 3]> {
                     }
                 }
             }
-            out[y * hw + x] = s.map(|v| v / n);
+            *o = s.map(|v| v / n);
         }
-    }
+    });
+    debug_assert_eq!(out.len(), hw * hh);
     out
 }
 
-/// Bilinear von halber auf volle Auflösung (Pixelmitten übereinander).
-fn upsample2(img: &[[f32; 3]], hw: usize, hh: usize, w: usize, h: usize) -> Vec<[f32; 3]> {
-    let mut out = vec![[0f32; 3]; w * h];
-    for y in 0..h {
-        let fy = ((y as f32 + 0.5) / 2.0 - 0.5).clamp(0.0, (hh - 1) as f32);
-        let y0 = fy as usize;
-        let y1 = (y0 + 1).min(hh - 1);
-        let ty = fy - y0 as f32;
-        for x in 0..w {
-            let fx = ((x as f32 + 0.5) / 2.0 - 0.5).clamp(0.0, (hw - 1) as f32);
-            let x0 = fx as usize;
-            let x1 = (x0 + 1).min(hw - 1);
-            let tx = fx - x0 as f32;
-            let (a, b) = (img[y0 * hw + x0], img[y0 * hw + x1]);
-            let (c, d) = (img[y1 * hw + x0], img[y1 * hw + x1]);
-            out[y * w + x] = [0, 1, 2].map(|k| {
-                let top = a[k] + (b[k] - a[k]) * tx;
-                let bot = c[k] + (d[k] - c[k]) * tx;
-                top + (bot - top) * ty
-            });
+/// Position einer vollen Koordinate im halb aufgelösten Bild
+/// (Pixelmitten übereinander): Nachbarn `i0`, `i1` und Gewicht `t`.
+#[derive(Clone, Copy)]
+struct UpAxis {
+    i0: usize,
+    i1: usize,
+    t: f32,
+}
+
+impl UpAxis {
+    #[inline]
+    fn new(v: usize, half_len: usize) -> Self {
+        let f = ((v as f32 + 0.5) / 2.0 - 0.5).clamp(0.0, (half_len - 1) as f32);
+        let i0 = f as usize;
+        Self {
+            i0,
+            i1: (i0 + 1).min(half_len - 1),
+            t: f - i0 as f32,
         }
     }
-    out
+}
+
+/// Bilinear hochskalierter Wert an einer vollen Position – rechnet genau wie
+/// ein vorab hochskaliertes Vollbild, ohne es anzulegen.
+#[inline]
+fn sample_up(img: &[[f32; 3]], hw: usize, x: UpAxis, y: UpAxis) -> [f32; 3] {
+    let (a, b) = (img[y.i0 * hw + x.i0], img[y.i0 * hw + x.i1]);
+    let (c, d) = (img[y.i1 * hw + x.i0], img[y.i1 * hw + x.i1]);
+    [0, 1, 2].map(|k| {
+        let top = a[k] + (b[k] - a[k]) * x.t;
+        let bot = c[k] + (d[k] - c[k]) * x.t;
+        top + (bot - top) * y.t
+    })
 }
 
 /// Reglerwert „Stärke“ (0–100) → Faktor auf die geschätzte Rauschstärke:
@@ -470,23 +492,24 @@ fn encoding_gain(data: &[[f32; 3]]) -> f32 {
     1.0 / v.max(1.0)
 }
 
+/// sRGB-Kodierung über die Tabelle aus `lumenkorn_develop::color`
+/// (≈ 30× schneller als `powf`, Abweichung < 3e-4 – weit unter einer
+/// 8-Bit-Stufe, auf die das Netz trainiert ist).
 #[inline]
 fn encode(v: f32) -> f32 {
-    let v = v.clamp(0.0, 1.0);
-    if v <= 0.0031308 {
-        v * 12.92
-    } else {
-        1.055 * v.powf(1.0 / 2.4) - 0.055
-    }
+    color::linear_to_srgb(v)
 }
 
+/// sRGB-Dekodierung (0…1) per linearer Interpolation in der 16-Bit-Tabelle
+/// aus `lumenkorn_develop::color`. Bei 65 536 Stützstellen liegt der
+/// Interpolationsfehler unter 1e-9 – praktisch exakt, aber ohne `powf`.
 #[inline]
-fn decode(v: f32) -> f32 {
-    if v <= 0.04045 {
-        v / 12.92
-    } else {
-        ((v + 0.055) / 1.055).powf(2.4)
-    }
+pub(crate) fn srgb_decode(v: f32) -> f32 {
+    let lut = color::srgb_decode_lut_u16();
+    let f = v.clamp(0.0, 1.0) * 65535.0;
+    let i = (f as usize).min(65534);
+    let t = f - i as f32;
+    lut[i] + (lut[i + 1] - lut[i]) * t
 }
 
 const BINS: usize = 8;
@@ -645,11 +668,90 @@ mod tests {
         }
     }
 
+    /// Frühere Variante: hochskaliertes Vollbild (Referenz für `sample_up`).
+    fn upsample2_reference(
+        img: &[[f32; 3]],
+        hw: usize,
+        hh: usize,
+        w: usize,
+        h: usize,
+    ) -> Vec<[f32; 3]> {
+        let mut out = vec![[0f32; 3]; w * h];
+        for y in 0..h {
+            let fy = ((y as f32 + 0.5) / 2.0 - 0.5).clamp(0.0, (hh - 1) as f32);
+            let y0 = fy as usize;
+            let y1 = (y0 + 1).min(hh - 1);
+            let ty = fy - y0 as f32;
+            for x in 0..w {
+                let fx = ((x as f32 + 0.5) / 2.0 - 0.5).clamp(0.0, (hw - 1) as f32);
+                let x0 = fx as usize;
+                let x1 = (x0 + 1).min(hw - 1);
+                let tx = fx - x0 as f32;
+                let (a, b) = (img[y0 * hw + x0], img[y0 * hw + x1]);
+                let (c, d) = (img[y1 * hw + x0], img[y1 * hw + x1]);
+                out[y * w + x] = [0, 1, 2].map(|k| {
+                    let top = a[k] + (b[k] - a[k]) * tx;
+                    let bot = c[k] + (d[k] - c[k]) * tx;
+                    top + (bot - top) * ty
+                });
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn sample_up_matches_full_upsample() {
+        // ungerade und gerade Größen, inkl. 1 Pixel breit/hoch
+        let mut s = 5u64;
+        for (w, h) in [(7usize, 5usize), (8, 6), (1, 9), (9, 1), (33, 17)] {
+            let (hw, hh) = (w.div_ceil(2), h.div_ceil(2));
+            let half: Vec<[f32; 3]> = (0..hw * hh)
+                .map(|_| {
+                    [0, 1, 2].map(|_| {
+                        s = s.wrapping_mul(6364136223846793005).wrapping_add(1);
+                        (s >> 40) as f32 / 16_777_216.0
+                    })
+                })
+                .collect();
+            let reference = upsample2_reference(&half, hw, hh, w, h);
+            for y in 0..h {
+                for x in 0..w {
+                    let v = sample_up(&half, hw, UpAxis::new(x, hw), UpAxis::new(y, hh));
+                    assert_eq!(v, reference[y * w + x], "{w}×{h} bei ({x},{y})");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn transfer_matches_powf() {
+        // Tabellen statt powf: Abweichung weit unter einer 8-Bit-Stufe
+        let enc = |v: f32| {
+            if v <= 0.0031308 {
+                v * 12.92
+            } else {
+                1.055 * v.powf(1.0 / 2.4) - 0.055
+            }
+        };
+        let dec = |v: f32| {
+            if v <= 0.04045 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        for i in 0..=100_000 {
+            let v = i as f32 / 100_000.0;
+            assert!((encode(v) - enc(v)).abs() < 3e-4, "encode {v}");
+            assert!((srgb_decode(v) - dec(v)).abs() < 1e-6, "decode {v}");
+        }
+    }
+
     #[test]
     fn transfer_roundtrip() {
         for i in 0..=100 {
             let v = i as f32 / 100.0;
-            assert!((decode(encode(v)) - v).abs() < 1e-4);
+            assert!((srgb_decode(encode(v)) - v).abs() < 1e-4);
         }
     }
 }

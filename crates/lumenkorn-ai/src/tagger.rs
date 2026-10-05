@@ -1,9 +1,13 @@
 //! Zero-Shot-Verschlagwortung: vergleicht ein Bild-Embedding mit den
 //! vorberechneten Text-Embeddings aller Konzepte.
 
-use crate::clip::{Clip, dot};
+use crate::clip::{Clip, dot, mean_normalized};
 use crate::error::Result;
 use crate::vocab::{Group, TEMPLATES};
+
+/// Texte je Lauf des Textmodells beim Start (77 Token × 64 – klein genug
+/// für jeden Rechner, groß genug, dass der Aufwand pro Lauf kaum zählt).
+const TEXT_BATCH: usize = 64;
 
 /// CLIP-Temperatur: Kosinus-Ähnlichkeiten × 100 ergeben die Logits.
 const LOGIT_SCALE: f32 = 100.0;
@@ -27,25 +31,32 @@ pub struct Tagger {
 }
 
 impl Tagger {
-    /// Berechnet die Text-Embeddings des Vokabulars (einmal beim Start, ~1 s).
+    /// Berechnet die Text-Embeddings des Vokabulars (einmal beim Start).
+    /// Alle Formulierungen aller Konzepte laufen in großen Stapeln durchs
+    /// Textmodell statt je Konzept einzeln (80 Läufe mit je 3 Texten) – der
+    /// feste Aufwand pro Lauf fällt so nur wenige Male an.
     pub fn new(clip: &Clip, groups: Vec<Group>) -> Result<Self> {
-        let prompts = |phrase: &str| {
-            TEMPLATES
-                .iter()
-                .map(|t| t.replace("{}", phrase))
-                .collect::<Vec<_>>()
-        };
-        let mut encoded = Vec::new();
-        for g in groups {
-            let mut embeddings = vec![clip.embed_concept(&prompts(g.neutral))?];
-            for c in &g.concepts {
-                embeddings.push(clip.embed_concept(&prompts(c.phrase))?);
+        let per = TEMPLATES.len();
+        let mut texts: Vec<String> = Vec::new();
+        for g in &groups {
+            for phrase in std::iter::once(g.neutral).chain(g.concepts.iter().map(|c| c.phrase)) {
+                texts.extend(TEMPLATES.iter().map(|t| t.replace("{}", phrase)));
             }
-            encoded.push(EncodedGroup {
-                group: g,
-                embeddings,
-            });
         }
+        let mut rows = Vec::with_capacity(texts.len());
+        for batch in texts.chunks(TEXT_BATCH) {
+            let refs: Vec<&str> = batch.iter().map(String::as_str).collect();
+            rows.extend(clip.embed_texts(&refs)?);
+        }
+        // Reihenfolge wie oben: je Gruppe neutral, dann die Konzepte
+        let mut concepts = rows.chunks(per).map(mean_normalized);
+        let encoded = groups
+            .into_iter()
+            .map(|group| EncodedGroup {
+                embeddings: concepts.by_ref().take(group.concepts.len() + 1).collect(),
+                group,
+            })
+            .collect();
         Ok(Self { groups: encoded })
     }
 

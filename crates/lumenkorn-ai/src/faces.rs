@@ -356,7 +356,8 @@ pub fn normalize(v: &mut [f32]) {
 
 /// Kosinus-Ähnlichkeit zweier normierter Vektoren.
 pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
-    a.iter().zip(b).map(|(x, y)| x * y).sum()
+    // vektorisierbares Skalarprodukt aus clip (Gruppierung vergleicht viele Paare)
+    crate::clip::dot(a, b)
 }
 
 /// Quadratischer Ausschnitt um das Gesicht (mit Rand) für Vorschaubilder.

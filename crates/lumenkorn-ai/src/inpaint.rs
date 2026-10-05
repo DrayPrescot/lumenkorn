@@ -16,6 +16,7 @@ use lumenkorn_develop::{i18n::tr_s, tr};
 use ort::session::Session;
 use ort::value::Tensor;
 use rayon::prelude::*;
+use std::borrow::Cow;
 use std::path::Path;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -29,21 +30,14 @@ pub struct Inpainter {
     session: Mutex<Session>,
 }
 
+/// sRGB-Kodierung/-Dekodierung über die Tabellen aus `lumenkorn_develop::color`
+/// (statt `powf` je Pixel; Abweichung < 3e-4 bzw. < 1e-6).
 fn srgb(v: f32) -> f32 {
-    let v = v.clamp(0.0, 1.0);
-    if v <= 0.0031308 {
-        v * 12.92
-    } else {
-        1.055 * v.powf(1.0 / 2.4) - 0.055
-    }
+    lumenkorn_develop::color::linear_to_srgb(v)
 }
 
 fn linear(v: f32) -> f32 {
-    if v <= 0.04045 {
-        v / 12.92
-    } else {
-        ((v + 0.055) / 1.055).powf(2.4)
-    }
+    crate::denoise::srgb_decode(v)
 }
 
 impl Inpainter {
@@ -109,7 +103,11 @@ impl Inpainter {
         let feather = (long / 800).max(2);
         let regions = regions(&dil, w, h);
 
-        let mut work = img.clone();
+        // Spätere Bereiche sollen frühere Reparaturen sehen – dafür braucht es
+        // eine Arbeitskopie. Bei nur einem Bereich (häufigster Fall) spart das
+        // Ausleihen eine Kopie des ganzen Bildes (12 B/px); sonst entsteht sie
+        // beim ersten Zurückschreiben.
+        let mut work = Cow::Borrowed(img);
         let mut parts = Vec::new();
         for (k, (x0, y0, x1, y1)) in regions.iter().copied().enumerate() {
             if cancel.load(Ordering::Relaxed) {
@@ -198,14 +196,17 @@ impl Inpainter {
                 .collect();
             let alpha_part: Vec<u8> = soft.iter().map(|a| (a * 255.0).round() as u8).collect();
             // Ins Arbeitsbild übernehmen – spätere Bereiche sehen die Reparatur
-            for j in 0..ph {
-                for i in 0..pw {
-                    let a = alpha_part[j * pw + i] as f32 / 255.0;
-                    if a > 0.0 {
-                        let o = &mut work.data[(py0 + j) * w + px0 + i];
-                        let c = rgb_part[j * pw + i];
-                        for ch in 0..3 {
-                            o[ch] += (c[ch] - o[ch]) * a;
+            if k + 1 < regions.len() {
+                let data = &mut work.to_mut().data;
+                for j in 0..ph {
+                    for i in 0..pw {
+                        let a = alpha_part[j * pw + i] as f32 / 255.0;
+                        if a > 0.0 {
+                            let o = &mut data[(py0 + j) * w + px0 + i];
+                            let c = rgb_part[j * pw + i];
+                            for ch in 0..3 {
+                                o[ch] += (c[ch] - o[ch]) * a;
+                            }
                         }
                     }
                 }
@@ -252,14 +253,29 @@ fn dilate(m: &[bool], w: usize, h: usize, r: usize) -> Vec<bool> {
             out
         })
         .collect();
+    // senkrecht genauso, aber zeilenweise über alle Spalten zugleich (letzte
+    // gesetzte Zeile je Spalte) – O(n) statt O(n·(2r+1)), Zugriff zeilenweise.
     let mut out = vec![false; w * h];
-    out.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
-        let y0 = y.saturating_sub(r);
-        let y1 = (y + r + 1).min(h);
-        for (x, o) in row.iter_mut().enumerate() {
-            *o = (y0..y1).any(|yy| horiz[yy * w + x]);
+    let mut last = vec![usize::MAX; w];
+    for y in 0..h {
+        let (src, dst) = (&horiz[y * w..(y + 1) * w], &mut out[y * w..(y + 1) * w]);
+        for x in 0..w {
+            if src[x] {
+                last[x] = y;
+            }
+            dst[x] = last[x] != usize::MAX && y - last[x] <= r;
         }
-    });
+    }
+    last.fill(usize::MAX);
+    for y in (0..h).rev() {
+        let (src, dst) = (&horiz[y * w..(y + 1) * w], &mut out[y * w..(y + 1) * w]);
+        for x in 0..w {
+            if src[x] {
+                last[x] = y;
+            }
+            dst[x] |= last[x] != usize::MAX && last[x] - y <= r;
+        }
+    }
     out
 }
 
@@ -326,6 +342,10 @@ fn regions(m: &[bool], w: usize, h: usize) -> Vec<(usize, usize, usize, usize)> 
 }
 
 /// Weiche Kante: Kastenfilter (zwei Durchläufe) der Auswahl im Teilbereich.
+/// Gerechnet wird mit ganzzahligen gleitenden Summen (0/1-Maske → Zählwerte,
+/// exakt) und erst am Ende durch n⁴ geteilt: O(Fläche) statt O(Fläche·(2r+1))
+/// je Durchlauf, zeilenweise parallel. Gleiches Ergebnis wie direktes Summieren
+/// in f32, nur ohne dessen Rundung.
 fn blur_region(
     m: &[bool],
     w: usize,
@@ -335,38 +355,66 @@ fn blur_region(
     ph: usize,
     r: usize,
 ) -> Vec<f32> {
-    let mut a: Vec<f32> = (0..pw * ph)
-        .map(|i| m[(y0 + i / pw) * w + x0 + i % pw] as u8 as f32)
+    // u64: Zählwerte erreichen n⁴ (bei r = 125 schon ≈ 4·10⁹)
+    let mut a: Vec<u64> = (0..pw * ph)
+        .map(|i| m[(y0 + i / pw) * w + x0 + i % pw] as u64)
         .collect();
-    let n = (2 * r + 1) as f32;
+    // Kastensumme entlang einer Zeile, Rand = 0
+    let box_sum = |src: &[u64], dst: &mut [u64]| {
+        let len = src.len();
+        let mut s: u64 = src[..(r + 1).min(len)].iter().sum();
+        for i in 0..len {
+            dst[i] = s;
+            if i + r + 1 < len {
+                s += src[i + r + 1];
+            }
+            if i >= r {
+                s -= src[i - r];
+            }
+        }
+    };
+    let mut t = vec![0u64; pw * ph];
     for _ in 0..2 {
-        let mut t = vec![0f32; pw * ph];
-        for y in 0..ph {
-            for x in 0..pw {
-                let mut s = 0.0;
-                for k in x.saturating_sub(r)..(x + r + 1).min(pw) {
-                    s += a[y * pw + k];
-                }
-                t[y * pw + x] = s / n;
+        // waagerecht
+        t.par_chunks_mut(pw)
+            .zip(a.par_chunks(pw))
+            .for_each(|(dst, src)| box_sum(src, dst));
+        // senkrecht: zeilenweise über alle Spalten (zugriffsfreundlich)
+        let mut col = vec![0u64; pw];
+        for k in 0..(r + 1).min(ph) {
+            for (c, v) in col.iter_mut().zip(&t[k * pw..(k + 1) * pw]) {
+                *c += v;
             }
         }
         for y in 0..ph {
-            for x in 0..pw {
-                let mut s = 0.0;
-                for k in y.saturating_sub(r)..(y + r + 1).min(ph) {
-                    s += t[k * pw + x];
+            a[y * pw..(y + 1) * pw].copy_from_slice(&col);
+            if y + r + 1 < ph {
+                let add = &t[(y + r + 1) * pw..(y + r + 2) * pw];
+                for (c, v) in col.iter_mut().zip(add) {
+                    *c += v;
                 }
-                a[y * pw + x] = s / n;
+            }
+            if y >= r {
+                let sub = &t[(y - r) * pw..(y - r + 1) * pw];
+                for (c, v) in col.iter_mut().zip(sub) {
+                    *c -= v;
+                }
             }
         }
     }
-    // Innerhalb der ursprünglichen Auswahl voll decken
-    for (i, v) in a.iter_mut().enumerate() {
-        if m[(y0 + i / pw) * w + x0 + i % pw] {
-            *v = (*v * 2.0).min(1.0);
-        }
-    }
-    a
+    let n4 = ((2 * r + 1) as f64).powi(4);
+    a.par_iter()
+        .enumerate()
+        .map(|(i, &v)| {
+            let v = (v as f64 / n4) as f32;
+            // Innerhalb der ursprünglichen Auswahl voll decken
+            if m[(y0 + i / pw) * w + x0 + i % pw] {
+                (v * 2.0).min(1.0)
+            } else {
+                v
+            }
+        })
+        .collect()
 }
 
 /// Größenänderung: Flächenmittel beim Verkleinern, bilinear beim Vergrößern.
@@ -444,5 +492,96 @@ mod tests {
         let soft = blur_region(&d, w, 10, 10, 40, 30, 2);
         assert_eq!(soft[(25 - 10) * 40 + (30 - 10)], 1.0);
         assert!(soft[0] < 0.01);
+    }
+
+    /// Frühere Fassungen (direktes Summieren) als Referenz
+    fn dilate_reference(m: &[bool], w: usize, h: usize, r: usize) -> Vec<bool> {
+        let mut out = vec![false; w * h];
+        for y in 0..h {
+            for x in 0..w {
+                let (ya, yb) = (y.saturating_sub(r), (y + r + 1).min(h));
+                let (xa, xb) = (x.saturating_sub(r), (x + r + 1).min(w));
+                out[y * w + x] = (ya..yb).any(|yy| (xa..xb).any(|xx| m[yy * w + xx]));
+            }
+        }
+        out
+    }
+
+    fn blur_reference(
+        m: &[bool],
+        w: usize,
+        x0: usize,
+        y0: usize,
+        pw: usize,
+        ph: usize,
+        r: usize,
+    ) -> Vec<f32> {
+        let mut a: Vec<f32> = (0..pw * ph)
+            .map(|i| m[(y0 + i / pw) * w + x0 + i % pw] as u8 as f32)
+            .collect();
+        let n = (2 * r + 1) as f32;
+        for _ in 0..2 {
+            let mut t = vec![0f32; pw * ph];
+            for y in 0..ph {
+                for x in 0..pw {
+                    let mut s = 0.0;
+                    for k in x.saturating_sub(r)..(x + r + 1).min(pw) {
+                        s += a[y * pw + k];
+                    }
+                    t[y * pw + x] = s / n;
+                }
+            }
+            for y in 0..ph {
+                for x in 0..pw {
+                    let mut s = 0.0;
+                    for k in y.saturating_sub(r)..(y + r + 1).min(ph) {
+                        s += t[k * pw + x];
+                    }
+                    a[y * pw + x] = s / n;
+                }
+            }
+        }
+        for (i, v) in a.iter_mut().enumerate() {
+            if m[(y0 + i / pw) * w + x0 + i % pw] {
+                *v = (*v * 2.0).min(1.0);
+            }
+        }
+        a
+    }
+
+    #[test]
+    fn fast_filters_match_reference() {
+        let (w, h) = (157, 93);
+        let mut s = 3u64;
+        let mut rnd = || {
+            s = s.wrapping_mul(6364136223846793005).wrapping_add(1);
+            (s >> 33) as usize
+        };
+        // verstreute Punkte plus ein paar Rechtecke
+        let mut m = vec![false; w * h];
+        for _ in 0..40 {
+            m[rnd() % (w * h)] = true;
+        }
+        for _ in 0..4 {
+            let (x, y) = (rnd() % (w - 20), rnd() % (h - 20));
+            for yy in y..y + rnd() % 20 {
+                for xx in x..x + rnd() % 20 {
+                    m[yy * w + xx] = true;
+                }
+            }
+        }
+        for r in [0, 1, 3, 7, 60] {
+            assert_eq!(dilate(&m, w, h, r), dilate_reference(&m, w, h, r), "r {r}");
+        }
+        // Teilbereiche inkl. Rand des Bildes, Radius auch größer als der Bereich
+        for (x0, y0, pw, ph, r) in [(0, 0, w, h, 2), (10, 5, 60, 40, 4), (100, 50, 57, 43, 30)] {
+            let fast = blur_region(&m, w, x0, y0, pw, ph, r);
+            let slow = blur_reference(&m, w, x0, y0, pw, ph, r);
+            for (a, b) in fast.iter().zip(&slow) {
+                assert!((a - b).abs() < 1e-5, "{a} vs {b}");
+                // gespeicherte 8-Bit-Deckkraft bleibt gleich
+                assert!(((a * 255.0).round() - (b * 255.0).round()).abs() <= 1.0);
+            }
+        }
     }
 }

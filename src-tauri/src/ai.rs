@@ -390,6 +390,16 @@ fn ensure_loaded(state: &AppState) -> Result<Loaded, Error> {
     }
 }
 
+/// Führt `f` mit dem Suchindex aus; baut ihn bei der ersten Suche auf.
+///
+/// Der Aufbau läuft unter der Schreibsperre des Index: Zwei gleichzeitige
+/// Suchen bauen ihn so nur einmal (die zweite wartet und nimmt das Ergebnis),
+/// und Änderungen während des Aufbaus gehen nicht verloren – `upsert` und
+/// `forget_in_index` warten auf die Sperre und wirken danach auf den fertigen
+/// Index (was sie vorher in den Katalog geschrieben haben, liest der Aufbau
+/// ohnehin schon mit). Die Katalogsperre gilt nur fürs Lesen der Zeilen, das
+/// Dekodieren der ~100 MB Vektoren läuft ohne sie. Reihenfolge der Sperren:
+/// Index → Katalog; umgekehrt hält niemand den Katalog, während er den Index sperrt.
 fn with_index<T>(state: &AppState, f: impl FnOnce(&EmbeddingIndex) -> T) -> Result<T, Error> {
     {
         let guard = state.ai.index.read().unwrap();
@@ -397,14 +407,20 @@ fn with_index<T>(state: &AppState, f: impl FnOnce(&EmbeddingIndex) -> T) -> Resu
             return Ok(f(idx));
         }
     }
-    let rows = state.catalog.lock().unwrap().embeddings(MODEL_KEY)?;
-    let mut idx = EmbeddingIndex::default();
-    for (id, bytes) in rows {
-        idx.upsert(id, &from_bytes(&bytes));
-    }
-    let out = f(&idx);
-    *state.ai.index.write().unwrap() = Some(idx);
-    Ok(out)
+    let mut guard = state.ai.index.write().unwrap();
+    // Hat eine parallele Suche ihn inzwischen gebaut, nur noch benutzen
+    let idx = match guard.take() {
+        Some(idx) => idx,
+        None => {
+            let rows = state.catalog.lock().unwrap().embeddings(MODEL_KEY)?;
+            let mut idx = EmbeddingIndex::default();
+            for (id, bytes) in rows {
+                idx.upsert(id, &from_bytes(&bytes));
+            }
+            idx
+        }
+    };
+    Ok(f(guard.insert(idx)))
 }
 
 #[derive(Serialize, Clone)]
