@@ -1,6 +1,7 @@
 //! Tauri-Shell: verbindet den plattformunabhängigen Kern mit der Oberfläche.
 
 mod ai;
+mod busy;
 mod commands;
 mod cull;
 mod develop;

@@ -81,7 +81,8 @@ pub async fn repair_compute(
     let app2 = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let state = app2.state::<AppState>();
-        if state.repair.busy.swap(true, Ordering::SeqCst) {
+        // Gibt `busy` auch nach Fehlern und Panics in `compute` wieder frei
+        let Some(_busy) = crate::busy::claim(&state.repair.busy) else {
             return Err(Error::Invalid(
                 tr_s(
                     "Es läuft bereits eine Reparatur.",
@@ -89,11 +90,9 @@ pub async fn repair_compute(
                 )
                 .into(),
             ));
-        }
+        };
         state.repair.cancel.store(false, Ordering::SeqCst);
-        let res = compute(&app2, &state, image_id, shapes, denoise);
-        state.repair.busy.store(false, Ordering::SeqCst);
-        res
+        compute(&app2, &state, image_id, shapes, denoise)
     })
     .await
     .map_err(err)?

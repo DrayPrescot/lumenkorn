@@ -12,10 +12,11 @@ use lumenkorn_ai::segment::{self, Sam, SamEmbedding, SubjectModel};
 use lumenkorn_ai::{Clip, EmbeddingIndex, Tagger, runtime, vocab};
 use lumenkorn_core::maskstore::MaskFiles;
 use lumenkorn_core::thumbs::Variant;
-use lumenkorn_core::{Error, ImageSummary, Scope};
+use lumenkorn_core::{Error, ImageQuery, ImageSummary, Scope};
 use lumenkorn_develop::i18n::tr_s;
 use lumenkorn_develop::{DevelopParams, PromptPoint, Source, tr};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::Path as StdPath;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -592,6 +593,22 @@ struct DownloadEvent {
     error: Option<String>,
 }
 
+/// Entfernt gelöschte Fotos aus dem Suchindex der semantischen Suche (`None`:
+/// Index verwerfen, er wird bei der nächsten Suche neu aufgebaut). Sonst
+/// belegten sie bis zum Neustart Speicher und Plätze unter den Treffern.
+pub(crate) fn forget_in_index(state: &AppState, ids: Option<&[i64]>) {
+    let mut index = state
+        .ai
+        .index
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    match (ids, index.as_mut()) {
+        (Some(ids), Some(idx)) => ids.iter().for_each(|id| idx.remove(*id)),
+        (None, _) => *index = None,
+        (Some(_), None) => {}
+    }
+}
+
 /// Lädt fehlende KI-Komponenten im Hintergrund. Fortschritt per `ai-download`.
 #[tauri::command(async)]
 pub fn ai_download(app: AppHandle, component: Option<Component>) -> Result<(), Error> {
@@ -600,6 +617,18 @@ pub fn ai_download(app: AppHandle, component: Option<Component>) -> Result<(), E
     if state.ai.downloading.swap(true, Ordering::SeqCst) {
         return Ok(());
     }
+    // Setzt `downloading` auch zurück, wenn der Download-Thread panisch endet
+    // oder gar nicht erst startet – sonst blieben Analyse und Gesichter-
+    // erkennung bis zum Neustart blockiert.
+    let done = {
+        let app = app.clone();
+        crate::busy::Defer::new(move || {
+            app.state::<AppState>()
+                .ai
+                .downloading
+                .store(false, Ordering::SeqCst)
+        })
+    };
     state.ai.cancel.store(false, Ordering::SeqCst);
     std::thread::Builder::new()
         .name("lumenkorn-download".into())
@@ -615,9 +644,20 @@ pub fn ai_download(app: AppHandle, component: Option<Component>) -> Result<(), E
                     },
                 );
             };
-            let res =
-                models::download_missing(&state.data_dir, component, &progress, &state.ai.cancel);
-            state.ai.downloading.store(false, Ordering::SeqCst);
+            // Ein Panic im Download soll als Fehler enden, nicht als ewiges „läuft“
+            let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                models::download_missing(&state.data_dir, component, &progress, &state.ai.cancel)
+            }))
+            .unwrap_or_else(|_| {
+                Err(lumenkorn_ai::Error::Download(
+                    tr_s(
+                        "interner Fehler beim Herunterladen",
+                        "internal error while downloading",
+                    )
+                    .into(),
+                ))
+            });
+            drop(done);
             *state.ai.load_error.lock().unwrap() = None;
             let error = match (res, component) {
                 (Ok(()), Component::Clip) => ensure_loaded(&state).err().map(|e| e.to_string()),
@@ -753,9 +793,20 @@ pub async fn semantic_search(
             .embed_texts(&[english.as_str()])
             .map_err(err)?
             .remove(0);
+        // Erst den Bereich (Ordner/Projekt/Person, Mindestbewertung) bestimmen
+        // und nur darin suchen: Sonst füllen Treffer aus dem übrigen Katalog
+        // die 2000 Plätze und setzen `best`, und ein kleiner Ordner findet
+        // nichts. Nebenbei fallen gelöschte oder fehlende Fotos heraus, die
+        // noch im Index stehen.
+        let allowed: HashSet<i64> = {
+            let mut sq = ImageQuery::new(scope.clone());
+            sq.min_rating = min_rating;
+            let cat = state.catalog.lock().unwrap();
+            cat.query_images(&sq)?.into_iter().map(|i| i.id).collect()
+        };
         // Kosinus-Werte von CLIP liegen eng beieinander; relativ zum besten
         // Treffer filtern ist robuster als eine feste Schwelle.
-        let hits = with_index(&state, |idx| idx.search(&q, 2000, -1.0))?;
+        let hits = with_index(&state, |idx| idx.search_in(&q, 2000, -1.0, Some(&allowed)))?;
         let best = hits.first().map(|h| h.1).unwrap_or(0.0);
         let ids: Vec<i64> = hits
             .iter()
@@ -1009,6 +1060,19 @@ pub fn denoise_start(app: AppHandle, id: i64, strength: Option<f32>) -> Result<(
         }
         *running = Some(id);
     }
+    // Gibt `denoising` auch nach einem Panic (oder fehlgeschlagenem
+    // Thread-Start) frei; sonst blieben Entrauschen und das Entladen von
+    // DRUNet bis zum Neustart gesperrt.
+    let finished = {
+        let app = app.clone();
+        crate::busy::Defer::new(move || {
+            *app.state::<AppState>()
+                .ai
+                .denoising
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        })
+    };
     state.ai.denoise_cancel.store(false, Ordering::SeqCst);
     // Reglerwert „Stärke“ (0–100) → Faktor auf die geschätzte Rauschstärke
     let strength = lumenkorn_ai::denoise::strength_factor(strength.unwrap_or(50.0));
@@ -1030,44 +1094,57 @@ pub fn denoise_start(app: AppHandle, id: i64, strength: Option<f32>) -> Result<(
                         },
                     );
                 };
-            let res = (|| -> Result<String, Error> {
-                let d = denoiser(&state)?;
-                let job = state.catalog.lock().unwrap().thumb_job(id)?;
-                let t = std::time::Instant::now();
-                let src = Source::load(
-                    StdPath::new(&job.path),
-                    job.kind == lumenkorn_core::formats::ImageKind::Raw,
-                    job.orientation.map(|o| o as u16),
-                    None,
-                )?;
-                let img = &src.image;
-                let _g = analysis_guard(&state, tr_s("Rauschreduzierung", "Denoise"));
-                let out = d
-                    .denoise(
-                        &lumenkorn_ai::denoise::Rgb {
-                            width: img.width,
-                            height: img.height,
-                            data: &img.data,
-                        },
-                        strength,
-                        &|done, total| emit(done, total, false, None, None),
-                        &state.ai.denoise_cancel,
+            // Ein Panic soll als Fehler gemeldet werden (sonst zeigte die
+            // Oberfläche weiter „läuft“), nicht nur `denoising` freigeben
+            let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                || -> Result<String, Error> {
+                    let d = denoiser(&state)?;
+                    let job = state.catalog.lock().unwrap().thumb_job(id)?;
+                    let t = std::time::Instant::now();
+                    let src = Source::load(
+                        StdPath::new(&job.path),
+                        job.kind == lumenkorn_core::formats::ImageKind::Raw,
+                        job.orientation.map(|o| o as u16),
+                        None,
+                    )?;
+                    let img = &src.image;
+                    let _g = analysis_guard(&state, tr_s("Rauschreduzierung", "Denoise"));
+                    let out = d
+                        .denoise(
+                            &lumenkorn_ai::denoise::Rgb {
+                                width: img.width,
+                                height: img.height,
+                                data: &img.data,
+                            },
+                            strength,
+                            &|done, total| emit(done, total, false, None, None),
+                            &state.ai.denoise_cancel,
+                        )
+                        .map_err(err)?;
+                    let denoise_id = MaskFiles::new_id(id, "dn");
+                    std::fs::create_dir_all(&state.denoised_dir)?;
+                    let path = lumenkorn_develop::denoised::path(&state.denoised_dir, &denoise_id)
+                        .ok_or_else(|| Error::Invalid(tr_s("ungültige ID", "invalid ID").into()))?;
+                    lumenkorn_develop::denoised::write(&path, img.width, img.height, &out)?;
+                    log::info!(
+                        "Bild {id} entrauscht in {:.1?} ({}×{})",
+                        t.elapsed(),
+                        img.width,
+                        img.height
+                    );
+                    Ok(denoise_id)
+                },
+            ))
+            .unwrap_or_else(|_| {
+                Err(Error::Invalid(
+                    tr_s(
+                        "interner Fehler bei der Rauschreduzierung",
+                        "internal error while denoising",
                     )
-                    .map_err(err)?;
-                let denoise_id = MaskFiles::new_id(id, "dn");
-                std::fs::create_dir_all(&state.denoised_dir)?;
-                let path = lumenkorn_develop::denoised::path(&state.denoised_dir, &denoise_id)
-                    .ok_or_else(|| Error::Invalid(tr_s("ungültige ID", "invalid ID").into()))?;
-                lumenkorn_develop::denoised::write(&path, img.width, img.height, &out)?;
-                log::info!(
-                    "Bild {id} entrauscht in {:.1?} ({}×{})",
-                    t.elapsed(),
-                    img.width,
-                    img.height
-                );
-                Ok(denoise_id)
-            })();
-            *state.ai.denoising.lock().unwrap() = None;
+                    .into(),
+                ))
+            });
+            drop(finished);
             match res {
                 Ok(did) => emit(1, 1, true, None, Some(did)),
                 Err(e) => emit(0, 0, true, Some(e.to_string()), None),

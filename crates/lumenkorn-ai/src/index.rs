@@ -3,7 +3,7 @@
 //! spezieller Vektorindex lohnt sich erst bei deutlich größeren Bibliotheken.
 
 use crate::clip::dot;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Default)]
 pub struct EmbeddingIndex {
@@ -68,6 +68,19 @@ impl EmbeddingIndex {
 
     /// Die `limit` ähnlichsten Bilder mit Kosinus ≥ `min_score`, absteigend.
     pub fn search(&self, query: &[f32], limit: usize, min_score: f32) -> Vec<(i64, f32)> {
+        self.search_in(query, limit, min_score, None)
+    }
+
+    /// Wie [`search`](Self::search), aber nur unter den Bildern in `allowed`
+    /// (z. B. aktueller Ordner). Gefiltert wird vor dem Kürzen auf `limit` –
+    /// sonst verdrängen bessere Treffer außerhalb des Bereichs die darin.
+    pub fn search_in(
+        &self,
+        query: &[f32],
+        limit: usize,
+        min_score: f32,
+        allowed: Option<&HashSet<i64>>,
+    ) -> Vec<(i64, f32)> {
         if query.len() != self.dim || self.dim == 0 {
             return vec![];
         }
@@ -75,6 +88,7 @@ impl EmbeddingIndex {
             .ids
             .iter()
             .zip(self.data.chunks_exact(self.dim))
+            .filter(|(id, _)| allowed.is_none_or(|a| a.contains(id)))
             .map(|(id, v)| (*id, dot(query, v)))
             .filter(|(_, s)| *s >= min_score)
             .collect();
@@ -124,5 +138,32 @@ mod tests {
         assert_eq!(idx.len(), 2);
         assert!(idx.search(&[0.6, 0.8], 10, 0.5).iter().all(|h| h.0 != 3));
         assert_eq!(from_bytes(&to_bytes(&[1.5, -2.0])), vec![1.5, -2.0]);
+    }
+
+    #[test]
+    fn search_restricted_to_scope() {
+        // 3000 globale Treffer, die alle besser passen als die beiden im Ordner
+        let mut idx = EmbeddingIndex::new(2);
+        for id in 0..3000 {
+            idx.upsert(id, &[1.0, 0.0]);
+        }
+        idx.upsert(10_001, &[0.6, 0.8]);
+        idx.upsert(10_002, &[0.0, 1.0]);
+        let q = [1.0, 0.0];
+        // Ungefiltert sind die Ordnerbilder nicht unter den besten 2000
+        assert!(idx.search(&q, 2000, -1.0).iter().all(|h| h.0 < 10_000));
+        let folder: HashSet<i64> = [10_001, 10_002, 99_999].into();
+        let hits = idx.search_in(&q, 2000, -1.0, Some(&folder));
+        assert_eq!(
+            hits.iter().map(|h| h.0).collect::<Vec<_>>(),
+            vec![10_001, 10_002]
+        );
+        // Bester Treffer im Bereich, nicht global
+        assert!((hits[0].1 - 0.6).abs() < 1e-6);
+        // Leerer Bereich → nichts
+        assert!(
+            idx.search_in(&q, 10, -1.0, Some(&HashSet::new()))
+                .is_empty()
+        );
     }
 }

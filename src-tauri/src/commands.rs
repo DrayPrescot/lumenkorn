@@ -65,6 +65,8 @@ pub fn remove_root(state: State<AppState>, id: i64) -> CmdResult<()> {
     let cat = state.catalog.lock().unwrap();
     let root = cat.root(id)?;
     cat.remove_root(id)?;
+    drop(cat);
+    crate::ai::forget_in_index(&state, None);
     if let Some(w) = state.watcher.lock().unwrap().as_mut() {
         w.unwatch(Path::new(&root.path));
     }

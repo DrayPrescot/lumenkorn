@@ -490,7 +490,8 @@ pub struct Progress {
 }
 
 /// Lädt alles Fehlende herunter. Bereits vorhandene Dateien werden übersprungen,
-/// abgebrochene Downloads hinterlassen keine halben Dateien.
+/// abgebrochene Downloads hinterlassen keine halben Dateien; nach einem
+/// Verbindungsfehler setzt der nächste Versuch beim vorhandenen Teil fort.
 pub fn download_missing(
     data_dir: &Path,
     component: Component,
@@ -641,44 +642,116 @@ fn install_gpu_runtime(
     res
 }
 
+/// Kommen so lange keine Daten, gilt die Verbindung als hängend. Bewusst kein
+/// Gesamtlimit: Modelle sind bis ~180 MB groß, bei langsamen Leitungen dauert
+/// das legitim deutlich länger als jede feste Frist.
+const STALL_TIMEOUT: Duration = Duration::from_secs(60);
+
 fn download(
     url: &str,
     target: &Path,
     progress: &dyn Fn(u64, Option<u64>),
     cancel: &AtomicBool,
 ) -> Result<()> {
+    download_with(&agent(STALL_TIMEOUT), url, target, progress, cancel)
+}
+
+fn agent(stall: Duration) -> ureq::Agent {
+    use ureq::unversioned::resolver::DefaultResolver;
+    use ureq::unversioned::transport::{Connector, DefaultConnector};
     // Zertifikate des Betriebssystems verwenden – sonst scheitern Downloads
     // hinter Firmen-Proxys oder Virenscannern mit eigenem Stammzertifikat.
     let tls = ureq::tls::TlsConfig::builder()
         .root_certs(ureq::tls::RootCerts::PlatformVerifier)
         .build();
-    let agent: ureq::Agent = ureq::Agent::config_builder()
+    let config = ureq::Agent::config_builder()
         .tls_config(tls)
         .timeout_connect(Some(Duration::from_secs(20)))
-        .timeout_recv_body(Some(Duration::from_secs(600)))
-        .build()
-        .into();
-    let mut resp = agent
-        .get(url)
+        // Statuscodes selbst auswerten: 206/416 gehören zur Fortsetzung.
+        .http_status_as_error(false)
+        .build();
+    // ureq 3 kennt nur Gesamtfristen (`timeout_recv_body` gilt für den ganzen
+    // Body); die Hänger-Erkennung pro Lesevorgang steckt daher im Transport.
+    let connector = DefaultConnector::new().chain(StallConnector { stall });
+    ureq::Agent::with_parts(config, connector, DefaultResolver::default())
+}
+
+/// Lädt nach `target`. Liegt dort schon ein Teil (abgebrochener Versuch),
+/// wird per `Range` fortgesetzt – sofern der Server das sauber bestätigt.
+fn download_with(
+    agent: &ureq::Agent,
+    url: &str,
+    target: &Path,
+    progress: &dyn Fn(u64, Option<u64>),
+    cancel: &AtomicBool,
+) -> Result<()> {
+    let existing = std::fs::metadata(target).map(|m| m.len()).unwrap_or(0);
+    if fetch(agent, url, target, existing, progress, cancel)? {
+        return Ok(());
+    }
+    // Fortsetzung abgelehnt oder unplausibel: Teil verwerfen, neu laden.
+    let _ = std::fs::remove_file(target);
+    if fetch(agent, url, target, 0, progress, cancel)? {
+        Ok(())
+    } else {
+        Err(Error::Download(format!("{url}: HTTP 206")))
+    }
+}
+
+/// `Ok(false)`: Fortsetzung ab `offset` nicht möglich, neu anfangen.
+fn fetch(
+    agent: &ureq::Agent,
+    url: &str,
+    target: &Path,
+    offset: u64,
+    progress: &dyn Fn(u64, Option<u64>),
+    cancel: &AtomicBool,
+) -> Result<bool> {
+    // Keine Kompression: Längen und Byte-Bereiche beziehen sich sonst auf die
+    // komprimierten Daten.
+    let mut req = agent.get(url).header("accept-encoding", "identity");
+    if offset > 0 {
+        req = req.header("range", format!("bytes={offset}-"));
+    }
+    let mut resp = req
         .call()
         .map_err(|e| Error::Download(format!("{url}: {e}")))?;
-    let total = resp
-        .headers()
-        .get("content-length")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.parse::<u64>().ok());
+    let header = |name: &str| {
+        resp.headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+    };
+    let length = header("content-length").and_then(|v| v.trim().parse::<u64>().ok());
+    let plan = resume_plan(
+        offset,
+        resp.status().as_u16(),
+        header("content-range").as_deref(),
+        length,
+    );
+    let (mut out, mut done, total) = match plan {
+        Resume::Fresh { total } => (File::create(target)?, 0, total),
+        Resume::Append { total } => (
+            std::fs::OpenOptions::new().append(true).open(target)?,
+            offset,
+            total,
+        ),
+        Resume::Restart => return Ok(false),
+        Resume::Fail(status) => {
+            return Err(Error::Download(format!("{url}: HTTP {status}")));
+        }
+    };
     let mut reader = resp.body_mut().with_config().limit(u64::MAX).reader();
-    let mut out = File::create(target)?;
     let mut buf = vec![0u8; 256 * 1024];
-    let mut done = 0u64;
-    let mut last = 0u64;
-    progress(0, total);
+    let mut last = done;
+    progress(done, total);
     loop {
         if cancel.load(Ordering::Relaxed) {
             drop(out);
             let _ = std::fs::remove_file(target);
             return Err(Error::Cancelled);
         }
+        // Bei einem Fehler bleibt der Teil liegen – der nächste Versuch setzt fort.
         let n = reader
             .read(&mut buf)
             .map_err(|e| Error::Download(e.to_string()))?;
@@ -697,13 +770,181 @@ fn download(
     if let Some(t) = total
         && done != t
     {
-        let _ = std::fs::remove_file(target);
+        // Zu kurz: fortsetzbar. Zu lang: Teil ist sicher kaputt.
+        if done > t {
+            let _ = std::fs::remove_file(target);
+        }
         return Err(Error::Download(tr!(
             "{url}: unvollständig ({done} von {t} Bytes)",
             "{url}: incomplete ({done} of {t} bytes)"
         )));
     }
-    Ok(())
+    Ok(true)
+}
+
+/// Wie mit der Antwort auf eine (ggf. fortsetzende) Anfrage umzugehen ist.
+#[derive(Debug, PartialEq, Eq)]
+enum Resume {
+    /// Vollständige Datei von vorn; `total` = erwartete Gesamtgröße
+    Fresh { total: Option<u64> },
+    /// Server liefert genau den Rest ab dem vorhandenen Teil
+    Append { total: Option<u64> },
+    /// Fortsetzung nicht möglich – Teil verwerfen und ohne `Range` neu anfragen
+    Restart,
+    /// HTTP-Fehler
+    Fail(u16),
+}
+
+fn resume_plan(
+    offset: u64,
+    status: u16,
+    content_range: Option<&str>,
+    content_length: Option<u64>,
+) -> Resume {
+    match status {
+        // Server ignoriert `Range` (oder es gab keins): komplette Datei.
+        200 => Resume::Fresh {
+            total: content_length,
+        },
+        206 if offset > 0 => {
+            let Some((start, end, total)) = content_range.and_then(parse_content_range) else {
+                return Resume::Restart;
+            };
+            let len = end - start + 1;
+            let consistent = start == offset
+                && content_length.is_none_or(|l| l == len)
+                && total.is_none_or(|t| t == end + 1);
+            if consistent {
+                Resume::Append {
+                    total: Some(end + 1),
+                }
+            } else {
+                Resume::Restart
+            }
+        }
+        // 416: Teil passt nicht (mehr) zur Datei, z. B. geänderte Quelle.
+        416 if offset > 0 => Resume::Restart,
+        _ => Resume::Fail(status),
+    }
+}
+
+/// `bytes 100-199/200` bzw. `bytes 100-199/*` → (Anfang, Ende inkl., Gesamt)
+fn parse_content_range(v: &str) -> Option<(u64, u64, Option<u64>)> {
+    let rest = v.trim().strip_prefix("bytes")?.trim_start();
+    let (range, total) = rest.split_once('/')?;
+    let (start, end) = range.split_once('-')?;
+    let start = start.trim().parse::<u64>().ok()?;
+    let end = end.trim().parse::<u64>().ok()?;
+    let total = match total.trim() {
+        "*" => None,
+        t => Some(t.parse::<u64>().ok()?),
+    };
+    (end >= start).then_some((start, end, total))
+}
+
+/// Begrenzt jede Wartezeit auf Daten auf `stall`: Liefert die Verbindung so
+/// lange nichts, bricht der Download ab (statt ewig zu hängen), während ein
+/// langsamer, aber stetiger Download beliebig lange dauern darf.
+#[derive(Debug)]
+struct StallConnector {
+    stall: Duration,
+}
+
+impl ureq::unversioned::transport::Connector<Box<dyn ureq::unversioned::transport::Transport>>
+    for StallConnector
+{
+    type Out = StallTransport;
+
+    fn connect(
+        &self,
+        _: &ureq::unversioned::transport::ConnectionDetails,
+        chained: Option<Box<dyn ureq::unversioned::transport::Transport>>,
+    ) -> std::result::Result<Option<Self::Out>, ureq::Error> {
+        Ok(chained.map(|inner| StallTransport {
+            inner,
+            stall: self.stall,
+        }))
+    }
+}
+
+#[derive(Debug)]
+struct StallTransport {
+    inner: Box<dyn ureq::unversioned::transport::Transport>,
+    stall: Duration,
+}
+
+/// Kürzere der beiden Fristen; `true`, wenn die Hänger-Frist greift.
+fn clamp_timeout(
+    t: ureq::unversioned::transport::NextTimeout,
+    stall: Duration,
+) -> (ureq::unversioned::transport::NextTimeout, bool) {
+    use ureq::unversioned::transport::{NextTimeout, time};
+    let clamped = t.after.is_not_happening() || *t.after > stall;
+    if clamped {
+        (
+            NextTimeout {
+                after: time::Duration::Exact(stall),
+                reason: t.reason,
+            },
+            true,
+        )
+    } else {
+        (t, false)
+    }
+}
+
+fn is_timeout(e: &ureq::Error) -> bool {
+    match e {
+        ureq::Error::Timeout(_) => true,
+        ureq::Error::Io(io) => matches!(
+            io.kind(),
+            std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+        ),
+        _ => false,
+    }
+}
+
+impl ureq::unversioned::transport::Transport for StallTransport {
+    fn buffers(&mut self) -> &mut dyn ureq::unversioned::transport::Buffers {
+        self.inner.buffers()
+    }
+
+    fn transmit_output(
+        &mut self,
+        amount: usize,
+        timeout: ureq::unversioned::transport::NextTimeout,
+    ) -> std::result::Result<(), ureq::Error> {
+        self.inner.transmit_output(amount, timeout)
+    }
+
+    fn await_input(
+        &mut self,
+        timeout: ureq::unversioned::transport::NextTimeout,
+    ) -> std::result::Result<bool, ureq::Error> {
+        let (timeout, clamped) = clamp_timeout(timeout, self.stall);
+        self.inner.await_input(timeout).map_err(|e| {
+            if clamped && is_timeout(&e) {
+                let secs = self.stall.as_secs();
+                ureq::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    tr!(
+                        "Verbindung hängt (seit {secs} s keine Daten)",
+                        "connection stalled (no data for {secs} s)"
+                    ),
+                ))
+            } else {
+                e
+            }
+        })
+    }
+
+    fn is_open(&mut self) -> bool {
+        self.inner.is_open()
+    }
+
+    fn is_tls(&self) -> bool {
+        self.inner.is_tls()
+    }
 }
 
 /// Holt eine einzelne Datei aus einem .tgz- oder .zip-Archiv. Der Eintrag wird
@@ -752,4 +993,229 @@ fn extract_entry(archive: &Path, url: &str, entry: &str, target: &Path) -> Resul
     }
     std::fs::rename(tmp, target)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::TcpListener;
+    use ureq::unversioned::transport::{NextTimeout, time};
+
+    #[test]
+    fn content_range_parsing() {
+        assert_eq!(
+            parse_content_range("bytes 100-199/200"),
+            Some((100, 199, Some(200)))
+        );
+        assert_eq!(parse_content_range("bytes 5-9/*"), Some((5, 9, None)));
+        assert_eq!(parse_content_range("bytes */200"), None);
+        assert_eq!(parse_content_range("bytes 9-5/20"), None);
+        assert_eq!(parse_content_range("items 0-1/2"), None);
+    }
+
+    #[test]
+    fn resume_decision() {
+        // Ohne vorhandenen Teil: normale Antwort
+        assert_eq!(
+            resume_plan(0, 200, None, Some(10)),
+            Resume::Fresh { total: Some(10) }
+        );
+        // Server ignoriert Range: von vorn
+        assert_eq!(
+            resume_plan(40, 200, None, Some(100)),
+            Resume::Fresh { total: Some(100) }
+        );
+        // Sauber bestätigte Fortsetzung
+        assert_eq!(
+            resume_plan(40, 206, Some("bytes 40-99/100"), Some(60)),
+            Resume::Append { total: Some(100) }
+        );
+        assert_eq!(
+            resume_plan(40, 206, Some("bytes 40-99/*"), None),
+            Resume::Append { total: Some(100) }
+        );
+        // Falscher Anfang, falsche Länge, Teilbereich, fehlender Header
+        for (cr, len) in [
+            (Some("bytes 0-99/100"), Some(100)),
+            (Some("bytes 40-99/100"), Some(50)),
+            (Some("bytes 40-69/100"), Some(30)),
+            (None, Some(60)),
+        ] {
+            assert_eq!(resume_plan(40, 206, cr, len), Resume::Restart, "{cr:?}");
+        }
+        // Teil passt nicht zur Datei
+        assert_eq!(resume_plan(40, 416, None, None), Resume::Restart);
+        // Fehler bleiben Fehler; 206 ohne Anfrage ist unplausibel
+        assert_eq!(resume_plan(0, 404, None, None), Resume::Fail(404));
+        assert_eq!(resume_plan(40, 500, None, None), Resume::Fail(500));
+        assert_eq!(
+            resume_plan(0, 206, Some("bytes 0-9/10"), Some(10)),
+            Resume::Fail(206)
+        );
+    }
+
+    #[test]
+    fn stall_timeout_replaces_total_budget() {
+        let stall = Duration::from_secs(60);
+        // Keine Frist (Body ohne Gesamtlimit) → Hänger-Frist
+        let (t, c) = clamp_timeout(
+            NextTimeout {
+                after: time::Duration::NotHappening,
+                reason: ureq::Timeout::RecvBody,
+            },
+            stall,
+        );
+        assert!(c);
+        assert_eq!(*t.after, stall);
+        // Längere Frist wird gekürzt, kürzere (z. B. Verbindungsaufbau) bleibt
+        let (t, c) = clamp_timeout(
+            NextTimeout {
+                after: time::Duration::from_secs(600),
+                reason: ureq::Timeout::RecvBody,
+            },
+            stall,
+        );
+        assert!(c);
+        assert_eq!(*t.after, stall);
+        let (t, c) = clamp_timeout(
+            NextTimeout {
+                after: time::Duration::from_secs(5),
+                reason: ureq::Timeout::Connect,
+            },
+            stall,
+        );
+        assert!(!c);
+        assert_eq!(*t.after, Duration::from_secs(5));
+    }
+
+    fn content() -> Vec<u8> {
+        (0..200_000u32).map(|i| (i % 251) as u8).collect()
+    }
+
+    /// Lokaler Server. `mode`: "range" beantwortet Range mit 206, "ignore"
+    /// liefert immer alles (200), "416" lehnt jede Range ab, "stall" sendet
+    /// die Hälfte und schweigt dann. Liefert URL und mitgeschriebene Range-Header.
+    fn serve(mode: &'static str) -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let ranges = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = ranges.clone();
+        std::thread::spawn(move || {
+            let body = content();
+            for stream in listener.incoming() {
+                let Ok(mut s) = stream else { continue };
+                let mut buf = [0u8; 4096];
+                let n = s.read(&mut buf).unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]).to_lowercase();
+                let range = req
+                    .lines()
+                    .find_map(|l| l.strip_prefix("range: bytes="))
+                    .and_then(|r| r.trim().trim_end_matches('-').parse::<usize>().ok());
+                seen.lock()
+                    .unwrap()
+                    .push(range.map(|r| r.to_string()).unwrap_or_default());
+                match (mode, range) {
+                    ("range", Some(from)) => {
+                        let _ = write!(
+                            s,
+                            "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\nContent-Range: bytes {}-{}/{}\r\nConnection: close\r\n\r\n",
+                            body.len() - from,
+                            from,
+                            body.len() - 1,
+                            body.len()
+                        );
+                        let _ = s.write_all(&body[from..]);
+                    }
+                    ("416", Some(_)) => {
+                        let _ = write!(
+                            s,
+                            "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */{}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                            body.len()
+                        );
+                    }
+                    ("stall", _) => {
+                        let _ = write!(
+                            s,
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            body.len()
+                        );
+                        let _ = s.write_all(&body[..body.len() / 2]);
+                        let _ = s.flush();
+                        std::thread::sleep(Duration::from_secs(30));
+                    }
+                    _ => {
+                        let _ = write!(
+                            s,
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            body.len()
+                        );
+                        let _ = s.write_all(&body);
+                    }
+                }
+            }
+        });
+        (format!("http://{addr}/f"), ranges)
+    }
+
+    fn run(mode: &'static str, part: Option<&[u8]>) -> (Result<()>, Vec<u8>, Vec<String>) {
+        let (url, ranges) = serve(mode);
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("f.part");
+        if let Some(p) = part {
+            std::fs::write(&target, p).unwrap();
+        }
+        let res = download_with(
+            &agent(Duration::from_millis(500)),
+            &url,
+            &target,
+            &|_, _| {},
+            &AtomicBool::new(false),
+        );
+        let data = std::fs::read(&target).unwrap_or_default();
+        let ranges = ranges.lock().unwrap().clone();
+        (res, data, ranges)
+    }
+
+    #[test]
+    fn resumes_from_partial_file() {
+        let c = content();
+        let (res, data, ranges) = run("range", Some(&c[..70_000]));
+        res.unwrap();
+        assert_eq!(data, c);
+        assert_eq!(ranges, vec!["70000".to_string()]);
+    }
+
+    #[test]
+    fn server_without_range_support_restarts() {
+        let c = content();
+        let (res, data, _) = run("ignore", Some(&c[..70_000]));
+        res.unwrap();
+        assert_eq!(data, c);
+    }
+
+    #[test]
+    fn rejected_range_discards_part() {
+        let c = content();
+        // Vorhandener Teil passt nicht zur Datei → verwerfen, neu laden
+        let (res, data, ranges) = run("416", Some(b"veraltet"));
+        res.unwrap();
+        assert_eq!(data, c);
+        assert_eq!(ranges, vec!["8".to_string(), String::new()]);
+    }
+
+    #[test]
+    fn stalled_connection_aborts_and_keeps_part() {
+        let started = std::time::Instant::now();
+        let (res, data, _) = run("stall", None);
+        let err = res.unwrap_err().to_string();
+        assert!(
+            err.contains("keine Daten") || err.contains("no data"),
+            "{err}"
+        );
+        // Abbruch nach der Hänger-Frist, nicht erst nach den 30 s des Servers
+        assert!(started.elapsed() < Duration::from_secs(10));
+        // Der empfangene Teil bleibt für die Fortsetzung liegen
+        assert_eq!(data, content()[..data.len()]);
+        assert!(!data.is_empty());
+    }
 }

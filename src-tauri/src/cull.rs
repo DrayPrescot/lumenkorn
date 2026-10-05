@@ -112,6 +112,7 @@ fn delete_rejected_blocking(
         }
     }
     let faces = state.catalog.lock().unwrap().forget_images(&deleted)?;
+    crate::ai::forget_in_index(state, Some(&deleted));
     cleanup(state, &deleted, &faces);
     log::info!(
         "{} abgelehnte Fotos gelöscht ({}, {} MB), {} Fehler",
