@@ -396,6 +396,9 @@
     border-radius: var(--radius-m);
     padding: 18px;
     display: grid;
+    /* Spalte nie breiter als der Dialog: sonst schiebt ein langer Pfad ohne
+       Leerzeichen (z. B. in der Absturzmeldung) alles seitlich heraus. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 14px;
   }
   header {
@@ -508,6 +511,8 @@
   }
   .crash p {
     color: #e0a07f;
+    /* Pfade wie C:\Users\…\lumenkorn.log dürfen überall umbrechen */
+    overflow-wrap: anywhere;
   }
   .chips {
     display: flex;
