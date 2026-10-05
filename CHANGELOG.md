@@ -71,6 +71,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
     compare loads at most two full-size photos at a time.
 
   Catalog update to version 11 runs automatically on first start.
+- Code cleanup: duplicated logic merged, unused code removed, comments brought
+  up to date. No visible changes; leftovers of the withdrawn DirectML backend
+  are gone.
 
 ### Fixed
 - A project containing a drive root (e.g. `D:\`) showed no photos.
