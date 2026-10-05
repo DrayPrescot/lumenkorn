@@ -52,8 +52,19 @@ export function hueOf(r: number, g: number, b: number): { hue: number; chroma: n
   return { hue: (Math.atan2(B, A) * 180) / Math.PI, chroma: Math.hypot(A, B) };
 }
 
-/** Pixel eines (Blob-)Bildes lesen; das dekodierte Bild wird je URL gemerkt. */
+/** Pixel eines (Blob-)Bildes lesen; das dekodierte Bild (~11 MB) wird für die
+ *  aktuelle URL gemerkt, solange die Pipette offen ist (siehe `setSampleUrl`). */
 let cached: { url: string; data: ImageData } | null = null;
+/** Aktuelle Vorschau-URL; nur deren Pixel werden gemerkt. */
+let current: string | null = null;
+
+/** Pipette zeigt `url` (null: geschlossen) – eine gemerkte ältere Vorschau
+ *  freigeben; ihre Blob-URL ist ohnehin widerrufen. */
+export function setSampleUrl(url: string | null) {
+  current = url;
+  if (cached && cached.url !== url) cached = null;
+}
+
 export async function samplePixel(url: string, nx: number, ny: number): Promise<[number, number, number]> {
   if (cached?.url !== url) {
     const img = new Image();
@@ -64,9 +75,17 @@ export async function samplePixel(url: string, nx: number, ny: number): Promise<
     c.height = img.naturalHeight;
     const ctx = c.getContext("2d", { willReadFrequently: true })!;
     ctx.drawImage(img, 0, 0);
-    cached = { url, data: ctx.getImageData(0, 0, c.width, c.height) };
+    const data = ctx.getImageData(0, 0, c.width, c.height);
+    // Nur merken, solange die URL noch aktuell ist (sonst hielte ein spätes
+    // Dekodieren nach dem Freigeben das Bild wieder fest)
+    if (current === url) cached = { url, data };
+    return average(data, nx, ny);
   }
-  const { data, width, height } = cached.data;
+  return average(cached.data, nx, ny);
+}
+
+function average(img: ImageData, nx: number, ny: number): [number, number, number] {
+  const { data, width, height } = img;
   const cx = Math.round(Math.min(1, Math.max(0, nx)) * (width - 1));
   const cy = Math.round(Math.min(1, Math.max(0, ny)) * (height - 1));
   // 5×5 mitteln – einzelne Pixel sind verrauscht

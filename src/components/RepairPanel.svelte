@@ -6,6 +6,7 @@
   import { dev, type NewMaskKind } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
+  import { untrack } from "svelte";
   import Icon from "./Icon.svelte";
   import Slider from "./Slider.svelte";
 
@@ -23,9 +24,24 @@
   const repairs = $derived(dev.params.repairs);
   const active = $derived(dev.activeMask !== null ? (repairs[dev.activeMask] ?? null) : null);
 
-  function repairState(r: RepairLayer): "new" | "stale" | "done" {
-    if (!r.result) return "new";
-    return r.resultKey === dev.repairKey($state.snapshot(r.shapes) as MaskShape[]) ? "done" : "stale";
+  type RepairState = "new" | "stale" | "done";
+  /** Zustand je Reparatur. Der Fingerabdruck serialisiert alle Formen – nur je
+   *  Verlaufsschritt (Loslassen, Rückgängig …) rechnen, nicht bei jedem
+   *  Pinselpunkt (sonst quadratisch je Strich). Während eines Strichs bleibt
+   *  der vorige Zustand stehen. */
+  const states = $derived.by(() => {
+    void dev.committedVersion;
+    return untrack(() => {
+      const m = new Map<string, RepairState>();
+      for (const r of dev.params.repairs) {
+        if (!r.result) m.set(r.id, "new");
+        else m.set(r.id, r.resultKey === dev.repairKey($state.snapshot(r.shapes) as MaskShape[]) ? "done" : "stale");
+      }
+      return m;
+    });
+  });
+  function repairState(r: RepairLayer): RepairState {
+    return states.get(r.id) ?? (r.result ? "stale" : "new");
   }
 
   function pick(kind: NewMaskKind) {

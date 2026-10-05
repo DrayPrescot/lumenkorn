@@ -39,6 +39,9 @@ class Library {
   aiDownload = $state<AiDownloadEvent | null>(null);
   /** Erhöht sich, wenn KI-Schlagworte eines Bildes neu sind. */
   tagsVersion = $state<Record<number, number>>({});
+  /** Erhöht sich, wenn die Bildliste neu vom Katalog geladen wurde (z. B. nach
+   *  einem Rescan) – Details des fokussierten Fotos können sich geändert haben. */
+  listVersion = $state(0);
 
   focused = $derived(this.focus >= 0 ? this.images[this.focus] : undefined);
 
@@ -147,10 +150,17 @@ class Library {
     }
   }
 
-  async loadRoots() {
+  /** Ordner und ihre Bäume laden; `only`: nur die Bäume dieser Ordner neu laden
+   *  (je Ordner eine Anfrage), die übrigen bleiben. */
+  async loadRoots(only?: Set<number>) {
     this.roots = await api.listRoots();
     const trees: Record<number, FolderNode> = {};
-    await Promise.all(this.roots.map(async (r) => (trees[r.id] = await api.folderTree(r.id))));
+    await Promise.all(
+      this.roots.map(async (r) => {
+        const old = only && !only.has(r.id) ? this.trees[r.id] : undefined;
+        trees[r.id] = old ?? (await api.folderTree(r.id));
+      }),
+    );
     this.trees = trees;
   }
 
@@ -175,6 +185,8 @@ class Library {
       // Fokus erst jetzt lesen: Während der Anfrage kann weitergeblättert worden sein
       const focusId = keepFocus ? this.focused?.id : undefined;
       this.images = images;
+      this.rejectedCount = countRejected(images);
+      this.listVersion++;
       this.focus = focusId !== undefined ? this.images.findIndex((i) => i.id === focusId) : -1;
       if (!keepFocus) this.selection = new Set();
       else if (this.selection.size) {
@@ -311,12 +323,18 @@ class Library {
   }
 
   /** Bilder in der Vergleichsansicht (Auswahl in Rasterreihenfolge, höchstens 12). */
-  compareItems = $derived(
-    this.images
-      .map((im, index) => ({ im, index }))
-      .filter((x) => this.selection.has(x.im.id))
-      .slice(0, 12),
-  );
+  compareItems = $derived.by(() => {
+    // Schleife mit Abbruch statt map/filter über alle (bis 50 000) Fotos –
+    // läuft nach jedem Bewerten im Vergleich erneut
+    const sel = this.selection;
+    const max = Math.min(12, sel.size);
+    const out: { im: ImageSummary; index: number }[] = [];
+    const images = this.images;
+    for (let index = 0; index < images.length && out.length < max; index++) {
+      if (sel.has(images[index].id)) out.push({ im: images[index], index });
+    }
+    return out;
+  });
 
   /** Vergleichsansicht der ausgewählten Bilder öffnen. */
   compare() {
@@ -445,7 +463,14 @@ class Library {
   /** Ändert die Bilder `ids` (Set statt `includes`: bei 50 000 Fotos O(n) statt O(n·m)). */
   #patch(ids: number[], change: Partial<ImageSummary>) {
     const set = new Set(ids);
-    this.images = this.images.map((i) => (set.has(i.id) ? { ...i, ...change } : i));
+    let delta = 0; // Abgelehnt-Zähler im selben Durchlauf nachführen
+    this.images = this.images.map((i) => {
+      if (!set.has(i.id)) return i;
+      const n = { ...i, ...change };
+      delta += Number(isRejected(n)) - Number(isRejected(i));
+      return n;
+    });
+    if (delta) this.rejectedCount += delta;
   }
 
   async rate(rating: number) {
@@ -472,8 +497,17 @@ class Library {
 
   // --- Aussortieren ---------------------------------------------------------
 
-  /** Abgelehnte (und vorhandene) Bilder des aktuellen Bereichs. */
-  rejected = $derived(this.images.filter((i) => i.flag === -1 && !i.missing));
+  /** Anzahl abgelehnter (und vorhandener) Bilder des aktuellen Bereichs. Wird
+   *  beim Bewerten/Markieren nachgeführt statt bei jedem Tastendruck alle
+   *  (bis 50 000) Fotos zu filtern; nur beim Laden/Löschen ganz gezählt.
+   *  Wer `images` mit geänderter Markierung setzt, muss ihn mitführen
+   *  (develop.svelte.ts ändert nur `edited` – zählt nicht). */
+  rejectedCount = $state(0);
+
+  /** Abgelehnte (und vorhandene) Bilder des aktuellen Bereichs, bei Bedarf gebaut. */
+  rejectedList(): ImageSummary[] {
+    return this.images.filter(isRejected);
+  }
 
   /**
    * Umschalt+X: ablehnen (ohne Umschalten) und zum nächsten Bild springen.
@@ -524,11 +558,21 @@ class Library {
       return null;
     }
     const gone = new Set(report.deleted);
+    // Betroffene Ordner, um nur deren Baum (Anzahlen) neu zu laden
+    const affected = new Set<number>();
+    let unknownRoot = false;
+    for (const im of this.images) {
+      if (!gone.has(im.id)) continue;
+      const r = this.roots.filter((r) => inside(im.path, r.path));
+      if (!r.length) unknownRoot = true;
+      for (const x of r) affected.add(x.id);
+    }
     const focusId = this.focused?.id;
     // Gelöschte vor dem Fokus verschieben ihn nach vorn
     const before = this.images.slice(0, Math.max(this.focus, 0)).filter((i) => gone.has(i.id)).length;
     const oldFocus = this.focus - before;
     this.images = this.images.filter((i) => !gone.has(i.id));
+    this.rejectedCount = countRejected(this.images);
     this.selection = new Set([...this.selection].filter((id) => !gone.has(id)));
     if (focusId !== undefined && !gone.has(focusId)) {
       this.focus = this.images.findIndex((i) => i.id === focusId);
@@ -561,7 +605,7 @@ class Library {
           : t("{photos} endgültig gelöscht ({mb} MB)", { photos, mb }),
       );
     }
-    this.loadRoots();
+    if (gone.size) this.loadRoots(unknownRoot ? undefined : affected).catch(() => {});
     this.refreshPeople();
     return report;
   }
@@ -712,12 +756,21 @@ function loadCollapsed(): Record<string, boolean> {
   }
 }
 
+const isRejected = (i: ImageSummary) => i.flag === -1 && !i.missing;
+function countRejected(images: ImageSummary[]): number {
+  let n = 0;
+  for (const i of images) if (isRejected(i)) n++;
+  return n;
+}
+
+/** Liegt `child` (Datei oder Ordner) unterhalb von `parent`? */
+function inside(child: string, parent: string): boolean {
+  const p = parent.replace(/[\\/]+$/, "");
+  return child.length > p.length && child.startsWith(p) && /[\\/]/.test(child[p.length]);
+}
+
 /** Ordner ohne die, die schon in einem anderen gewählten Ordner liegen. */
 export function topFolders(paths: string[]): string[] {
-  const inside = (child: string, parent: string) => {
-    const p = parent.replace(/[\\/]+$/, "");
-    return child.length > p.length && child.startsWith(p) && /[\\/]/.test(child[p.length]);
-  };
   const unique = [...new Set(paths)];
   return unique.filter((c) => !unique.some((p) => p !== c && inside(c, p)));
 }

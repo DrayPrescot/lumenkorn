@@ -82,6 +82,7 @@
         <ZoomView
           src={imageUrl("preview", im.id, v)}
           hiSrc={imageUrl("full", im.id, v)}
+          hiPriority={index === lib.focus}
           fullLong={dims.fullLong}
           srcLong={dims.srcLong}
           zoom={zoomFor(im.id)}

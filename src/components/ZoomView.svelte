@@ -7,13 +7,14 @@
   import type { Snippet } from "svelte";
   import { onDestroy, untrack } from "svelte";
   import { t } from "../lib/i18n";
-  import { MAX_ZOOM, ZoomState } from "../lib/zoom.svelte";
+  import { MAX_ZOOM, ZoomState, loadHi } from "../lib/zoom.svelte";
 
   type Region = { x: number; y: number; w: number; h: number };
 
   let {
     src,
     hiSrc = null,
+    hiPriority = false,
     detail = null,
     detailKey = null,
     fullLong = null,
@@ -28,6 +29,8 @@
     src: string | null;
     /** Ganzes Bild in voller Auflösung */
     hiSrc?: string | null;
+    /** Volle Auflösung vor anderen Ansichten laden (hervorgehobenes Foto im Vergleich) */
+    hiPriority?: boolean;
     /** Liefert eine Bild-URL für einen Ausschnitt in hoher Auflösung */
     detail?: ((r: Region, scale: number) => Promise<string | null>) | null;
     /** Ändert sich, wenn der Bildinhalt sich ändert (Ausschnitt verwerfen) */
@@ -145,20 +148,28 @@
   // Reicht die Auflösung des angezeigten Bildes nicht mehr?
   const needMore = $derived(!zoom.fit && shownW > 0 && dw * dpr > shownW * 1.05);
 
+  // Nur sichtbare Ansichten laden die volle Auflösung (Vergleich: viele Zellen)
+  let visible = $state(true);
   $effect(() => {
-    if (needMore && hiSrc && !hiReady && hiLoading !== hiSrc) {
-      const want = hiSrc;
-      hiLoading = want;
-      const img = new Image();
-      img.onload = () => {
-        if (hiSrc === want) hi = { src: want, w: img.naturalWidth, h: img.naturalHeight };
-        if (hiLoading === want) hiLoading = null;
-      };
-      img.onerror = () => {
-        if (hiLoading === want) hiLoading = null;
-      };
-      img.src = want;
-    }
+    const io = new IntersectionObserver((e) => (visible = e.some((x) => x.isIntersecting)));
+    io.observe(el);
+    return () => io.disconnect();
+  });
+
+  $effect(() => {
+    if (!needMore || !visible || !hiSrc || hiReady) return;
+    const want = hiSrc;
+    hiLoading = want;
+    // Über eine gemeinsame Warteschlange (höchstens zwei gleichzeitig); wird die
+    // volle Auflösung nicht mehr gebraucht, bricht das Aufräumen ab.
+    const cancel = loadHi(want, untrack(() => hiPriority), (img) => {
+      if (img && hiSrc === want) hi = { src: want, w: img.naturalWidth, h: img.naturalHeight };
+      if (hiLoading === want) hiLoading = null;
+    });
+    return () => {
+      cancel();
+      if (untrack(() => hiLoading) === want) hiLoading = null;
+    };
   });
 
   // --- Ausschnitt in hoher Auflösung (Entwickeln) ----------------------------

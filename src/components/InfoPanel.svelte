@@ -21,15 +21,18 @@
   }
   // Beim Durchblättern (Pfeiltaste gehalten) erst laden, wenn man kurz verweilt
   const SETTLE = 120;
+  // Nur von der ID abhängen: Bewerten/Markieren ersetzt das Objekt des
+  // fokussierten Fotos, das darf keine neue Anfrage auslösen.
+  const focusId = $derived(lib.focused?.id);
   $effect(() => {
-    const f = lib.focused;
-    const v = f ? lib.facesVersion[f.id] : 0;
+    const id = focusId;
+    const v = id !== undefined ? lib.facesVersion[id] : 0;
     void v;
-    if (!f) {
+    if (id === undefined) {
       faces = [];
       return;
     }
-    const t = setTimeout(() => loadFaces(f.id), SETTLE);
+    const t = setTimeout(() => loadFaces(id), SETTLE);
     return () => clearTimeout(t);
   });
   async function faceAct(fn: () => Promise<unknown>) {
@@ -61,7 +64,11 @@
   let selFaces = $state<FaceInfo[]>([]);
   let selNames = $state<Record<string, string>>({});
   let selBusy = $state(false);
-  const selIds = $derived(lib.selection.size > 1 ? [...lib.selection] : []);
+  /** Ab so vielen ausgewählten Fotos keine Personen-Übersicht laden (Strg+A
+   *  bei 50 000 Fotos schickte sonst alle IDs bei jeder Auswahländerung). */
+  const SEL_FACES_MAX = 500;
+  const selTooMany = $derived(lib.selection.size > SEL_FACES_MAX);
+  const selIds = $derived(lib.selection.size > 1 && !selTooMany ? [...lib.selection] : []);
   async function loadSelFaces(ids: number[]) {
     try {
       const got = await api.facesOfImages(ids);
@@ -157,19 +164,20 @@
     await faceAct(() => api.faceAssign(f.id, name));
   }
 
+  // Bewertung/Markierung zeigt das Panel aus `lib.focused`; neu laden nur bei
+  // anderem Foto, neuen KI-Schlagworten oder neu geladener Liste (Rescan).
   $effect(() => {
-    const f = lib.focused;
-    const rating = f?.rating; // bei Bewertungsänderung neu laden
-    const flag = f?.flag;
-    const tags = f ? lib.tagsVersion[f.id] : 0;
-    void rating, flag, tags;
-    if (!f) {
+    const id = focusId;
+    const tags = id !== undefined ? lib.tagsVersion[id] : 0;
+    const list = lib.listVersion;
+    void tags, list;
+    if (id === undefined) {
       detail = null;
       return;
     }
     let cancelled = false;
     const t = setTimeout(() => {
-      api.imageDetail(f.id).then((d) => !cancelled && (detail = d)).catch(() => {});
+      api.imageDetail(id).then((d) => !cancelled && (detail = d)).catch(() => {});
     }, SETTLE);
     return () => {
       cancelled = true;
@@ -241,7 +249,12 @@
         <button class="btn" onclick={onexport}><Icon name="export" size={14} /> {t("Exportieren …")}</button>
       </div>
     </section>
-    {#if selGroups.length}
+    {#if selTooMany}
+      <section>
+        <h4>{t("Personen in der Auswahl")}</h4>
+        <p class="muted">{t("Personen werden bei höchstens {n} ausgewählten Fotos angezeigt.", { n: SEL_FACES_MAX })}</p>
+      </section>
+    {:else if selGroups.length}
       <section>
         <h4>{t("Personen in der Auswahl")}</h4>
         <p class="muted">{t("Änderungen gelten für alle {n} ausgewählten Fotos.", { n: lib.selection.size })}</p>

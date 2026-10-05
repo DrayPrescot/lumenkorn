@@ -33,7 +33,7 @@
   let deleteImages = $state<ImageSummary[] | null>(null);
 
   function openDeleteRejected() {
-    if (lib.rejected.length) deleteImages = lib.rejected;
+    if (lib.rejectedCount) deleteImages = lib.rejectedList();
     else lib.notify(t("In dieser Ansicht sind keine Fotos abgelehnt (X)."));
   }
 

@@ -87,9 +87,9 @@
 
   <div class="spacer"></div>
 
-  {#if lib.rejected.length && lib.view !== "people"}
+  {#if lib.rejectedCount && lib.view !== "people"}
     <button class="btn reject-btn" onclick={ondeleterejected} title={t("Abgelehnte Fotos dieser Ansicht von der Festplatte löschen (Strg+Entf)")}>
-      <Icon name="trash" size={14} /> {t("{n} abgelehnt", { n: String(lib.rejected.length) })}
+      <Icon name="trash" size={14} /> {t("{n} abgelehnt", { n: String(lib.rejectedCount) })}
     </button>
   {/if}
 

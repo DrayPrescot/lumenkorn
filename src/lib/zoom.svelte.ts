@@ -77,3 +77,52 @@ export function zoomKey(e: KeyboardEvent, z: ZoomState): boolean {
   e.preventDefault();
   return true;
 }
+
+// --- Volle Auflösung laden (Bibliothek) -------------------------------------
+// Im Vergleich mit gekoppeltem Zoom wollen bis zu 12 Zellen zugleich das
+// Original (je ~80 MB dekodiert): höchstens zwei gleichzeitig laden, das
+// hervorgehobene Foto zuerst, abgebrochene Wünsche aus der Warteschlange nehmen.
+const HI_MAX = 2;
+let hiRunning = 0;
+const hiQueue: { start: () => void }[] = [];
+
+function hiPump() {
+  while (hiRunning < HI_MAX && hiQueue.length) hiQueue.shift()!.start();
+}
+
+/** Bild `src` in die Ladewarteschlange stellen; `done` erhält das geladene Bild
+ *  (null bei Fehler). Rückgabe: Abbrechen (wartend oder laufend), danach kein `done`. */
+export function loadHi(src: string, priority: boolean, done: (img: HTMLImageElement | null) => void): () => void {
+  let img: HTMLImageElement | null = null;
+  let finished = false;
+  const finish = (ok: boolean) => {
+    if (finished) return;
+    finished = true;
+    hiRunning--;
+    hiPump();
+    done(ok ? img : null);
+  };
+  const entry = {
+    start: () => {
+      hiRunning++;
+      img = new Image();
+      img.onload = () => finish(true);
+      img.onerror = () => finish(false);
+      img.src = src;
+    },
+  };
+  if (priority) hiQueue.unshift(entry);
+  else hiQueue.push(entry);
+  hiPump();
+  return () => {
+    const i = hiQueue.indexOf(entry);
+    if (i >= 0) hiQueue.splice(i, 1);
+    else if (img && !finished) {
+      finished = true;
+      img.onload = img.onerror = null;
+      img.src = ""; // Download abbrechen
+      hiRunning--;
+      hiPump();
+    }
+  };
+}

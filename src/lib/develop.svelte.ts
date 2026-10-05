@@ -128,10 +128,14 @@ class Develop {
    *  den Live-Parametern abgeleitet: Das würde bei jedem Pinselpunkt alle
    *  Parameter serialisieren. */
   isDefault = $state(true);
+  /** Erhöht sich mit jedem Verlaufsschritt (auch Öffnen, Rückgängig) – für
+   *  Ableitungen, die nicht bei jedem Pinselpunkt neu rechnen sollen. */
+  committedVersion = $state(0);
 
   #setCommitted(p: DevelopParams) {
     this.#committed = p;
     this.isDefault = same(p, DEFAULT_PARAMS);
+    this.committedVersion++;
   }
 
   constructor() {

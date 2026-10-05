@@ -4,7 +4,7 @@
   // Farbbereiche anteilig (wie das Zielkorrektur-Werkzeug in Lightroom).
   import { onMount } from "svelte";
   import { dev } from "../lib/develop.svelte";
-  import { HSL_BANDS, hslWeights, hueOf, samplePixel } from "../lib/hsl";
+  import { HSL_BANDS, hslWeights, hueOf, samplePixel, setSampleUrl } from "../lib/hsl";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
 
@@ -78,6 +78,12 @@
   }
 
   onMount(() => () => (drag = null));
+  // Gemerkte Vorschau-Pixel nur für die aktuelle Vorschau und nur solange die
+  // Pipette offen ist halten
+  $effect(() => {
+    setSampleUrl(dev.url);
+    return () => setSampleUrl(null);
+  });
 </script>
 
 <svelte:window {onkeydown} />
