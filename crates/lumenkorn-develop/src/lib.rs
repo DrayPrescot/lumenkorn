@@ -38,6 +38,7 @@ pub mod merge;
 pub mod output;
 pub mod params;
 pub mod pipeline;
+pub mod raster;
 pub mod repair;
 pub mod source;
 

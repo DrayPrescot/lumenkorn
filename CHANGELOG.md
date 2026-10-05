@@ -76,6 +76,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
   are gone.
 
 ### Fixed
+- Very large photos got no thumbnail and could not be edited (“Memory limit
+  exceeded”): panoramas, upscaled JPEGs, 16-bit TIFFs from about 30 MP and
+  32-bit float TIFFs from astro stacking. Huge images are decoded one at a
+  time, and the editing preview averages them down while converting instead
+  of first building a full-size float copy (420 MP panorama: 1.3 GB instead
+  of about 6 GB). Failed thumbnails are retried automatically on the next
+  start.
 - Crash during AI noise reduction (or other AI functions) on the GPU while
   face recognition ran in the background: the WebGPU runtime does not allow
   two models to compute at the same time, so GPU runs now take turns.

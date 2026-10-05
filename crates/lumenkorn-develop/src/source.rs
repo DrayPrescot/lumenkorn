@@ -1,6 +1,5 @@
 //! Quellbild laden: RAW entwickeln bzw. Rasterbild linearisieren.
 
-use crate::color::srgb_decode_lut_u16;
 use crate::error::{Error, Result};
 use crate::geometry::apply_exif_orientation;
 use crate::i18n::tr_s;
@@ -58,6 +57,9 @@ impl Source {
                 full_height,
             });
         }
+        // Volle Abmessungen (vor Verkleinerung); Rasterbilder setzen sie
+        // selbst, weil sehr große schon beim Linearisieren verkleinert werden.
+        let mut full = None;
         let (kind, image) = if crate::exr_io::is_exr(path) {
             let (img, scene) = crate::exr_io::read(path)?;
             let kind = if scene {
@@ -71,13 +73,14 @@ impl Source {
             let o = orientation.unwrap_or(raw_orientation);
             (SourceKind::Raw, apply_exif_orientation(img, o))
         } else {
-            let img = decode_raster(path)?;
-            (
-                SourceKind::Raster,
-                apply_exif_orientation(img, orientation.unwrap_or(1)),
-            )
+            let img = crate::raster::open(path)?;
+            let o = orientation.unwrap_or(1);
+            let (w, h) = (img.width() as usize, img.height() as usize);
+            full = Some(if (5..=8).contains(&o) { (h, w) } else { (w, h) });
+            let img = crate::raster::to_linear(img, max_edge);
+            (SourceKind::Raster, apply_exif_orientation(img, o))
         };
-        let (full_width, full_height) = (image.width, image.height);
+        let (full_width, full_height) = full.unwrap_or((image.width, image.height));
         let image = match max_edge {
             Some(m) => image.into_downscaled(m),
             None => image,
@@ -101,47 +104,6 @@ impl Source {
             full_height: self.full_height,
         }
     }
-}
-
-fn decode_raster(path: &Path) -> Result<ImageF32> {
-    let img = image::ImageReader::open(path)?
-        .with_guessed_format()?
-        .decode()?;
-    let lut = srgb_decode_lut_u16();
-    let sixteen = matches!(
-        img.color(),
-        image::ColorType::Rgb16
-            | image::ColorType::Rgba16
-            | image::ColorType::L16
-            | image::ColorType::La16
-    );
-    let (w, h) = (img.width() as usize, img.height() as usize);
-    // `into_rgb*` übernimmt den Puffer ohne Kopie, wenn das Bild schon RGB
-    // ist; die Umrechnung läuft parallel.
-    let data = if sixteen {
-        img.into_rgb16()
-            .into_raw()
-            .par_chunks_exact(3)
-            .map(|p| [lut[p[0] as usize], lut[p[1] as usize], lut[p[2] as usize]])
-            .collect()
-    } else {
-        img.into_rgb8()
-            .into_raw()
-            .par_chunks_exact(3)
-            .map(|p| {
-                [
-                    lut[p[0] as usize * 257],
-                    lut[p[1] as usize * 257],
-                    lut[p[2] as usize * 257],
-                ]
-            })
-            .collect()
-    };
-    Ok(ImageF32 {
-        width: w,
-        height: h,
-        data,
-    })
 }
 
 /// Demosaicing-Verfahren für Bayer-Sensoren.

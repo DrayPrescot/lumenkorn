@@ -11,7 +11,7 @@ use crate::error::{Error, Result};
 use crate::formats::ImageKind;
 use crate::maskstore::MaskFiles;
 use image::metadata::Orientation;
-use image::{DynamicImage, ImageFormat, ImageReader};
+use image::{DynamicImage, ImageFormat};
 use lumenkorn_develop::repair::{NoRepairs, RepairFiles, RepairSource};
 use lumenkorn_develop::{DevelopParams, MaskSource, NoMasks, RenderOptions, Source};
 use rayon::prelude::*;
@@ -350,7 +350,7 @@ fn decode_unedited(
         return Ok(DynamicImage::ImageRgb8(rgb));
     }
     let img = match kind {
-        ImageKind::Raster => ImageReader::open(path)?.with_guessed_format()?.decode()?,
+        ImageKind::Raster => lumenkorn_develop::raster::open(path)?,
         ImageKind::Raw => decode_embedded_preview(path, max)?,
     };
     let mut img = if img.width() > max || img.height() > max {
