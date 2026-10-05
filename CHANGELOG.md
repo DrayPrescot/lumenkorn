@@ -35,6 +35,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Automatic dependency updates: Dependabot checks weekly; small updates are
   merged after green CI and produce a new nightly MSI, breaking ones stay open
   for review. CI tests rawler against real RAWs from seven cameras.
+- Release workflow started by hand builds the installers as a test without
+  creating a release; tauri-action updated to v1.
 - CI builds a Windows MSI after every green push to `main` and publishes it
   as the rolling “nightly” pre-release.
 

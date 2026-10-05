@@ -231,6 +231,11 @@ rawler 0.8 → 0.9) are labeled `manual-review` and stay open. On Linux, CI also
 version against real RAW files from seven cameras (OpenImageIO sample images). The Rust toolchain
 (`rust-toolchain.toml`), AI models and ONNX Runtime are pinned on purpose and updated by hand.
 
+### Releases
+Pushing a version tag such as `v0.2.0` builds the Windows and Linux installers and creates a draft
+release. Starting the *Release* workflow by hand (Actions → Release → Run workflow) only builds the
+installers and keeps them as a workflow artifact for 14 days – useful to test the release build.
+
 ### Translations
 UI texts are written in German in the source and serve as their own keys:
 `t("Ordner hinzufügen")` shows "Add folder" in English. The English texts live in

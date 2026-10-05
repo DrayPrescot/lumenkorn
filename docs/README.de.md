@@ -528,6 +528,10 @@ Linux prüft die CI jede rawler-Version zusätzlich mit echten RAWs von sieben K
 (OpenImageIO-Testbilder). Rust-Version (`rust-toolchain.toml`), KI-Modelle und ONNX Runtime sind
 bewusst fest und werden von Hand aktualisiert.
 
+**Releases:** Ein Versions-Tag wie `v0.2.0` baut die Installer für Windows und Linux und legt einen
+Release-Entwurf an. Von Hand gestartet (Actions → Release → Run workflow) baut der Workflow nur die
+Installer und hebt sie 14 Tage als Download am Lauf auf – zum Testen des Release-Builds.
+
 **Übersetzungen:** Texte der Oberfläche stehen im Quelltext auf Deutsch und sind zugleich der
 Schlüssel: `t("Ordner hinzufügen")` ergibt auf Englisch „Add folder“. Die englischen Texte liegen in
 `src/lib/i18n/en/*.ts` (eine Datei je Bereich); für deutsche Wörter mit mehreren Bedeutungen sucht
