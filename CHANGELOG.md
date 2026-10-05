@@ -59,6 +59,22 @@ and the project uses [Semantic Versioning](https://semver.org/).
   Already denoised photos keep their old result until recomputed.
 
 ### Fixed
+- Panoramas with a tilted pan kept a wavy horizon: leveling was undone by the
+  final centering step.
+- AI model downloads failed on slow connections (total time limit); they now
+  only stop when no data arrives for 60 s and resume interrupted downloads.
+- The GPU preview could show a stale source (e.g. without the latest repair).
+- The GPU mask cache discarded the most recently used masks first.
+- HDR results took the capture info (exposure, ISO) from the first selected
+  photo instead of the middle exposure.
+- Semantic search in a folder, project or person found too little: ranking
+  now happens within the current scope; deleted photos leave the index.
+- Repair, denoise and downloads stayed blocked until restart after an internal
+  error.
+- Face thumbnails could show another face after faces were deleted.
+- Keys pressed while the AI dialog was open changed the photos behind it.
+- People view showed a success message after an error; several actions failed
+  without any message.
 - New folders always appear in the folder tree, also when they are empty or
   contain only unsupported files. Previously a folder only showed up once it
   held a supported photo.
