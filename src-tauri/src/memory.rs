@@ -9,6 +9,7 @@
 //!   entrauschte Fassungen, Masken, GPU-Puffer) sofort.
 //! - KI-Modelle nach einer Weile ohne Nutzung (Hausmeister-Thread). Ein
 //!   Modell, das gerade rechnet, wird nie entladen.
+//! - Zwischengespeicherte Vollbilder (Zoom, Vergleich) ebenso.
 
 use crate::AppState;
 use lumenkorn_core::housekeeping::{self, Swept};
@@ -20,6 +21,8 @@ use tauri::{AppHandle, Emitter, Manager};
 const INTERACTIVE_IDLE: Duration = Duration::from_secs(3 * 60);
 /// CLIP und Gesichtsmodelle (Hintergrundanalyse)
 const BACKGROUND_IDLE: Duration = Duration::from_secs(5 * 60);
+/// Vollbilder im Speicher (`protocol::release_full`) – Zoom/Vergleich vorbei
+const FULL_IDLE: Duration = Duration::from_secs(3 * 60);
 const TICK: Duration = Duration::from_secs(30);
 /// Erstes Aufräumen des Datenordners nach dem Start, danach täglich
 const SWEEP_FIRST: Duration = Duration::from_secs(90);
@@ -111,9 +114,15 @@ pub fn start_janitor(app: AppHandle) {
                         freed.push("Gesichter");
                     }
                 }
+                let full = crate::protocol::release_full(FULL_IDLE);
+                if full {
+                    log::info!("Ungenutzte Vollbilder freigegeben");
+                }
                 if !freed.is_empty() {
-                    trim_heap();
                     log::info!("Ungenutzte KI-Modelle entladen: {}", freed.join(", "));
+                }
+                if full || !freed.is_empty() {
+                    trim_heap();
                 }
             }
         })

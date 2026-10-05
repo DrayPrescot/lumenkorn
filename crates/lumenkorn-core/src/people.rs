@@ -18,7 +18,7 @@ use crate::error::{Error, Result};
 use lumenkorn_develop::{i18n::tr_s, tr};
 use rusqlite::{OptionalExtension, params};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Ab dieser Kosinus-Ähnlichkeit zum Zentroid gehört ein Gesicht zu einer Person
 /// bzw. Gruppe (siehe `lumenkorn_ai::faces::GROUP`).
@@ -80,7 +80,7 @@ fn normalized(v: &[f32]) -> Vec<f32> {
     v.iter().map(|x| x / n).collect()
 }
 
-#[derive(Default)]
+#[derive(Default, PartialEq, Debug)]
 struct Cluster {
     named: bool,
     /// Summe aller Gesichter bzw. nur der bestätigten (benannte Personen)
@@ -129,6 +129,11 @@ pub struct PeopleIndex {
     clusters: HashMap<i64, Cluster>,
     /// Stand des Katalogs beim Aufbau (`Catalog::people_gen`)
     generation: u64,
+    /// Personen, deren Zentroid nicht mehr exakt einem Neuaufbau entspricht:
+    /// `save_faces` ergänzt nur (ohne entfernte Gesichter abzuziehen, in anderer
+    /// Reihenfolge). Vor dem Vorschlagen (`suggest_for`) werden sie aus dem
+    /// Katalog neu gelesen – Ergebnis wie mit frisch aufgebautem Index.
+    stale: HashSet<i64>,
 }
 
 impl PeopleIndex {
@@ -189,6 +194,9 @@ impl Catalog {
     }
 
     /// Zentroide aus dem Katalog aufbauen (einmal; danach laufend ergänzt).
+    /// Je Person in Reihenfolge der Gesichts-IDs – wie `refresh_clusters`, damit
+    /// die Summen bitgleich sind. (Liest die Tabelle zudem am Stück: 75 statt
+    /// 165 ms über den Index `faces_visible`.)
     pub fn people_index(&self) -> Result<PeopleIndex> {
         let mut idx = PeopleIndex {
             generation: self.people_gen.get(),
@@ -196,7 +204,8 @@ impl Catalog {
         };
         let mut st = self.conn.prepare(
             "SELECT f.person_id, p.name IS NOT NULL, f.embedding, f.confirmed
-             FROM faces f JOIN persons p ON p.id = f.person_id WHERE f.hidden = 0",
+             FROM faces f JOIN persons p ON p.id = f.person_id WHERE f.hidden = 0
+             ORDER BY f.id",
         )?;
         let rows = st.query_map([], |r| {
             Ok((
@@ -211,6 +220,52 @@ impl Catalog {
             idx.add(pid, named, &from_blob(&blob), confirmed);
         }
         Ok(idx)
+    }
+
+    /// Zentroide einzelner Personen (und aller veralteten) aus dem Katalog neu
+    /// lesen; Personen ohne sichtbare Gesichter fallen heraus – wie beim
+    /// Neuaufbau, aber ohne alle Embeddings zu lesen (~100 ms bei 50 000).
+    fn refresh_clusters(&self, idx: &mut PeopleIndex, persons: &[i64]) -> Result<()> {
+        let mut ids: Vec<i64> = idx.stale.drain().chain(persons.iter().copied()).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        let mut st = self.conn.prepare_cached(
+            "SELECT p.name IS NOT NULL, f.embedding, f.confirmed
+             FROM faces f JOIN persons p ON p.id = f.person_id
+             WHERE f.person_id = ?1 AND f.hidden = 0 ORDER BY f.id",
+        )?;
+        for pid in ids {
+            idx.clusters.remove(&pid);
+            let rows = st.query_map([pid], |r| {
+                Ok((
+                    r.get::<_, bool>(0)?,
+                    r.get::<_, Vec<u8>>(1)?,
+                    r.get::<_, bool>(2)?,
+                ))
+            })?;
+            for row in rows {
+                let (named, blob, confirmed) = row?;
+                idx.add(pid, named, &from_blob(&blob), confirmed);
+            }
+        }
+        Ok(())
+    }
+
+    /// Übergebenen Index weiterverwenden, wenn er zum Katalog passt, sonst neu
+    /// aufbauen. Er wird dabei entnommen: Bricht die Änderung mit einem Fehler
+    /// ab, bleibt `cache` leer und wird beim nächsten Mal neu aufgebaut.
+    fn take_index(&self, cache: &mut Option<PeopleIndex>) -> Result<PeopleIndex> {
+        match cache.take() {
+            Some(i) if self.people_index_current(&i) => Ok(i),
+            _ => self.people_index(),
+        }
+    }
+
+    /// Nach einer Änderung, deren betroffene Personen per `refresh_clusters`
+    /// nachgeführt wurden: Index gilt wieder als aktuell.
+    fn put_index(&self, cache: &mut Option<PeopleIndex>, mut idx: PeopleIndex) {
+        idx.generation = self.people_gen.get();
+        *cache = Some(idx);
     }
 
     /// Passt ein Index noch zum Katalog? Sonst neu aufbauen: Er könnte auf
@@ -232,7 +287,15 @@ impl Catalog {
         faces: &[NewFace],
         index: &mut PeopleIndex,
     ) -> Result<Vec<i64>> {
-        let ids = self.with_tx(|tx| {
+        let (ids, old) = self.with_tx(|tx| {
+            // Nur Gruppen der ersetzten Gesichter können dadurch leer werden
+            let old: Vec<i64> = tx
+                .prepare_cached(
+                    "SELECT DISTINCT person_id FROM faces WHERE image_id = ?1 AND person_id IS NOT NULL",
+                )?
+                .query_map([image_id], |r| r.get(0))?
+                .collect::<std::result::Result<_, _>>()?;
+            index.stale.extend(&old);
             tx.execute("DELETE FROM faces WHERE image_id = ?1", [image_id])?;
             let mut ids = Vec::with_capacity(faces.len());
             // Eine Person erscheint höchstens einmal pro Foto
@@ -255,6 +318,7 @@ impl Catalog {
                 };
                 used.push(person);
                 assigned[k] = person;
+                index.stale.insert(person);
                 let named = index.clusters.get(&person).is_some_and(|c| c.named);
                 index.add(person, named, &f.embedding, false);
             }
@@ -279,9 +343,9 @@ impl Catalog {
                 ids.push(tx.last_insert_rowid());
             }
             tx.execute("UPDATE images SET face_state = 1 WHERE id = ?1", [image_id])?;
-            Ok(ids)
+            Ok((ids, old))
         })?;
-        self.drop_empty_groups()?;
+        self.drop_empty_groups(Some(&old))?;
         Ok(ids)
     }
 
@@ -394,8 +458,14 @@ impl Catalog {
     /// Mehrere Gesichter auf einmal ändern: mit `name` dieser Person zuordnen
     /// (bestätigt; neu angelegt, falls es sie nicht gibt), ohne `name` die
     /// Zuordnung lösen und der bisherigen Person nicht wieder vorschlagen.
-    /// Liefert die Ziel-Person.
-    pub fn reassign_faces(&mut self, face_ids: &[i64], name: Option<&str>) -> Result<Option<i64>> {
+    /// Liefert die Ziel-Person. `index`: zwischengespeicherter Personen-Index
+    /// (wird weiterverwendet und nachgeführt statt je Klick neu aufgebaut).
+    pub fn reassign_faces(
+        &mut self,
+        face_ids: &[i64],
+        name: Option<&str>,
+        index: &mut Option<PeopleIndex>,
+    ) -> Result<Option<i64>> {
         if face_ids.is_empty() {
             return Ok(None);
         }
@@ -418,7 +488,16 @@ impl Catalog {
             }),
             None => None,
         };
-        self.with_tx(|tx| {
+        let mut idx = self.take_index(index)?;
+        let old = self.with_tx(|tx| {
+            // Bisherige Personen: können leer werden, ihre Zentroide ändern sich
+            let old: Vec<i64> = tx
+                .prepare(
+                    "SELECT DISTINCT person_id FROM faces
+                     WHERE id IN (SELECT value FROM json_each(?1)) AND person_id IS NOT NULL",
+                )?
+                .query_map([&ids], |r| r.get(0))?
+                .collect::<std::result::Result<_, _>>()?;
             match person {
                 Some(p) => tx.execute(
                     "UPDATE faces SET person_id = ?2, confirmed = 1, rejected_person = NULL, hidden = 0
@@ -431,19 +510,21 @@ impl Catalog {
                     params![ids],
                 )?,
             };
-            Ok(())
+            Ok(old)
         })?;
         self.invalidate_people_index();
-        self.drop_empty_groups()?;
+        self.drop_empty_groups(Some(&old))?;
+        self.refresh_clusters(&mut idx, &[&old[..], person.as_slice()].concat())?;
         if let Some(p) = person {
-            self.suggest_for(p)?;
+            self.suggest_for(p, &mut idx)?;
         }
+        self.put_index(index, idx);
         Ok(person)
     }
 
     // --- Bearbeiten ------------------------------------------------------------
 
-    fn person_by_name(&self, name: &str) -> Result<Option<i64>> {
+    pub(crate) fn person_by_name(&self, name: &str) -> Result<Option<i64>> {
         Ok(self
             .conn
             .query_row(
@@ -454,12 +535,29 @@ impl Catalog {
             .optional()?)
     }
 
-    pub(crate) fn drop_empty_groups(&self) -> Result<()> {
-        let n = self.conn.execute(
-            "DELETE FROM persons WHERE name IS NULL AND NOT EXISTS
-               (SELECT 1 FROM faces f WHERE f.person_id = persons.id AND f.hidden = 0)",
-            [],
-        )?;
+    /// Unbenannte Gruppen ohne sichtbare Gesichter löschen. `candidates`: nur
+    /// diese prüfen – Gruppen, denen gerade Gesichter genommen wurden. Alle zu
+    /// prüfen kostete bei 8 000 Gruppen 10–16 ms, nach jedem analysierten Foto.
+    /// `None`: alle (nach dem Entfernen eines Quellordners).
+    pub(crate) fn drop_empty_groups(&self, candidates: Option<&[i64]>) -> Result<()> {
+        let n = match candidates {
+            Some(ids) => {
+                let mut st = self.conn.prepare_cached(
+                    "DELETE FROM persons WHERE id = ?1 AND name IS NULL AND NOT EXISTS
+                       (SELECT 1 FROM faces f WHERE f.person_id = ?1 AND f.hidden = 0)",
+                )?;
+                let mut n = 0;
+                for id in ids {
+                    n += st.execute([id])?;
+                }
+                n
+            }
+            None => self.conn.execute(
+                "DELETE FROM persons WHERE name IS NULL AND NOT EXISTS
+                   (SELECT 1 FROM faces f WHERE f.person_id = persons.id AND f.hidden = 0)",
+                [],
+            )?,
+        };
         if n > 0 {
             self.invalidate_people_index();
         }
@@ -468,15 +566,22 @@ impl Catalog {
 
     /// Person bzw. Gruppe benennen. Gibt es den Namen schon, werden beide
     /// zusammengeführt. Die Gesichter gelten danach als bestätigt.
-    /// Liefert die ID der (ggf. zusammengeführten) Person.
-    pub fn name_person(&mut self, person_id: i64, name: &str) -> Result<i64> {
-        self.invalidate_people_index();
+    /// Liefert die ID der (ggf. zusammengeführten) Person. `index` wie bei
+    /// [`Catalog::reassign_faces`].
+    pub fn name_person(
+        &mut self,
+        person_id: i64,
+        name: &str,
+        index: &mut Option<PeopleIndex>,
+    ) -> Result<i64> {
         let name = name.trim();
         if name.is_empty() {
             return Err(Error::Invalid(
                 tr_s("Bitte einen Namen eingeben", "Please enter a name").into(),
             ));
         }
+        let mut idx = self.take_index(index)?;
+        self.invalidate_people_index();
         let existing = self.person_by_name(name)?.filter(|id| *id != person_id);
         // Eine Gruppe benennen bestätigt ihre Gesichter. Eine schon benannte
         // Person nur umbenennen (z. B. „Max“ → „Max Mustermann“) lässt offene
@@ -508,18 +613,27 @@ impl Catalog {
                 Ok(person_id)
             }
         })?;
-        self.suggest_for(target)?;
+        self.refresh_clusters(&mut idx, &[person_id, target])?;
+        self.suggest_for(target, &mut idx)?;
+        self.put_index(index, idx);
         Ok(target)
     }
 
     /// Ein einzelnes Gesicht einer Person zuordnen (neu angelegt, falls nötig).
-    pub fn assign_face(&mut self, face_id: i64, name: &str) -> Result<i64> {
+    /// `index` wie bei [`Catalog::reassign_faces`].
+    pub fn assign_face(
+        &mut self,
+        face_id: i64,
+        name: &str,
+        index: &mut Option<PeopleIndex>,
+    ) -> Result<i64> {
         let name = name.trim();
         if name.is_empty() {
             return Err(Error::Invalid(
                 tr_s("Bitte einen Namen eingeben", "Please enter a name").into(),
             ));
         }
+        let mut idx = self.take_index(index)?;
         let person = match self.person_by_name(name)? {
             Some(id) => id,
             None => {
@@ -530,13 +644,17 @@ impl Catalog {
                 self.conn.last_insert_rowid()
             }
         };
+        let old = self.face_person(face_id)?;
         self.conn.execute(
             "UPDATE faces SET person_id = ?2, confirmed = 1, rejected_person = NULL, hidden = 0
              WHERE id = ?1",
             params![face_id, person],
         )?;
-        self.drop_empty_groups()?;
-        self.suggest_for(person)?;
+        crate::catalog::flush_search(&self.conn)?;
+        self.drop_empty_groups(Some(old.as_slice()))?;
+        self.refresh_clusters(&mut idx, &[old.as_slice(), &[person]].concat())?;
+        self.suggest_for(person, &mut idx)?;
+        self.put_index(index, idx);
         Ok(person)
     }
 
@@ -559,23 +677,40 @@ impl Catalog {
 
     /// „Nicht diese Person“: Zuordnung lösen und nicht erneut vorschlagen.
     pub fn reject_face(&self, face_id: i64) -> Result<()> {
+        let old = self.face_person(face_id)?;
         self.conn.execute(
             "UPDATE faces SET rejected_person = person_id, person_id = NULL, confirmed = 0
              WHERE id = ?1",
             [face_id],
         )?;
-        self.drop_empty_groups()?;
+        crate::catalog::flush_search(&self.conn)?;
+        self.drop_empty_groups(Some(old.as_slice()))?;
         Ok(())
     }
 
     /// Gesicht ausblenden (kein Gesicht, unwichtig).
     pub fn hide_face(&self, face_id: i64) -> Result<()> {
+        let old = self.face_person(face_id)?;
         self.conn.execute(
             "UPDATE faces SET hidden = 1, person_id = NULL, confirmed = 0 WHERE id = ?1",
             [face_id],
         )?;
-        self.drop_empty_groups()?;
+        crate::catalog::flush_search(&self.conn)?;
+        self.drop_empty_groups(Some(old.as_slice()))?;
         Ok(())
+    }
+
+    /// Bisherige Person eines Gesichts (Kandidat für `drop_empty_groups`).
+    fn face_person(&self, face_id: i64) -> Result<Option<i64>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT person_id FROM faces WHERE id = ?1",
+                [face_id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten())
     }
 
     /// Person löschen – die Gesichter bleiben, sind aber keiner Person mehr zugeordnet.
@@ -587,13 +722,17 @@ impl Catalog {
         )?;
         self.conn
             .execute("DELETE FROM persons WHERE id = ?1", [person_id])?;
+        crate::catalog::flush_search(&self.conn)?;
         Ok(())
     }
 
     /// Nach dem Benennen: ähnliche unbenannte Gruppen und lose Gesichter als
     /// Vorschläge zur Person holen. Abgelehnte Gesichter bleiben außen vor.
-    fn suggest_for(&mut self, person: i64) -> Result<()> {
-        let idx = self.people_index()?;
+    /// `idx` muss aktuell sein (betroffene Personen per `refresh_clusters`
+    /// nachgeführt) und wird hier wieder nachgeführt.
+    fn suggest_for(&mut self, person: i64, idx: &mut PeopleIndex) -> Result<()> {
+        // Veraltete Zentroide (aus `save_faces`) zuerst exakt neu lesen
+        self.refresh_clusters(idx, &[])?;
         let Some(target) = idx.clusters.get(&person).and_then(Cluster::centroid) else {
             return Ok(());
         };
@@ -639,7 +778,8 @@ impl Catalog {
             }
             Ok(())
         })?;
-        self.drop_empty_groups()
+        self.drop_empty_groups(Some(&groups))?;
+        self.refresh_clusters(idx, &[&groups[..], &[person]].concat())
     }
 }
 
@@ -678,6 +818,7 @@ mod tests {
     #[test]
     fn groups_names_suggests_and_filters() {
         let (mut cat, imgs) = catalog_with_images(5);
+        let mut c = None;
         let mut idx = cat.people_index().unwrap();
         // Anna (Identität 0) auf drei Fotos, Ben (Identität 1) auf einem
         let a1 = add(&mut cat, &mut idx, imgs[0], face(0, 0.1));
@@ -696,7 +837,7 @@ mod tests {
         );
 
         // Benennen bestätigt die Gruppe
-        let anna = cat.name_person(anna_group, "Anna").unwrap();
+        let anna = cat.name_person(anna_group, "Anna", &mut c).unwrap();
         assert!(cat.person_faces(anna).unwrap().iter().all(|f| f.confirmed));
 
         // Neues Foto von Anna wird ihr vorgeschlagen (nicht bestätigt)
@@ -709,17 +850,17 @@ mod tests {
         // Ablehnen löst die Zuordnung und schlägt sie nicht erneut vor
         cat.reject_face(a3).unwrap();
         assert!(cat.image_faces(imgs[3]).unwrap()[0].person_id.is_none());
-        cat.name_person(anna, "Anna").unwrap();
+        cat.name_person(anna, "Anna", &mut c).unwrap();
         assert!(cat.image_faces(imgs[3]).unwrap()[0].person_id.is_none());
 
         // Einzelnes Gesicht von Hand zuordnen; gleicher Name führt zusammen
-        cat.assign_face(b1, "Ben").unwrap();
+        cat.assign_face(b1, "Ben", &mut c).unwrap();
         let ben = cat.image_faces(imgs[2]).unwrap()[0].person_id.unwrap();
         let mut idx = cat.people_index().unwrap();
         add(&mut cat, &mut idx, imgs[4], face(5, 0.0));
         let g = cat.image_faces(imgs[4]).unwrap()[0].person_id.unwrap();
         assert_eq!(
-            cat.name_person(g, "ben").unwrap(),
+            cat.name_person(g, "ben", &mut c).unwrap(),
             ben,
             "Name ohne Groß/klein → zusammengeführt"
         );
@@ -770,12 +911,13 @@ mod tests {
     #[test]
     fn reassigns_faces_of_several_photos() {
         let (mut cat, imgs) = catalog_with_images(4);
+        let mut c = None;
         let mut idx = cat.people_index().unwrap();
         for &i in &imgs {
             add(&mut cat, &mut idx, i, face(0, 0.1));
         }
         let group = cat.image_faces(imgs[0]).unwrap()[0].person_id.unwrap();
-        let anna = cat.name_person(group, "Anna").unwrap();
+        let anna = cat.name_person(group, "Anna", &mut c).unwrap();
         assert_eq!(cat.faces_of_images(&imgs).unwrap().len(), 4);
 
         // Drei der vier Fotos zeigen in Wahrheit Ben
@@ -786,7 +928,10 @@ mod tests {
             .map(|f| f.id)
             .collect();
         assert_eq!(wrong.len(), 3);
-        let ben = cat.reassign_faces(&wrong, Some("Ben")).unwrap().unwrap();
+        let ben = cat
+            .reassign_faces(&wrong, Some("Ben"), &mut c)
+            .unwrap()
+            .unwrap();
         let anna_imgs = cat
             .query_images(&ImageQuery::new(Scope::Person { id: anna }))
             .unwrap();
@@ -796,13 +941,13 @@ mod tests {
         assert!(ben_faces.iter().all(|f| f.confirmed));
 
         // Aus Ben wieder herausnehmen: alle drei, und nicht erneut vorgeschlagen
-        cat.reassign_faces(&wrong, None).unwrap();
+        cat.reassign_faces(&wrong, None, &mut c).unwrap();
         assert!(cat.person_faces(ben).unwrap().is_empty());
-        cat.name_person(anna, "Anna").unwrap();
+        cat.name_person(anna, "Anna", &mut c).unwrap();
         let back: Vec<_> = cat.faces_of_images(&imgs[1..]).unwrap();
         assert!(back.iter().all(|f| f.person_id != Some(ben)));
         // Leerer Name wird abgelehnt
-        assert!(cat.reassign_faces(&wrong, Some("  ")).is_err());
+        assert!(cat.reassign_faces(&wrong, Some("  "), &mut c).is_err());
     }
 
     /// Umbenennen einer schon benannten Person behält offene Vorschläge;
@@ -810,17 +955,18 @@ mod tests {
     #[test]
     fn renames_named_person() {
         let (mut cat, imgs) = catalog_with_images(3);
+        let mut c = None;
         let mut idx = cat.people_index().unwrap();
         add(&mut cat, &mut idx, imgs[0], face(0, 0.1));
         let group = cat.image_faces(imgs[0]).unwrap()[0].person_id.unwrap();
-        let max = cat.name_person(group, "Max").unwrap();
+        let max = cat.name_person(group, "Max", &mut c).unwrap();
         // Neues Foto wird Max nur vorgeschlagen
         let mut idx = cat.people_index().unwrap();
         add(&mut cat, &mut idx, imgs[1], face(0, 0.12));
         assert!(!cat.image_faces(imgs[1]).unwrap()[0].confirmed);
 
         assert_eq!(
-            cat.name_person(max, "Max Mustermann").unwrap(),
+            cat.name_person(max, "Max Mustermann", &mut c).unwrap(),
             max,
             "gleiche Person"
         );
@@ -840,8 +986,11 @@ mod tests {
         let mut idx = cat.people_index().unwrap();
         add(&mut cat, &mut idx, imgs[2], face(3, 0.0));
         let g2 = cat.image_faces(imgs[2]).unwrap()[0].person_id.unwrap();
-        let erika = cat.name_person(g2, "Erika").unwrap();
-        assert_eq!(cat.name_person(erika, "max mustermann").unwrap(), max);
+        let erika = cat.name_person(g2, "Erika", &mut c).unwrap();
+        assert_eq!(
+            cat.name_person(erika, "max mustermann", &mut c).unwrap(),
+            max
+        );
         assert_eq!(cat.person_faces(max).unwrap().len(), 3);
     }
 
@@ -849,10 +998,11 @@ mod tests {
     #[test]
     fn confirms_several_suggestions() {
         let (mut cat, imgs) = catalog_with_images(4);
+        let mut c = None;
         let mut idx = cat.people_index().unwrap();
         add(&mut cat, &mut idx, imgs[0], face(0, 0.1));
         let group = cat.image_faces(imgs[0]).unwrap()[0].person_id.unwrap();
-        let max = cat.name_person(group, "Max").unwrap();
+        let max = cat.name_person(group, "Max", &mut c).unwrap();
         let mut idx = cat.people_index().unwrap();
         add(&mut cat, &mut idx, imgs[1], face(0, 0.12));
         add(&mut cat, &mut idx, imgs[2], face(0, 0.14));
@@ -875,5 +1025,111 @@ mod tests {
             l[0].person_id.is_none() && !l[0].confirmed,
             "loses Gesicht unverändert"
         );
+    }
+
+    /// Wie die App: ein Index für Analyse und Klicks, nur bei Bedarf neu aufgebaut.
+    fn analyse(cat: &mut Catalog, cache: &mut Option<PeopleIndex>, image: i64, es: &[Vec<f32>]) {
+        if cache.as_ref().is_none_or(|i| !cat.people_index_current(i)) {
+            *cache = Some(cat.people_index().unwrap());
+        }
+        let faces: Vec<NewFace> = es
+            .iter()
+            .map(|e| NewFace {
+                rect: [0.1, 0.1, 0.2, 0.2],
+                score: 0.9,
+                embedding: e.clone(),
+            })
+            .collect();
+        cat.save_faces(image, &faces, cache.as_mut().unwrap())
+            .unwrap();
+    }
+
+    /// Ablauf mit weitergereichtem Index (`cached`) bzw. – wie früher – mit
+    /// einem für jeden Klick neu aufgebauten. Liefert den Endzustand.
+    fn scenario(cached: bool) -> Vec<(i64, Option<String>, bool)> {
+        let (mut cat, imgs) = catalog_with_images(8);
+        let mut cache: Option<PeopleIndex> = None;
+        // Nach jedem Klick: Index exakt wie frisch aufgebaut (bzw. früher: verworfen)
+        let after_click = |cat: &Catalog, cache: &mut Option<PeopleIndex>| {
+            if !cached {
+                *cache = None;
+                return;
+            }
+            let c = cache.as_ref().expect("Index bleibt erhalten");
+            assert!(cat.people_index_current(c));
+            assert!(c.stale.is_empty());
+            assert_eq!(c.clusters, cat.people_index().unwrap().clusters);
+        };
+        macro_rules! click {
+            ($call:expr) => {{
+                let mut fresh = None;
+                let idx = if cached { &mut cache } else { &mut fresh };
+                let r = $call(&mut cat, idx);
+                after_click(&cat, &mut cache);
+                r
+            }};
+        }
+        let first = |cat: &Catalog, img: i64| cat.image_faces(img).unwrap()[0].clone();
+
+        analyse(&mut cat, &mut cache, imgs[0], &[face(0, 0.1)]);
+        analyse(&mut cat, &mut cache, imgs[1], &[face(0, 0.2)]);
+        analyse(&mut cat, &mut cache, imgs[2], &[face(1, 0.1)]);
+        analyse(
+            &mut cat,
+            &mut cache,
+            imgs[3],
+            &[face(0, 0.15), face(1, 0.2)],
+        );
+        let g = first(&cat, imgs[0]).person_id.unwrap();
+        let anna = click!(|c: &mut Catalog, i| c.name_person(g, "Anna", i).unwrap());
+        analyse(&mut cat, &mut cache, imgs[4], &[face(0, 0.12)]);
+        analyse(&mut cat, &mut cache, imgs[5], &[face(2, 0.0)]);
+        // Erneut analysiert: Annas Gesicht auf Foto 1 verschwindet
+        analyse(&mut cat, &mut cache, imgs[1], &[face(1, 0.05)]);
+        let f5 = first(&cat, imgs[5]).id;
+        click!(|c: &mut Catalog, i| c.assign_face(f5, "Carl", i).unwrap());
+        let ben_faces: Vec<i64> = cat
+            .faces_of_images(&[imgs[2], imgs[3]])
+            .unwrap()
+            .iter()
+            .filter(|f| f.person_id != Some(anna))
+            .map(|f| f.id)
+            .collect();
+        let ben = click!(|c: &mut Catalog, i| c
+            .reassign_faces(&ben_faces, Some("Ben"), i)
+            .unwrap()
+            .unwrap());
+        let f4 = first(&cat, imgs[4]).id;
+        click!(|c: &mut Catalog, i| c.reassign_faces(&[f4], None, i).unwrap());
+        analyse(&mut cat, &mut cache, imgs[6], &[face(1, 0.3)]);
+        analyse(&mut cat, &mut cache, imgs[7], &[face(0, 0.3), face(4, 0.0)]);
+        click!(|c: &mut Catalog, i| c.name_person(ben, "Benjamin", i).unwrap());
+        let g7 = cat
+            .image_faces(imgs[7])
+            .unwrap()
+            .into_iter()
+            .find(|f| f.person_name.is_none())
+            .unwrap()
+            .person_id
+            .unwrap();
+        click!(|c: &mut Catalog, i| c.name_person(g7, "anna", i).unwrap());
+
+        let mut out: Vec<_> = cat
+            .faces_of_images(&imgs)
+            .unwrap()
+            .into_iter()
+            .map(|f| (f.id, f.person_name, f.confirmed))
+            .collect();
+        out.sort_by_key(|f| f.0);
+        out
+    }
+
+    /// Der weitergereichte Index liefert dieselben Zuordnungen wie ein für
+    /// jeden Klick neu aufgebauter und entspricht danach exakt einem Neuaufbau.
+    #[test]
+    fn cached_index_matches_rebuilt() {
+        let cached = scenario(true);
+        assert_eq!(cached, scenario(false));
+        assert!(cached.iter().any(|f| f.1.as_deref() == Some("Benjamin")));
     }
 }

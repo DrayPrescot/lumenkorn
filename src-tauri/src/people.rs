@@ -268,16 +268,17 @@ pub fn image_faces(state: State<AppState>, id: i64) -> Result<Vec<FaceInfo>, Err
 
 #[tauri::command(async)]
 pub fn person_rename(state: State<AppState>, id: i64, name: String) -> Result<i64, Error> {
-    let r = state.catalog.lock().unwrap().name_person(id, &name);
-    state.people.invalidate();
-    r
+    // Den Index der Analyse weiterreichen: Er wird nachgeführt statt bei jedem
+    // Klick neu aufgebaut (bei Fehlern verworfen). Sperren in derselben
+    // Reihenfolge wie `run_batch`: Katalog, dann Index.
+    let mut cat = state.catalog.lock().unwrap();
+    cat.name_person(id, &name, &mut state.people.index.lock().unwrap())
 }
 
 #[tauri::command(async)]
 pub fn face_assign(state: State<AppState>, face_id: i64, name: String) -> Result<i64, Error> {
-    let r = state.catalog.lock().unwrap().assign_face(face_id, &name);
-    state.people.invalidate();
-    r
+    let mut cat = state.catalog.lock().unwrap();
+    cat.assign_face(face_id, &name, &mut state.people.index.lock().unwrap())
 }
 
 #[tauri::command(async)]
@@ -293,13 +294,12 @@ pub fn faces_reassign(
     face_ids: Vec<i64>,
     name: Option<String>,
 ) -> Result<Option<i64>, Error> {
-    let r = state
-        .catalog
-        .lock()
-        .unwrap()
-        .reassign_faces(&face_ids, name.as_deref());
-    state.people.invalidate();
-    r
+    let mut cat = state.catalog.lock().unwrap();
+    cat.reassign_faces(
+        &face_ids,
+        name.as_deref(),
+        &mut state.people.index.lock().unwrap(),
+    )
 }
 
 /// Mehrere Vorschläge auf einmal bestätigen.

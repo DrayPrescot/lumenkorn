@@ -167,7 +167,8 @@ impl ThumbCache {
 
 /// Volle Auflösung: Bearbeitete Bilder und RAWs werden entwickelt (das
 /// eingebettete JPEG eines RAWs ist oft kleiner als das Original),
-/// unbearbeitete Rasterbilder nur dekodiert.
+/// unbearbeitete JPEGs ohne Drehung unverändert geliefert, andere
+/// Rasterbilder dekodiert.
 pub fn render_full(
     job: &ThumbJob,
     masks: &dyn MaskSource,
@@ -195,7 +196,32 @@ pub fn render_full(
             repairs,
         );
     }
+    if serves_original(job) {
+        return Ok(std::fs::read(&job.path)?);
+    }
     render(Path::new(&job.path), job.kind, job.orientation, u32::MAX)
+}
+
+/// Liefert [`render_full`] die Datei unverändert? Für ein unbearbeitetes,
+/// nicht zu drehendes JPEG ist die Datei selbst das Ergebnis – Dekodieren und
+/// neu Kodieren kostete ~0,5 s je 24 MP und Qualität (q82). Wie bei
+/// `full_size_preview` für RAWs. (Zwischenspeichern lohnt dann nicht.)
+pub fn serves_original(job: &ThumbJob) -> bool {
+    job.kind == ImageKind::Raster
+        && job.orientation.is_none_or(|o| o == 1)
+        && job
+            .edit
+            .as_ref()
+            .is_none_or(|e| DevelopParams::from_json(e).is_default())
+        && is_jpeg(Path::new(&job.path))
+}
+
+/// Beginnt die Datei mit einem JPEG-Kopf (SOI + Marker)?
+fn is_jpeg(path: &Path) -> bool {
+    use std::io::Read;
+    let mut head = [0u8; 3];
+    std::fs::File::open(path).is_ok_and(|mut f| f.read_exact(&mut head).is_ok())
+        && head == [0xFF, 0xD8, 0xFF]
 }
 
 /// Die meisten Kameras betten eine JPEG-Vorschau in voller Sensorgröße ein.
@@ -363,10 +389,16 @@ pub fn decode_for_analysis(job: &ThumbJob, max: u32) -> Result<DynamicImage> {
 }
 
 fn encode_jpeg(img: &DynamicImage, quality: u8) -> Result<Vec<u8>> {
-    Ok(lumenkorn_develop::output::encode_jpeg_rgb8(
-        &img.to_rgb8(),
-        quality,
-    )?)
+    // JPEG-Quellen sind schon RGB8: keine Kopie (bei 24 MP 72 MB)
+    let converted;
+    let rgb = match img {
+        DynamicImage::ImageRgb8(rgb) => rgb,
+        other => {
+            converted = other.to_rgb8();
+            &converted
+        }
+    };
+    Ok(lumenkorn_develop::output::encode_jpeg_rgb8(rgb, quality)?)
 }
 
 /// Dekodiert eine eingebettete JPEG-Vorschau des RAWs. Funktioniert
@@ -462,6 +494,12 @@ pub fn embedded_jpegs(data: &[u8]) -> Vec<&[u8]> {
     let mut out = Vec::new();
     let mut i = 0;
     while i + 3 < data.len() {
+        // Zum nächsten 0xFF springen statt jedes Byte einzeln zu prüfen
+        // (bis 16 MB je RAW)
+        match find_ff(&data[i..data.len() - 3]) {
+            Some(k) => i += k,
+            None => break,
+        }
         if data[i] == 0xFF
             && data[i + 1] == 0xD8
             && data[i + 2] == 0xFF
@@ -478,6 +516,26 @@ pub fn embedded_jpegs(data: &[u8]) -> Vec<&[u8]> {
         i += 1;
     }
     out
+}
+
+/// Position des ersten 0xFF. Blockweise ohne frühen Abbruch je Byte, damit
+/// der Compiler den Vergleich vektorisiert (memchr ist keine direkte
+/// Abhängigkeit).
+fn find_ff(d: &[u8]) -> Option<usize> {
+    const BLOCK: usize = 32;
+    let mut chunks = d.chunks_exact(BLOCK);
+    let mut base = 0;
+    for c in chunks.by_ref() {
+        if c.iter().fold(false, |acc, &b| acc | (b == 0xFF)) {
+            return c.iter().position(|&b| b == 0xFF).map(|k| base + k);
+        }
+        base += BLOCK;
+    }
+    chunks
+        .remainder()
+        .iter()
+        .position(|&b| b == 0xFF)
+        .map(|k| base + k)
 }
 
 /// Länge eines JPEG-Streams anhand seiner Marker-Struktur.
@@ -684,5 +742,101 @@ mod tests {
         let img = image::load_from_memory(&bytes).unwrap();
         // 90° gedreht: hochkant
         assert_eq!((img.width(), img.height()), (288, 512));
+    }
+
+    /// Bisherige Suche Byte für Byte – Referenz für `embedded_jpegs`.
+    fn embedded_jpegs_ref(data: &[u8]) -> Vec<&[u8]> {
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i + 3 < data.len() {
+            if data[i] == 0xFF
+                && data[i + 1] == 0xD8
+                && data[i + 2] == 0xFF
+                && let Some(len) = jpeg_len(&data[i..])
+            {
+                if len >= 8 * 1024 {
+                    out.push(&data[i..i + len]);
+                }
+                i += len;
+                continue;
+            }
+            i += 1;
+        }
+        out
+    }
+
+    #[test]
+    fn fast_scan_finds_the_same_jpegs() {
+        let jpeg = sample_jpeg(400, 300);
+        let mut seed = 1u64;
+        let mut rnd = || {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            (seed >> 33) as u8
+        };
+        for case in 0..40 {
+            let mut d: Vec<u8> = (0..case * 997).map(|_| rnd()).collect();
+            // 0xFF-Häufungen, abgeschnittene Köpfe, JPEGs an Blockgrenzen und am Ende
+            d.extend([0xFF, 0xFF, 0xD8, 0xFF, 0xFF, 0xD8]);
+            d.extend(&jpeg);
+            d.extend((0..case * 31).map(|_| 0xFF));
+            d.extend(&jpeg[..jpeg.len() / 2]);
+            d.extend(&jpeg);
+            d.extend([0xFF, 0xD8, 0xFF][..case % 4].iter());
+            for cut in [0, 1, 2, 3, 33] {
+                let part = &d[..d.len().saturating_sub(cut)];
+                let a: Vec<(usize, usize)> = embedded_jpegs(part)
+                    .iter()
+                    .map(|j| (j.as_ptr() as usize - part.as_ptr() as usize, j.len()))
+                    .collect();
+                let b: Vec<(usize, usize)> = embedded_jpegs_ref(part)
+                    .iter()
+                    .map(|j| (j.as_ptr() as usize - part.as_ptr() as usize, j.len()))
+                    .collect();
+                assert_eq!(a, b, "Fall {case}, gekürzt um {cut}");
+            }
+        }
+        assert_eq!(find_ff(&[]), None);
+        assert_eq!(find_ff(&[0; 64]), None);
+        let mut v = vec![0u8; 70];
+        v[69] = 0xFF;
+        assert_eq!(find_ff(&v), Some(69));
+        v[32] = 0xFF;
+        assert_eq!(find_ff(&v), Some(32));
+    }
+
+    /// Unbearbeitetes JPEG ohne Drehung: Originalbytes; mit Drehung dekodiert.
+    #[test]
+    fn full_size_serves_plain_jpeg_unchanged() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("a.jpg");
+        let original = sample_jpeg(640, 480);
+        std::fs::write(&p, &original).unwrap();
+        let job = |orientation, edit| ThumbJob {
+            id: 1,
+            path: p.to_string_lossy().into_owned(),
+            kind: ImageKind::Raster,
+            orientation,
+            edit,
+            long_edge: Some(640),
+        };
+        let full = |j: &ThumbJob| render_full(j, &NoMasks, None, &NoRepairs).unwrap();
+        assert_eq!(full(&job(None, None)), original);
+        assert_eq!(full(&job(Some(1), None)), original);
+        let neutral = serde_json::to_value(DevelopParams::default()).unwrap();
+        assert_eq!(
+            full(&job(None, Some(neutral))),
+            original,
+            "neutrale Bearbeitung"
+        );
+        let rotated = image::load_from_memory(&full(&job(Some(6), None))).unwrap();
+        assert_eq!((rotated.width(), rotated.height()), (480, 640));
+        // PNG wird weiterhin dekodiert und als JPEG geliefert
+        let png = d.path().join("b.png");
+        image::RgbImage::new(64, 32).save(&png).unwrap();
+        let j = ThumbJob {
+            path: png.to_string_lossy().into_owned(),
+            ..job(None, None)
+        };
+        assert!(full(&j).starts_with(&[0xFF, 0xD8, 0xFF]));
     }
 }

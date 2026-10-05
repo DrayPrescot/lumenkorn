@@ -6,8 +6,9 @@
 //! Fehlt eine Vorschau, wird sie bei Bedarf erzeugt.
 
 use crate::AppState;
-use lumenkorn_core::thumbs::Variant;
+use lumenkorn_core::thumbs::{self, Variant};
 use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 use tauri::http::{Request, Response, StatusCode, header};
 use tauri::{Manager, UriSchemeContext, UriSchemeResponder};
 
@@ -99,8 +100,20 @@ static FULL_POOL: Pool = Pool::new(|| 2);
 /// geändert, gilt das zwischengespeicherte Bild nicht mehr.
 type FullKey = (i64, Option<(u64, std::time::SystemTime)>);
 type FullEntry = (FullKey, Option<serde_json::Value>, Arc<Vec<u8>>);
-static FULL: Mutex<Vec<FullEntry>> = Mutex::new(Vec::new());
+/// Einträge und Zeitpunkt der letzten Nutzung (zum Freigeben, siehe `release_full`)
+static FULL: Mutex<(Vec<FullEntry>, Option<Instant>)> = Mutex::new((Vec::new(), None));
 const FULL_ENTRIES: usize = 6;
+
+/// Gibt den Vollbild-Cache (bis 6 × ~10–100 MB) frei, wenn er `idle` lang
+/// nicht benutzt wurde. `true`, wenn etwas freigegeben wurde.
+pub fn release_full(idle: Duration) -> bool {
+    let mut c = FULL.lock().unwrap_or_else(|e| e.into_inner());
+    if c.0.is_empty() || c.1.is_some_and(|t| t.elapsed() < idle) {
+        return false;
+    }
+    *c = (Vec::new(), None);
+    true
+}
 
 fn serve_full(state: &AppState, id: i64) -> Response<Vec<u8>> {
     let job = match state.catalog.lock().unwrap().thumb_job(id) {
@@ -112,20 +125,31 @@ fn serve_full(state: &AppState, id: i64) -> Response<Vec<u8>> {
         .and_then(|m| Some((m.len(), m.modified().ok()?)));
     let key = (id, stamp);
     {
-        let c = FULL.lock().unwrap();
-        if let Some((_, _, bytes)) = c.iter().find(|(k, e, _)| *k == key && *e == job.edit) {
+        let mut c = FULL.lock().unwrap_or_else(|e| e.into_inner());
+        c.1 = Some(Instant::now());
+        if let Some((_, _, bytes)) = c.0.iter().find(|(k, e, _)| *k == key && *e == job.edit) {
+            // Eine Kopie je Antwort ist nötig: Tauri will den Inhalt besitzen
+            // ('static), der Cache behält seinen.
             return jpeg(bytes.to_vec());
         }
     }
-    let t = std::time::Instant::now();
+    // Unbearbeitetes JPEG: die Datei selbst (aus dem Seiten-Cache des
+    // Systems) – nicht zusätzlich im Speicher halten.
+    let cache = !thumbs::serves_original(&job);
+    let t = Instant::now();
     match state.cache.render_full(&job) {
         Ok(bytes) => {
             log::info!("Volle Auflösung für Bild {id} in {:.2?}", t.elapsed());
-            let mut c = FULL.lock().unwrap();
-            c.retain(|(k, _, _)| k.0 != id);
-            c.insert(0, (key, job.edit.clone(), Arc::new(bytes.clone())));
-            c.truncate(FULL_ENTRIES);
-            jpeg(bytes)
+            let mut c = FULL.lock().unwrap_or_else(|e| e.into_inner());
+            c.0.retain(|(k, _, _)| k.0 != id);
+            if !cache {
+                return jpeg(bytes);
+            }
+            // Für Cache und Antwort je ein Puffer – Kopie unvermeidbar (s. o.)
+            let bytes = Arc::new(bytes);
+            c.0.insert(0, (key, job.edit.clone(), bytes.clone()));
+            c.0.truncate(FULL_ENTRIES);
+            jpeg(bytes.to_vec())
         }
         Err(e) => {
             log::warn!("Volle Auflösung {id}: {e}");

@@ -211,7 +211,137 @@ const MIGRATIONS: &[&str] = &[
         UPDATE face_id_floor SET v = MAX(v, OLD.id);
     END;
     "#,
+    // v11: Leistung (siehe `SEARCH_DIRTY`)
+    SEARCH_DIRTY,
 ];
+
+/// v11: Der Suchtext eines Fotos wurde bisher bei jeder einzelnen
+/// Schlagwort-/Gesichtszeile neu gebaut – beim Speichern eines KI-Ergebnisses
+/// (alte Schlagworte löschen, ~6–10 neue) bis zu elfmal je Foto. Jetzt merken
+/// die Trigger nur das Foto vor; `flush_search` baut am Ende der Transaktion
+/// jeden Eintrag einmal neu. Gesichts-Trigger feuern nur noch, wenn sich der
+/// Suchtext ändern kann (sichtbares Gesicht einer benannten Person).
+///
+/// Außerdem Indizes: sichtbare Gesichter je Person (Zählen, leere Gruppen,
+/// Personenfilter ohne die Embedding-BLOBs zu lesen), vorhandene Ordner je
+/// Quellordner (Ordnerbaum, Anzahl je Quellordner, ohne Tabellendurchlauf). `images_captured` und `images_hash`
+/// nutzt keine Abfrage (Sortierung läuft über die Indizes aus v6).
+const SEARCH_DIRTY: &str = r#"
+    CREATE TABLE search_dirty (id INTEGER PRIMARY KEY);
+
+    DROP TRIGGER search_img_ins;
+    DROP TRIGGER search_img_upd;
+    DROP TRIGGER search_tag_ins;
+    DROP TRIGGER search_tag_del;
+    DROP TRIGGER search_tag_ren;
+    DROP TRIGGER search_face_ins;
+    DROP TRIGGER search_face_upd;
+    DROP TRIGGER search_face_del;
+    DROP TRIGGER search_person_ren;
+    -- search_img_del bleibt: Löschen braucht keinen Neuaufbau
+
+    CREATE TRIGGER search_img_ins AFTER INSERT ON images BEGIN
+        INSERT OR IGNORE INTO search_dirty (id) VALUES (NEW.id);
+    END;
+    CREATE TRIGGER search_img_upd AFTER UPDATE OF file_name, dir, camera, lens ON images
+    WHEN OLD.file_name IS NOT NEW.file_name OR OLD.dir IS NOT NEW.dir
+      OR OLD.camera IS NOT NEW.camera OR OLD.lens IS NOT NEW.lens BEGIN
+        INSERT OR IGNORE INTO search_dirty (id) VALUES (NEW.id);
+    END;
+
+    CREATE TRIGGER search_tag_ins AFTER INSERT ON image_tags BEGIN
+        INSERT OR IGNORE INTO search_dirty (id) VALUES (NEW.image_id);
+    END;
+    CREATE TRIGGER search_tag_del AFTER DELETE ON image_tags BEGIN
+        INSERT OR IGNORE INTO search_dirty (id) VALUES (OLD.image_id);
+    END;
+    CREATE TRIGGER search_tag_ren AFTER UPDATE OF name ON tags BEGIN
+        INSERT OR IGNORE INTO search_dirty (id) SELECT image_id FROM image_tags WHERE tag_id = NEW.id;
+    END;
+
+    -- Nur sichtbare Gesichter benannter Personen stehen im Suchtext. Gruppen
+    -- ohne Namen (erste Analyse, Umsortieren) lösen daher nichts aus.
+    CREATE TRIGGER search_face_ins AFTER INSERT ON faces
+    WHEN NEW.hidden = 0 AND (SELECT name FROM persons WHERE id = NEW.person_id) IS NOT NULL BEGIN
+        INSERT OR IGNORE INTO search_dirty (id) VALUES (NEW.image_id);
+    END;
+    CREATE TRIGGER search_face_upd AFTER UPDATE OF person_id, hidden ON faces
+    WHEN (OLD.person_id IS NOT NEW.person_id OR OLD.hidden IS NOT NEW.hidden)
+     AND ((OLD.hidden = 0 AND (SELECT name FROM persons WHERE id = OLD.person_id) IS NOT NULL)
+       OR (NEW.hidden = 0 AND (SELECT name FROM persons WHERE id = NEW.person_id) IS NOT NULL)) BEGIN
+        INSERT OR IGNORE INTO search_dirty (id) VALUES (NEW.image_id);
+    END;
+    CREATE TRIGGER search_face_del AFTER DELETE ON faces
+    WHEN OLD.hidden = 0 AND (SELECT name FROM persons WHERE id = OLD.person_id) IS NOT NULL BEGIN
+        INSERT OR IGNORE INTO search_dirty (id) VALUES (OLD.image_id);
+    END;
+    CREATE TRIGGER search_person_ren AFTER UPDATE OF name ON persons BEGIN
+        INSERT OR IGNORE INTO search_dirty (id)
+            SELECT image_id FROM faces WHERE person_id = NEW.id AND hidden = 0;
+    END;
+    -- Vor dem Löschen: Danach setzt der Fremdschlüssel person_id auf NULL, und
+    -- search_face_upd fände den Namen nicht mehr.
+    CREATE TRIGGER search_person_del BEFORE DELETE ON persons WHEN OLD.name IS NOT NULL BEGIN
+        INSERT OR IGNORE INTO search_dirty (id)
+            SELECT image_id FROM faces WHERE person_id = OLD.id AND hidden = 0;
+    END;
+
+    CREATE INDEX faces_visible ON faces(person_id) WHERE hidden = 0;
+    -- Ersetzt images_root (root_id). Nicht partiell (WHERE missing = 0): Den
+    -- wählte SQLite sonst ohne Statistik für jede Abfrage über alle
+    -- vorhandenen Fotos (Zählen 7 → 50 ms, Sortieren nach Bewertung 50 → 100 ms).
+    DROP INDEX images_root;
+    CREATE INDEX images_root_dir ON images(root_id, missing, dir);
+    DROP INDEX images_captured;
+    DROP INDEX images_hash;
+    -- Statistik nur für die neuen Indizes (~10 ms bei 50 000 Fotos): Ohne sie
+    -- hält SQLite images_root_dir für selektiv und liest beim Abgleich eines
+    -- Quellordners alle Fotos über den Index (60 → 120 ms) statt am Stück.
+    ANALYZE images_root_dir;
+    ANALYZE faces_visible;
+"#;
+
+/// Suchtexte der vorgemerkten Fotos neu aufbauen (siehe `SEARCH_DIRTY`). Jeder
+/// Schreibweg, der Dateinamen, Ordner, Kamera, Objektiv, Schlagworte oder
+/// Personen ändert, ruft dies vor dem Commit auf (`with_tx` immer).
+/// Außerhalb einer Transaktion läuft es in einer eigenen.
+pub(crate) fn flush_search(conn: &Connection) -> Result<()> {
+    // Gelöschte Fotos sind schon raus (search_img_del) – etwa nach dem
+    // Entfernen eines Quellordners stehen hier sonst Zehntausende.
+    let any: bool = conn
+        .prepare_cached("SELECT EXISTS (SELECT 1 FROM search_dirty)")?
+        .query_row([], |r| r.get(0))?;
+    if !any {
+        return Ok(());
+    }
+    // EXISTS statt JOIN: beim JOIN durchlief SQLite (ohne Statistik zur
+    // kleinen Tabelle) alle Fotos – 2 ms je Aufruf statt Mikrosekunden.
+    let ids: Vec<i64> = conn
+        .prepare_cached(
+            "SELECT id FROM search_dirty d WHERE EXISTS (SELECT 1 FROM images i WHERE i.id = d.id)",
+        )?
+        .query_map([], |r| r.get(0))?
+        .collect::<std::result::Result<_, _>>()?;
+    let tx = conn
+        .is_autocommit()
+        .then(|| conn.unchecked_transaction())
+        .transpose()?;
+    {
+        let mut del = conn.prepare_cached("DELETE FROM search WHERE rowid = ?1")?;
+        let mut ins = conn.prepare_cached(
+            "INSERT INTO search (rowid, body) SELECT id, body FROM search_source WHERE id = ?1",
+        )?;
+        for id in &ids {
+            del.execute([id])?;
+            ins.execute([id])?;
+        }
+    }
+    conn.execute("DELETE FROM search_dirty", [])?;
+    if let Some(tx) = tx {
+        tx.commit()?;
+    }
+    Ok(())
+}
 
 /// Volltextindex der Suche: je Foto ein Eintrag aus Dateiname, Ordner (relativ
 /// zum Quellordner), Kamera, Objektiv, Schlagworten und Personennamen.
@@ -366,6 +496,8 @@ impl Catalog {
             people_gen: Default::default(),
         };
         cat.migrate()?;
+        // Reste nach einem Absturz zwischen Änderung und Neuaufbau
+        flush_search(&cat.conn)?;
         Ok(cat)
     }
 
@@ -424,6 +556,9 @@ impl Catalog {
     /// Entfernt den Quellordner aus dem Katalog. Die Dateien bleiben unangetastet.
     pub fn remove_root(&self, id: i64) -> Result<()> {
         let n = self.conn.execute("DELETE FROM roots WHERE id = ?1", [id])?;
+        flush_search(&self.conn)?;
+        // Gruppen, deren Gesichter alle in diesem Ordner lagen
+        self.drop_empty_groups(None)?;
         if n == 0 {
             return Err(Error::NotFound(tr!(
                 "Quellordner {id}",
@@ -575,13 +710,15 @@ impl Catalog {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
-    /// Führt mehrere Schreibvorgänge in einer Transaktion aus.
+    /// Führt mehrere Schreibvorgänge in einer Transaktion aus. Der Suchindex
+    /// wird am Ende einmal je geändertem Foto nachgeführt.
     pub(crate) fn with_tx<T>(
         &mut self,
         f: impl FnOnce(&rusqlite::Transaction) -> Result<T>,
     ) -> Result<T> {
         let tx = self.conn.transaction()?;
         let out = f(&tx)?;
+        flush_search(&tx)?;
         tx.commit()?;
         Ok(out)
     }
@@ -704,26 +841,12 @@ impl Catalog {
     fn where_clause(&self, q: &ImageQuery) -> Result<(String, Vec<Value>)> {
         let mut parts = vec!["i.missing = 0".to_string()];
         let mut args: Vec<Value> = Vec::new();
-        let sep = SEP.to_string();
 
         match &q.scope {
             Scope::All => {}
             Scope::Folder { path, recursive } => {
                 let p = paths::trim_dir(path);
-                if *recursive {
-                    // Bereichsabfrage statt substr(): nutzt den Index auf `dir`.
-                    // Alle Pfade mit Präfix „…/Ordner/“ liegen zwischen dem Präfix
-                    // und dem Präfix mit um eins erhöhtem Trennzeichen.
-                    parts.push("(i.dir = ? OR (i.dir >= ? AND i.dir < ?))".into());
-                    let prefix = paths::child_prefix(&p);
-                    let mut upper = prefix.clone();
-                    let last = upper.pop().unwrap_or('/');
-                    upper.push(char::from_u32(last as u32 + 1).unwrap_or(char::MAX));
-                    args.extend([Value::Text(p), Value::Text(prefix), Value::Text(upper)]);
-                } else {
-                    parts.push("i.dir = ?".into());
-                    args.push(Value::Text(p));
-                }
+                parts.push(dir_filter(&p, *recursive, &mut args));
             }
             Scope::Person { id } => {
                 parts.push(
@@ -734,18 +857,25 @@ impl Catalog {
                 args.push(Value::Integer(*id));
             }
             Scope::Project { id } => {
-                // Bilder aus überlappenden Ordnern erscheinen dank EXISTS nur einmal.
-                parts.push(
-                    "EXISTS (SELECT 1 FROM project_folders pf WHERE pf.project_id = ? AND (
-                        i.dir = pf.path OR (pf.recursive = 1 AND substr(i.dir, 1, length(pf.path) + 1)
-                            = CASE WHEN substr(pf.path, -1) = ? THEN pf.path ELSE pf.path || ? END)))"
-                        .into(),
-                );
-                args.extend([
-                    Value::Integer(*id),
-                    Value::Text(sep.clone()),
-                    Value::Text(sep),
-                ]);
+                // Ordner vorab lesen und je Ordner die Bereichsabfrage des
+                // Ordnerfilters: nutzt den Index auf `dir` statt substr() für
+                // jedes Foto. Überlappende Ordner liefern dank OR jedes Bild einmal.
+                let folders: Vec<(String, bool)> = self
+                    .conn
+                    .prepare_cached(
+                        "SELECT path, recursive FROM project_folders WHERE project_id = ?1",
+                    )?
+                    .query_map([id], |r| Ok((r.get(0)?, r.get(1)?)))?
+                    .collect::<std::result::Result<_, _>>()?;
+                let ors: Vec<String> = folders
+                    .iter()
+                    .map(|(p, rec)| dir_filter(&paths::trim_dir(p), *rec, &mut args))
+                    .collect();
+                parts.push(if ors.is_empty() {
+                    "0".into()
+                } else {
+                    format!("({})", ors.join(" OR "))
+                });
             }
         }
 
@@ -770,6 +900,11 @@ impl Catalog {
             .unwrap_or("")
             .split_whitespace()
             .collect();
+        if !words.is_empty() {
+            // Absicherung: Vorgemerktes zuerst indexieren (normalerweise leer,
+            // jeder Schreibweg leert es selbst)
+            flush_search(&self.conn)?;
+        }
         let (long, short): (Vec<&str>, Vec<&str>) =
             words.into_iter().partition(|w| w.chars().count() >= 3);
         if !long.is_empty() {
@@ -875,22 +1010,28 @@ impl Catalog {
     /// Gesichtern). Liefert die IDs der entfernten Gesichter, damit deren
     /// Ausschnitte aufgeräumt werden können.
     pub fn forget_images(&mut self, ids: &[i64]) -> Result<Vec<i64>> {
-        let faces = self.with_tx(|tx| {
+        let (faces, persons) = self.with_tx(|tx| {
             let mut faces = Vec::new();
+            // Nur Gruppen dieser Gesichter können leer werden
+            let mut persons = Vec::new();
             {
-                let mut st = tx.prepare("SELECT id FROM faces WHERE image_id = ?1")?;
+                let mut st = tx.prepare("SELECT id, person_id FROM faces WHERE image_id = ?1")?;
                 for id in ids {
-                    for r in st.query_map([id], |r| r.get::<_, i64>(0))? {
-                        faces.push(r?);
+                    for r in st.query_map([id], |r| {
+                        Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?))
+                    })? {
+                        let (face, person) = r?;
+                        faces.push(face);
+                        persons.extend(person);
                     }
                 }
             }
             for id in ids {
                 tx.execute("DELETE FROM images WHERE id = ?1", [id])?;
             }
-            Ok(faces)
+            Ok((faces, persons))
         })?;
-        self.drop_empty_groups()?;
+        self.drop_empty_groups(Some(&persons))?;
         Ok(faces)
     }
 
@@ -965,6 +1106,7 @@ impl Catalog {
                  WHERE id = ?1",
                 params![id, from],
             )?;
+            flush_search(&self.conn)?; // Kamera und Objektiv sind durchsuchbar
         }
         Ok(id)
     }
@@ -1147,6 +1289,7 @@ impl Catalog {
                                    ELSE excluded.confidence END",
             params![image_id, tag_id, source.as_str(), confidence],
         )?;
+        flush_search(&self.conn)?;
         Ok(())
     }
 
@@ -1155,6 +1298,7 @@ impl Catalog {
             "DELETE FROM image_tags WHERE image_id = ?1 AND tag_id = (SELECT id FROM tags WHERE name = ?2)",
             params![image_id, name],
         )?;
+        flush_search(&self.conn)?;
         Ok(())
     }
 
@@ -1444,6 +1588,28 @@ fn edit_from_row(r: &Row) -> rusqlite::Result<Edit> {
     })
 }
 
+/// Bedingung für Fotos in Ordner `p` (normiert), mit Unterordnern als
+/// Bereichsabfrage statt substr(): nutzt den Index auf `dir`. Alle Pfade mit
+/// Präfix „…/Ordner/“ liegen zwischen dem Präfix und dem Präfix mit um eins
+/// erhöhtem Trennzeichen. Laufwerkswurzeln („/“, „C:\“) enden schon auf den
+/// Trenner – `child_prefix` hängt dann keinen zweiten an.
+fn dir_filter(p: &str, recursive: bool, args: &mut Vec<Value>) -> String {
+    if !recursive {
+        args.push(Value::Text(p.to_string()));
+        return "i.dir = ?".into();
+    }
+    let prefix = paths::child_prefix(p);
+    let mut upper = prefix.clone();
+    let last = upper.pop().unwrap_or('/');
+    upper.push(char::from_u32(last as u32 + 1).unwrap_or(char::MAX));
+    args.extend([
+        Value::Text(p.to_string()),
+        Value::Text(prefix),
+        Value::Text(upper),
+    ]);
+    "(i.dir = ? OR (i.dir >= ? AND i.dir < ?))".into()
+}
+
 fn escape_like(s: &str) -> String {
     s.replace('\\', r"\\")
         .replace('%', r"\%")
@@ -1475,6 +1641,30 @@ fn build_tree(path: &str, name: &str, nodes: &BTreeMap<String, i64>) -> FolderNo
 #[cfg(test)]
 pub(crate) mod tests_support {
     use super::*;
+
+    /// Suchindex exakt wie `search_source`, nichts mehr vorgemerkt – ohne dass
+    /// eine Suche (die vorsorglich nachführt) dazwischen lief.
+    pub fn exact(cat: &Catalog, step: &str) {
+        let q = |sql: &str| -> i64 { cat.conn.query_row(sql, [], |r| r.get(0)).unwrap() };
+        assert_eq!(
+            q("SELECT COUNT(*) FROM search_dirty"),
+            0,
+            "{step}: vorgemerkt"
+        );
+        assert_eq!(
+            q(
+                "SELECT COUNT(*) FROM search_source s LEFT JOIN search x ON x.rowid = s.id
+               WHERE x.body IS NOT s.body"
+            ),
+            0,
+            "{step}: veraltet"
+        );
+        assert_eq!(
+            q("SELECT COUNT(*) FROM search WHERE rowid NOT IN (SELECT id FROM images)"),
+            0,
+            "{step}: verwaist"
+        );
+    }
 
     /// Legt `n` Bilder mit fertigem Thumbnail an und liefert ihre IDs.
     pub fn insert_dummy_images(cat: &mut Catalog, n: usize) -> Vec<i64> {
@@ -1533,6 +1723,7 @@ mod cull_tests {
 
 #[cfg(test)]
 mod search_tests {
+    use super::tests_support::exact;
     use super::*;
 
     fn hits(cat: &Catalog, text: &str) -> Vec<i64> {
@@ -1608,6 +1799,111 @@ mod search_tests {
         assert_eq!(n, 2);
     }
 
+    /// Jeder Schreibweg führt den Suchindex selbst nach (v11: Trigger merken
+    /// nur vor, `flush_search` baut auf).
+    #[test]
+    fn every_write_path_flushes() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let ids = tests_support::insert_dummy_images(&mut cat, 4);
+        exact(&cat, "einfügen");
+        let (a, b, c) = (ids[0], ids[1], ids[2]);
+        cat.add_tag(a, "Strand", TagSource::Manual, None).unwrap();
+        exact(&cat, "add_tag");
+        cat.remove_tag(a, "Strand").unwrap();
+        exact(&cat, "remove_tag");
+        let tags = [("meer".to_string(), 0.4), ("strand".to_string(), 0.3)];
+        cat.save_ai_result(b, "m", &[0, 1], &tags).unwrap();
+        cat.save_ai_result(b, "m", &[0, 1], &tags[..1]).unwrap();
+        exact(&cat, "save_ai_result");
+
+        // Personen
+        let e = |k: usize| {
+            let mut v = vec![0.0f32; 8];
+            v[k] = 1.0;
+            crate::people::NewFace {
+                rect: [0.1, 0.1, 0.2, 0.2],
+                score: 0.9,
+                embedding: v,
+            }
+        };
+        let mut idx = cat.people_index().unwrap();
+        cat.save_faces(a, &[e(0)], &mut idx).unwrap();
+        cat.save_faces(b, &[e(0), e(1)], &mut idx).unwrap();
+        cat.save_faces(c, &[e(1)], &mut idx).unwrap();
+        exact(&cat, "save_faces");
+        let mut cache = Some(idx);
+        let g0 = cat.image_faces(a).unwrap()[0].person_id.unwrap();
+        let grace = cat.name_person(g0, "Grace", &mut cache).unwrap();
+        exact(&cat, "name_person");
+        cat.save_faces(a, &[e(0)], cache.as_mut().unwrap()).unwrap();
+        exact(&cat, "save_faces (benannt)");
+        let fc = cat.image_faces(c).unwrap()[0].id;
+        cat.assign_face(fc, "Hopper", &mut cache).unwrap();
+        exact(&cat, "assign_face");
+        cat.reassign_faces(&[fc], Some("Ada"), &mut cache).unwrap();
+        exact(&cat, "reassign_faces");
+        cat.reassign_faces(&[fc], None, &mut cache).unwrap();
+        exact(&cat, "reassign_faces (lösen)");
+        let ada = cat.person_by_name("Ada").unwrap().unwrap();
+        cat.name_person(ada, "grace", &mut cache).unwrap();
+        exact(&cat, "name_person (zusammenführen)");
+        let fa = cat.image_faces(a).unwrap()[0].id;
+        cat.reject_face(fa).unwrap();
+        exact(&cat, "reject_face");
+        let fb = cat.person_faces(grace).unwrap()[0].id;
+        cat.hide_face(fb).unwrap();
+        exact(&cat, "hide_face");
+        cat.assign_face(fb, "Grace", &mut cache).unwrap();
+        cat.delete_person(grace).unwrap();
+        exact(&cat, "delete_person");
+
+        // Aufnahmedaten übernehmen, verschieben, entfernen
+        cat.conn
+            .execute("UPDATE images SET camera = 'Nikon Z6' WHERE id = ?1", [a])
+            .unwrap();
+        flush_search(&cat.conn).unwrap();
+        let path: String = cat
+            .conn
+            .query_row("SELECT path FROM images WHERE id = ?1", [b], |r| r.get(0))
+            .unwrap();
+        cat.adopt_capture_info(&path, a).unwrap();
+        exact(&cat, "adopt_capture_info");
+        let root = cat.image_root(a).unwrap();
+        cat.with_tx(|tx| {
+            Catalog::move_image(
+                tx,
+                c,
+                &NewImage {
+                    root_id: root,
+                    path: "/x/Lofoten/neu.jpg".into(),
+                    dir: "/x/Lofoten".into(),
+                    file_name: "neu.jpg".into(),
+                    ext: "jpg".into(),
+                    kind: ImageKind::Raster,
+                    size: 1,
+                    mtime: 1,
+                    quick_hash: "h".into(),
+                    meta: Default::default(),
+                },
+            )
+        })
+        .unwrap();
+        exact(&cat, "move_image");
+        cat.forget_images(&[a]).unwrap();
+        exact(&cat, "forget_images");
+        assert_eq!(hits(&cat, "z6"), vec![b]);
+        assert_eq!(hits(&cat, "neu"), vec![c]);
+        cat.remove_root(root).unwrap();
+        exact(&cat, "remove_root");
+        let persons: i64 = cat
+            .conn
+            .query_row("SELECT COUNT(*) FROM persons WHERE name IS NULL", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(persons, 0, "leere Gruppen entfernt");
+    }
+
     #[test]
     fn folder_names_are_searchable() {
         let tmp = tempfile::tempdir().unwrap();
@@ -1671,6 +1967,13 @@ mod search_tests {
 mod migration_tests {
     use super::*;
 
+    /// Stand vor v11 nachstellen (die Trigger ersetzt v11 ohnehin).
+    const UNDO_V11: &str = "DROP TRIGGER search_person_del; DROP TABLE search_dirty;
+        DROP INDEX faces_visible; DROP INDEX images_root_dir;
+        CREATE INDEX images_root ON images(root_id);
+        CREATE INDEX images_hash ON images(quick_hash);
+        CREATE INDEX images_captured ON images(captured_at);";
+
     /// v9: Vorschaubilder bearbeiteter RAWs werden neu erzeugt, andere nicht.
     #[test]
     fn new_raw_pipeline_refreshes_edited_raw_thumbnails() {
@@ -1711,12 +2014,12 @@ mod migration_tests {
             };
             cat.save_develop(&[raw_edited, jpg_edited], &p).unwrap();
             cat.conn
-                .execute_batch(
-                    // Stand vor v9 (und damit auch vor v10) nachstellen
-                    "UPDATE images SET thumb_state = 1;
+                .execute_batch(&format!(
+                    // Stand vor v9 (und damit auch vor v10, v11) nachstellen
+                    "UPDATE images SET thumb_state = 1; {UNDO_V11}
                      DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
-                     PRAGMA user_version = 8;",
-                )
+                     PRAGMA user_version = 8;"
+                ))
                 .unwrap();
             [raw_edited, raw_plain, jpg_edited]
         };
@@ -1729,6 +2032,66 @@ mod migration_tests {
                 .unwrap()
         };
         assert_eq!(ids.map(state), [0, 1, 1]);
+    }
+
+    /// v11: Ein Katalog von v10 (alte Trigger) behält seinen Suchindex, die
+    /// neuen Trigger und Indizes greifen.
+    #[test]
+    fn v11_keeps_search_index() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = tmp.path().join("k.db");
+        {
+            let conn = Connection::open(&db).unwrap();
+            conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+            for sql in &MIGRATIONS[..10] {
+                conn.execute_batch(sql).unwrap();
+            }
+            conn.pragma_update(None, "user_version", 10).unwrap();
+            conn.execute_batch(
+                "INSERT INTO roots (id, path, added_at) VALUES (1, '/f', 0);
+                 INSERT INTO images (id, root_id, path, dir, file_name, ext, kind, size, mtime,
+                                     quick_hash, camera, added_at)
+                 VALUES (1, 1, '/f/Urlaub/a.jpg', '/f/Urlaub', 'a.jpg', 'jpg', 'raster', 1, 0, 'h', 'Z6', 0),
+                        (2, 1, '/f/b.jpg', '/f', 'b.jpg', 'jpg', 'raster', 1, 0, 'h', NULL, 0);
+                 INSERT INTO tags (id, name) VALUES (1, 'Strand');
+                 INSERT INTO image_tags VALUES (1, 1, 'manual', NULL);
+                 INSERT INTO persons (id, name, created_at) VALUES (1, 'Grace', 0), (2, NULL, 0);
+                 INSERT INTO faces (id, image_id, x, y, w, h, score, embedding, person_id)
+                 VALUES (1, 2, 0, 0, 1, 1, 1, x'00', 1), (2, 1, 0, 0, 1, 1, 1, x'00', 2);",
+            )
+            .unwrap();
+        }
+        let cat = Catalog::open(&db).unwrap();
+        tests_support::exact(&cat, "nach Migration");
+        let names: Vec<String> = cat
+            .conn
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name IN ('images', 'faces')")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap();
+        assert!(names.iter().any(|n| n == "faces_visible"), "{names:?}");
+        assert!(names.iter().any(|n| n == "images_root_dir"), "{names:?}");
+        for gone in ["images_captured", "images_hash", "images_root"] {
+            assert!(!names.iter().any(|n| n == gone), "{gone}: {names:?}");
+        }
+        let body = |id: i64| -> String {
+            cat.conn
+                .query_row("SELECT body FROM search WHERE rowid = ?1", [id], |r| {
+                    r.get(0)
+                })
+                .unwrap()
+        };
+        assert!(body(1).contains("Urlaub") && body(1).contains("Strand") && body(1).contains("Z6"));
+        assert!(body(2).contains("Grace"));
+        // Umbenennen über die neuen Trigger
+        cat.conn
+            .execute("UPDATE persons SET name = 'Ada' WHERE id = 1", [])
+            .unwrap();
+        flush_search(&cat.conn).unwrap();
+        tests_support::exact(&cat, "Umbenennen");
+        assert!(body(2).contains("Ada"));
     }
 
     /// v10: Gesichts-IDs werden nach dem Löschen der neuesten Gesichter nicht
@@ -1752,10 +2115,10 @@ mod migration_tests {
                 .unwrap();
             // Zustand vor v10 nachstellen: höchste ID bereits im Bestand
             cat.conn
-                .execute_batch(
-                    "DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
-                     PRAGMA user_version = 9;",
-                )
+                .execute_batch(&format!(
+                    "{UNDO_V11} DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
+                     PRAGMA user_version = 9;"
+                ))
                 .unwrap();
             (imgs, *ids.iter().max().unwrap())
         };
@@ -1773,5 +2136,75 @@ mod migration_tests {
         // Erneutes Ersetzen (save_faces löscht vorher) vergibt wieder neue IDs
         let again = cat.save_faces(imgs[1], &[face(0.5)], &mut idx).unwrap();
         assert!(again[0] > *new.iter().max().unwrap(), "{again:?} / {new:?}");
+    }
+}
+
+#[cfg(test)]
+mod project_tests {
+    use super::*;
+
+    /// Projektordner als Bereichsabfrage: Unterordner ja, Namensvettern
+    /// („a“ vs. „ab“) nein, Laufwerkswurzeln („/“, „C:\“) umfassen alles.
+    #[test]
+    fn project_folders_use_ranges_and_drive_roots() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let root = cat.add_root(tmp.path()).unwrap();
+        let r = if cfg!(windows) { r"C:\" } else { "/" };
+        let dirs = [
+            format!("{r}a"),
+            format!("{r}a{SEP}b"),
+            format!("{r}ab"),
+            format!("{r}a{SEP}b{SEP}c"),
+        ];
+        cat.with_tx(|tx| {
+            for (i, d) in dirs.iter().enumerate() {
+                Catalog::insert_image(
+                    tx,
+                    &NewImage {
+                        root_id: root.id,
+                        path: format!("{d}{SEP}{i}.jpg"),
+                        dir: d.clone(),
+                        file_name: format!("{i}.jpg"),
+                        ext: "jpg".into(),
+                        kind: ImageKind::Raster,
+                        size: 1,
+                        mtime: 0,
+                        quick_hash: "h".into(),
+                        meta: Default::default(),
+                    },
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+        let count = |folders: &[(&str, bool)]| {
+            cat.conn.execute("DELETE FROM project_folders", []).unwrap();
+            for (p, rec) in folders {
+                cat.conn
+                    .execute(
+                        "INSERT INTO project_folders (project_id, path, recursive) VALUES (1, ?1, ?2)",
+                        params![p, rec],
+                    )
+                    .unwrap();
+            }
+            let n = cat.count_images(&Scope::Project { id: 1 }).unwrap();
+            let list = cat
+                .query_images(&ImageQuery::new(Scope::Project { id: 1 }))
+                .unwrap();
+            assert_eq!(list.len() as i64, n);
+            n
+        };
+        cat.create_project("p", "").unwrap();
+        let a = dirs[0].as_str();
+        let ab = format!("{a}{SEP}b");
+        assert_eq!(count(&[]), 0);
+        assert_eq!(count(&[(r, true)]), 4, "Laufwerkswurzel");
+        assert_eq!(count(&[(r, false)]), 0);
+        assert_eq!(count(&[(a, true)]), 3, "a, a/b, a/b/c – nicht ab");
+        assert_eq!(count(&[(a, false)]), 1);
+        assert_eq!(count(&[(a, true), (&ab, true)]), 3, "überlappend: einmal");
+        assert_eq!(count(&[(a, false), (&ab, false)]), 2);
+        assert_eq!(count(&[(&dirs[2], true), (&ab, false)]), 2);
     }
 }
