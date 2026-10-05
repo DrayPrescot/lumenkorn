@@ -13,15 +13,14 @@
 //! 3. **Merkmalsvektor:** SFace liefert 128 Zahlen; gleiche Personen haben eine
 //!    hohe Kosinus-Ähnlichkeit (OpenCV empfiehlt ≥ 0,363 als „gleich“).
 
+use crate::accel::Model;
 use crate::error::{Error, Result};
 use image::imageops::FilterType;
 use image::{Rgb, RgbImage};
 use lumenkorn_develop::tr;
-use ort::session::Session;
 use ort::value::Tensor;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::sync::Mutex;
 
 pub const DETECTOR_FILE: &str = "yunet.onnx";
 pub const EMBEDDER_FILE: &str = "sface.onnx";
@@ -50,7 +49,7 @@ pub struct Face {
     pub score: f32,
 }
 
-fn open(path: &Path) -> Result<Session> {
+fn open(path: &Path) -> Result<Model> {
     if !crate::runtime::is_loaded() {
         return Err(Error::RuntimeMissing);
     }
@@ -68,13 +67,13 @@ fn open(path: &Path) -> Result<Session> {
 // --- Finden ------------------------------------------------------------------
 
 pub struct FaceDetector {
-    session: Mutex<Session>,
+    session: Model,
 }
 
 impl FaceDetector {
     pub fn load(path: &Path) -> Result<Self> {
         Ok(Self {
-            session: Mutex::new(open(path)?),
+            session: open(path)?,
         })
     }
 
@@ -127,7 +126,7 @@ impl FaceDetector {
             data[2 * n + i] = p[0] as f32;
         }
         let input = Tensor::from_array(([1usize, 3, INPUT, INPUT], data))?;
-        let mut session = self.session.lock().unwrap();
+        let mut session = self.session.lock();
         let out = session.run(vec![("input", input.into_dyn())])?;
         let get = |name: String| -> Result<Vec<f32>> {
             let (_, v) = out[name.as_str()].try_extract_tensor::<f32>()?;
@@ -302,13 +301,13 @@ pub fn align(img: &RgbImage, face: &Face) -> RgbImage {
 }
 
 pub struct FaceEmbedder {
-    session: Mutex<Session>,
+    session: Model,
 }
 
 impl FaceEmbedder {
     pub fn load(path: &Path) -> Result<Self> {
         Ok(Self {
-            session: Mutex::new(open(path)?),
+            session: open(path)?,
         })
     }
 
@@ -324,7 +323,7 @@ impl FaceEmbedder {
             }
         }
         let input = Tensor::from_array(([1usize, 3, 112, 112], data))?;
-        let mut session = self.session.lock().unwrap();
+        let mut session = self.session.lock();
         let out = session.run(vec![("data", input.into_dyn())])?;
         let (_, v) = out["fc1"].try_extract_tensor::<f32>()?;
         let mut e = v.to_vec();

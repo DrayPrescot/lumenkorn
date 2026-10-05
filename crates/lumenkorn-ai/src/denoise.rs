@@ -8,17 +8,16 @@
 //!   ist in dunklen Bereichen stärker.
 //! - Große Bilder werden in überlappenden Kacheln verarbeitet.
 
+use crate::accel::Model;
 use crate::error::{Error, Result};
 use crate::onnx_writer::{Attr, Graph, Initializer, Io, Node};
 use crate::torch_legacy::{self, Tensor as TorchTensor};
 use lumenkorn_develop::color::{self, luma};
 use lumenkorn_develop::tr;
-use ort::session::Session;
 use ort::value::Tensor;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Kachelgröße auf der CPU (große Kacheln = wenig doppelt gerechneter Rand).
@@ -192,9 +191,7 @@ pub fn build_drunet_onnx(pth: &[u8]) -> Result<Vec<u8>> {
 // --- Inferenz -----------------------------------------------------------------
 
 pub struct Denoiser {
-    session: Mutex<Session>,
-    /// Läuft auf der GPU (bestimmt die Kachelgröße)
-    gpu: bool,
+    session: Model,
 }
 
 /// Lineares RGB-Bild (szenenbezogen, Werte ≥ 0).
@@ -209,10 +206,8 @@ impl Denoiser {
         if !crate::runtime::is_loaded() {
             return Err(Error::RuntimeMissing);
         }
-        let (session, gpu) = crate::accel::session_placed(path)?;
         Ok(Self {
-            session: Mutex::new(session),
-            gpu,
+            session: crate::accel::session(path)?,
         })
     }
 
@@ -220,7 +215,7 @@ impl Denoiser {
     fn run(&self, image: Vec<f32>, sigma: Vec<f32>, h: usize, w: usize) -> Result<Vec<f32>> {
         let img = Tensor::from_array(([1usize, 3, h, w], image))?;
         let sig = Tensor::from_array(([1usize, 1, h, w], sigma))?;
-        let mut s = self.session.lock().unwrap();
+        let mut s = self.session.lock();
         let out = s.run(vec![("image", img.into_dyn()), ("sigma", sig.into_dyn())])?;
         let (_, v) = out["denoised"].try_extract_tensor::<f32>()?;
         Ok(v.to_vec())
@@ -228,13 +223,17 @@ impl Denoiser {
 
     /// Rechnet das Modell auf der GPU?
     pub fn on_gpu(&self) -> bool {
-        self.gpu
+        self.session.on_gpu()
     }
 
     /// Kachelgröße (ohne Rand) für ein Bild `w`×`h`: an kleine Bilder
     /// angepasst, Vielfache von 8 fürs Netz.
     fn tile_dims(&self, w: usize, h: usize) -> (usize, usize) {
-        let tile = if self.gpu { TILE_GPU } else { TILE_CPU };
+        let tile = if self.session.on_gpu() {
+            TILE_GPU
+        } else {
+            TILE_CPU
+        };
         (tile.min(w.div_ceil(8) * 8), tile.min(h.div_ceil(8) * 8))
     }
 

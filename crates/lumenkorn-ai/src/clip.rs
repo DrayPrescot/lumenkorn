@@ -11,6 +11,7 @@
 //! Ein- und Ausgänge werden über ihre Namen gesucht, nicht über ihre Position –
 //! so funktionieren verschiedene Exporte (mit und ohne `last_hidden_state`).
 
+use crate::accel::Model;
 use crate::error::{Error, Result};
 use crate::tokenizer::{CONTEXT_LENGTH, ClipTokenizer};
 use image::DynamicImage;
@@ -19,7 +20,6 @@ use lumenkorn_develop::{i18n::tr_s, tr};
 use ort::session::Session;
 use ort::value::Tensor;
 use std::path::Path;
-use std::sync::Mutex;
 
 pub const EMBED_DIM: usize = 512;
 const IMAGE_SIZE: u32 = 224;
@@ -27,8 +27,8 @@ const MEAN: [f32; 3] = [0.481_454_66, 0.457_827_5, 0.408_210_73];
 const STD: [f32; 3] = [0.268_629_54, 0.261_302_6, 0.275_777_1];
 
 pub struct Clip {
-    vision: Mutex<Session>,
-    text: Mutex<Session>,
+    vision: Model,
+    text: Model,
     tokenizer: ClipTokenizer,
     vision_in: String,
     vision_out: String,
@@ -49,8 +49,9 @@ impl Clip {
             }
         }
         let open = |file: &str| crate::accel::session(&dir.join(file));
-        let vision = open("vision.onnx")?;
-        let text = open("text.onnx")?;
+        let mut vision = open("vision.onnx")?;
+        let mut text = open("text.onnx")?;
+        let (vs, ts) = (vision.inspect(), text.inspect());
 
         let input_named = |s: &Session, want: &str| {
             s.inputs()
@@ -66,29 +67,29 @@ impl Clip {
                 .map(|o| o.name().to_string())
         };
 
-        let vision_in = input_named(&vision, "pixel_values")
-            .or_else(|| vision.inputs().first().map(|i| i.name().to_string()))
+        let vision_in = input_named(vs, "pixel_values")
+            .or_else(|| vs.inputs().first().map(|i| i.name().to_string()))
             .ok_or_else(|| {
                 Error::ModelFormat(
                     tr_s("Bildmodell ohne Eingang", "Image model without input").into(),
                 )
             })?;
-        let vision_out = embeds_out(&vision).ok_or_else(|| {
+        let vision_out = embeds_out(vs).ok_or_else(|| {
             Error::ModelFormat(tr_s("Bildmodell ohne Ausgang", "Image model without output").into())
         })?;
-        let text_ids = input_named(&text, "input_ids").ok_or_else(|| {
+        let text_ids = input_named(ts, "input_ids").ok_or_else(|| {
             Error::ModelFormat(
                 tr_s("Textmodell ohne input_ids", "Text model without input_ids").into(),
             )
         })?;
-        let text_mask = input_named(&text, "attention_mask");
-        let text_out = embeds_out(&text).ok_or_else(|| {
+        let text_mask = input_named(ts, "attention_mask");
+        let text_out = embeds_out(ts).ok_or_else(|| {
             Error::ModelFormat(tr_s("Textmodell ohne Ausgang", "Text model without output").into())
         })?;
 
         Ok(Self {
-            vision: Mutex::new(vision),
-            text: Mutex::new(text),
+            vision,
+            text,
             tokenizer: ClipTokenizer::load(dir)?,
             vision_in,
             vision_out,
@@ -116,7 +117,7 @@ impl Clip {
         }
         let shape = [images.len(), 3, IMAGE_SIZE as usize, IMAGE_SIZE as usize];
         let input = Tensor::from_array((shape, data))?;
-        let mut session = self.vision.lock().unwrap();
+        let mut session = self.vision.lock();
         let outputs = session.run(vec![(self.vision_in.as_str(), input.into_dyn())])?;
         let (shape, values) = outputs[self.vision_out.as_str()].try_extract_tensor::<f32>()?;
         split_rows(shape, values, images.len())
@@ -142,7 +143,7 @@ impl Clip {
         if let Some(m) = &self.text_mask {
             inputs.push((m.as_str(), Tensor::from_array((shape, mask))?.into_dyn()));
         }
-        let mut session = self.text.lock().unwrap();
+        let mut session = self.text.lock();
         let outputs = session.run(inputs)?;
         let (shape, values) = outputs[self.text_out.as_str()].try_extract_tensor::<f32>()?;
         split_rows(shape, values, texts.len())

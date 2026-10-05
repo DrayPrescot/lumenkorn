@@ -23,7 +23,7 @@ use ort::session::Session;
 use ort::session::builder::{GraphOptimizationLevel, SessionBuilder};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 /// Eine Laufzeitvariante.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -242,24 +242,95 @@ fn gpu_builder(backend: Backend) -> Result<SessionBuilder> {
     })
 }
 
+/// GPU-Sitzungen der WebGPU-Laufzeit teilen sich ein Gerät, und dessen
+/// Befehlspuffer sind nicht threadsicher: Laufen zwei Sitzungen gleichzeitig
+/// (z. B. Personenerkennung im Hintergrund und Entrauschen), meldet ONNX Runtime
+/// „CommandEncoder is already finished“ oder stürzt ab. Deshalb rechnet immer
+/// nur eine GPU-Sitzung (pro `run`, also z. B. pro Kachel) – CPU-Sitzungen
+/// laufen weiter parallel.
+static GPU_TURN: Mutex<()> = Mutex::new(());
+
+fn gpu_turn() -> MutexGuard<'static, ()> {
+    // Ein Panic in einem anderen Lauf macht die Sperre nicht unbrauchbar
+    GPU_TURN.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Ein geöffnetes Modell samt Platz (GPU/CPU). Alle Läufe gehen über
+/// [`Model::lock`], damit GPU-Läufe nie gleichzeitig stattfinden.
+pub struct Model {
+    session: Mutex<Session>,
+    gpu: bool,
+}
+
+/// Zugriff auf die Sitzung; hält bei GPU-Modellen zugleich die GPU-Sperre.
+pub struct ModelGuard<'a> {
+    // Reihenfolge wichtig: erst die Sitzung, dann die GPU-Sperre freigeben
+    session: MutexGuard<'a, Session>,
+    _gpu: Option<MutexGuard<'static, ()>>,
+}
+
+impl std::ops::Deref for ModelGuard<'_> {
+    type Target = Session;
+    fn deref(&self) -> &Session {
+        &self.session
+    }
+}
+
+impl std::ops::DerefMut for ModelGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Session {
+        &mut self.session
+    }
+}
+
+impl Model {
+    /// Rechnet das Modell auf der GPU?
+    pub fn on_gpu(&self) -> bool {
+        self.gpu
+    }
+
+    /// Sitzung für einen Lauf. Reihenfolge immer GPU-Sperre → Sitzung, damit
+    /// sich zwei Aufrufer nicht gegenseitig blockieren.
+    pub fn lock(&self) -> ModelGuard<'_> {
+        let gpu = self.gpu.then(gpu_turn);
+        ModelGuard {
+            session: self.session.lock().unwrap_or_else(|e| e.into_inner()),
+            _gpu: gpu,
+        }
+    }
+
+    /// Direkter Zugriff beim Laden (Ein- und Ausgänge prüfen), ohne Sperre.
+    pub fn inspect(&mut self) -> &Session {
+        self.session.get_mut().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
 /// Öffnet ein Modell – auf der GPU, wenn eingeschaltet, sonst (oder wenn die
 /// GPU scheitert) auf der CPU. Ein GPU-Fehler wird gemerkt und angezeigt,
 /// verhindert aber nie, dass die Funktion überhaupt läuft.
-pub fn session(path: &Path) -> Result<Session> {
-    session_placed(path).map(|(s, _)| s)
+pub fn session(path: &Path) -> Result<Model> {
+    let (session, gpu) = session_placed(path)?;
+    Ok(Model {
+        session: Mutex::new(session),
+        gpu,
+    })
 }
 
-/// Wie [`session`], liefert zusätzlich, ob die Sitzung auf der GPU rechnet –
-/// direkt statt über die globale Liste in [`on_gpu`], die ein paralleles Laden
-/// derselben Datei überschreiben könnte.
-pub(crate) fn session_placed(path: &Path) -> Result<(Session, bool)> {
+/// Öffnet die Sitzung und meldet, ob sie auf der GPU rechnet – direkt statt
+/// über die globale Liste in [`on_gpu`], die ein paralleles Laden derselben
+/// Datei überschreiben könnte.
+fn session_placed(path: &Path) -> Result<(Session, bool)> {
     let (backend, want_gpu) = {
         let a = ACTIVE.lock().unwrap();
         (a.library, a.use_gpu && a.library.is_gpu())
     };
     if want_gpu {
         let t = std::time::Instant::now();
-        match gpu_builder(backend).and_then(|mut b| Ok(b.commit_from_file(path)?)) {
+        // Auch das Anlegen nutzt das gemeinsame GPU-Gerät
+        let built = {
+            let _turn = gpu_turn();
+            gpu_builder(backend).and_then(|mut b| Ok(b.commit_from_file(path)?))
+        };
+        match built {
             Ok(s) => {
                 log::info!(
                     "{} auf der GPU ({}) geladen in {:.2?}",

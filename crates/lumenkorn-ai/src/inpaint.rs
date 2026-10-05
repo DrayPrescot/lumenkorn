@@ -9,16 +9,15 @@
 //! gefüllt, zurückskaliert und nur innerhalb der leicht erweiterten, weich
 //! auslaufenden Auswahl eingesetzt.
 
+use crate::accel::Model;
 use crate::error::{Error, Result};
 use lumenkorn_develop::ImageF32;
 use lumenkorn_develop::repair::{Patch, PatchPart};
 use lumenkorn_develop::{i18n::tr_s, tr};
-use ort::session::Session;
 use ort::value::Tensor;
 use rayon::prelude::*;
 use std::borrow::Cow;
 use std::path::Path;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 pub const MODEL_FILE: &str = "lama.onnx";
@@ -27,7 +26,7 @@ const S: usize = 512;
 const CELL: usize = 32;
 
 pub struct Inpainter {
-    session: Mutex<Session>,
+    session: Model,
 }
 
 /// sRGB-Kodierung/-Dekodierung über die Tabellen aus `lumenkorn_develop::color`
@@ -49,7 +48,7 @@ impl Inpainter {
             return Err(Error::ModelMissing(MODEL_FILE.into()));
         }
         Ok(Self {
-            session: Mutex::new(crate::accel::session(path)?),
+            session: crate::accel::session(path)?,
         })
     }
 
@@ -65,7 +64,7 @@ impl Inpainter {
         }
         let image = Tensor::from_array(([1usize, 3, S, S], img))?;
         let mask = Tensor::from_array(([1usize, 1, S, S], mask.to_vec()))?;
-        let mut s = self.session.lock().unwrap();
+        let mut s = self.session.lock();
         let out = s.run(vec![("image", image.into_dyn()), ("mask", mask.into_dyn())])?;
         let (_, v) = out[0].try_extract_tensor::<f32>()?;
         if v.len() != 3 * n {

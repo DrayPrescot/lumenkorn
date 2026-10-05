@@ -76,6 +76,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   are gone.
 
 ### Fixed
+- Crash during AI noise reduction (or other AI functions) on the GPU while
+  face recognition ran in the background: the WebGPU runtime does not allow
+  two models to compute at the same time, so GPU runs now take turns.
 - A project containing a drive root (e.g. `D:\`) showed no photos.
 - Panoramas with a tilted pan kept a wavy horizon: leveling was undone by the
   final centering step.

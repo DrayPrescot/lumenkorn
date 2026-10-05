@@ -4,20 +4,19 @@
 //! (längste Kante höchstens [`MASK_EDGE`]) und werden über normierte
 //! Koordinaten in jeder Auflösung genutzt.
 
+use crate::accel::Model;
 use crate::error::{Error, Result};
 use image::imageops::FilterType;
 use image::{DynamicImage, GrayImage, Luma, RgbImage};
 use lumenkorn_develop::{i18n::tr_s, tr};
-use ort::session::Session;
 use ort::value::Tensor;
 use std::collections::VecDeque;
 use std::path::Path;
-use std::sync::Mutex;
 
 /// Längste Kante gespeicherter Masken.
 pub const MASK_EDGE: u32 = 1024;
 
-fn open_session(path: &Path) -> Result<Session> {
+fn open_session(path: &Path) -> Result<Model> {
     if !crate::runtime::is_loaded() {
         return Err(Error::RuntimeMissing);
     }
@@ -45,26 +44,27 @@ fn mask_size(w: u32, h: u32) -> (u32, u32) {
 /// Motiv-Erkennung mit IS-Net (DIS, „isnet-general-use“): 1024×1024 RGB rein,
 /// Wahrscheinlichkeitskarte raus.
 pub struct SubjectModel {
-    session: Mutex<Session>,
+    session: Model,
     input: String,
     output: String,
 }
 
 impl SubjectModel {
     pub fn load(path: &Path) -> Result<Self> {
-        let session = open_session(path)?;
-        let input = session
+        let mut session = open_session(path)?;
+        let s = session.inspect();
+        let input = s
             .inputs()
             .first()
             .map(|i| i.name().to_string())
             .ok_or_else(|| Error::ModelFormat(tr_s("kein Eingang", "no input").into()))?;
-        let output = session
+        let output = s
             .outputs()
             .first()
             .map(|o| o.name().to_string())
             .ok_or_else(|| Error::ModelFormat(tr_s("kein Ausgang", "no output").into()))?;
         Ok(Self {
-            session: Mutex::new(session),
+            session,
             input,
             output,
         })
@@ -83,7 +83,7 @@ impl SubjectModel {
             }
         }
         let input = Tensor::from_array(([1usize, 3, S as usize, S as usize], data))?;
-        let mut session = self.session.lock().unwrap();
+        let mut session = self.session.lock();
         let outputs = session.run(vec![(self.input.as_str(), input.into_dyn())])?;
         let (_, pred) = outputs[self.output.as_str()].try_extract_tensor::<f32>()?;
         let (mi, ma) = pred
@@ -112,8 +112,8 @@ pub struct SamEmbedding {
 }
 
 pub struct Sam {
-    encoder: Mutex<Session>,
-    decoder: Mutex<Session>,
+    encoder: Model,
+    decoder: Model,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -127,8 +127,8 @@ pub struct Point {
 impl Sam {
     pub fn load(encoder: &Path, decoder: &Path) -> Result<Self> {
         Ok(Self {
-            encoder: Mutex::new(open_session(encoder)?),
-            decoder: Mutex::new(open_session(decoder)?),
+            encoder: open_session(encoder)?,
+            decoder: open_session(decoder)?,
         })
     }
 
@@ -153,7 +153,7 @@ impl Sam {
             }
         }
         let input = Tensor::from_array(([1usize, 3, S as usize, S as usize], data))?;
-        let mut enc = self.encoder.lock().unwrap();
+        let mut enc = self.encoder.lock();
         let name = enc.inputs()[0].name().to_string();
         let out_name = enc.outputs()[0].name().to_string();
         let outputs = enc.run(vec![(name.as_str(), input.into_dyn())])?;
@@ -211,7 +211,7 @@ impl Sam {
                     .into_dyn(),
             ),
         ];
-        let mut dec = self.decoder.lock().unwrap();
+        let mut dec = self.decoder.lock();
         let outputs = dec.run(inputs)?;
         let (shape, masks) = outputs["masks"].try_extract_tensor::<f32>()?;
         let (_, iou) = outputs["iou_predictions"].try_extract_tensor::<f32>()?;
