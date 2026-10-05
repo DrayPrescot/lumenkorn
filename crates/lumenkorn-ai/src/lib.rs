@@ -3,6 +3,11 @@
 //! - [`clip`]: Bild- und Text-Embeddings mit einem CLIP-Modell (ONNX).
 //! - [`tagger`]: Zero-Shot-Verschlagwortung gegen ein deutsches Vokabular.
 //! - [`index`]: semantische Suche über die Embeddings aller Bilder.
+//! - [`segment`]: Masken – Motiv, Objekt per Klick (SAM), Himmel.
+//! - [`denoise`]: Rauschreduzierung mit DRUNet.
+//! - [`faces`]: Personenerkennung (YuNet + SFace).
+//! - [`inpaint`]: KI-Reparatur (LaMa).
+//! - [`accel`]: GPU-Beschleunigung über WebGPU.
 //! - [`models`]: Herunterladen von ONNX Runtime und Modelldateien.
 //!
 //! ONNX Runtime wird dynamisch geladen ([`runtime::init`]). Fehlt die

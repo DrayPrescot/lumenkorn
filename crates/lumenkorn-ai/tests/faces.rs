@@ -6,8 +6,11 @@
 //! Beispielbilder lena.jpg, messi5.jpg und largest_selfie.jpg.
 
 use image::RgbImage;
-use lumenkorn_ai::faces::{FaceDetector, FaceEmbedder, GROUP, SAME_PERSON, cosine};
+use lumenkorn_ai::clip::dot as cosine;
+use lumenkorn_ai::faces::{FaceDetector, FaceEmbedder, SAME_PERSON};
+// Gruppiert wird im Katalog – dieselbe Schwelle wie in der App
 use lumenkorn_ai::runtime;
+use lumenkorn_core::people::GROUP;
 use std::path::PathBuf;
 
 fn setup() -> Option<(PathBuf, FaceDetector, FaceEmbedder)> {
@@ -26,6 +29,7 @@ fn load(dir: &std::path::Path, name: &str) -> RgbImage {
 #[test]
 fn finds_and_recognizes_faces() {
     let Some((dir, det, emb)) = setup() else {
+        eprintln!("übersprungen: LUMENKORN_TEST_ORT/LUMENKORN_TEST_FACES fehlen");
         return;
     };
 

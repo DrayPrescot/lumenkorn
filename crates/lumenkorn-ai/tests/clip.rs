@@ -33,6 +33,7 @@ fn solid(r: u8, g: u8, b: u8) -> DynamicImage {
 #[test]
 fn tokenizer_matches_openai_reference() {
     let Some(dir) = env_path("LUMENKORN_TEST_MODEL") else {
+        eprintln!("übersprungen: LUMENKORN_TEST_MODEL fehlt");
         return;
     };
     let tok = ClipTokenizer::load(&dir).unwrap();
@@ -61,6 +62,7 @@ fn embeds_tags_and_searches() {
         env_path("LUMENKORN_TEST_ORT"),
         env_path("LUMENKORN_TEST_MODEL"),
     ) else {
+        eprintln!("übersprungen: LUMENKORN_TEST_ORT/LUMENKORN_TEST_MODEL fehlen");
         return;
     };
     runtime::init(&lib).unwrap();

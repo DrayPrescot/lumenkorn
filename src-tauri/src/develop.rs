@@ -1,9 +1,9 @@
 //! Entwickeln: Proxy-Cache, Live-Vorschau, Speichern, Snapshots und Export.
 
-use crate::AppState;
 use crate::worker::Job;
+use crate::{AppState, blocking};
 use lumenkorn_core::formats::ImageKind;
-use lumenkorn_core::{Edit, Error};
+use lumenkorn_core::{Catalog, Edit, Error};
 use lumenkorn_develop::i18n::tr_s;
 use lumenkorn_develop::output::{self, ExportOptions};
 use lumenkorn_develop::{Crop, DevelopParams, ImageF32, RenderOptions, Source, tr};
@@ -218,18 +218,25 @@ fn load_denoised_full(
     Some(s)
 }
 
-async fn blocking<T: Send + 'static>(
-    app: AppHandle,
-    f: impl FnOnce(&AppState) -> Result<T, Error> + Send + 'static,
-) -> Result<T, Error> {
-    tauri::async_runtime::spawn_blocking(move || f(&app.state::<AppState>()))
-        .await
-        .map_err(|e| {
-            Error::Invalid(tr!(
-                "Hintergrundaufgabe abgebrochen: {e}",
-                "Background task aborted: {e}"
-            ))
-        })?
+/// Render-Optionen mit den Masken- und Reparaturdateien der App;
+/// Überlagerung und Ausschnitt setzen die Aufrufer bei Bedarf selbst.
+fn render_opts<'a>(state: &'a AppState, denoised: Option<&'a ImageF32>) -> RenderOptions<'a> {
+    RenderOptions {
+        masks: state.masks.as_ref(),
+        overlay: None,
+        denoised,
+        region: None,
+        repairs: state.repairs.as_ref(),
+    }
+}
+
+/// Schnappschüsse eines Fotos (alle Bearbeitungen außer der aktuellen).
+fn snapshots(cat: &Catalog, id: i64) -> Result<Vec<Edit>, Error> {
+    Ok(cat
+        .edits(id)?
+        .into_iter()
+        .filter(|e| !e.is_current)
+        .collect())
 }
 
 #[derive(Serialize)]
@@ -253,11 +260,7 @@ pub async fn develop_load(app: AppHandle, id: i64) -> Result<DevelopInfo, Error>
             full_width: src.full_width,
             full_height: src.full_height,
             raw: src.kind == lumenkorn_develop::SourceKind::Raw,
-            snapshots: cat
-                .edits(id)?
-                .into_iter()
-                .filter(|e| !e.is_current)
-                .collect(),
+            snapshots: snapshots(&cat, id)?,
         })
     })
     .await
@@ -292,11 +295,8 @@ pub async fn develop_render(
             .as_ref()
             .and_then(|d| load_denoised(state, &d.id, edge));
         let opts = RenderOptions {
-            masks: state.masks.as_ref(),
             overlay,
-            denoised: denoised.as_deref(),
-            region: None,
-            repairs: state.repairs.as_ref(),
+            ..render_opts(state, denoised.as_deref())
         };
         let rgb = lumenkorn_develop::render_auto_rgb8(&src, &params, &opts);
         Ok(Response::new(output::encode_jpeg_rgb8(&rgb, 88)?))
@@ -360,11 +360,8 @@ pub async fn develop_render_detail(
             .as_ref()
             .and_then(|d| load_denoised_full(state, &d.id, src.image.long_edge()));
         let opts = RenderOptions {
-            masks: state.masks.as_ref(),
-            overlay: None,
-            denoised: denoised.as_deref(),
             region: Some(region),
-            repairs: state.repairs.as_ref(),
+            ..render_opts(state, denoised.as_deref())
         };
         let t = std::time::Instant::now();
         let rgb = lumenkorn_develop::render_auto_rgb8(&src, &params, &opts);
@@ -424,21 +421,26 @@ pub fn develop_save(
         && !params.is_default()
         && let Some(proxy) = state.develop.get(id, PROXY_EDGE)
     {
-        std::thread::spawn(move || {
-            let state = app.state::<AppState>();
-            match thumbs_from_proxy(&state, id, &proxy, &params) {
-                Ok(true) => {
-                    let _ = app.emit("thumbs-ready", serde_json::json!({ "ids": [id] }));
+        let spawned = std::thread::Builder::new()
+            .name("lumenkorn-save-thumbs".into())
+            .spawn(move || {
+                let state = app.state::<AppState>();
+                match thumbs_from_proxy(&state, id, &proxy, &params) {
+                    Ok(true) => {
+                        let _ = app.emit("thumbs-ready", serde_json::json!({ "ids": [id] }));
+                    }
+                    Ok(false) => {} // inzwischen neuer gespeichert – der rendert selbst
+                    Err(e) => {
+                        log::warn!("Vorschau aus Proxy für {id}: {e}");
+                        state.cache.remove(id);
+                        state.worker.submit(Job::Thumbs);
+                    }
                 }
-                Ok(false) => {} // inzwischen neuer gespeichert – der rendert selbst
-                Err(e) => {
-                    log::warn!("Vorschau aus Proxy für {id}: {e}");
-                    state.cache.remove(id);
-                    state.worker.submit(Job::Thumbs);
-                }
-            }
-        });
-        return Ok(());
+            });
+        if spawned.is_ok() {
+            return Ok(());
+        }
+        // Thread nicht startbar: wie ohne Proxy über den Worker rendern
     }
     for id in &ids {
         state.cache.remove(*id);
@@ -460,27 +462,28 @@ fn thumbs_from_proxy(
         .denoise
         .as_ref()
         .and_then(|d| load_denoised(state, &d.id, PROXY_EDGE));
-    let opts = RenderOptions {
-        masks: state.masks.as_ref(),
-        overlay: None,
-        denoised: denoised.as_deref(),
-        region: None,
-        repairs: state.repairs.as_ref(),
-    };
-    let preview = lumenkorn_develop::render_auto_rgb8(proxy, params, &opts);
-    let fit = |img: &image::RgbImage, max: u32| {
-        if img.width() > max || img.height() > max {
-            image::imageops::thumbnail(img, max.min(img.width()), max.min(img.height()))
-        } else {
-            img.clone()
-        }
-    };
-    let thumb = image::imageops::thumbnail(
-        &preview,
-        (preview.width() * THUMB_SIZE / preview.width().max(preview.height())).max(1),
-        (preview.height() * THUMB_SIZE / preview.width().max(preview.height())).max(1),
+    let preview = lumenkorn_develop::render_auto_rgb8(
+        proxy,
+        params,
+        &render_opts(state, denoised.as_deref()),
     );
-    let preview = fit(&preview, PREVIEW_SIZE);
+    // Auf `max` Pixel lange Kante, seitenverhältnistreu
+    let scaled = |img: &image::RgbImage, max: u32| {
+        let long = img.width().max(img.height());
+        image::imageops::thumbnail(
+            img,
+            (img.width() * max / long).max(1),
+            (img.height() * max / long).max(1),
+        )
+    };
+    let thumb = scaled(&preview, THUMB_SIZE);
+    // Der Proxy ist höchstens PROXY_EDGE = PREVIEW_SIZE groß, die Vorschau
+    // passt also schon; verkleinert wird nur zur Sicherheit.
+    let preview = if preview.width().max(preview.height()) > PREVIEW_SIZE {
+        scaled(&preview, PREVIEW_SIZE)
+    } else {
+        preview
+    };
     // Kodieren ohne Katalogsperre; unter der Sperre nur prüfen, schreiben, markieren
     let (preview, thumb) = (
         output::encode_jpeg_rgb8(&preview, 84)?,
@@ -529,11 +532,7 @@ pub fn develop_snapshot(state: State<AppState>, id: i64, name: String) -> Result
         name.trim().to_string()
     };
     cat.create_snapshot(id, &name)?;
-    Ok(cat
-        .edits(id)?
-        .into_iter()
-        .filter(|e| !e.is_current)
-        .collect())
+    snapshots(&cat, id)
 }
 
 #[tauri::command(async)]
@@ -551,11 +550,7 @@ pub fn develop_delete_snapshot(
 ) -> Result<Vec<Edit>, Error> {
     let cat = state.catalog.lock().unwrap();
     cat.delete_snapshot(edit_id)?;
-    Ok(cat
-        .edits(id)?
-        .into_iter()
-        .filter(|e| !e.is_current)
-        .collect())
+    snapshots(&cat, id)
 }
 
 // --- Export -------------------------------------------------------------------
@@ -645,14 +640,11 @@ pub fn export_images(
                         let p = lumenkorn_develop::denoised::path(&state.denoised_dir, &d.id)?;
                         lumenkorn_develop::denoised::read(&p, Some(src.image.long_edge())).ok()
                     });
-                    let opts = RenderOptions {
-                        masks: state.masks.as_ref(),
-                        overlay: None,
-                        denoised: denoised.as_ref(),
-                        region: None,
-                        repairs: state.repairs.as_ref(),
-                    };
-                    let img = lumenkorn_develop::render_auto(&src, &params, &opts);
+                    let img = lumenkorn_develop::render_auto(
+                        &src,
+                        &params,
+                        &render_opts(&state, denoised.as_ref()),
+                    );
                     let target_dir = match &dir {
                         Some(d) => d.clone(),
                         None => lumenkorn_core::scanner::export_dir_for(Path::new(&job.path))

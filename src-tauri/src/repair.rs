@@ -2,18 +2,19 @@
 //! füllen, Flicken speichern.
 
 use crate::AppState;
-use crate::ai::{analysis_guard, ensure_runtime, err, model_guard};
+use crate::ai::{analysis_guard, err, lazy_model};
 use lumenkorn_ai::inpaint::{self, Inpainter};
 use lumenkorn_ai::models;
 use lumenkorn_core::Error;
 use lumenkorn_core::formats::ImageKind;
+use lumenkorn_core::maskstore::MaskFiles;
 use lumenkorn_develop::i18n::tr_s;
 use lumenkorn_develop::{DenoiseRef, MaskLayer, MaskShape, Source};
 use serde::Serialize;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 
 #[derive(Default)]
 pub struct RepairState {
@@ -38,18 +39,15 @@ fn inpainter(state: &AppState) -> Result<Arc<Inpainter>, Error> {
             .into(),
         ));
     }
-    let mut g = state.repair.model.lock().unwrap();
-    if let Some(m) = g.as_ref() {
-        return Ok(m.clone());
-    }
-    ensure_runtime(state)?;
-    let _guard = model_guard(state, tr_s("LaMa (Reparatur)", "LaMa (repair)"));
-    let m = Arc::new(
-        Inpainter::load(&models::repair_dir(&state.data_dir).join(inpaint::MODEL_FILE))
-            .map_err(err)?,
-    );
-    *g = Some(m.clone());
-    Ok(m)
+    lazy_model(
+        state,
+        &state.repair.model,
+        tr_s("LaMa (Reparatur)", "LaMa (repair)"),
+        || {
+            Inpainter::load(&models::repair_dir(&state.data_dir).join(inpaint::MODEL_FILE))
+                .map_err(err)
+        },
+    )
 }
 
 #[derive(Serialize, Clone)]
@@ -58,14 +56,6 @@ struct RepairProgress {
     image_id: i64,
     done: usize,
     total: usize,
-}
-
-fn new_id(image_id: i64) -> String {
-    let t = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_micros())
-        .unwrap_or(0);
-    format!("{image_id}-rep-{t:x}")
 }
 
 /// Berechnet eine Reparatur in voller Auflösung und liefert die ID des Flickens.
@@ -78,9 +68,9 @@ pub async fn repair_compute(
     shapes: Vec<MaskShape>,
     denoise: Option<DenoiseRef>,
 ) -> Result<String, Error> {
-    let app2 = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let state = app2.state::<AppState>();
+    // Fortschritt wird über `app` gemeldet
+    let events = app.clone();
+    crate::blocking(app, move |state| {
         // Gibt `busy` auch nach Fehlern und Panics in `compute` wieder frei
         let Some(_busy) = crate::busy::claim(&state.repair.busy) else {
             return Err(Error::Invalid(
@@ -92,10 +82,9 @@ pub async fn repair_compute(
             ));
         };
         state.repair.cancel.store(false, Ordering::SeqCst);
-        compute(&app2, &state, image_id, shapes, denoise)
+        compute(&events, state, image_id, shapes, denoise)
     })
     .await
-    .map_err(err)?
 }
 
 fn compute(
@@ -151,7 +140,7 @@ fn compute(
             .repair(&src.image, &alpha, &progress, &state.repair.cancel)
             .map_err(err)?
     };
-    let id = new_id(image_id);
+    let id = MaskFiles::new_id(image_id, "rep");
     let parts = patch.parts.len();
     state.repairs.put(&id, patch)?;
     log::info!(

@@ -33,7 +33,10 @@ fn ball() -> DynamicImage {
 
 #[test]
 fn subject_finds_the_ball() {
-    let Some(dir) = setup() else { return };
+    let Some(dir) = setup() else {
+        eprintln!("übersprungen: LUMENKORN_TEST_ORT/LUMENKORN_TEST_SEG fehlen");
+        return;
+    };
     let m = SubjectModel::load(&dir.join("subject.onnx")).unwrap();
     let t = std::time::Instant::now();
     let mask = m.predict(&ball()).unwrap();
@@ -55,7 +58,10 @@ fn subject_finds_the_ball() {
 
 #[test]
 fn sam_segments_clicked_object_and_refines_sky() {
-    let Some(dir) = setup() else { return };
+    let Some(dir) = setup() else {
+        eprintln!("übersprungen: LUMENKORN_TEST_ORT/LUMENKORN_TEST_SEG fehlen");
+        return;
+    };
     let sam = Sam::load(&dir.join("sam-encoder.onnx"), &dir.join("sam-decoder.onnx")).unwrap();
     let img = ball();
     let t = std::time::Instant::now();

@@ -209,10 +209,7 @@ impl Denoiser {
         if !crate::runtime::is_loaded() {
             return Err(Error::RuntimeMissing);
         }
-        let session = crate::accel::session(path)?;
-        let gpu = path
-            .file_name()
-            .is_some_and(|n| crate::accel::on_gpu(&n.to_string_lossy()));
+        let (session, gpu) = crate::accel::session_placed(path)?;
         Ok(Self {
             session: Mutex::new(session),
             gpu,
@@ -229,13 +226,20 @@ impl Denoiser {
         Ok(v.to_vec())
     }
 
-    /// Entrauscht ein lineares Bild. `strength` skaliert die geschätzte
-    /// Rauschstärke (1,0 = geschätzt). Fortschritt als (fertig, gesamt).
     /// Rechnet das Modell auf der GPU?
     pub fn on_gpu(&self) -> bool {
         self.gpu
     }
 
+    /// Kachelgröße (ohne Rand) für ein Bild `w`×`h`: an kleine Bilder
+    /// angepasst, Vielfache von 8 fürs Netz.
+    fn tile_dims(&self, w: usize, h: usize) -> (usize, usize) {
+        let tile = if self.gpu { TILE_GPU } else { TILE_CPU };
+        (tile.min(w.div_ceil(8) * 8), tile.min(h.div_ceil(8) * 8))
+    }
+
+    /// Entrauscht ein lineares Bild. `strength` skaliert die geschätzte
+    /// Rauschstärke (1,0 = geschätzt). Fortschritt als (fertig, gesamt).
     pub fn denoise(
         &self,
         img: &Rgb,
@@ -269,9 +273,9 @@ impl Denoiser {
         // Zwei Durchgänge: volle Auflösung für Helligkeit und Details, halbe
         // Auflösung für Farbrauschen (bunte Flecken sind grob und brauchen
         // mehr Kraft; dort kostet der Durchgang nur ein Viertel).
-        let tiles = |tw: usize, th: usize| {
-            let tile = if self.gpu { TILE_GPU } else { TILE_CPU };
-            tw.div_ceil(tile.min(tw.div_ceil(8) * 8)) * th.div_ceil(tile.min(th.div_ceil(8) * 8))
+        let tiles = |w: usize, h: usize| {
+            let (tw, th) = self.tile_dims(w, h);
+            w.div_ceil(tw) * h.div_ceil(th)
         };
         let total = tiles(w, h) + tiles(hw, hh);
         let done = std::cell::Cell::new(0usize);
@@ -344,7 +348,6 @@ impl Denoiser {
         step: &dyn Fn(),
         cancel: &AtomicBool,
     ) -> Result<Vec<[f32; 3]>> {
-        let tile = if self.gpu { TILE_GPU } else { TILE_CPU };
         let reflect = |i: isize, n: usize| -> usize {
             let n = n as isize;
             let mut i = i;
@@ -356,9 +359,7 @@ impl Denoiser {
             }
             i.clamp(0, n - 1) as usize
         };
-        // Kachelgröße an kleine Bilder anpassen (Vielfache von 8 fürs Netz)
-        let tile_w = tile.min(w.div_ceil(8) * 8);
-        let tile_h = tile.min(h.div_ceil(8) * 8);
+        let (tile_w, tile_h) = self.tile_dims(w, h);
         let (tw, th) = (tile_w + 2 * MARGIN, tile_h + 2 * MARGIN);
         let mut out = vec![[0f32; 3]; w * h];
         for ty in 0..h.div_ceil(tile_h) {

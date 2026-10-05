@@ -32,6 +32,7 @@ fn builds_drunet_and_removes_noise() {
         std::env::var("LUMENKORN_TEST_ORT"),
         std::env::var("LUMENKORN_TEST_DENOISE"),
     ) else {
+        eprintln!("übersprungen: LUMENKORN_TEST_ORT/LUMENKORN_TEST_DENOISE fehlen");
         return;
     };
     let dir = PathBuf::from(dir);

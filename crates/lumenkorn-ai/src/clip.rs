@@ -98,10 +98,6 @@ impl Clip {
         })
     }
 
-    pub fn tokenizer(&self) -> &ClipTokenizer {
-        &self.tokenizer
-    }
-
     /// L2-normierte Bild-Embeddings.
     pub fn embed_images(&self, images: &[DynamicImage]) -> Result<Vec<Vec<f32>>> {
         if images.is_empty() {

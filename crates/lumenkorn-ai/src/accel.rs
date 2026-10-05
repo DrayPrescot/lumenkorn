@@ -4,10 +4,13 @@
 //! | Rechenwerk | Plattform        | Grafik-API         | Hersteller           |
 //! |------------|------------------|--------------------|----------------------|
 //! | WebGPU     | Linux, Windows   | Vulkan / DirectX 12| AMD, NVIDIA, Intel   |
-//! | DirectML   | Windows          | DirectX 12         | AMD, NVIDIA, Intel   |
 //! | CPU        | überall          | –                  | –                    |
 //!
-//! Beide GPU-Varianten brauchen nur den normalen Grafiktreiber – unter Linux
+//! DirectML wird nicht mehr angeboten (siehe [`gpu_backends`]); `Backend::Directml`
+//! und `Preference::Directml` bleiben nur, damit alte Einstellungen und Ordner
+//! erkannt und aufgeräumt werden können.
+//!
+//! WebGPU braucht nur den normalen Grafiktreiber – unter Linux
 //! also Mesa (RADV) für AMD-Karten, kein ROCm. Eine GPU-Laufzeit enthält immer
 //! auch den CPU-Pfad; zwischen GPU und CPU lässt sich daher ohne Neustart
 //! wechseln. Nur eine andere Laufzeitbibliothek erfordert einen Neustart.
@@ -234,14 +237,8 @@ fn gpu_builder(backend: Backend) -> Result<SessionBuilder> {
             let ep = ort::ep::WebGPU::default();
             b.with_execution_providers([ep.build().error_on_failure()])?
         }
-        Backend::Directml => {
-            let ep = ort::ep::DirectML::default();
-            // Laut ONNX-Runtime-Doku Pflicht für DirectML
-            b.with_memory_pattern(false)?
-                .with_parallel_execution(false)?
-                .with_execution_providers([ep.build().error_on_failure()])?
-        }
-        Backend::Cpu => b,
+        // DirectML wird nie geladen (`choose_library` liefert es nicht)
+        Backend::Cpu | Backend::Directml => b,
     })
 }
 
@@ -249,6 +246,13 @@ fn gpu_builder(backend: Backend) -> Result<SessionBuilder> {
 /// GPU scheitert) auf der CPU. Ein GPU-Fehler wird gemerkt und angezeigt,
 /// verhindert aber nie, dass die Funktion überhaupt läuft.
 pub fn session(path: &Path) -> Result<Session> {
+    session_placed(path).map(|(s, _)| s)
+}
+
+/// Wie [`session`], liefert zusätzlich, ob die Sitzung auf der GPU rechnet –
+/// direkt statt über die globale Liste in [`on_gpu`], die ein paralleles Laden
+/// derselben Datei überschreiben könnte.
+pub(crate) fn session_placed(path: &Path) -> Result<(Session, bool)> {
     let (backend, want_gpu) = {
         let a = ACTIVE.lock().unwrap();
         (a.library, a.use_gpu && a.library.is_gpu())
@@ -264,8 +268,12 @@ pub fn session(path: &Path) -> Result<Session> {
                     t.elapsed()
                 );
                 record(path, true);
-                return Ok(s);
+                return Ok((s, true));
             }
+            // Text der ORT-Meldung, wenn ein Modell wegen
+            // `session.disable_cpu_ep_fallback` nicht ganz auf die GPU passt
+            // (geprüft mit ONNX Runtime 1.27/1.28). Ändert er sich nach einem
+            // Update, erscheint dieser Normalfall als „GPU-Fehler“ – dann anpassen.
             Err(e)
                 if e.to_string()
                     .contains("fallback to CPU EP has been explicitly disabled") =>
@@ -283,7 +291,7 @@ pub fn session(path: &Path) -> Result<Session> {
     }
     let s = cpu_builder()?.commit_from_file(path)?;
     record(path, false);
-    Ok(s)
+    Ok((s, false))
 }
 
 fn record(path: &Path, gpu: bool) {
@@ -423,7 +431,7 @@ fn detect_platform() -> Vec<GpuDevice> {
 
 #[cfg(not(target_os = "linux"))]
 fn detect_platform() -> Vec<GpuDevice> {
-    // Windows: DirectML/WebGPU wählen selbst die leistungsstärkste Karte. Eine
+    // Windows: WebGPU wählt selbst die leistungsstärkste Karte. Eine
     // Abfrage über DXGI würde eine weitere große Abhängigkeit bedeuten – die
     // Anzeige beschränkt sich dort auf „Grafikkarte über DirectX 12“.
     Vec::new()

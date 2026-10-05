@@ -54,7 +54,7 @@ impl Inpainter {
     }
 
     /// Füllt ein 512×512-Bild (sRGB 0…1, RGB, HWC) innerhalb der Maske (0/1).
-    pub fn run_512(&self, rgb: &[[f32; 3]], mask: &[f32]) -> Result<Vec<[f32; 3]>> {
+    fn run_512(&self, rgb: &[[f32; 3]], mask: &[f32]) -> Result<Vec<[f32; 3]>> {
         let n = S * S;
         let mut img = vec![0f32; 3 * n];
         for (i, (p, m)) in rgb.iter().zip(mask).enumerate() {

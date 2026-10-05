@@ -24,6 +24,7 @@ fn removes_painted_defects() {
         std::env::var("LUMENKORN_TEST_LAMA"),
         std::env::var("LUMENKORN_TEST_IMAGE"),
     ) else {
+        eprintln!("übersprungen: LUMENKORN_TEST_ORT/_LAMA/_IMAGE fehlen");
         return;
     };
     runtime::init(std::path::Path::new(&lib)).unwrap();

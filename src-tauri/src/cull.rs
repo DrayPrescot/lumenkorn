@@ -58,12 +58,10 @@ pub async fn delete_rejected(
     to_trash: bool,
 ) -> Result<DeleteReport, Error> {
     // Papierkorb und Dateisystem können dauern: nicht auf der async-Laufzeit
-    tauri::async_runtime::spawn_blocking(move || {
-        use tauri::Manager;
-        delete_rejected_blocking(&app.state::<AppState>(), ids, to_trash)
+    crate::blocking(app, move |state| {
+        delete_rejected_blocking(state, ids, to_trash)
     })
     .await
-    .map_err(|e| Error::Invalid(e.to_string()))?
 }
 
 fn delete_rejected_blocking(
@@ -193,11 +191,11 @@ fn cleanup(state: &AppState, ids: &[i64], faces: &[i64]) {
     // Einfügen auch Verweise auf fremde Entrauschungen übertragen).
     // Ohne verlässliche Liste lieber nichts löschen – das tägliche Aufräumen
     // erledigt die Reste später
-    let Ok(still_used) = state.catalog.lock().unwrap().live().map(|l| l.files) else {
+    let Ok(still_used) = state.catalog.lock().unwrap().live_files() else {
         log::warn!("Zusatzdateien gelöschter Fotos bleiben vorerst liegen");
         return;
     };
-    for dir in ["masken", "entrauscht", "reparaturen"] {
+    for dir in crate::dirs::EDIT_FILES {
         let Ok(rd) = std::fs::read_dir(state.data_dir.join(dir)) else {
             continue;
         };

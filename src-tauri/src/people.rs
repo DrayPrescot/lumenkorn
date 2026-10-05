@@ -2,7 +2,7 @@
 //! verwalten, Gesichtsvorschauen liefern.
 
 use crate::AppState;
-use crate::ai::{analysis_guard, ensure_runtime, err, model_guard};
+use crate::ai::{analysis_guard, err, lazy_model};
 use lumenkorn_ai::faces::{self, FaceDetector, FaceEmbedder};
 use lumenkorn_ai::models;
 use lumenkorn_core::Error;
@@ -37,7 +37,7 @@ impl PeopleState {
 }
 
 pub(crate) fn thumb_dir(state: &AppState) -> PathBuf {
-    state.data_dir.join("gesichter")
+    state.data_dir.join(crate::dirs::FACES)
 }
 
 /// Entlädt die Gesichtsmodelle, wenn sie gerade nicht benutzt werden.
@@ -47,22 +47,18 @@ pub(crate) fn release_models(state: &AppState) -> bool {
 
 fn face_models(state: &AppState) -> Result<Arc<(FaceDetector, FaceEmbedder)>, Error> {
     state.usage.touch(crate::memory::Slot::Background);
-    let mut g = state.people.models.lock().unwrap();
-    if let Some(m) = g.as_ref() {
-        return Ok(m.clone());
-    }
-    ensure_runtime(state)?;
-    let dir = models::faces_dir(&state.data_dir);
-    let _guard = model_guard(
+    lazy_model(
         state,
+        &state.people.models,
         tr_s("YuNet/SFace (Personen)", "YuNet/SFace (people)"),
-    );
-    let m = Arc::new((
-        FaceDetector::load(&dir.join(faces::DETECTOR_FILE)).map_err(err)?,
-        FaceEmbedder::load(&dir.join(faces::EMBEDDER_FILE)).map_err(err)?,
-    ));
-    *g = Some(m.clone());
-    Ok(m)
+        || {
+            let dir = models::faces_dir(&state.data_dir);
+            Ok((
+                FaceDetector::load(&dir.join(faces::DETECTOR_FILE)).map_err(err)?,
+                FaceEmbedder::load(&dir.join(faces::EMBEDDER_FILE)).map_err(err)?,
+            ))
+        },
+    )
 }
 
 #[derive(Serialize, Clone)]
@@ -118,12 +114,11 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
             .collect()
     };
     for (id, img) in decoded {
-        let id = &id;
         let img = match img {
             Ok(i) => i,
             Err(e) => {
                 log::warn!("Gesichter {id}: {e}");
-                state.catalog.lock().unwrap().set_faces_failed(*id)?;
+                state.catalog.lock().unwrap().set_faces_failed(id)?;
                 continue;
             }
         };
@@ -143,7 +138,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
             Ok(f) => f,
             Err(e) => {
                 log::warn!("Gesichter {id}: {e}");
-                state.catalog.lock().unwrap().set_faces_failed(*id)?;
+                state.catalog.lock().unwrap().set_faces_failed(id)?;
                 continue;
             }
         };
@@ -161,13 +156,13 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
             if idx.as_ref().is_none_or(|i| !cat.people_index_current(i)) {
                 *idx = Some(cat.people_index()?);
             }
-            match cat.save_faces(*id, &new, idx.as_mut().unwrap()) {
+            match cat.save_faces(id, &new, idx.as_mut().unwrap()) {
                 Ok(ids) => ids,
                 Err(e) => {
                     // Der Index wurde womöglich schon ergänzt – neu aufbauen
                     *idx = None;
                     log::warn!("Gesichter {id} speichern: {e}");
-                    cat.set_faces_failed(*id)?;
+                    cat.set_faces_failed(id)?;
                     continue;
                 }
             }

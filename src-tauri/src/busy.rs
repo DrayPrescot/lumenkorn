@@ -2,7 +2,9 @@
 //! Arbeit mit einem Panic abbricht oder früh mit einem Fehler endet. Sonst
 //! bliebe z. B. „Es läuft bereits eine Reparatur“ bis zum Neustart stehen.
 
+use crate::AppState;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::{AppHandle, Manager};
 
 /// Führt `f` beim Verlassen des Gültigkeitsbereichs aus (Drop), genau einmal.
 pub struct Defer<F: FnOnce()>(Option<F>);
@@ -26,6 +28,21 @@ impl<F: FnOnce()> Drop for Defer<F> {
 pub fn claim(flag: &AtomicBool) -> Option<Defer<impl FnOnce() + '_>> {
     (!flag.swap(true, Ordering::SeqCst))
         .then(|| Defer::new(move || flag.store(false, Ordering::SeqCst)))
+}
+
+/// Wie [`claim`] für Markierungen im `AppState`, deren Wächter in einen
+/// eigenen Thread wandert (dort gibt es keine Leihgabe des Zustands).
+pub fn claim_in(
+    app: &AppHandle,
+    flag: fn(&AppState) -> &AtomicBool,
+) -> Option<Defer<impl FnOnce() + Send + 'static>> {
+    if flag(&app.state::<AppState>()).swap(true, Ordering::SeqCst) {
+        return None;
+    }
+    let app = app.clone();
+    Some(Defer::new(move || {
+        flag(&app.state::<AppState>()).store(false, Ordering::SeqCst)
+    }))
 }
 
 #[cfg(test)]

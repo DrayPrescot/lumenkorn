@@ -19,7 +19,7 @@ pub fn library_file_name() -> &'static str {
 }
 
 /// Sucht eine Bibliothek (GPU-Variante bevorzugt), siehe [`accel::choose_library`].
-pub fn find_library(app_dir: &Path) -> Option<PathBuf> {
+pub(crate) fn find_library(app_dir: &Path) -> Option<PathBuf> {
     accel::choose_library(app_dir, Preference::Auto).map(|(p, _)| p)
 }
 
@@ -75,7 +75,6 @@ fn preload_companions(lib: &Path) {
     let Some(dir) = lib.parent() else { return };
     // Reihenfolge: Abhängigkeiten vor ihren Nutzern
     for name in [
-        "DirectML.dll",
         "dxil.dll",
         "dxcompiler.dll",
         "onnxruntime_providers_shared.dll",

@@ -17,20 +17,21 @@ pub struct Tensor {
     pub data: Vec<f32>,
 }
 
-#[allow(dead_code)]
+/// Pickle-Werte. Bool und Float tragen keinen Wert – ein state_dict braucht
+/// sie nur als Platzhalter auf dem Stapel.
 #[derive(Debug, Clone)]
 enum V {
     None,
-    Bool(bool),
+    Bool,
     Int(i128),
-    Float(f64),
+    Float,
     Str(String),
     Tuple(Vec<V>),
     List(Vec<V>),
     Dict(Vec<(V, V)>),
     Global(String),
-    /// Verweis auf einen Speicherblock: (Schlüssel, Elementtyp, Anzahl)
-    Storage(String, String, usize),
+    /// Verweis auf einen Speicherblock: (Schlüssel, Elementtyp)
+    Storage(String, String),
     /// Noch nicht befüllter Tensor
     Tensor {
         key: String,
@@ -124,8 +125,7 @@ impl<'r, 'b> Pickle<'r, 'b> {
                 } // PROTO
                 b'.' => return p.pop(), // STOP
                 b'N' => p.stack.push(V::None),
-                0x88 => p.stack.push(V::Bool(true)),
-                0x89 => p.stack.push(V::Bool(false)),
+                0x88 | 0x89 => p.stack.push(V::Bool), // NEWTRUE, NEWFALSE
                 b'J' => {
                     let v = p.u32()? as i32;
                     p.stack.push(V::Int(v as i128))
@@ -152,9 +152,8 @@ impl<'r, 'b> Pickle<'r, 'b> {
                     p.stack.push(V::Int(v));
                 }
                 b'G' => {
-                    let b = p.bytes(8)?;
-                    p.stack
-                        .push(V::Float(f64::from_be_bytes(b.try_into().unwrap())));
+                    p.bytes(8)?;
+                    p.stack.push(V::Float);
                 }
                 b'X' => {
                     let n = p.u32()? as usize;
@@ -246,9 +245,11 @@ impl<'r, 'b> Pickle<'r, 'b> {
                         return Err(bad(tr_s("persistente ID", "persistent ID")));
                     };
                     match (t.get(1), t.get(2), t.get(4)) {
-                        (Some(V::Global(ty)), Some(V::Str(key)), Some(V::Int(n))) => p
-                            .stack
-                            .push(V::Storage(key.clone(), ty.clone(), *n as usize)),
+                        // Die Anzahl (t[4]) muss eine Zahl sein, gebraucht wird
+                        // sie nicht: die Größe ergibt sich aus der Form.
+                        (Some(V::Global(ty)), Some(V::Str(key)), Some(V::Int(_))) => {
+                            p.stack.push(V::Storage(key.clone(), ty.clone()))
+                        }
                         _ => {
                             return Err(bad(tr_s(
                                 "unbekannte persistente ID",
@@ -271,8 +272,8 @@ impl<'r, 'b> Pickle<'r, 'b> {
                     };
                     let v = if f.starts_with("torch._utils._rebuild_tensor") {
                         let key = match a.first() {
-                            Some(V::Storage(k, ty, _)) if ty.ends_with("FloatStorage") => k.clone(),
-                            Some(V::Storage(_, ty, _)) => {
+                            Some(V::Storage(k, ty)) if ty.ends_with("FloatStorage") => k.clone(),
+                            Some(V::Storage(_, ty)) => {
                                 return Err(bad(tr!(
                                     "nicht unterstützter Typ {ty}",
                                     "unsupported type {ty}"

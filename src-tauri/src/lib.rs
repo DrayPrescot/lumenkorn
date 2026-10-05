@@ -15,13 +15,25 @@ mod repair;
 mod worker;
 
 use lumenkorn_core::Catalog;
+use lumenkorn_core::Error;
 use lumenkorn_core::maskstore::MaskFiles;
 use lumenkorn_core::thumbs::ThumbCache;
 use lumenkorn_core::watcher::FolderWatcher;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
 use worker::{Job, Worker};
+
+/// Unterordner im Datenordner. An einer Stelle, damit Anlegen, Aufräumen
+/// (`memory::sweep_data`) und Löschen (`cull::cleanup`) nie auseinanderlaufen.
+pub(crate) mod dirs {
+    pub const MASKS: &str = "masken";
+    pub const DENOISED: &str = "entrauscht";
+    pub const REPAIRS: &str = "reparaturen";
+    pub const FACES: &str = "gesichter";
+    /// Zusatzdateien von Bearbeitungen; Dateinamen beginnen mit `<Bild-ID>-`.
+    pub const EDIT_FILES: [&str; 3] = [MASKS, DENOISED, REPAIRS];
+}
 
 pub struct AppState {
     pub catalog: Arc<Mutex<Catalog>>,
@@ -64,11 +76,13 @@ pub fn run() {
             if let Ok(l) = std::fs::read_to_string(language_file(&data_dir)) {
                 lumenkorn_develop::i18n::set_english(l.trim() == "en");
             }
-            let catalog = Arc::new(Mutex::new(Catalog::open(&data_dir.join("katalog.db"))?));
-            let masks = Arc::new(MaskFiles::new(data_dir.join("masken")));
+            let catalog_path = data_dir.join("katalog.db");
+            let catalog = Arc::new(Mutex::new(Catalog::open(&catalog_path)?));
+            let masks = Arc::new(MaskFiles::new(data_dir.join(dirs::MASKS)));
             let repairs = Arc::new(lumenkorn_develop::repair::RepairFiles::new(
-                data_dir.join("reparaturen"),
+                data_dir.join(dirs::REPAIRS),
             ));
+            let denoised_dir = data_dir.join(dirs::DENOISED);
             let cache = ThumbCache::new(
                 app.path()
                     .app_cache_dir()
@@ -76,8 +90,8 @@ pub fn run() {
             )
             .with_masks(masks.clone())
             .with_repairs(repairs.clone())
-            .with_denoise_dir(data_dir.join("entrauscht"));
-            log::info!("Katalog: {}", data_dir.join("katalog.db").display());
+            .with_denoise_dir(denoised_dir.clone());
+            log::info!("Katalog: {}", catalog_path.display());
 
             // Eigene Ordner nie als Fotos aufnehmen (siehe scanner::set_excluded_dirs)
             lumenkorn_core::scanner::set_excluded_dirs(vec![
@@ -111,7 +125,6 @@ pub fn run() {
             worker.submit(Job::Thumbs);
 
             let ai_state = ai::AiState::new(&data_dir);
-            let denoised_dir = data_dir.join("entrauscht");
             app.manage(AppState {
                 catalog,
                 cache,
@@ -253,12 +266,31 @@ fn start_watcher(
     }
 }
 
-/// Kennung der App vor der Umbenennung in Lumenkorn
+/// Führt `f` im Blocking-Pool aus – für Befehle, die dekodieren, rechnen oder
+/// länger auf den Katalog warten und so keinen async-Worker blockieren sollen.
+pub(crate) async fn blocking<T: Send + 'static>(
+    app: AppHandle,
+    f: impl FnOnce(&AppState) -> Result<T, Error> + Send + 'static,
+) -> Result<T, Error> {
+    tauri::async_runtime::spawn_blocking(move || f(&app.state::<AppState>()))
+        .await
+        .map_err(|e| {
+            Error::Invalid(lumenkorn_develop::tr!(
+                "Hintergrundaufgabe abgebrochen: {e}",
+                "Background task aborted: {e}"
+            ))
+        })?
+}
+
 /// Datei mit der zuletzt gewählten Sprache („de“ oder „en“).
 pub(crate) fn language_file(data_dir: &std::path::Path) -> PathBuf {
     data_dir.join("sprache")
 }
 
+/// Kennung der App vor der Umbenennung in Lumenkorn (bis Version 0.1).
+/// Die Übernahme (`adopt_previous_dir`) kostet je Start nur zwei `stat`-Aufrufe
+/// und kann entfallen, sobald keine Installationen von vor 0.1 mehr zu
+/// erwarten sind.
 const PREVIOUS_IDENTIFIER: &str = "de.lichtwerk.app";
 
 /// Übernimmt einen Ordner der früheren App-Kennung (gleicher übergeordneter

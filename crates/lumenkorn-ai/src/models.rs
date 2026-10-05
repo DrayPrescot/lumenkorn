@@ -5,8 +5,7 @@
 //!
 //! ```text
 //! <daten>/ki/runtime/libonnxruntime.so      (bzw. onnxruntime.dll / .dylib)
-//! <daten>/ki/runtime-webgpu/…               (GPU über Vulkan / DirectX 12)
-//! <daten>/ki/runtime-directml/…             (GPU über DirectML, nur Windows)
+//! <daten>/ki/runtime-webgpu/…               (GPU über Vulkan / DirectX 12 / Metal)
 //! <daten>/ki/clip-vit-b32/vision.onnx
 //! <daten>/ki/clip-vit-b32/text.onnx
 //! <daten>/ki/clip-vit-b32/vocab.json
@@ -14,6 +13,10 @@
 //! <daten>/ki/masken/subject.onnx            (IS-Net, „Motiv auswählen“)
 //! <daten>/ki/masken/sam-encoder.onnx        (Segment Anything, Objekt per Klick)
 //! <daten>/ki/masken/sam-decoder.onnx
+//! <daten>/ki/entrauschen/drunet.onnx        (DRUNet, aus drunet_color.pth erzeugt)
+//! <daten>/ki/gesichter/yunet.onnx           (Gesichter finden)
+//! <daten>/ki/gesichter/sface.onnx           (Gesichter wiedererkennen)
+//! <daten>/ki/reparatur/lama.onnx            (LaMa, KI-Reparatur)
 //! <daten>/ki/quellen.json                   (optional: eigene Download-Adressen)
 //! ```
 
@@ -48,15 +51,12 @@ pub enum Component {
     Repair,
     /// GPU-Laufzeit über WebGPU (Vulkan / DirectX 12 / Metal)
     Webgpu,
-    /// GPU-Laufzeit über DirectML (Windows)
-    Directml,
 }
 
 impl Component {
     fn gpu_backend(self) -> Option<Backend> {
         match self {
             Component::Webgpu => Some(Backend::Webgpu),
-            Component::Directml => Some(Backend::Directml),
             _ => None,
         }
     }
@@ -252,7 +252,7 @@ fn component_files(m: &Manifest, c: Component) -> &[FileSpec] {
         Component::Denoise => &m.denoise,
         Component::Faces => &m.faces,
         Component::Repair => &m.repair,
-        Component::Webgpu | Component::Directml => &[],
+        Component::Webgpu => &[],
     }
 }
 
@@ -264,7 +264,6 @@ fn component_dir(data_dir: &Path, c: Component) -> PathBuf {
         Component::Faces => faces_dir(data_dir),
         Component::Repair => repair_dir(data_dir),
         Component::Webgpu => accel::runtime_dir(&ai_dir(data_dir), Backend::Webgpu),
-        Component::Directml => accel::runtime_dir(&ai_dir(data_dir), Backend::Directml),
     }
 }
 
@@ -358,16 +357,16 @@ pub fn load_manifest(data_dir: &Path) -> Manifest {
 #[serde(rename_all = "camelCase")]
 pub struct Status {
     pub runtime_path: Option<String>,
-    pub runtime_loaded: bool,
     /// Für diese Plattform gibt es einen Laufzeit-Download.
     pub runtime_downloadable: bool,
     pub model_ready: bool,
+    /// Fehlende CLIP-Dateien (Diagnose und Tests; die Oberfläche zeigt nur
+    /// `model_ready`)
     pub missing: Vec<String>,
     /// Geschätzte Downloadgröße der fehlenden Teile in Bytes
     pub download_size: u64,
     pub model_dir: String,
     pub masks_ready: bool,
-    pub masks_missing: Vec<String>,
     /// Downloadgröße für die Maskenmodelle (inkl. Laufzeit, falls sie fehlt)
     pub masks_download_size: u64,
     pub denoise_ready: bool,
@@ -391,38 +390,47 @@ pub struct GpuRuntimeStatus {
     pub download_size: u64,
 }
 
-pub fn status(data_dir: &Path) -> Status {
-    let manifest = load_manifest(data_dir);
-    let runtime = crate::runtime::find_library(&ai_dir(data_dir));
-    let dir = model_dir(data_dir);
-    let missing: Vec<&FileSpec> = manifest
-        .model
+/// Ob eine Komponente vollständig ist und wie viel für sie noch zu laden wäre –
+/// `runtime_size` ist die Größe von ONNX Runtime, falls die noch fehlt (jede
+/// KI-Funktion braucht sie, daher zählt sie überall mit).
+fn need(m: &Manifest, data_dir: &Path, c: Component, runtime_size: u64) -> (bool, u64) {
+    let dir = component_dir(data_dir, c);
+    let missing: Vec<&FileSpec> = component_files(m, c)
         .iter()
         .filter(|f| !dir.join(&f.name).is_file())
         .collect();
-    let mut size: u64 = missing.iter().filter_map(|f| f.size).sum();
-    if runtime.is_none() {
-        size += manifest.runtime.as_ref().and_then(|r| r.size).unwrap_or(0);
-    }
-    let mdir = masks_dir(data_dir);
-    let mmissing: Vec<&FileSpec> = manifest
-        .masks
-        .iter()
-        .filter(|f| !mdir.join(&f.name).is_file())
-        .collect();
-    let mut msize: u64 = mmissing.iter().filter_map(|f| f.size).sum();
-    if runtime.is_none() {
-        msize += manifest.runtime.as_ref().and_then(|r| r.size).unwrap_or(0);
-    }
-    let denoise_ready = denoise_dir(data_dir).join(DENOISE_MODEL).is_file();
-    let mut dsize: u64 = if denoise_ready {
-        0
-    } else {
-        manifest.denoise.iter().filter_map(|f| f.size).sum()
+    let size: u64 = missing.iter().filter_map(|f| f.size).sum();
+    (missing.is_empty(), size + runtime_size)
+}
+
+pub fn status(data_dir: &Path) -> Status {
+    let manifest = load_manifest(data_dir);
+    let runtime = crate::runtime::find_library(&ai_dir(data_dir));
+    let runtime_size = match runtime {
+        Some(_) => 0,
+        None => manifest.runtime.as_ref().and_then(|r| r.size).unwrap_or(0),
     };
-    if runtime.is_none() {
-        dsize += manifest.runtime.as_ref().and_then(|r| r.size).unwrap_or(0);
-    }
+    let need = |c| need(&manifest, data_dir, c, runtime_size);
+    let (model_ready, download_size) = need(Component::Clip);
+    let clip_dir = model_dir(data_dir);
+    let missing = manifest
+        .model
+        .iter()
+        .filter(|f| !clip_dir.join(&f.name).is_file())
+        .map(|f| f.name.clone())
+        .collect();
+    let (masks_ready, masks_download_size) = need(Component::Masks);
+    let (faces_ready, faces_download_size) = need(Component::Faces);
+    let (repair_ready, repair_download_size) = need(Component::Repair);
+    // Entrauschen: geladen wird die PyTorch-Datei, fertig ist es erst mit dem
+    // daraus erzeugten ONNX-Modell – daher nicht über die Dateiliste.
+    let denoise_ready = denoise_dir(data_dir).join(DENOISE_MODEL).is_file();
+    let denoise_download_size = runtime_size
+        + if denoise_ready {
+            0
+        } else {
+            manifest.denoise.iter().filter_map(|f| f.size).sum()
+        };
     let ai = ai_dir(data_dir);
     let mut gpu_runtimes: Vec<GpuRuntimeStatus> = manifest
         .gpu_runtimes
@@ -437,44 +445,22 @@ pub fn status(data_dir: &Path) -> Status {
         .collect();
     let order = accel::gpu_backends();
     gpu_runtimes.sort_by_key(|g| order.iter().position(|b| *b == g.backend));
-    let fdir = faces_dir(data_dir);
-    let fmissing: Vec<&FileSpec> = manifest
-        .faces
-        .iter()
-        .filter(|f| !fdir.join(&f.name).is_file())
-        .collect();
-    let mut fsize: u64 = fmissing.iter().filter_map(|f| f.size).sum();
-    if runtime.is_none() {
-        fsize += manifest.runtime.as_ref().and_then(|r| r.size).unwrap_or(0);
-    }
-    let rdir = repair_dir(data_dir);
-    let rmissing: Vec<&FileSpec> = manifest
-        .repair
-        .iter()
-        .filter(|f| !rdir.join(&f.name).is_file())
-        .collect();
-    let mut rsize: u64 = rmissing.iter().filter_map(|f| f.size).sum();
-    if runtime.is_none() {
-        rsize += manifest.runtime.as_ref().and_then(|r| r.size).unwrap_or(0);
-    }
     Status {
-        repair_ready: rmissing.is_empty(),
-        repair_download_size: rsize,
-        faces_ready: fmissing.is_empty(),
-        faces_download_size: fsize,
+        repair_ready,
+        repair_download_size,
+        faces_ready,
+        faces_download_size,
         gpu_runtimes,
         denoise_ready,
-        denoise_download_size: dsize,
-        masks_ready: mmissing.is_empty(),
-        masks_missing: mmissing.iter().map(|f| f.name.clone()).collect(),
-        masks_download_size: msize,
+        denoise_download_size,
+        masks_ready,
+        masks_download_size,
         runtime_path: runtime.map(|p| p.display().to_string()),
-        runtime_loaded: crate::runtime::is_loaded(),
         runtime_downloadable: manifest.runtime.is_some(),
-        model_ready: missing.is_empty(),
-        missing: missing.iter().map(|f| f.name.clone()).collect(),
-        download_size: size,
-        model_dir: dir.display().to_string(),
+        model_ready,
+        missing,
+        download_size,
+        model_dir: clip_dir.display().to_string(),
     }
 }
 

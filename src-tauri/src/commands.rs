@@ -130,13 +130,13 @@ pub fn list_projects(state: State<AppState>) -> CmdResult<Vec<Project>> {
 pub fn create_project(
     state: State<AppState>,
     name: String,
-    description: Option<String>,
+    description: String,
 ) -> CmdResult<Project> {
     state
         .catalog
         .lock()
         .unwrap()
-        .create_project(&name, description.as_deref().unwrap_or(""))
+        .create_project(&name, &description)
 }
 
 #[tauri::command(async)]

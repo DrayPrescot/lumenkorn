@@ -30,9 +30,6 @@ pub const EMBED_DIM: usize = 128;
 /// Ab dieser Ähnlichkeit gilt ein Gesicht als dieselbe Person (OpenCV: 0,363).
 /// Gedacht für gut ausgeleuchtete Porträts – zu großzügig für kleine Gesichter.
 pub const SAME_PERSON: f32 = 0.363;
-/// Ab dieser Ähnlichkeit fasst Lumenkorn Gesichter automatisch zu einer Gruppe
-/// zusammen bzw. schlägt eine benannte Person vor (Bestätigen bleibt beim Nutzer).
-pub const GROUP: f32 = 0.5;
 
 const INPUT: usize = 640;
 const STRIDES: [usize; 3] = [8, 16, 32];
@@ -40,7 +37,7 @@ const SCORE_MIN: f32 = 0.8;
 const NMS_IOU: f32 = 0.3;
 /// Kleinere Gesichter (kürzere Kante, in Pixeln des untersuchten Bildes)
 /// werden verworfen – zu wenig Information zum Wiedererkennen.
-pub const MIN_FACE: f32 = 20.0;
+const MIN_FACE: f32 = 20.0;
 
 /// Ein gefundenes Gesicht in Pixeln des untersuchten Bildes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -316,7 +313,7 @@ impl FaceEmbedder {
     }
 
     /// Normierter Merkmalsvektor (Länge 1) eines ausgerichteten Gesichts.
-    pub fn embed_aligned(&self, face112: &RgbImage) -> Result<Vec<f32>> {
+    fn embed_aligned(&self, face112: &RgbImage) -> Result<Vec<f32>> {
         let n = 112 * 112;
         // RGB, 0…255 (OpenCV: blobFromImage mit swapRB=true auf BGR)
         let mut data = vec![0f32; 3 * n];
@@ -338,26 +335,13 @@ impl FaceEmbedder {
                 e.len()
             )));
         }
-        normalize(&mut e);
+        crate::clip::normalize(&mut e);
         Ok(e)
     }
 
     pub fn embed(&self, img: &RgbImage, face: &Face) -> Result<Vec<f32>> {
         self.embed_aligned(&align(img, face))
     }
-}
-
-pub fn normalize(v: &mut [f32]) {
-    let n = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-9);
-    for x in v {
-        *x /= n;
-    }
-}
-
-/// Kosinus-Ähnlichkeit zweier normierter Vektoren.
-pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
-    // vektorisierbares Skalarprodukt aus clip (Gruppierung vergleicht viele Paare)
-    crate::clip::dot(a, b)
 }
 
 /// Quadratischer Ausschnitt um das Gesicht (mit Rand) für Vorschaubilder.

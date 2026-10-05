@@ -1,9 +1,16 @@
-//! Eigenes URL-Schema `lw://` für Vorschaubilder.
+//! Eigenes URL-Schema `lw://` für Bilder.
 //!
 //! Das Frontend lädt Bilder als `<img src="lw://localhost/thumb/42">`
 //! (unter Windows/Android `http://lw.localhost/thumb/42`). So fließen keine
 //! Bilddaten durch die JSON-IPC, und der Browser-Cache greift.
-//! Fehlt eine Vorschau, wird sie bei Bedarf erzeugt.
+//! Fehlt ein Bild, wird es bei Bedarf erzeugt.
+//!
+//! Routen:
+//! - `thumb/{id}`, `preview/{id}`: Thumbnail (512 px) und Vorschau (2048 px)
+//!   aus dem Datei-Cache.
+//! - `full/{id}`: volle Auflösung (Lupe, Vergleich), eigener Pool und eigener
+//!   Speicher-Cache, siehe `serve_full`.
+//! - `face/{id}`: Gesichtsvorschau der Personenerkennung.
 
 use crate::AppState;
 use lumenkorn_core::thumbs::{self, Variant};

@@ -18,7 +18,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 #[derive(Default)]
 pub struct MergeState {
-    running: Mutex<bool>,
+    running: AtomicBool,
     cancel: AtomicBool,
 }
 
@@ -86,24 +86,21 @@ pub fn merge_start(
             .into(),
         ));
     }
+    // Gibt `running` wieder frei, auch wenn der Thread nicht startet
+    let Some(running) = crate::busy::claim_in(&app, |s| &s.merge.running) else {
+        return Err(Error::Invalid(
+            tr_s(
+                "Es werden bereits Fotos zusammengefügt.",
+                "Photos are already being merged.",
+            )
+            .into(),
+        ));
+    };
     let state = app.state::<AppState>();
-    {
-        let mut running = state.merge.running.lock().unwrap();
-        if *running {
-            return Err(Error::Invalid(
-                tr_s(
-                    "Es werden bereits Fotos zusammengefügt.",
-                    "Photos are already being merged.",
-                )
-                .into(),
-            ));
-        }
-        *running = true;
-    }
     state.merge.cancel.store(false, Ordering::SeqCst);
     let options = options.unwrap_or_default();
     let handle = app.clone();
-    let spawned = std::thread::Builder::new()
+    std::thread::Builder::new()
         .name("lumenkorn-merge".into())
         .spawn(move || {
             let app = handle;
@@ -127,11 +124,7 @@ pub fn merge_start(
                 ))
             });
             let cancelled = state.merge.cancel.load(Ordering::SeqCst);
-            *state
-                .merge
-                .running
-                .lock()
-                .unwrap_or_else(|e| e.into_inner()) = false;
+            drop(running);
             // Große Zwischenpuffer dem Betriebssystem zurückgeben
             crate::memory::trim_heap();
             // Abbrechen ist kein Fehler: „Abgebrochen“/„Canceled“ melden (die Oberfläche schweigt dann)
@@ -174,11 +167,7 @@ pub fn merge_start(
                     })
                 }
             }
-        });
-    if let Err(e) = spawned {
-        *state.merge.running.lock().unwrap() = false;
-        return Err(e.into());
-    }
+        })?;
     Ok(())
 }
 

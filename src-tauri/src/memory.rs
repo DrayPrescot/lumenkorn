@@ -10,6 +10,7 @@
 //! - KI-Modelle nach einer Weile ohne Nutzung (Hausmeister-Thread). Ein
 //!   Modell, das gerade rechnet, wird nie entladen.
 //! - Zwischengespeicherte Vollbilder (Zoom, Vergleich) ebenso.
+//! - Verwaiste Dateien im Datenordner: kurz nach dem Start, dann täglich.
 
 use crate::AppState;
 use lumenkorn_core::housekeeping::{self, Swept};
@@ -73,15 +74,18 @@ pub fn release_develop(state: &AppState) {
 #[tauri::command]
 pub async fn develop_release(app: AppHandle) -> Result<(), ()> {
     // Kann auf eine laufende RAW-Dekodierung warten: nicht auf der async-Laufzeit
-    let _ = tauri::async_runtime::spawn_blocking(move || {
-        release_develop(&app.state::<AppState>());
+    let _ = crate::blocking(app, |state| {
+        release_develop(state);
         log::debug!("Entwickeln verlassen: Bildpuffer freigegeben");
+        Ok(())
     })
     .await;
     Ok(())
 }
 
-/// Startet den Hausmeister, der ungenutzte KI-Modelle entlädt.
+/// Startet den Hausmeister: Er entlädt ungenutzte KI-Modelle und Vollbilder,
+/// räumt kurz nach dem Start und dann täglich den Datenordner auf
+/// (`sweep_data`) und optimiert dabei die Datenbank.
 pub fn start_janitor(app: AppHandle) {
     std::thread::Builder::new()
         .name("hausmeister".into())
@@ -150,7 +154,7 @@ pub fn sweep_data(state: &AppState) -> Result<(Swept, bool), lumenkorn_core::Err
     let live = state.catalog.lock().unwrap().live()?;
     let keep_file = |stem: &str| live.files.contains(stem);
     let mut swept = Swept::default();
-    for dir in ["masken", "entrauscht", "reparaturen"] {
+    for dir in crate::dirs::EDIT_FILES {
         swept += housekeeping::sweep_dir(&state.data_dir.join(dir), EDIT_FILES, keep_file);
     }
     swept += housekeeping::sweep_dir(&crate::people::thumb_dir(state), DERIVED, |stem| {

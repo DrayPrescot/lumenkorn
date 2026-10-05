@@ -26,6 +26,7 @@ fn gpu_lib() -> Option<String> {
 #[test]
 fn subject_on_gpu_matches_cpu() {
     let (Some(_), Ok(dir)) = (gpu_lib(), std::env::var("LUMENKORN_TEST_SEG")) else {
+        eprintln!("übersprungen: LUMENKORN_TEST_ORT_GPU/LUMENKORN_TEST_SEG fehlen");
         return;
     };
     let _g = SERIAL.lock().unwrap();
@@ -67,6 +68,7 @@ fn subject_on_gpu_matches_cpu() {
 #[test]
 fn denoise_on_gpu_matches_cpu() {
     let (Some(_), Ok(dir)) = (gpu_lib(), std::env::var("LUMENKORN_TEST_DENOISE")) else {
+        eprintln!("übersprungen: LUMENKORN_TEST_ORT_GPU/LUMENKORN_TEST_DENOISE fehlen");
         return;
     };
     let _g = SERIAL.lock().unwrap();

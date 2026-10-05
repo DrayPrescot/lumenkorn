@@ -1,10 +1,10 @@
 //! KI im Hintergrund: Modell laden, Bilder analysieren, semantisch suchen,
 //! Modelle herunterladen.
 
-use crate::AppState;
 use crate::guard::{self, Guard, Stage};
 use crate::memory::Slot;
 use crate::worker::Job;
+use crate::{AppState, blocking};
 use lumenkorn_ai::accel::{self, Backend, Preference};
 use lumenkorn_ai::index::{from_bytes, to_bytes};
 use lumenkorn_ai::models::{self, Component, Status};
@@ -17,7 +17,6 @@ use lumenkorn_develop::i18n::tr_s;
 use lumenkorn_develop::{DevelopParams, PromptPoint, Source, tr};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::path::Path as StdPath;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -27,6 +26,12 @@ use tauri::{AppHandle, Emitter, Manager, State};
 /// eine andere Kennung, damit nie Vektoren verschiedener Modelle gemischt werden.
 const MODEL_KEY: &str = models::MODEL_ID;
 const BATCH: usize = 16;
+/// Höchstens so viele Treffer der semantischen Suche, bevor relativ zum besten
+/// gefiltert wird: deckt auch große Ordner ab, hält das Sortieren aber billig.
+const SEARCH_MAX_HITS: usize = 2000;
+/// Treffer zählen, solange ihr Kosinus-Wert höchstens so weit unter dem
+/// besten liegt (CLIP-Werte liegen eng beieinander, siehe `semantic_search`).
+const SEARCH_MARGIN: f32 = 0.08;
 
 pub struct AiState {
     loaded: Mutex<Option<Loaded>>,
@@ -42,8 +47,8 @@ pub struct AiState {
     /// SAM-Embedding des zuletzt geklickten Bildes – das Berechnen dauert Sekunden.
     sam_embedding: Mutex<Option<(i64, Arc<SamEmbedding>)>>,
     denoiser: Mutex<Option<Arc<lumenkorn_ai::denoise::Denoiser>>>,
-    /// Bild, das gerade entrauscht wird
-    denoising: Mutex<Option<i64>>,
+    /// Es wird gerade ein Bild entrauscht (hält DRUNet geladen)
+    denoising: AtomicBool,
     denoise_cancel: AtomicBool,
     /// Ordner für Absturz-Markierungen (der KI-Ordner)
     pub(crate) guard_dir: PathBuf,
@@ -253,10 +258,31 @@ impl AiState {
             sam: Mutex::new(None),
             sam_embedding: Mutex::new(None),
             denoiser: Mutex::new(None),
-            denoising: Mutex::new(None),
+            denoising: AtomicBool::new(false),
             denoise_cancel: AtomicBool::new(false),
         }
     }
+}
+
+/// Lädt ein Modell beim ersten Bedarf in `slot`; danach teilen sich alle
+/// Aufrufer dieselbe Kopie. Die Slot-Sperre gilt während des Ladens, damit
+/// gleichzeitige Aufrufe es nicht doppelt laden. `label` erscheint in der
+/// Absturzmeldung, falls das Öffnen des Modells den Prozess mitreißt.
+pub(crate) fn lazy_model<T>(
+    state: &AppState,
+    slot: &Mutex<Option<Arc<T>>>,
+    label: &str,
+    load: impl FnOnce() -> Result<T, Error>,
+) -> Result<Arc<T>, Error> {
+    let mut g = slot.lock().unwrap();
+    if let Some(m) = g.as_ref() {
+        return Ok(m.clone());
+    }
+    ensure_runtime(state)?;
+    let _guard = model_guard(state, label);
+    let m = Arc::new(load()?);
+    *g = Some(m.clone());
+    Ok(m)
 }
 
 pub(crate) fn err(e: impl std::fmt::Display) -> Error {
@@ -293,8 +319,6 @@ pub(crate) fn ensure_runtime(state: &AppState) -> Result<(), Error> {
     Ok(())
 }
 
-/// Vergisst alle geladenen Modelle, damit sie mit dem neuen Rechenwerk neu
-/// angelegt werden. Laufende Berechnungen behalten ihre Kopie.
 /// Leert `slot`, wenn das Modell gerade nirgends benutzt wird.
 pub(crate) fn drop_if_unused<T>(slot: &Mutex<Option<Arc<T>>>) -> bool {
     let mut g = slot.lock().unwrap();
@@ -326,7 +350,7 @@ pub(crate) fn release_models(
         if ai.sam.lock().unwrap().is_none() {
             *ai.sam_embedding.lock().unwrap() = None;
         }
-        if ai.denoising.lock().unwrap().is_none() && drop_if_unused(&ai.denoiser) {
+        if !ai.denoising.load(Ordering::SeqCst) && drop_if_unused(&ai.denoiser) {
             out.push("DRUNet");
         }
     }
@@ -342,6 +366,8 @@ pub(crate) fn release_models(
     out
 }
 
+/// Vergisst alle geladenen Modelle, damit sie mit dem neuen Rechenwerk neu
+/// angelegt werden. Laufende Berechnungen behalten ihre Kopie.
 fn unload_models(state: &AppState) {
     *state.ai.loaded.lock().unwrap() = None;
     *state.ai.load_error.lock().unwrap() = None;
@@ -630,20 +656,11 @@ pub(crate) fn forget_in_index(state: &AppState, ids: Option<&[i64]>) {
 pub fn ai_download(app: AppHandle, component: Option<Component>) -> Result<(), Error> {
     let component = component.unwrap_or(Component::Clip);
     let state = app.state::<AppState>();
-    if state.ai.downloading.swap(true, Ordering::SeqCst) {
-        return Ok(());
-    }
     // Setzt `downloading` auch zurück, wenn der Download-Thread panisch endet
     // oder gar nicht erst startet – sonst blieben Analyse und Gesichter-
     // erkennung bis zum Neustart blockiert.
-    let done = {
-        let app = app.clone();
-        crate::busy::Defer::new(move || {
-            app.state::<AppState>()
-                .ai
-                .downloading
-                .store(false, Ordering::SeqCst)
-        })
+    let Some(done) = crate::busy::claim_in(&app, |s| &s.ai.downloading) else {
+        return Ok(());
     };
     state.ai.cancel.store(false, Ordering::SeqCst);
     std::thread::Builder::new()
@@ -689,7 +706,7 @@ pub fn ai_download(app: AppHandle, component: Option<Component>) -> Result<(), E
                 }
                 // Ist noch keine Laufzeit geladen, wird die neue beim nächsten
                 // Bedarf genommen; sonst zeigt der Status „Neustart nötig“.
-                (Ok(()), Component::Webgpu | Component::Directml) => None,
+                (Ok(()), Component::Webgpu) => None,
                 (Err(e), _) => Some(e.to_string()),
             };
             if error.is_none() && component == Component::Clip {
@@ -741,7 +758,7 @@ pub struct Benchmark {
 /// schnell die GPU rechnet.
 #[tauri::command]
 pub async fn ai_benchmark(app: AppHandle) -> Result<Benchmark, Error> {
-    spawn(app, |state| {
+    blocking(app, |state| {
         let d = denoiser(state)?;
         let size = 512usize;
         let data: Vec<[f32; 3]> = (0..size * size)
@@ -800,9 +817,8 @@ pub async fn semantic_search(
     scope: Scope,
     min_rating: Option<i64>,
 ) -> Result<Vec<ImageSummary>, Error> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let state = app.state::<AppState>();
-        let loaded = ensure_loaded(&state)?;
+    blocking(app, move |state| {
+        let loaded = ensure_loaded(state)?;
         let english = vocab::translate_query(&query);
         let q = loaded
             .clip
@@ -811,7 +827,7 @@ pub async fn semantic_search(
             .remove(0);
         // Erst den Bereich (Ordner/Projekt/Person, Mindestbewertung) bestimmen
         // und nur darin suchen: Sonst füllen Treffer aus dem übrigen Katalog
-        // die 2000 Plätze und setzen `best`, und ein kleiner Ordner findet
+        // die SEARCH_MAX_HITS Plätze und setzen `best`, und ein kleiner Ordner findet
         // nichts. Nebenbei fallen gelöschte oder fehlende Fotos heraus, die
         // noch im Index stehen.
         let allowed: HashSet<i64> = {
@@ -822,11 +838,13 @@ pub async fn semantic_search(
         };
         // Kosinus-Werte von CLIP liegen eng beieinander; relativ zum besten
         // Treffer filtern ist robuster als eine feste Schwelle.
-        let hits = with_index(&state, |idx| idx.search_in(&q, 2000, -1.0, Some(&allowed)))?;
+        let hits = with_index(state, |idx| {
+            idx.search_in(&q, SEARCH_MAX_HITS, -1.0, Some(&allowed))
+        })?;
         let best = hits.first().map(|h| h.1).unwrap_or(0.0);
         let ids: Vec<i64> = hits
             .iter()
-            .take_while(|(_, s)| *s >= best - 0.08)
+            .take_while(|(_, s)| *s >= best - SEARCH_MARGIN)
             .map(|h| h.0)
             .collect();
         log::info!(
@@ -840,7 +858,6 @@ pub async fn semantic_search(
             .images_in_order(&ids, &scope, min_rating)
     })
     .await
-    .map_err(err)?
 }
 
 // --- KI-Masken --------------------------------------------------------------
@@ -864,6 +881,7 @@ fn segmentation_input(state: &AppState, id: i64) -> Result<image::DynamicImage, 
 }
 
 fn masks_needed(state: &AppState) -> Result<(), Error> {
+    state.usage.touch(Slot::Interactive);
     if !models::status(&state.data_dir).masks_ready {
         return Err(Error::Invalid(
             tr_s(
@@ -873,42 +891,33 @@ fn masks_needed(state: &AppState) -> Result<(), Error> {
             .into(),
         ));
     }
-    ensure_runtime(state)
+    Ok(())
 }
 
 fn subject_model(state: &AppState) -> Result<Arc<SubjectModel>, Error> {
-    state.usage.touch(Slot::Interactive);
     masks_needed(state)?;
-    let mut guard = state.ai.subject.lock().unwrap();
-    if let Some(m) = guard.as_ref() {
-        return Ok(m.clone());
-    }
-    let _g = model_guard(state, tr_s("IS-Net (Motiv)", "IS-Net (subject)"));
-    let m = Arc::new(
-        SubjectModel::load(&models::masks_dir(&state.data_dir).join("subject.onnx"))
-            .map_err(err)?,
-    );
-    *guard = Some(m.clone());
-    Ok(m)
+    lazy_model(
+        state,
+        &state.ai.subject,
+        tr_s("IS-Net (Motiv)", "IS-Net (subject)"),
+        || {
+            SubjectModel::load(&models::masks_dir(&state.data_dir).join("subject.onnx"))
+                .map_err(err)
+        },
+    )
 }
 
 fn sam_model(state: &AppState) -> Result<Arc<Sam>, Error> {
-    state.usage.touch(Slot::Interactive);
     masks_needed(state)?;
-    let mut guard = state.ai.sam.lock().unwrap();
-    if let Some(m) = guard.as_ref() {
-        return Ok(m.clone());
-    }
-    let dir = models::masks_dir(&state.data_dir);
-    let _g = model_guard(
+    lazy_model(
         state,
+        &state.ai.sam,
         tr_s("Segment Anything (Objekt)", "Segment Anything (object)"),
-    );
-    let m = Arc::new(
-        Sam::load(&dir.join("sam-encoder.onnx"), &dir.join("sam-decoder.onnx")).map_err(err)?,
-    );
-    *guard = Some(m.clone());
-    Ok(m)
+        || {
+            let dir = models::masks_dir(&state.data_dir);
+            Sam::load(&dir.join("sam-encoder.onnx"), &dir.join("sam-decoder.onnx")).map_err(err)
+        },
+    )
 }
 
 fn sam_embedding(state: &AppState, sam: &Sam, id: i64) -> Result<Arc<SamEmbedding>, Error> {
@@ -942,19 +951,10 @@ fn store(
     Ok(MaskResult { mask_id, coverage })
 }
 
-async fn spawn<T: Send + 'static>(
-    app: AppHandle,
-    f: impl FnOnce(&AppState) -> Result<T, Error> + Send + 'static,
-) -> Result<T, Error> {
-    tauri::async_runtime::spawn_blocking(move || f(&app.state::<AppState>()))
-        .await
-        .map_err(err)?
-}
-
 /// „Motiv auswählen“
 #[tauri::command]
 pub async fn mask_subject(app: AppHandle, id: i64) -> Result<MaskResult, Error> {
-    spawn(app, move |state| {
+    blocking(app, move |state| {
         let model = subject_model(state)?;
         let t = std::time::Instant::now();
         let _g = analysis_guard(state, tr_s("Motiv", "Subject"));
@@ -970,7 +970,7 @@ pub async fn mask_subject(app: AppHandle, id: i64) -> Result<MaskResult, Error> 
 /// „Himmel auswählen“. Nutzt SAM zur Verfeinerung, wenn installiert.
 #[tauri::command]
 pub async fn mask_sky(app: AppHandle, id: i64) -> Result<MaskResult, Error> {
-    spawn(app, move |state| {
+    blocking(app, move |state| {
         let input = segmentation_input(state, id)?;
         let sam = models::status(&state.data_dir)
             .masks_ready
@@ -997,7 +997,7 @@ pub async fn mask_object(
     points: Vec<PromptPoint>,
     mask_id: Option<String>,
 ) -> Result<MaskResult, Error> {
-    spawn(app, move |state| {
+    blocking(app, move |state| {
         let sam = sam_model(state)?;
         let emb = sam_embedding(state, &sam, id)?;
         let pts: Vec<segment::Point> = points
@@ -1042,19 +1042,15 @@ fn denoiser(state: &AppState) -> Result<Arc<lumenkorn_ai::denoise::Denoiser>, Er
             .into(),
         ));
     }
-    ensure_runtime(state)?;
-    let mut g = state.ai.denoiser.lock().unwrap();
-    if let Some(d) = g.as_ref() {
-        return Ok(d.clone());
-    }
-    let path = models::denoise_dir(&state.data_dir).join(models::DENOISE_MODEL);
-    let _g = model_guard(
+    lazy_model(
         state,
+        &state.ai.denoiser,
         tr_s("DRUNet (Rauschreduzierung)", "DRUNet (denoise)"),
-    );
-    let d = Arc::new(lumenkorn_ai::denoise::Denoiser::load(&path).map_err(err)?);
-    *g = Some(d.clone());
-    Ok(d)
+        || {
+            let path = models::denoise_dir(&state.data_dir).join(models::DENOISE_MODEL);
+            lumenkorn_ai::denoise::Denoiser::load(&path).map_err(err)
+        },
+    )
 }
 
 /// Entrauscht ein Bild in voller Auflösung im Hintergrund. Fortschritt und
@@ -1063,31 +1059,17 @@ fn denoiser(state: &AppState) -> Result<Arc<lumenkorn_ai::denoise::Denoiser>, Er
 #[tauri::command(async)]
 pub fn denoise_start(app: AppHandle, id: i64, strength: Option<f32>) -> Result<(), Error> {
     let state = app.state::<AppState>();
-    {
-        let mut running = state.ai.denoising.lock().unwrap();
-        if running.is_some() {
-            return Err(Error::Invalid(
-                tr_s(
-                    "Es wird bereits ein Foto entrauscht.",
-                    "A photo is already being denoised.",
-                )
-                .into(),
-            ));
-        }
-        *running = Some(id);
-    }
     // Gibt `denoising` auch nach einem Panic (oder fehlgeschlagenem
     // Thread-Start) frei; sonst blieben Entrauschen und das Entladen von
     // DRUNet bis zum Neustart gesperrt.
-    let finished = {
-        let app = app.clone();
-        crate::busy::Defer::new(move || {
-            *app.state::<AppState>()
-                .ai
-                .denoising
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-        })
+    let Some(finished) = crate::busy::claim_in(&app, |s| &s.ai.denoising) else {
+        return Err(Error::Invalid(
+            tr_s(
+                "Es wird bereits ein Foto entrauscht.",
+                "A photo is already being denoised.",
+            )
+            .into(),
+        ));
     };
     state.ai.denoise_cancel.store(false, Ordering::SeqCst);
     // Reglerwert „Stärke“ (0–100) → Faktor auf die geschätzte Rauschstärke
@@ -1118,7 +1100,7 @@ pub fn denoise_start(app: AppHandle, id: i64, strength: Option<f32>) -> Result<(
                     let job = state.catalog.lock().unwrap().thumb_job(id)?;
                     let t = std::time::Instant::now();
                     let src = Source::load(
-                        StdPath::new(&job.path),
+                        Path::new(&job.path),
                         job.kind == lumenkorn_core::formats::ImageKind::Raw,
                         job.orientation.map(|o| o as u16),
                         None,
