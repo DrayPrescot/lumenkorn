@@ -21,7 +21,7 @@ use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
 /// Ab dieser Kosinus-Ähnlichkeit zum Zentroid gehört ein Gesicht zu einer Person
-/// bzw. Gruppe (siehe `lumenkorn_ai::faces::GROUP`).
+/// bzw. Gruppe. Einzige Gruppierungsschwelle; auch die KI-Tests nutzen sie.
 pub const GROUP: f32 = 0.5;
 
 #[derive(Debug, Clone, Serialize)]
@@ -57,6 +57,34 @@ pub struct NewFace {
     pub score: f32,
     /// normiert (Länge 1)
     pub embedding: Vec<f32>,
+}
+
+/// Spalten für [`face_from_row`]; Bedingung und Sortierung hängt der Aufrufer an.
+const FACE_SELECT: &str =
+    "SELECT f.id, f.image_id, f.x, f.y, f.w, f.h, f.score, f.person_id, p.name, f.confirmed
+     FROM faces f LEFT JOIN persons p ON p.id = f.person_id";
+
+fn face_from_row(r: &rusqlite::Row) -> rusqlite::Result<FaceInfo> {
+    Ok(FaceInfo {
+        id: r.get(0)?,
+        image_id: r.get(1)?,
+        rect: [r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?],
+        score: r.get(6)?,
+        person_id: r.get(7)?,
+        person_name: r.get(8)?,
+        confirmed: r.get(9)?,
+    })
+}
+
+/// Name ohne Leerraum am Rand; leer ist ungültig.
+fn person_name(name: &str) -> Result<&str> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(Error::Invalid(
+            tr_s("Bitte einen Namen eingeben", "Please enter a name").into(),
+        ));
+    }
+    Ok(name)
 }
 
 fn to_blob(v: &[f32]) -> Vec<u8> {
@@ -275,7 +303,7 @@ impl Catalog {
     }
 
     /// Index ungültig machen (z. B. nach einem Fehler mitten im Speichern).
-    pub fn invalidate_people_index(&self) {
+    pub(crate) fn invalidate_people_index(&self) {
         self.people_gen.set(self.people_gen.get() + 1);
     }
 
@@ -377,44 +405,21 @@ impl Catalog {
 
     fn faces_where(&self, cond: &str, arg: i64) -> Result<Vec<FaceInfo>> {
         let mut st = self.conn.prepare(&format!(
-            "SELECT f.id, f.image_id, f.x, f.y, f.w, f.h, f.score, f.person_id, p.name, f.confirmed
-             FROM faces f LEFT JOIN persons p ON p.id = f.person_id
-             WHERE f.hidden = 0 AND {cond}
+            "{FACE_SELECT} WHERE f.hidden = 0 AND {cond}
              ORDER BY f.confirmed DESC, f.image_id, f.x"
         ))?;
-        let rows = st.query_map([arg], |r| {
-            Ok(FaceInfo {
-                id: r.get(0)?,
-                image_id: r.get(1)?,
-                rect: [r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?],
-                score: r.get(6)?,
-                person_id: r.get(7)?,
-                person_name: r.get(8)?,
-                confirmed: r.get(9)?,
-            })
-        })?;
+        let rows = st.query_map([arg], face_from_row)?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
     pub fn face(&self, face_id: i64) -> Result<FaceInfo> {
         // auch ausgeblendete Gesichter (für Vorschaubilder)
-        let mut st = self.conn.prepare(
-            "SELECT f.id, f.image_id, f.x, f.y, f.w, f.h, f.score, f.person_id, p.name, f.confirmed
-             FROM faces f LEFT JOIN persons p ON p.id = f.person_id WHERE f.id = ?1",
-        )?;
-        st.query_row([face_id], |r| {
-            Ok(FaceInfo {
-                id: r.get(0)?,
-                image_id: r.get(1)?,
-                rect: [r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?],
-                score: r.get(6)?,
-                person_id: r.get(7)?,
-                person_name: r.get(8)?,
-                confirmed: r.get(9)?,
-            })
-        })
-        .optional()?
-        .ok_or_else(|| Error::NotFound(tr!("Gesicht {face_id}", "Face {face_id}")))
+        let mut st = self
+            .conn
+            .prepare(&format!("{FACE_SELECT} WHERE f.id = ?1"))?;
+        st.query_row([face_id], face_from_row)
+            .optional()?
+            .ok_or_else(|| Error::NotFound(tr!("Gesicht {face_id}", "Face {face_id}")))
     }
 
     /// Alle Fotos erneut analysieren lassen. Benannte Personen bleiben; ihre
@@ -435,23 +440,11 @@ impl Catalog {
     /// Sichtbare Gesichter mehrerer Fotos (für Änderungen an einer Auswahl).
     pub fn faces_of_images(&self, image_ids: &[i64]) -> Result<Vec<FaceInfo>> {
         let ids = serde_json::to_string(image_ids)?;
-        let mut st = self.conn.prepare(
-            "SELECT f.id, f.image_id, f.x, f.y, f.w, f.h, f.score, f.person_id, p.name, f.confirmed
-             FROM faces f LEFT JOIN persons p ON p.id = f.person_id
-             WHERE f.hidden = 0 AND f.image_id IN (SELECT value FROM json_each(?1))
-             ORDER BY f.image_id, f.x",
-        )?;
-        let rows = st.query_map([ids], |r| {
-            Ok(FaceInfo {
-                id: r.get(0)?,
-                image_id: r.get(1)?,
-                rect: [r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?],
-                score: r.get(6)?,
-                person_id: r.get(7)?,
-                person_name: r.get(8)?,
-                confirmed: r.get(9)?,
-            })
-        })?;
+        let mut st = self.conn.prepare(&format!(
+            "{FACE_SELECT} WHERE f.hidden = 0 AND f.image_id IN (SELECT value FROM json_each(?1))
+             ORDER BY f.image_id, f.x"
+        ))?;
+        let rows = st.query_map([ids], face_from_row)?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
@@ -470,12 +463,7 @@ impl Catalog {
             return Ok(None);
         }
         let ids = serde_json::to_string(face_ids)?;
-        let person = match name.map(str::trim) {
-            Some("") => {
-                return Err(Error::Invalid(
-                    tr_s("Bitte einen Namen eingeben", "Please enter a name").into(),
-                ));
-            }
+        let person = match name.map(person_name).transpose()? {
             Some(name) => Some(match self.person_by_name(name)? {
                 Some(id) => id,
                 None => {
@@ -574,12 +562,7 @@ impl Catalog {
         name: &str,
         index: &mut Option<PeopleIndex>,
     ) -> Result<i64> {
-        let name = name.trim();
-        if name.is_empty() {
-            return Err(Error::Invalid(
-                tr_s("Bitte einen Namen eingeben", "Please enter a name").into(),
-            ));
-        }
+        let name = person_name(name)?;
         let mut idx = self.take_index(index)?;
         self.invalidate_people_index();
         let existing = self.person_by_name(name)?.filter(|id| *id != person_id);
@@ -627,35 +610,10 @@ impl Catalog {
         name: &str,
         index: &mut Option<PeopleIndex>,
     ) -> Result<i64> {
-        let name = name.trim();
-        if name.is_empty() {
-            return Err(Error::Invalid(
-                tr_s("Bitte einen Namen eingeben", "Please enter a name").into(),
-            ));
-        }
-        let mut idx = self.take_index(index)?;
-        let person = match self.person_by_name(name)? {
-            Some(id) => id,
-            None => {
-                self.conn.execute(
-                    "INSERT INTO persons (name, created_at) VALUES (?1, ?2)",
-                    params![name, now()],
-                )?;
-                self.conn.last_insert_rowid()
-            }
-        };
-        let old = self.face_person(face_id)?;
-        self.conn.execute(
-            "UPDATE faces SET person_id = ?2, confirmed = 1, rejected_person = NULL, hidden = 0
-             WHERE id = ?1",
-            params![face_id, person],
-        )?;
-        crate::catalog::flush_search(&self.conn)?;
-        self.drop_empty_groups(Some(old.as_slice()))?;
-        self.refresh_clusters(&mut idx, &[old.as_slice(), &[person]].concat())?;
-        self.suggest_for(person, &mut idx)?;
-        self.put_index(index, idx);
-        Ok(person)
+        // Mit Namen liefert `reassign_faces` immer die Ziel-Person
+        Ok(self
+            .reassign_faces(&[face_id], Some(name), index)?
+            .expect("Ziel-Person bei angegebenem Namen"))
     }
 
     /// Mehrere vorgeschlagene Gesichter auf einmal bestätigen (nur solche,
@@ -670,8 +628,7 @@ impl Catalog {
     }
 
     pub fn confirm_face(&self, face_id: i64) -> Result<()> {
-        self.conn
-            .execute("UPDATE faces SET confirmed = 1 WHERE id = ?1", [face_id])?;
+        self.confirm_faces(&[face_id])?;
         Ok(())
     }
 

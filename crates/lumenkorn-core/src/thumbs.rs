@@ -32,7 +32,7 @@ pub enum Variant {
 }
 
 impl Variant {
-    pub fn max_size(self) -> u32 {
+    fn max_size(self) -> u32 {
         match self {
             Variant::Thumb => THUMB_SIZE,
             Variant::Preview => PREVIEW_SIZE,
@@ -102,7 +102,7 @@ impl ThumbCache {
         &self.base
     }
 
-    pub fn path_for(&self, variant: Variant, id: i64) -> PathBuf {
+    fn path_for(&self, variant: Variant, id: i64) -> PathBuf {
         self.base
             .join(variant.dir())
             .join(format!("{:02x}", id.rem_euclid(256)))
@@ -150,9 +150,7 @@ impl ThumbCache {
         self.write(variant, job.id, &bytes)?;
         Ok(bytes)
     }
-}
 
-impl ThumbCache {
     /// Ganzes Bild in voller Auflösung (Zoom in Bibliothek und Vergleich).
     /// Wird nicht auf der Platte zwischengespeichert.
     pub fn render_full(&self, job: &ThumbJob) -> Result<Vec<u8>> {
@@ -169,7 +167,7 @@ impl ThumbCache {
 /// eingebettete JPEG eines RAWs ist oft kleiner als das Original),
 /// unbearbeitete JPEGs ohne Drehung unverändert geliefert, andere
 /// Rasterbilder dekodiert.
-pub fn render_full(
+fn render_full(
     job: &ThumbJob,
     masks: &dyn MaskSource,
     denoise_dir: Option<&Path>,
@@ -202,7 +200,7 @@ pub fn render_full(
     render(Path::new(&job.path), job.kind, job.orientation, u32::MAX)
 }
 
-/// Liefert [`render_full`] die Datei unverändert? Für ein unbearbeitetes,
+/// Liefert [`ThumbCache::render_full`] die Datei unverändert? Für ein unbearbeitetes,
 /// nicht zu drehendes JPEG ist die Datei selbst das Ergebnis – Dekodieren und
 /// neu Kodieren kostete ~0,5 s je 24 MP und Qualität (q82). Wie bei
 /// `full_size_preview` für RAWs. (Zwischenspeichern lohnt dann nicht.)
@@ -257,7 +255,7 @@ fn full_size_preview(job: &ThumbJob) -> Result<Option<Vec<u8>>> {
 }
 
 /// Vorschau für einen Katalogeintrag – mit Bearbeitung, falls vorhanden.
-pub fn render_job(
+fn render_job(
     job: &ThumbJob,
     max: u32,
     masks: &dyn MaskSource,
@@ -317,13 +315,13 @@ fn render_developed(
 }
 
 /// Dekodiert ein Bild, skaliert es auf `max` und liefert ein JPEG.
-pub fn render(path: &Path, kind: ImageKind, orientation: Option<i64>, max: u32) -> Result<Vec<u8>> {
+fn render(path: &Path, kind: ImageKind, orientation: Option<i64>, max: u32) -> Result<Vec<u8>> {
     encode_jpeg(&decode_unedited(path, kind, orientation, max)?, 82)
 }
 
 /// Unbearbeitetes, aufrecht gedrehtes Bild mit höchstens `max` Pixeln Kante.
 /// RAWs liefern ihr eingebettetes JPEG – schnell, ohne Entwicklung.
-pub fn decode_unedited(
+fn decode_unedited(
     path: &Path,
     kind: ImageKind,
     orientation: Option<i64>,
@@ -409,7 +407,7 @@ fn encode_jpeg(img: &DynamicImage, quality: u8) -> Result<Vec<u8>> {
 /// `min_edge` misst – für ein 512-px-Thumbnail reicht meist die mittlere
 /// Vorschau, statt das 24–60-MP-JPEG voll zu dekodieren. Gibt es keine
 /// passende, die größte.
-pub fn decode_embedded_preview(path: &Path, min_edge: u32) -> Result<DynamicImage> {
+fn decode_embedded_preview(path: &Path, min_edge: u32) -> Result<DynamicImage> {
     // Die Vorschauen liegen fast immer vorn in der Datei (TIFF-IFDs, CR3-PRVW,
     // RAF-Kopf). Erst den Anfang lesen, die ganze Datei (24–60 MB, bei 50 000
     // RAWs Terabytes auf dem NAS) nur, wenn dort nichts Passendes steckt.
@@ -444,6 +442,7 @@ fn best_preview(data: &[u8], min_edge: u32, only_sufficient: bool) -> Option<Dyn
         // Größe aus dem Kopf lesen; „JPEGs“ mit verlustfreien Sensordaten
         // (SOF3) lassen sich nicht als Bild dekodieren und fallen hier weg.
         .filter_map(|c| jpeg_size(c).map(|(w, h)| (c, w.max(h))))
+        // EXIF-Thumbnails (160 × 120) sind fürs Raster zu klein
         .filter(|(_, edge)| *edge >= 160)
         .filter(|(_, edge)| !only_sufficient || *edge >= min_edge)
         .collect();
@@ -489,7 +488,8 @@ fn jpeg_size(d: &[u8]) -> Option<(u32, u32)> {
 }
 
 /// Findet vollständige JPEG-Datenströme (SOI…EOI) in einem Puffer.
-pub fn embedded_jpegs(data: &[u8]) -> Vec<&[u8]> {
+fn embedded_jpegs(data: &[u8]) -> Vec<&[u8]> {
+    // Kürzere Ströme sind nur EXIF-Thumbnails, nie eine brauchbare Vorschau
     const MIN_LEN: usize = 8 * 1024;
     let mut out = Vec::new();
     let mut i = 0;

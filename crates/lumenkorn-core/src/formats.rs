@@ -8,8 +8,8 @@ use std::path::Path;
 pub enum ImageKind {
     /// Direkt dekodierbare Formate (JPEG, PNG, TIFF, WebP).
     Raster,
-    /// Kamera-RAW. Für Vorschauen wird das eingebettete JPEG genutzt,
-    /// die eigentliche Entwicklung folgt später über LibRaw/rawler.
+    /// Kamera-RAW. Unbearbeitet zeigen Vorschauen das eingebettete JPEG,
+    /// sonst wird es über `lumenkorn_develop::Source` entwickelt.
     Raw,
 }
 
@@ -41,7 +41,7 @@ const RASTER: &[&str] = &[
 const UNSUPPORTED: &[&str] = &["heic", "heif", "avif", "jxl", "psd", "gif", "bmp"];
 
 /// Endung, wenn die Datei ein Bild in einem nicht unterstützten Format ist.
-pub fn unsupported_image(path: &Path) -> Option<String> {
+pub(crate) fn unsupported_image(path: &Path) -> Option<String> {
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
     UNSUPPORTED.contains(&ext.as_str()).then_some(ext)
 }
@@ -52,7 +52,7 @@ const RAW: &[&str] = &[
 ];
 
 /// Liefert den Bildtyp oder `None`, wenn die Datei kein unterstütztes Bild ist.
-pub fn classify(path: &Path) -> Option<(String, ImageKind)> {
+pub(crate) fn classify(path: &Path) -> Option<(String, ImageKind)> {
     let ext = path.extension()?.to_str()?.to_ascii_lowercase();
     if RAW.contains(&ext.as_str()) {
         Some((ext, ImageKind::Raw))

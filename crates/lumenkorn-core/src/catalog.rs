@@ -17,6 +17,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Schema-Migrationen. Index + 1 = `user_version` nach Anwendung.
 /// Neue Migrationen nur hinten anhängen, bestehende nie verändern.
 const MIGRATIONS: &[&str] = &[
+    // Kommentare im SQL geben den Stand ihrer Version wieder. (`embeddings`
+    // aus v1 ist längst in Gebrauch: `save_ai_result`, `embeddings()`.)
     // v1: Grundschema
     r#"
     CREATE TABLE roots (
@@ -168,8 +170,9 @@ const MIGRATIONS: &[&str] = &[
     DELETE FROM search;
     INSERT INTO search(rowid, body) SELECT id, body FROM search_source;
     "#,
-    // v6: Sortierung nach Aufnahmedatum über einen Index statt jedes Mal alle
-    // Fotos zu sortieren (Ausdrücke exakt wie in `query_images`)
+    // v6: Sortierung nach Aufnahmedatum über einen Index (Ausdrücke exakt wie
+    // in `query_images`). Lohnt nur mit `limit`; ohne (die Oberfläche lädt
+    // immer alle Fotos) brachte er bei 50 000 Fotos gemessen nichts.
     r#"
     CREATE INDEX images_sort_captured_asc ON images(COALESCE(captured_at, '9999'), file_name);
     CREATE INDEX images_sort_captured_desc ON images(COALESCE(captured_at, '0000'), file_name);
@@ -224,8 +227,9 @@ const MIGRATIONS: &[&str] = &[
 ///
 /// Außerdem Indizes: sichtbare Gesichter je Person (Zählen, leere Gruppen,
 /// Personenfilter ohne die Embedding-BLOBs zu lesen), vorhandene Ordner je
-/// Quellordner (Ordnerbaum, Anzahl je Quellordner, ohne Tabellendurchlauf). `images_captured` und `images_hash`
-/// nutzt keine Abfrage (Sortierung läuft über die Indizes aus v6).
+/// Quellordner (Ordnerbaum, Anzahl je Quellordner, ohne Tabellendurchlauf).
+/// `images_captured` und `images_hash` nutzt keine Abfrage (sortiert wird
+/// über `COALESCE(captured_at, …)`, passend zu den Indizes aus v6).
 const SEARCH_DIRTY: &str = r#"
     CREATE TABLE search_dirty (id INTEGER PRIMARY KEY);
 
@@ -591,7 +595,8 @@ impl Catalog {
             .ok_or_else(|| Error::NotFound(tr!("Quellordner {id}", "Source folder {id}")))
     }
 
-    /// Ordnerbaum eines Quellordners, aufgebaut aus den Ordnern mit Bildern.
+    /// Ordnerbaum eines Quellordners: Ordner mit Bildern und (seit v8) alle
+    /// übrigen Ordner von der Platte, auch leere.
     pub fn folder_tree(&self, root_id: i64) -> Result<FolderNode> {
         let root = self.root(root_id)?;
         let mut st = self.conn.prepare(
@@ -669,16 +674,15 @@ impl Catalog {
         if added.is_empty() && gone.is_empty() {
             return Ok(false);
         }
-        let sep = SEP.to_string();
         self.with_tx(|tx| {
             let mut n = 0;
             for g in gone {
                 // Der Ordner selbst und alles darunter (Bereichsabfrage wie beim Ordnerfilter)
-                let prefix = format!("{}{sep}", paths::trim_dir(g));
-                let upper = format!("{}{}", paths::trim_dir(g), char::from_u32(SEP as u32 + 1).unwrap_or('~'));
+                let g = paths::trim_dir(g);
+                let (prefix, upper) = subtree_range(&g);
                 n += tx.execute(
                     "DELETE FROM folders WHERE root_id = ?1 AND (path = ?2 OR (path >= ?3 AND path < ?4))",
-                    params![root_id, paths::trim_dir(g), prefix, upper],
+                    params![root_id, g, prefix, upper],
                 )?;
             }
             let mut st = tx.prepare("INSERT OR IGNORE INTO folders (root_id, path) VALUES (?1, ?2)")?;
@@ -829,7 +833,7 @@ impl Catalog {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
-    pub fn count_images(&self, scope: &Scope) -> Result<i64> {
+    pub(crate) fn count_images(&self, scope: &Scope) -> Result<i64> {
         let (where_sql, args) = self.where_clause(&ImageQuery::new(scope.clone()))?;
         Ok(self.conn.query_row(
             &format!("SELECT COUNT(*) FROM images i WHERE {where_sql}"),
@@ -890,8 +894,8 @@ impl Catalog {
             ));
         }
 
-        // Jedes Suchwort muss in Dateiname, Kamera, Objektiv, einem Schlagwort
-        // oder dem Namen einer abgebildeten Person vorkommen.
+        // Jedes Suchwort muss im Suchtext vorkommen (Dateiname, Ordner, Kamera,
+        // Objektiv, Schlagworte, Personennamen – siehe `SEARCH_INDEX`).
         // Volltextindex: Wörter ab drei Zeichen über Trigramme (Index),
         // kürzere per LIKE auf denselben Einträgen. Alle Wörter müssen passen.
         let words: Vec<&str> = q
@@ -1053,7 +1057,7 @@ impl Catalog {
     // Vorschauen
     // ------------------------------------------------------------------
 
-    pub fn pending_thumbs(&self, limit: usize) -> Result<Vec<ThumbJob>> {
+    pub(crate) fn pending_thumbs(&self, limit: usize) -> Result<Vec<ThumbJob>> {
         let mut st = self.conn.prepare(&format!(
             "{THUMB_JOB_SELECT} WHERE i.thumb_state = 0 AND i.missing = 0 ORDER BY i.id LIMIT ?1"
         ))?;
@@ -1123,16 +1127,7 @@ impl Catalog {
     // ------------------------------------------------------------------
 
     pub fn create_project(&self, name: &str, description: &str) -> Result<Project> {
-        let name = name.trim();
-        if name.is_empty() {
-            return Err(Error::Invalid(
-                tr_s(
-                    "Projektname darf nicht leer sein",
-                    "Project name must not be empty",
-                )
-                .into(),
-            ));
-        }
+        let name = project_name(name)?;
         let t = now();
         self.conn.execute(
             "INSERT INTO projects (name, description, created_at, updated_at) VALUES (?1, ?2, ?3, ?3)",
@@ -1142,16 +1137,7 @@ impl Catalog {
     }
 
     pub fn update_project(&self, id: i64, name: &str, description: &str) -> Result<Project> {
-        let name = name.trim();
-        if name.is_empty() {
-            return Err(Error::Invalid(
-                tr_s(
-                    "Projektname darf nicht leer sein",
-                    "Project name must not be empty",
-                )
-                .into(),
-            ));
-        }
+        let name = project_name(name)?;
         let n = self.conn.execute(
             "UPDATE projects SET name = ?2, description = ?3, updated_at = ?4 WHERE id = ?1",
             params![id, name, description, now()],
@@ -1598,16 +1584,39 @@ fn dir_filter(p: &str, recursive: bool, args: &mut Vec<Value>) -> String {
         args.push(Value::Text(p.to_string()));
         return "i.dir = ?".into();
     }
-    let prefix = paths::child_prefix(p);
-    let mut upper = prefix.clone();
-    let last = upper.pop().unwrap_or('/');
-    upper.push(char::from_u32(last as u32 + 1).unwrap_or(char::MAX));
+    let (prefix, upper) = subtree_range(p);
     args.extend([
         Value::Text(p.to_string()),
         Value::Text(prefix),
         Value::Text(upper),
     ]);
     "(i.dir = ? OR (i.dir >= ? AND i.dir < ?))".into()
+}
+
+/// Grenzen `[prefix, upper)` für alle Pfade unterhalb von `dir`: `upper` ist
+/// `prefix` mit dem Trenner um eins erhöht. So nutzt die Abfrage den Index
+/// auf dem Pfad als Bereich, statt jede Zeile per `LIKE`/`substr` zu prüfen.
+fn subtree_range(dir: &str) -> (String, String) {
+    let prefix = paths::child_prefix(dir);
+    let mut upper = prefix.clone();
+    let last = upper.pop().unwrap_or('/');
+    upper.push(char::from_u32(last as u32 + 1).unwrap_or(char::MAX));
+    (prefix, upper)
+}
+
+/// Projektname ohne Leerraum am Rand; leer ist ungültig.
+fn project_name(name: &str) -> Result<&str> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(Error::Invalid(
+            tr_s(
+                "Projektname darf nicht leer sein",
+                "Project name must not be empty",
+            )
+            .into(),
+        ));
+    }
+    Ok(name)
 }
 
 fn escape_like(s: &str) -> String {

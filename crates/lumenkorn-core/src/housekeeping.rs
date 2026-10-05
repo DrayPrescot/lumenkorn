@@ -41,7 +41,7 @@ impl std::ops::AddAssign for Swept {
 }
 
 /// Alle Datei-IDs, auf die eine Bearbeitung verweist.
-pub fn referenced(p: &DevelopParams, out: &mut HashSet<String>) {
+fn referenced(p: &DevelopParams, out: &mut HashSet<String>) {
     if let Some(d) = &p.denoise {
         out.insert(d.id.clone());
     }
@@ -64,14 +64,21 @@ impl Catalog {
         for r in st.query_map([], |r| r.get(0))? {
             live.faces.insert(r?);
         }
+        live.files = self.live_files()?;
+        Ok(live)
+    }
+
+    /// Nur [`Live::files`] – ohne alle Bild- und Gesichts-IDs zu sammeln.
+    pub fn live_files(&self) -> Result<HashSet<String>> {
+        let mut files = HashSet::new();
         // Auch Schnappschüsse: Wiederherstellen braucht ihre Dateien
         let mut st = self.conn.prepare("SELECT params FROM edits")?;
         for r in st.query_map([], |r| r.get::<_, String>(0))? {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r?) {
-                referenced(&DevelopParams::from_json(&v), &mut live.files);
+                referenced(&DevelopParams::from_json(&v), &mut files);
             }
         }
-        Ok(live)
+        Ok(files)
     }
 
     /// Entfernt Verweise auf Dateien anderer Fotos aus allen Bearbeitungen.

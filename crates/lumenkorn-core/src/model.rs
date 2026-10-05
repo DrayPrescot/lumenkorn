@@ -149,7 +149,8 @@ pub struct ImageQuery {
     pub scope: Scope,
     #[serde(default)]
     pub sort: SortOrder,
-    /// Freitext über Dateiname, Kamera, Objektiv und Schlagworte.
+    /// Freitext über Dateiname, Ordner, Kamera, Objektiv, Schlagworte und
+    /// Personennamen.
     #[serde(default)]
     pub search: Option<String>,
     #[serde(default)]

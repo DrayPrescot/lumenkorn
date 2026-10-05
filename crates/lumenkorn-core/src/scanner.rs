@@ -263,7 +263,6 @@ pub fn scan_paths(
     Ok(report)
 }
 
-/// Liegt `p` in einem Ordner, den der Scan überspringt (versteckt, System)?
 /// Ein gemeldeter Pfad in der Schreibweise des Quellordners, falls er darin
 /// liegt. Der Quellordner ist normiert (`canonicalize`); gemeldete Pfade können
 /// anders geschrieben sein – unter Windows etwa mit Kurznamen („RUNNER~1“) oder
@@ -286,6 +285,7 @@ fn within_root(root: &Path, p: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Liegt `p` in einem Ordner, den der Scan überspringt (versteckt, System)?
 fn in_skipped_dir(root: &Path, p: &Path) -> bool {
     is_excluded(p)
         || p.strip_prefix(root).is_ok_and(|rel| {

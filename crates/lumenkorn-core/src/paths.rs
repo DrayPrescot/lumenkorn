@@ -17,17 +17,13 @@ pub fn normalize_dir(p: &Path) -> String {
     {
         s = rest.to_string();
     }
-
-    while s.len() > 1 && s.ends_with(SEP) && !is_drive_root(&s) {
-        s.pop();
-    }
-    s
+    trim_dir(&s)
 }
 
 /// Wie [`normalize_dir`], aber ohne Dateisystemzugriff – für Pfade, die schon
 /// normiert aus dem Katalog stammen. (`canonicalize` kann auf einem schlafenden
 /// Netzlaufwerk Sekunden blockieren, während die Katalogsperre gehalten wird.)
-pub fn trim_dir(p: &str) -> String {
+pub(crate) fn trim_dir(p: &str) -> String {
     let mut s = p.to_string();
     while s.len() > 1 && s.ends_with(SEP) && !is_drive_root(&s) {
         s.pop();
@@ -41,7 +37,7 @@ fn is_drive_root(s: &str) -> bool {
 }
 
 /// Präfix, das ein Unterordner von `dir` in der DB haben muss.
-pub fn child_prefix(dir: &str) -> String {
+pub(crate) fn child_prefix(dir: &str) -> String {
     if dir.ends_with(SEP) {
         dir.to_string()
     } else {
@@ -50,7 +46,7 @@ pub fn child_prefix(dir: &str) -> String {
 }
 
 /// Liegt `path` in `dir` (oder ist es `dir` selbst)?
-pub fn is_within(path: &str, dir: &str) -> bool {
+pub(crate) fn is_within(path: &str, dir: &str) -> bool {
     path == dir || path.starts_with(&child_prefix(dir))
 }
 

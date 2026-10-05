@@ -27,7 +27,7 @@ const HASH_CHUNK: u64 = 64 * 1024;
 ///
 /// Liest höchstens 128 KiB und erkennt damit verschobene oder umbenannte
 /// Dateien zuverlässig genug, ohne große RAWs komplett lesen zu müssen.
-pub fn quick_hash(path: &Path) -> std::io::Result<String> {
+pub(crate) fn quick_hash(path: &Path) -> std::io::Result<String> {
     let mut f = File::open(path)?;
     let len = f.metadata()?.len();
     let mut hasher = blake3::Hasher::new();
@@ -98,7 +98,7 @@ pub fn read(path: &Path, kind: ImageKind) -> Metadata {
 
 /// Größtes Vollbild (NewSubfileType 0) in den IFDs und SubIFDs eines
 /// TIFF-basierten RAWs. Liest nur den Dateianfang.
-pub fn tiff_raw_dims(path: &Path) -> Option<(u32, u32)> {
+pub(crate) fn tiff_raw_dims(path: &Path) -> Option<(u32, u32)> {
     let mut buf = Vec::new();
     File::open(path)
         .ok()?
@@ -140,6 +140,8 @@ fn tiff_raw_dims_in(d: &[u8]) -> Option<(u32, u32)> {
     };
     let mut best: Option<(u32, u32)> = None;
     let mut queue = vec![u32_at(4)? as usize];
+    // Grenzen hier und unten: Schutz vor kaputten oder zyklischen IFDs (echte
+    // RAWs haben nur wenige IFDs mit höchstens einigen Dutzend Einträgen)
     let mut seen = std::collections::HashSet::new();
     while let Some(ifd) = queue.pop() {
         if ifd == 0 || !seen.insert(ifd) || seen.len() > 64 {
@@ -178,6 +180,7 @@ fn tiff_raw_dims_in(d: &[u8]) -> Option<(u32, u32)> {
             queue.push(next as usize);
         }
     }
+    // Kleiner sind nur EXIF-Thumbnails (160 × 120), nie das Sensorbild
     best.filter(|(w, h)| *w >= 160 && *h >= 160)
 }
 
