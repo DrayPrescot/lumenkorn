@@ -9,10 +9,12 @@
 //!    stärksten (leicht geglätteten) Detail – das ist das an dieser Stelle
 //!    scharfe. Die gröbste Stufe wird gemittelt, damit keine Helligkeitssprünge
 //!    entstehen.
-//! 3. Die Bilder werden nacheinander eingearbeitet; im Speicher liegen nur die
-//!    bisher beste Pyramide und das aktuelle Bild.
+//! 3. Die Bilder werden nacheinander je einmal geladen, ausgerichtet,
+//!    eingearbeitet und wieder freigegeben; im Speicher liegen nur die bisher
+//!    beste Pyramide, die Referenz (füllt nicht abgedeckte Ränder) und das
+//!    aktuelle Bild.
 
-use super::align::{self, Features, Mat3};
+use super::align::{self, Features};
 use super::{Loader, Progress, check};
 use crate::error::{Error, Result};
 use crate::i18n::tr_s;
@@ -148,14 +150,15 @@ fn collapse(mut pyr: Vec<ImageF32>) -> ImageF32 {
 }
 
 /// Detailstärke je Pixel: |Laplace| der Helligkeit, 3×3 gemittelt
-/// (verhindert, dass einzelnes Rauschen gewinnt).
-fn activity(l: &ImageF32, mask: &[bool]) -> Vec<f32> {
+/// (verhindert, dass einzelnes Rauschen gewinnt). `mask`: nur abgedeckte
+/// Pixel zählen, die übrigen bekommen −1 (`None`: alle abgedeckt).
+fn activity(l: &ImageF32, mask: Option<&[bool]>) -> Vec<f32> {
     let (w, h) = (l.width, l.height);
     let a: Vec<f32> = l.data.par_iter().map(|p| luma(*p).abs()).collect();
     let mut out = vec![0f32; w * h];
     out.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
         for (x, o) in row.iter_mut().enumerate() {
-            if !mask[y * w + x] {
+            if mask.is_some_and(|m| !m[y * w + x]) {
                 *o = -1.0;
                 continue;
             }
@@ -171,20 +174,149 @@ fn activity(l: &ImageF32, mask: &[bool]) -> Vec<f32> {
     out
 }
 
+/// `down` für ein einkanaliges Bild (Abdeckungsmaske). Gleiche
+/// Rechenreihenfolge, also dieselben Werte wie ein Kanal von `down` – aber
+/// ein Drittel des Speichers.
+fn down1(img: &[f32], w: usize, h: usize) -> Vec<f32> {
+    const K: [f32; 5] = [1.0 / 16.0, 4.0 / 16.0, 6.0 / 16.0, 4.0 / 16.0, 1.0 / 16.0];
+    let (ow, oh) = (w.div_ceil(2), h.div_ceil(2));
+    let mut tmp = vec![0f32; ow * h];
+    tmp.par_chunks_mut(ow).enumerate().for_each(|(y, row)| {
+        let src = &img[y * w..(y + 1) * w];
+        for (ox, o) in row.iter_mut().enumerate() {
+            let x = (ox * 2) as isize;
+            let mut s = 0f32;
+            for (k, kv) in K.iter().enumerate() {
+                let xx = (x + k as isize - 2).clamp(0, w as isize - 1) as usize;
+                s += kv * src[xx];
+            }
+            *o = s;
+        }
+    });
+    let mut data = vec![0f32; ow * oh];
+    data.par_chunks_mut(ow).enumerate().for_each(|(oy, row)| {
+        let y = (oy * 2) as isize;
+        for (k, kv) in K.iter().enumerate() {
+            let yy = (y + k as isize - 2).clamp(0, h as isize - 1) as usize;
+            let src = &tmp[yy * ow..(yy + 1) * ow];
+            for (o, s) in row.iter_mut().zip(src) {
+                *o += kv * s;
+            }
+        }
+    });
+    data
+}
+
 /// Abdeckungsmasken je Pyramidenstufe (nur vollständig abgedeckte Pixel zählen).
 fn mask_pyramid(cover: Vec<f32>, w: usize, h: usize, levels: usize) -> Vec<Vec<bool>> {
     let mut out = Vec::with_capacity(levels + 1);
-    let mut m = ImageF32 {
-        width: w,
-        height: h,
-        data: cover.into_iter().map(|v| [v; 3]).collect(),
-    };
-    for _ in 0..=levels {
-        out.push(m.data.iter().map(|p| p[0] > 0.999).collect());
-        // Rand der Abdeckung je Stufe etwas großzügiger ausschließen
-        m = down(&m);
+    let (mut m, mut mw, mut mh) = (cover, w, h);
+    for lvl in 0..=levels {
+        out.push(m.iter().map(|v| *v > 0.999).collect());
+        if lvl < levels {
+            // Rand der Abdeckung je Stufe etwas großzügiger ausschließen
+            m = down1(&m, mw, mh);
+            (mw, mh) = (mw.div_ceil(2), mh.div_ceil(2));
+        }
     }
     out
+}
+
+/// Bisher bestes Ergebnis: verschmolzene Pyramide, Detailstärke des jeweils
+/// gewählten Pixels und Summe/Anzahl der Grundstufe.
+struct Stack {
+    fused: Vec<ImageF32>,
+    best: Vec<Vec<f32>>,
+    base_sum: Vec<[f32; 3]>,
+    base_cnt: Vec<f32>,
+}
+
+impl Stack {
+    /// Beginnt mit der (voll abgedeckten) Referenz.
+    fn new(img: ImageF32, levels: usize) -> Self {
+        let pyr = pyramid(img, levels);
+        let best = pyr[..levels].iter().map(|l| activity(l, None)).collect();
+        let base_sum = pyr[levels].data.clone();
+        let base_cnt = vec![1.0; base_sum.len()];
+        Self {
+            fused: pyr,
+            best,
+            base_sum,
+            base_cnt,
+        }
+    }
+
+    /// Arbeitet ein (ausgerichtetes) Bild ein; `masks` je Stufe, `None` = voll abgedeckt.
+    fn add(&mut self, img: ImageF32, masks: Option<&[Vec<bool>]>) {
+        let levels = self.fused.len() - 1;
+        let pyr = pyramid(img, levels);
+        for (lvl, l) in pyr.into_iter().enumerate() {
+            let m = masks.map(|m| m[lvl].as_slice());
+            if lvl == levels {
+                self.base_sum
+                    .par_iter_mut()
+                    .zip(self.base_cnt.par_iter_mut())
+                    .zip(l.data.par_iter())
+                    .enumerate()
+                    .for_each(|(i, ((s, c), p))| {
+                        if m.is_none_or(|m| m[i]) {
+                            for k in 0..3 {
+                                s[k] += p[k];
+                            }
+                            *c += 1.0;
+                        }
+                    });
+                continue;
+            }
+            let act = activity(&l, m);
+            self.fused[lvl]
+                .data
+                .par_iter_mut()
+                .zip(self.best[lvl].par_iter_mut())
+                .zip(l.data.par_iter().zip(act.par_iter()))
+                .for_each(|((f, b), (p, a))| {
+                    if *a > *b {
+                        *f = *p;
+                        *b = *a;
+                    }
+                });
+        }
+    }
+
+    fn finish(self) -> ImageF32 {
+        let Self {
+            mut fused,
+            best,
+            base_sum,
+            base_cnt,
+        } = self;
+        drop(best);
+        let levels = fused.len() - 1;
+        fused[levels].data = base_sum
+            .iter()
+            .zip(&base_cnt)
+            .map(|(s, c)| s.map(|v| v / c))
+            .collect();
+        let mut out = collapse(fused);
+        out.data
+            .par_iter_mut()
+            .for_each(|p| *p = p.map(|v| v.max(0.0)));
+        out
+    }
+}
+
+/// Kanten für die Ausrichtung: Merkmale (1600) und Nachführung (1200/600).
+const FEATURE_EDGE: usize = 1600;
+const DENSE_EDGE: usize = 1200;
+
+/// Merkmale und Nachführungs-Pyramide eines Vollbilds. (Beides aus einer
+/// gemeinsamen Zwischenstufe zu verkleinern spart nur ~0,1 s je 24-MP-Bild,
+/// verschiebt die Ausrichtung aber messbar – daher direkt aus dem Vollbild.)
+fn align_data(img: &ImageF32) -> (Features, align::Dense) {
+    (
+        align::features(img, FEATURE_EDGE, 3000),
+        align::dense(img, DENSE_EDGE),
+    )
 }
 
 pub fn merge(
@@ -204,69 +336,13 @@ pub fn merge(
         ));
     }
     let r = n / 2;
-    // Referenz zuerst, dann die anderen
-    let order: Vec<usize> = std::iter::once(r)
-        .chain((0..n).filter(|&i| i != r))
-        .collect();
+    let step = tr_s("Schärfe zusammenführen", "Merging sharpness");
 
-    // --- 1. Laden und ausrichten ----------------------------------------------------
-    const KEEP_BYTES: usize = 3 << 30;
-    let mut full: Vec<Option<ImageF32>> = (0..n).map(|_| None).collect();
-    let mut feats: Vec<Option<Features>> = (0..n).map(|_| None).collect();
-    let mut size = (0, 0);
-    let mut kept = 0;
-    for (k, &i) in order.iter().enumerate() {
-        check(cancel)?;
-        progress(tr_s("Bilder laden", "Loading images"), k, n);
-        let img = load(i)?;
-        if k == 0 {
-            size = (img.width, img.height);
-        } else if (img.width, img.height) != size {
-            return Err(Error::Params(crate::tr!(
-                "Alle Fotos müssen gleich groß sein (Nr. {} ist {}×{}, die Referenz {}×{})",
-                "All photos must be the same size (no. {} is {}×{}, the reference {}×{})",
-                i + 1,
-                img.width,
-                img.height,
-                size.0,
-                size.1
-            )));
-        }
-        if opts.align {
-            feats[i] = Some(align::features(&img, 1600, 3000));
-        }
-        let bytes = img.data.len() * 12;
-        if kept + bytes <= KEEP_BYTES {
-            kept += bytes;
-            full[i] = Some(img);
-        }
-    }
-    // homs[i]: Referenzkoordinaten → Bild i
-    let mut homs: Vec<Mat3> = vec![align::IDENTITY; n];
-    if opts.align {
-        let rf = feats[r].as_ref().unwrap();
-        let fitted: Vec<(usize, Option<Mat3>)> = (0..n)
-            .into_par_iter()
-            .filter(|&i| i != r)
-            .map(|i| {
-                let fit = align::align(rf, feats[i].as_ref().unwrap(), 25);
-                (i, fit.and_then(|f| align::invert(&f.h)))
-            })
-            .collect();
-        for (i, h) in fitted {
-            match h {
-                Some(h) => homs[i] = h,
-                None => log::warn!(
-                    "Focus Stacking: Bild {} nicht ausrichtbar, nehme Stativ an",
-                    i + 1
-                ),
-            }
-        }
-    }
-    drop(feats);
-
-    // --- 2. Pyramiden verschmelzen ---------------------------------------------------
-    let (w, h) = size;
+    // --- Referenz -----------------------------------------------------------------
+    check(cancel)?;
+    progress(step, 0, n);
+    let refimg = load(r)?;
+    let (w, h) = (refimg.width, refimg.height);
     let levels = {
         let mut l = 0;
         let mut m = w.min(h);
@@ -276,119 +352,82 @@ pub fn merge(
         }
         l
     };
-    let mut fused: Vec<ImageF32> = Vec::new();
-    let mut best: Vec<Vec<f32>> = Vec::new();
-    let mut base_sum: Vec<[f32; 3]> = Vec::new();
-    let mut base_cnt: Vec<f32> = Vec::new();
-    let mut reference: Option<ImageF32> = None;
-    let mut ref_dense: Option<align::Dense> = None;
+    let ref_align = opts.align.then(|| align_data(&refimg));
+    // Die Referenz füllt, was ein entzerrtes Bild nicht abdeckt – nur beim
+    // Ausrichten nötig (sonst deckt jedes Bild alles ab).
+    let reference = opts.align.then(|| refimg.clone());
+    let mut stack = Stack::new(refimg, levels);
 
-    for (k, &i) in order.iter().enumerate() {
+    // --- Übrige Bilder: je eines laden, ausrichten, einarbeiten, freigeben ----------
+    for (k, i) in (0..n).filter(|&i| i != r).enumerate() {
         check(cancel)?;
-        progress(tr_s("Schärfe zusammenführen", "Merging sharpness"), k, n);
-        let img = match full[i].take() {
-            Some(img) => img,
-            None => load(i)?,
-        };
-        // Auf die Referenz entzerren; nicht abgedeckte Stellen mit der Referenz
-        // füllen (keine künstlichen Kanten) und als ungültig markieren.
-        let (img, cover) = if i == r {
-            (img, vec![1f32; w * h])
-        } else {
-            let refimg = reference.as_ref().unwrap();
-            // Eckpunkte verschieben sich mit der Unschärfe – pixelgenau nachführen
-            let hm = match (&ref_dense, opts.align) {
-                (Some(rd), true) => align::refine(rd, &align::dense(&img, 1200), &homs[i]),
-                _ => homs[i],
-            };
-            // Direkt in zwei Puffer (kein Zwischenpuffer aus Paaren)
-            let mut data = vec![[0f32; 3]; w * h];
-            let mut cover = vec![0f32; w * h];
-            data.par_iter_mut()
-                .zip(cover.par_iter_mut())
-                .enumerate()
-                .for_each(|(p, (d, c))| {
-                    let (x, y) = (p % w, p / w);
-                    let (sx, sy) = align::apply(&hm, x as f64, y as f64);
-                    (*d, *c) = match align::sample(&img, sx, sy) {
-                        Some(v) => (v, 1.0),
-                        None => (refimg.data[p], 0.0),
-                    };
-                });
-            drop(img);
-            (
-                ImageF32 {
-                    width: w,
-                    height: h,
-                    data,
-                },
-                cover,
-            )
-        };
-        if i == r {
-            if opts.align {
-                ref_dense = Some(align::dense(&img, 1200));
-            }
-            reference = Some(img.clone());
+        progress(step, k + 1, n);
+        let img = load(i)?;
+        if (img.width, img.height) != (w, h) {
+            return Err(Error::Params(crate::tr!(
+                "Alle Fotos müssen gleich groß sein (Nr. {} ist {}×{}, die Referenz {}×{})",
+                "All photos must be the same size (no. {} is {}×{}, the reference {}×{})",
+                i + 1,
+                img.width,
+                img.height,
+                w,
+                h
+            )));
         }
-        let masks = mask_pyramid(cover, w, h, levels);
-        let pyr = pyramid(img, levels);
-        if fused.is_empty() {
-            best = pyr[..levels]
-                .iter()
-                .zip(&masks)
-                .map(|(l, m)| activity(l, m))
-                .collect();
-            base_sum = pyr[levels].data.clone();
-            base_cnt = vec![1.0; base_sum.len()];
-            fused = pyr;
+        // Referenzkoordinaten → Bild i
+        let hm = match &ref_align {
+            Some((rf, rd)) => {
+                let (fi, di) = align_data(&img);
+                let h0 = match align::align(rf, &fi, 25).and_then(|f| align::invert(&f.h)) {
+                    Some(h0) => h0,
+                    None => {
+                        log::warn!(
+                            "Focus Stacking: Bild {} nicht ausrichtbar, nehme Stativ an",
+                            i + 1
+                        );
+                        align::IDENTITY
+                    }
+                };
+                // Eckpunkte verschieben sich mit der Unschärfe – pixelgenau nachführen
+                align::refine(rd, &di, &h0)
+            }
+            None => align::IDENTITY,
+        };
+        if hm == align::IDENTITY {
+            // Keine Entzerrung (ohne Ausrichtung): Bild direkt, voll abgedeckt
+            stack.add(img, None);
             continue;
         }
-        for (lvl, l) in pyr.into_iter().enumerate() {
-            let m = &masks[lvl];
-            if lvl == levels {
-                base_sum
-                    .par_iter_mut()
-                    .zip(base_cnt.par_iter_mut())
-                    .zip(l.data.par_iter())
-                    .zip(m.par_iter())
-                    .for_each(|(((s, c), p), ok)| {
-                        if *ok {
-                            for k in 0..3 {
-                                s[k] += p[k];
-                            }
-                            *c += 1.0;
-                        }
-                    });
-                continue;
-            }
-            let act = activity(&l, m);
-            fused[lvl]
-                .data
-                .par_iter_mut()
-                .zip(best[lvl].par_iter_mut())
-                .zip(l.data.par_iter().zip(act.par_iter()))
-                .for_each(|((f, b), (p, a))| {
-                    if *a > *b {
-                        *f = *p;
-                        *b = *a;
-                    }
-                });
-        }
+        // Auf die Referenz entzerren; nicht abgedeckte Stellen mit der Referenz
+        // füllen (keine künstlichen Kanten) und als ungültig markieren.
+        let refimg = reference.as_ref().expect("Referenz beim Ausrichten");
+        let mut data = vec![[0f32; 3]; w * h];
+        let mut cover = vec![0f32; w * h];
+        data.par_iter_mut()
+            .zip(cover.par_iter_mut())
+            .enumerate()
+            .for_each(|(p, (d, c))| {
+                let (x, y) = (p % w, p / w);
+                let (sx, sy) = align::apply(&hm, x as f64, y as f64);
+                (*d, *c) = match align::sample(&img, sx, sy) {
+                    Some(v) => (v, 1.0),
+                    None => (refimg.data[p], 0.0),
+                };
+            });
+        drop(img);
+        let masks = mask_pyramid(cover, w, h, levels);
+        stack.add(
+            ImageF32 {
+                width: w,
+                height: h,
+                data,
+            },
+            Some(&masks),
+        );
     }
-    drop(best);
     drop(reference);
-    progress(tr_s("Schärfe zusammenführen", "Merging sharpness"), n, n);
-    fused[levels].data = base_sum
-        .iter()
-        .zip(&base_cnt)
-        .map(|(s, c)| s.map(|v| v / c))
-        .collect();
-    let mut out = collapse(fused);
-    out.data
-        .par_iter_mut()
-        .for_each(|p| *p = p.map(|v| v.max(0.0)));
-    Ok(out)
+    progress(step, n, n);
+    Ok(stack.finish())
 }
 
 #[cfg(test)]

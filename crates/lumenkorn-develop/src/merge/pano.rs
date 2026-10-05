@@ -265,18 +265,33 @@ impl Proj {
         }
     }
 
-    fn inverse(&self, u: f64, v: f64) -> V3 {
+    // Umkehrung (Panoramapunkt → Strahl), aufgeteilt in den nur von der
+    // Spalte und den nur von der Zeile abhängigen Teil: sin/cos einmal je
+    // Spalte bzw. Zeile statt je Pixel und Bild.
+
+    /// Spaltenanteil für `u`: (u/f, –) bzw. sin/cos von u/f.
+    fn column(&self, u: f64) -> (f64, f64) {
         match self.kind {
-            Projection::Perspective => [u / self.f, v / self.f, 1.0],
-            Projection::Cylindrical => {
-                let (s, c) = (u / self.f).sin_cos();
-                [s, v / self.f, c]
-            }
-            Projection::Spherical => {
-                let (s, c) = (u / self.f).sin_cos();
-                let (sp, cp) = (v / self.f).sin_cos();
-                [s * cp, sp, c * cp]
-            }
+            Projection::Perspective => (u / self.f, 0.0),
+            Projection::Cylindrical | Projection::Spherical => (u / self.f).sin_cos(),
+        }
+    }
+
+    /// Zeilenanteil für `v`: (v/f, –) bzw. sin/cos von v/f.
+    fn row(&self, v: f64) -> (f64, f64) {
+        match self.kind {
+            Projection::Perspective | Projection::Cylindrical => (v / self.f, 0.0),
+            Projection::Spherical => (v / self.f).sin_cos(),
+        }
+    }
+
+    /// Strahl zu Panoramapunkt (u, v) aus `column(u)` und `row(v)`.
+    #[inline]
+    fn inverse(&self, col: (f64, f64), row: (f64, f64)) -> V3 {
+        match self.kind {
+            Projection::Perspective => [col.0, row.0, 1.0],
+            Projection::Cylindrical => [col.0, row.0, col.1],
+            Projection::Spherical => [col.0 * row.1, row.0, col.1 * row.1],
         }
     }
 }
@@ -336,7 +351,7 @@ pub fn merge(
         ));
     }
     // --- 1. Merkmale --------------------------------------------------------------
-    const KEEP_BYTES: usize = 3 << 30;
+    let keep_bytes = super::keep_bytes();
     let mut full: Vec<Option<ImageF32>> = Vec::new();
     let mut feats: Vec<Features> = Vec::new();
     let mut smalls: Vec<ImageF32> = Vec::new();
@@ -350,7 +365,7 @@ pub fn merge(
         smalls.push(img.downscale_to(800));
         sizes.push((img.width, img.height));
         let bytes = img.data.len() * 12;
-        if kept + bytes <= KEEP_BYTES {
+        if kept + bytes <= keep_bytes {
             kept += bytes;
             full.push(Some(img));
         } else {
@@ -574,6 +589,18 @@ pub fn merge(
         "Panorama: {n} Bilder, Referenz {reference}, f = {f:.0} px, {out_w}×{out_h}, {:?}",
         opts.projection
     );
+    // Zwischengespeicherte Bilder und Ergebnispuffer (acc + wsum, 16 Byte je
+    // Pixel – bei 150 MP 2,4 GB) teilen sich das Budget: überzählige Bilder
+    // freigeben, sie werden beim Zusammenfügen neu geladen.
+    let out_bytes = out_w * out_h * 16;
+    for slot in full.iter_mut().rev() {
+        if kept + out_bytes <= keep_bytes {
+            break;
+        }
+        if let Some(img) = slot.take() {
+            kept -= img.data.len() * 12;
+        }
+    }
 
     // --- 5. Helligkeitsausgleich ---------------------------------------------------
     {
@@ -641,6 +668,7 @@ pub fn merge(
     // --- 6. Überblenden ------------------------------------------------------------
     let mut acc = vec![[0f32; 3]; out_w * out_h];
     let mut wsum = vec![0f32; out_w * out_h];
+    let cols: Vec<(f64, f64)> = (0..out_w).map(|x| proj.column(x as f64 + u0)).collect();
     for i in 0..n {
         check(cancel)?;
         progress(tr_s("Zusammenfügen", "Stitching"), i, n);
@@ -674,9 +702,9 @@ pub fn merge(
             .zip(wsum[y0 * out_w..y1 * out_w].par_chunks_mut(out_w))
             .enumerate()
             .for_each(|(r, (arow, wrow))| {
-                let v = (y0 + r) as f64 + v0;
+                let row = proj.row((y0 + r) as f64 + v0);
                 for x in x0..x1 {
-                    let ray = proj.inverse(x as f64 + u0, v);
+                    let ray = proj.inverse(cols[x], row);
                     let Some((px, py)) = cam.to_pixel(f, ray) else {
                         continue;
                     };

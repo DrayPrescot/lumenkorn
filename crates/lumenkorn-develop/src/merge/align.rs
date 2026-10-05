@@ -408,8 +408,6 @@ pub struct Fit {
     pub h: Mat3,
     pub inliers: usize,
     pub matches: usize,
-    /// Die passenden Punktpaare (erstes, zweites Bild)
-    pub pairs: Vec<((f64, f64), (f64, f64))>,
 }
 
 /// Robuste Homografie b → a (RANSAC). `threshold` in Pixeln.
@@ -523,7 +521,6 @@ pub fn ransac(
         h,
         inliers: inl.len(),
         matches: n,
-        pairs: inl.iter().map(|&i| (pa[i], pb[i])).collect(),
     })
 }
 
@@ -557,16 +554,6 @@ pub fn align(a: &Features, b: &Features, min_inliers: usize) -> Option<Fit> {
     }
     Some(Fit {
         h: rescale(&fit.h, b.scale, a.scale),
-        pairs: fit
-            .pairs
-            .iter()
-            .map(|(p, q)| {
-                (
-                    (p.0 / a.scale, p.1 / a.scale),
-                    (q.0 / b.scale, q.1 / b.scale),
-                )
-            })
-            .collect(),
         ..fit
     })
 }

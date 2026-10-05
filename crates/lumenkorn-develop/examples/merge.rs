@@ -97,6 +97,118 @@ fn warp(img: &ImageF32, h_out_to_in: &Mat3) -> ImageF32 {
     })
 }
 
+/// Prüfsumme über die Bitmuster (gleich = bitidentisch)
+fn checksum(img: &ImageF32) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for p in &img.data {
+        for v in p {
+            hash = (hash ^ v.to_bits() as u64).wrapping_mul(0x100_0000_01b3);
+        }
+    }
+    hash
+}
+
+/// Spitzenspeicher des Prozesses (nur Linux), in MB.
+fn peak_rss_mb() -> Option<f64> {
+    let s = std::fs::read_to_string("/proc/self/status").ok()?;
+    let l = s.lines().find(|l| l.starts_with("VmHWM:"))?;
+    let kb: f64 = l.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kb / 1024.0)
+}
+
+/// Lastprobe Focus Stacking in voller Auflösung (`FOKUS_SERIE=<n>`): Jedes Bild
+/// wird wie in der App beim Laden neu dekodiert (RAW → linear) und dann
+/// verändert (scharfer Streifen wandert, Rest weich; Objektiv-Atmen). Gibt
+/// Zeit, Spitzenspeicher und eine Prüfsumme des Ergebnisses aus;
+/// `FOKUS_AUSRICHTEN=0` schaltet die Ausrichtung ab.
+fn focus_series(input: &Path, raw: bool, n: usize, dir: &Path) -> Result<()> {
+    use rayon::prelude::*;
+    let load = |i: usize| -> Result<ImageF32> {
+        let img = Source::load(input, raw, None, None)?.image;
+        let (w, h) = (img.width, img.height);
+        // Weich: Kastenfilter 5×5, getrennt und parallel
+        let r = 2usize;
+        let mut hor = vec![[0f32; 3]; w * h];
+        hor.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+            let src = &img.data[y * w..(y + 1) * w];
+            for (x, o) in row.iter_mut().enumerate() {
+                let (a, b) = (x.saturating_sub(r), (x + r + 1).min(w));
+                let mut s = [0f32; 3];
+                for p in &src[a..b] {
+                    for c in 0..3 {
+                        s[c] += p[c];
+                    }
+                }
+                *o = s.map(|v| v / (b - a) as f32);
+            }
+        });
+        let band = |x: usize| x * n / w == i;
+        let mut shot = vec![[0f32; 3]; w * h];
+        shot.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+            let (a, b) = (y.saturating_sub(r), (y + r + 1).min(h));
+            for (x, o) in row.iter_mut().enumerate() {
+                if band(x) {
+                    *o = img.data[y * w + x];
+                    continue;
+                }
+                let mut s = [0f32; 3];
+                for yy in a..b {
+                    let p = hor[yy * w + x];
+                    for c in 0..3 {
+                        s[c] += p[c];
+                    }
+                }
+                *o = s.map(|v| v / (b - a) as f32);
+            }
+        });
+        drop(hor);
+        let shot = ImageF32 {
+            width: w,
+            height: h,
+            data: shot,
+        };
+        let s = i as f64 - (n / 2) as f64;
+        if s == 0.0 {
+            return Ok(shot);
+        }
+        let k = 1.0 + 0.002 * s;
+        let (cx, cy) = (w as f64 / 2.0, h as f64 / 2.0);
+        let m = [
+            [k, 0.0, cx * (1.0 - k) + s * 0.8],
+            [0.0, k, cy * (1.0 - k) - s * 0.5],
+            [0.0, 0.0, 1.0],
+        ];
+        let inv = align::invert(&m).unwrap();
+        Ok(ImageF32::from_fn(w, h, |x, y| {
+            let (sx, sy) = align::apply(&inv, x as f64, y as f64);
+            align::sample(&shot, sx, sy).unwrap_or([0.0; 3])
+        }))
+    };
+    let cancel = AtomicBool::new(false);
+    let opts = focus::FocusOptions {
+        align: std::env::var("FOKUS_AUSRICHTEN").map_or(true, |v| v != "0"),
+    };
+    let t = Instant::now();
+    let out = focus::merge(n, &load, opts, &|_, _, _| {}, &cancel)?;
+    let el = t.elapsed();
+    let hash = checksum(&out);
+    println!(
+        "Focus-Serie: {n} Bilder {}×{} in {el:.2?}, Spitzenspeicher {:.0} MB, Prüfsumme {hash:016x}",
+        out.width,
+        out.height,
+        peak_rss_mb().unwrap_or(f64::NAN)
+    );
+    // Verkleinert ablegen, zum Vergleich zweier Läufe
+    let small = out.downscale_to(1500);
+    let bytes: Vec<u8> = small
+        .data
+        .iter()
+        .flat_map(|p| p.iter().flat_map(|v| v.to_le_bytes()))
+        .collect();
+    std::fs::write(dir.join("fokus_serie_1500.f32"), bytes)?;
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let mut args = std::env::args().skip(1);
     let input = PathBuf::from(args.next().expect("Eingabedatei fehlt"));
@@ -111,6 +223,12 @@ fn main() -> Result<()> {
             .as_str(),
         "jpg" | "jpeg" | "png" | "tif" | "tiff"
     );
+    if let Some(n) = std::env::var("FOKUS_SERIE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+    {
+        return focus_series(&input, raw, n, &dir);
+    }
     let src = Source::load(&input, raw, None, None)?;
     let img = src.image;
     println!("Vorlage {}×{}", img.width, img.height);
@@ -168,7 +286,13 @@ fn main() -> Result<()> {
             &cancel,
         )?
         .image;
-        println!("HDR: {}×{} in {:.2?}", out.width, out.height, t.elapsed());
+        println!(
+            "HDR: {}×{} in {:.2?}, Prüfsumme {:016x}",
+            out.width,
+            out.height,
+            t.elapsed(),
+            checksum(&out)
+        );
         // Abweichung von der Szene (im Maßstab der Referenz ×1), ohne Rand
         let mut errs: Vec<f32> = Vec::new();
         let mut hi = Vec::new();
@@ -277,11 +401,12 @@ fn main() -> Result<()> {
                 Ok(out) => {
                     let empty = out.data.iter().filter(|p| luma(**p) <= 0.0).count();
                     println!(
-                        "Panorama {name}: {}×{} in {:.2?}, {} leere Pixel",
+                        "Panorama {name}: {}×{} in {:.2?}, {} leere Pixel, Prüfsumme {:016x}",
                         out.width,
                         out.height,
                         t.elapsed(),
-                        empty
+                        empty,
+                        checksum(&out)
                     );
                     save(&out, &dir, name, raw)?;
                 }
@@ -334,10 +459,11 @@ fn main() -> Result<()> {
             &cancel,
         )?;
         println!(
-            "Focus Stacking: {}×{} in {:.2?}",
+            "Focus Stacking: {}×{} in {:.2?}, Prüfsumme {:016x}",
             out.width,
             out.height,
-            t.elapsed()
+            t.elapsed(),
+            checksum(&out)
         );
         // Das Ergebnis liegt im Koordinatensystem der Referenz (Nr. 2) –
         // Vergleich mit der ebenso verzerrten scharfen Vorlage

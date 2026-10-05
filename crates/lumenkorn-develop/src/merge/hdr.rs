@@ -81,11 +81,15 @@ pub fn merge(
         ));
     }
     // --- 1. Laden, Merkmale, mittlere Helligkeit --------------------------------
-    // Volle Bilder behalten, solange es in den Speicher passt (sonst neu laden).
-    const KEEP_BYTES: usize = 3 << 30;
+    // Volle Bilder behalten, solange es in den Speicher passt (sonst im
+    // Zusammenführen ein zweites Mal laden – häufiger nicht).
+    let keep_bytes = super::keep_bytes();
+    let mean =
+        |im: &ImageF32| im.data.iter().map(|p| luma(*p)).sum::<f32>() / im.data.len().max(1) as f32;
     let mut full: Vec<Option<ImageF32>> = Vec::new();
     let mut feats: Vec<Features> = Vec::new();
-    let mut smalls: Vec<ImageF32> = Vec::new();
+    // Mittlere Helligkeit (aus 600 px) – nur dafür wurden früher die kleinen Bilder behalten
+    let mut means: Vec<f32> = Vec::new();
     let mut kept = 0usize;
     let mut size = (0, 0);
     for i in 0..n {
@@ -104,9 +108,9 @@ pub fn merge(
             ));
         }
         feats.push(align::features(&img, 1200, 2000));
-        smalls.push(img.downscale_to(600));
+        means.push(mean(&img.downscale_to(600)));
         let bytes = img.data.len() * 12;
-        if kept + bytes <= KEEP_BYTES {
+        if kept + bytes <= keep_bytes {
             kept += bytes;
             full.push(Some(img));
         } else {
@@ -114,12 +118,21 @@ pub fn merge(
         }
     }
     let (w, h) = size;
+    // Ergebnispuffer (acc + wsum + Referenzhelligkeit, 20 Byte je Pixel)
+    // zählen mit: überzählige Bilder freigeben, sie werden neu geladen.
+    let out_bytes = w * h * 20;
+    for slot in full.iter_mut().rev() {
+        if kept + out_bytes <= keep_bytes {
+            break;
+        }
+        if let Some(img) = slot.take() {
+            kept -= img.data.len() * 12;
+        }
+    }
 
     // Referenz: mittlere Helligkeit
-    let mean =
-        |im: &ImageF32| im.data.iter().map(|p| luma(*p)).sum::<f32>() / im.data.len().max(1) as f32;
     let mut order: Vec<usize> = (0..n).collect();
-    order.sort_by(|&a, &b| mean(&smalls[a]).total_cmp(&mean(&smalls[b])));
+    order.sort_by(|&a, &b| means[a].total_cmp(&means[b]));
     let r = order[n / 2];
 
     // --- 2. Ausrichten und Belichtungsverhältnisse -------------------------------
@@ -155,27 +168,100 @@ pub fn merge(
     }
     drop(feats);
 
-    // Verhältnisse in voller Auflösung messen: In verkleinerten Bildern mischen
-    // sich ausgefressene mit gesunden Pixeln, das verfälscht das Verhältnis.
-    progress(tr_s("Belichtung messen", "Measuring exposure"), 0, n);
+    // --- 3./4. Belichtung messen und zusammenführen (ein Durchgang) ---------------
+    // Entlang der Kette: Die Nachbarin j ist immer die Referenz oder das eben
+    // bearbeitete Bild – so wird kein Bild dafür ein weiteres Mal geladen.
+    // (Früher: erst alle Verhältnisse, dann in Helligkeitsfolge zusammenführen –
+    // bis zu dreimal laden je Bild. Die Summanden je Pixel kommen jetzt in
+    // Kettenfolge statt Helligkeitsfolge hinzu: nur Rundung der Summe ändert sich.)
     let step = ((w * h) as f64 / 300_000.0).sqrt().max(1.0) as usize;
     let mut ratio = vec![1.0f32; n];
-    for (k, &(i, j)) in chain.iter().enumerate() {
+    let mut acc = vec![[0f32; 3]; w * h];
+    let mut wsum = vec![0f32; w * h];
+    // Fallback, wo kein Bild gut belichtet ist: dunkelstes (für Lichter) bzw.
+    // hellstes (für Schatten) – jeweils auf die Referenz skaliert.
+    let darkest = order[0];
+    let brightest = order[n - 1];
+    let take = |full: &mut Vec<Option<ImageF32>>, i: usize| -> Result<ImageF32> {
+        match full[i].take() {
+            Some(img) => Ok(img),
+            None => load(i),
+        }
+    };
+    let reference = take(&mut full, r)?;
+    // Helligkeit der Referenz für die Geisterbild-Prüfung, einmal statt je
+    // Bild: −1, wo die Referenz selbst nicht gut belichtet ist.
+    let ref_luma: Option<Vec<f32>> = opts.deghost.then(|| {
+        reference
+            .data
+            .par_iter()
+            .map(|p| {
+                if weight(*p) > 0.3 {
+                    luma(*p).max(1e-5)
+                } else {
+                    -1.0
+                }
+            })
+            .collect()
+    });
+    let add = |acc: &mut [[f32; 3]], wsum: &mut [f32], img: &ImageF32, i: usize, k: f32| {
+        let is_ref = i == r;
+        let hm = homs[i];
+        // Ohne Verschiebung (Stativ, Ausrichtung aus): direkt lesen statt abtasten
+        let direct = is_ref || hm == align::IDENTITY;
+        let ref_luma = if is_ref { None } else { ref_luma.as_deref() };
+        // Längere Belichtung = besseres Signal-Rausch-Verhältnis
+        let snr = k.max(1e-3);
+        acc.par_chunks_mut(w)
+            .zip(wsum.par_chunks_mut(w))
+            .enumerate()
+            .for_each(|(y, (arow, wrow))| {
+                for x in 0..w {
+                    let p = if direct {
+                        Some(img.data[y * w + x])
+                    } else {
+                        let (u, v) = align::apply(&hm, x as f64, y as f64);
+                        align::sample(img, u, v)
+                    };
+                    let Some(p) = p else { continue };
+                    let mut wt = weight(p) * snr;
+                    if let Some(rl) = ref_luma {
+                        let lr = rl[y * w + x];
+                        if lr >= 0.0 {
+                            let li = (luma(p) / k).max(1e-5);
+                            let dev = (li / lr).ln().abs();
+                            // Ab ~40 % Abweichung: bewegt – nur Referenz verwenden
+                            wt *= 1.0 - crate::color::smoothstep(0.25, 0.45, dev);
+                        }
+                    }
+                    if wt <= 0.0 {
+                        continue;
+                    }
+                    for c in 0..3 {
+                        arow[x][c] += wt * p[c] / k;
+                    }
+                    wrow[x] += wt;
+                }
+            });
+    };
+    progress(tr_s("Zusammenführen", "Merging"), 0, n);
+    add(&mut acc, &mut wsum, &reference, r, 1.0);
+    // Zuletzt bearbeitetes Bild (Nachbarin des nächsten Kettenglieds)
+    let mut prev: Option<(usize, ImageF32)> = None;
+    for (kk, &(i, j)) in chain.iter().enumerate() {
         check(cancel)?;
-        progress(tr_s("Belichtung messen", "Measuring exposure"), k, n);
-        // Ohne Kopie, wenn beide im Speicher liegen
-        let (li, lj);
-        let img_i: &ImageF32 = match &full[i] {
-            Some(img) => img,
-            None => {
-                li = load(i)?;
-                &li
-            }
-        };
-        let img_j: &ImageF32 = match &full[j] {
-            Some(img) => img,
-            None => {
-                lj = load(j)?;
+        progress(tr_s("Zusammenführen", "Merging"), kk + 1, n);
+        let img_i = take(&mut full, i)?;
+        let lj;
+        let img_j: &ImageF32 = match &prev {
+            _ if j == r => &reference,
+            Some((pj, img)) if *pj == j => img,
+            // Kommt bei der Kettenfolge nicht vor – sicherheitshalber laden
+            _ => {
+                lj = match &full[j] {
+                    Some(img) => img.clone(),
+                    None => load(j)?,
+                };
                 &lj
             }
         };
@@ -184,6 +270,7 @@ pub fn merge(
             .into_par_iter()
             .step_by(step)
             .flat_map_iter(|y| {
+                let img_i = &img_i;
                 (0..w).step_by(step).filter_map(move |x| {
                     let (uj, vj) = align::apply(&hj, x as f64, y as f64);
                     let (ui, vi) = align::apply(&hi, x as f64, y as f64);
@@ -205,73 +292,22 @@ pub fn merge(
         }
         let mid = q.len() / 2;
         ratio[i] = ratio[j] * *q.select_nth_unstable_by(mid, |a, b| a.total_cmp(b)).1;
-    }
-    log::info!("HDR: Referenz {r}, Belichtungsverhältnisse {ratio:?}");
-
-    // --- 3./4. Zusammenführen ----------------------------------------------------
-    let mut acc = vec![[0f32; 3]; w * h];
-    let mut wsum = vec![0f32; w * h];
-    // Fallback, wo kein Bild gut belichtet ist: dunkelstes (für Lichter) bzw.
-    // hellstes (für Schatten) – jeweils auf die Referenz skaliert.
-    let darkest = order[0];
-    let brightest = order[n - 1];
-    let reference = match full[r].take() {
-        Some(img) => img,
-        None => load(r)?,
-    };
-    for (step, &i) in order.iter().enumerate() {
-        check(cancel)?;
-        progress(tr_s("Zusammenführen", "Merging"), step, n);
-        let owned: Option<ImageF32> = if i == r {
-            None
-        } else {
-            Some(match full[i].take() {
-                Some(img) => img,
-                None => load(i)?,
-            })
-        };
-        let img: &ImageF32 = owned.as_ref().unwrap_or(&reference);
-        let hm = homs[i];
-        let k = ratio[i];
-        // Längere Belichtung = besseres Signal-Rausch-Verhältnis
-        let snr = k.max(1e-3);
-        acc.par_chunks_mut(w)
-            .zip(wsum.par_chunks_mut(w))
-            .enumerate()
-            .for_each(|(y, (arow, wrow))| {
-                for x in 0..w {
-                    let p = if i == r {
-                        Some(reference.data[y * w + x])
-                    } else {
-                        let (u, v) = align::apply(&hm, x as f64, y as f64);
-                        align::sample(img, u, v)
-                    };
-                    let Some(p) = p else { continue };
-                    let mut wt = weight(p) * snr;
-                    if opts.deghost && i != r {
-                        let rp = reference.data[y * w + x];
-                        let wr = weight(rp);
-                        if wr > 0.3 {
-                            let (lr, li) = (luma(rp).max(1e-5), (luma(p) / k).max(1e-5));
-                            let dev = (li / lr).ln().abs();
-                            // Ab ~40 % Abweichung: bewegt – nur Referenz verwenden
-                            wt *= 1.0 - crate::color::smoothstep(0.25, 0.45, dev);
-                        }
-                    }
-                    if wt <= 0.0 {
-                        continue;
-                    }
-                    for c in 0..3 {
-                        arow[x][c] += wt * p[c] / k;
-                    }
-                    wrow[x] += wt;
-                }
-            });
+        drop(q);
+        add(&mut acc, &mut wsum, &img_i, i, ratio[i]);
         // Fallback-Bilder brauchen wir gleich noch; die übrigen sind fertig
-        if i == darkest || i == brightest {
-            full[i] = owned;
+        if let Some((d, img)) = prev.replace((i, img_i))
+            && (d == darkest || d == brightest)
+        {
+            full[d] = Some(img);
         }
     }
+    if let Some((d, img)) = prev
+        && (d == darkest || d == brightest)
+    {
+        full[d] = Some(img);
+    }
+    drop(ref_luma);
+    log::info!("HDR: Referenz {r}, Belichtungsverhältnisse {ratio:?}");
 
     progress(tr_s("Zusammenführen", "Merging"), n, n);
     let mut fetch = |i: usize| -> Result<Option<ImageF32>> {
