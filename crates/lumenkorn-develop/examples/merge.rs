@@ -166,7 +166,8 @@ fn main() -> Result<()> {
             hdr::HdrOptions::default(),
             &quiet,
             &cancel,
-        )?;
+        )?
+        .image;
         println!("HDR: {}×{} in {:.2?}", out.width, out.height, t.elapsed());
         // Abweichung von der Szene (im Maßstab der Referenz ×1), ohne Rand
         let mut errs: Vec<f32> = Vec::new();

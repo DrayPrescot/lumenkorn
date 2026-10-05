@@ -175,6 +175,68 @@ fn smallest_eigen(mut a: Mat3) -> (V3, [f64; 3]) {
     ([v[0][k], v[1][k], v[2][k]], ev)
 }
 
+/// Richtet die Kameradrehungen aus: Horizont waagerecht (falls eine klare
+/// Schwenkebene erkennbar ist) und Panorama auf die mittlere Blickrichtung
+/// zentriert. Wurde ausgeglichen, wird nur um die Hochachse zentriert – sonst
+/// würde ein nach oben/unten geneigter Schwenk wieder gekippt und der Horizont
+/// in zylindrischer/Kugelprojektion schief bzw. wellig.
+fn level_and_center(mut rot: Vec<Mat3>) -> Vec<Mat3> {
+    let mean_z = |rot: &[Mat3]| -> V3 {
+        rot.iter().fold([0.0; 3], |a, r| {
+            [a[0] + r[0][2], a[1] + r[1][2], a[2] + r[2][2]]
+        })
+    };
+    let mut leveled = false;
+    if rot.len() >= 3 {
+        let mut c = [[0.0; 3]; 3];
+        for r in &rot {
+            let x = [r[0][0], r[1][0], r[2][0]];
+            for i in 0..3 {
+                for j in 0..3 {
+                    c[i][j] += x[i] * x[j];
+                }
+            }
+        }
+        let (up, ev) = smallest_eigen(c);
+        let mut sorted = ev;
+        sorted.sort_by(|a, b| a.total_cmp(b));
+        // Nur bei klarer Schwenkebene (sonst z. B. senkrechtes Panorama)
+        if sorted[1] > 0.05 * sorted[2] {
+            let ys: V3 = rot.iter().fold([0.0; 3], |a, r| {
+                [a[0] + r[0][1], a[1] + r[1][1], a[2] + r[2][1]]
+            });
+            let up = if dot(up, ys) < 0.0 {
+                up.map(|v| -v)
+            } else {
+                up
+            };
+            let zs = mean_z(&rot);
+            let y = norm(up);
+            let z = norm({
+                let d = dot(zs, y);
+                [zs[0] - d * y[0], zs[1] - d * y[1], zs[2] - d * y[2]]
+            });
+            let x = cross(y, z);
+            let g: Mat3 = [x, y, z];
+            rot = rot.iter().map(|r| align::mul(&g, r)).collect();
+            leveled = true;
+        }
+    }
+    // Auf die mittlere Blickrichtung zentrieren. Nach dem Ausgleich ist y die
+    // Hochachse und muss es bleiben: dann nur den waagerechten Anteil der
+    // Blickrichtung nehmen (Drehung um die Hochachse, Neigung bleibt erhalten).
+    let mut zs = mean_z(&rot);
+    if leveled {
+        zs[1] = 0.0;
+    }
+    let z = norm(zs);
+    let y0 = [0.0, 1.0, 0.0];
+    let x = norm(cross(y0, z));
+    let y = cross(z, x);
+    let g: Mat3 = [x, y, z];
+    rot.iter().map(|r| align::mul(&g, r)).collect()
+}
+
 #[derive(Clone, Copy)]
 struct Proj {
     kind: Projection,
@@ -430,60 +492,13 @@ pub fn merge(
             queue.push_back(c);
         }
     }
-    let mut rot: Vec<Mat3> = rot
+    let rot: Vec<Mat3> = rot
         .into_iter()
         .map(|r| r.unwrap_or(align::IDENTITY))
         .collect();
 
-    // --- 3. Horizont ausgleichen ---------------------------------------------------
-    if n >= 3 {
-        let mut c = [[0.0; 3]; 3];
-        for r in &rot {
-            let x = [r[0][0], r[1][0], r[2][0]];
-            for i in 0..3 {
-                for j in 0..3 {
-                    c[i][j] += x[i] * x[j];
-                }
-            }
-        }
-        let (up, ev) = smallest_eigen(c);
-        let mut sorted = ev;
-        sorted.sort_by(|a, b| a.total_cmp(b));
-        // Nur bei klarer Schwenkebene (sonst z. B. senkrechtes Panorama)
-        if sorted[1] > 0.05 * sorted[2] {
-            let ys: V3 = rot.iter().fold([0.0; 3], |a, r| {
-                [a[0] + r[0][1], a[1] + r[1][1], a[2] + r[2][1]]
-            });
-            let up = if dot(up, ys) < 0.0 {
-                up.map(|v| -v)
-            } else {
-                up
-            };
-            let zs: V3 = rot.iter().fold([0.0; 3], |a, r| {
-                [a[0] + r[0][2], a[1] + r[1][2], a[2] + r[2][2]]
-            });
-            let y = norm(up);
-            let z = norm({
-                let d = dot(zs, y);
-                [zs[0] - d * y[0], zs[1] - d * y[1], zs[2] - d * y[2]]
-            });
-            let x = cross(y, z);
-            let g: Mat3 = [x, y, z];
-            rot = rot.iter().map(|r| align::mul(&g, r)).collect();
-        }
-    }
-    // Ohne Ausgleich: Panorama auf die mittlere Blickrichtung zentrieren
-    {
-        let zs: V3 = rot.iter().fold([0.0; 3], |a, r| {
-            [a[0] + r[0][2], a[1] + r[1][2], a[2] + r[2][2]]
-        });
-        let z = norm(zs);
-        let y0 = [0.0, 1.0, 0.0];
-        let x = norm(cross(y0, z));
-        let y = cross(z, x);
-        let g: Mat3 = [x, y, z];
-        rot = rot.iter().map(|r| align::mul(&g, r)).collect();
-    }
+    // --- 3. Horizont ausgleichen und zentrieren -------------------------------------
+    let rot = level_and_center(rot);
 
     let mut cams: Vec<Cam> = (0..n)
         .map(|i| Cam {
@@ -850,6 +865,46 @@ mod tests {
                 .unwrap_or([0.0; 3])
                 .map(|v| v * exposure)
         })
+    }
+
+    /// Geneigter Schwenk (alle Aufnahmen 0,25 rad nach oben): Nach Ausgleich
+    /// und Zentrierung müssen alle Kamera-x-Achsen waagerecht liegen.
+    #[test]
+    fn leveling_keeps_horizon_for_pitched_pan() {
+        let rx = |a: f64| -> Mat3 {
+            let (s, c) = a.sin_cos();
+            [[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]]
+        };
+        let ry = |a: f64| -> Mat3 {
+            let (s, c) = a.sin_cos();
+            [[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]]
+        };
+        let pitch = 0.25;
+        let world: Vec<Mat3> = [-0.5, -0.25, 0.0, 0.25, 0.5]
+            .iter()
+            .map(|&yaw| align::mul(&ry(yaw), &rx(pitch)))
+            .collect();
+        // Wie in `merge`: Drehungen relativ zu einer (nicht mittigen) Referenzkamera
+        let rref = align::transpose(&world[1]);
+        let rot: Vec<Mat3> = world.iter().map(|r| align::mul(&rref, r)).collect();
+        let out = level_and_center(rot);
+        for (i, r) in out.iter().enumerate() {
+            // x-Achse der Kamera = erste Spalte
+            assert!(
+                r[1][0].abs() < 1e-6,
+                "Kamera {i}: Horizont gekippt ({})",
+                r[1][0]
+            );
+            // Neigung bleibt erhalten
+            assert!(
+                (r[1][2].abs() - pitch.sin()).abs() < 1e-6,
+                "Kamera {i}: Neigung {}",
+                r[1][2]
+            );
+        }
+        // Waagerecht zentriert: mittlere Blickrichtung ohne seitlichen Anteil
+        let zx: f64 = out.iter().map(|r| r[0][2]).sum();
+        assert!(zx.abs() < 1e-6, "nicht zentriert: {zx}");
     }
 
     #[test]

@@ -237,10 +237,20 @@ fn run(
     };
     let cancel = &state.merge.cancel;
     let n = jobs.len();
-    let img = match kind {
-        MergeKind::Hdr => hdr::merge(n, &load, options.hdr, &progress, cancel)?,
-        MergeKind::Pano => pano::merge(n, &load, options.pano, &progress, cancel)?,
-        MergeKind::Focus => focus::merge(n, &load, options.focus, &progress, cancel)?,
+    // Referenzfoto (Index in `ids`), dessen Aufnahmedaten übernommen werden:
+    // HDR ist auf die mittlere Belichtung skaliert (nicht auf das erste Foto,
+    // das z. B. die −2-EV-Aufnahme sein kann), Focus Stacking richtet auf die
+    // mittlere Aufnahme aus.
+    let (img, reference) = match kind {
+        MergeKind::Hdr => {
+            let m = hdr::merge(n, &load, options.hdr, &progress, cancel)?;
+            (m.image, m.reference)
+        }
+        MergeKind::Pano => (pano::merge(n, &load, options.pano, &progress, cancel)?, 0),
+        MergeKind::Focus => (
+            focus::merge(n, &load, options.focus, &progress, cancel)?,
+            n / 2,
+        ),
     };
     if cancel.load(Ordering::SeqCst) {
         return Err(Error::Invalid(tr_s("abgebrochen", "canceled").into()));
@@ -261,10 +271,7 @@ fn run(
         .unwrap_or_default();
 
     // In den Katalog aufnehmen, Aufnahmedaten vom Referenzfoto übernehmen
-    let reference = match kind {
-        MergeKind::Focus => ids[ids.len() / 2],
-        _ => ids[0],
-    };
+    let reference = ids[reference];
     let root_id = state.catalog.lock().unwrap().image_root(reference)?;
     // Die Ordnerüberwachung meldet die neue Datei ebenfalls – scannt sie
     // gleichzeitig, kann einer der beiden Scans scheitern. Entscheidend ist

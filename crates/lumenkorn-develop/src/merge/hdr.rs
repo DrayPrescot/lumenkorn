@@ -55,13 +55,22 @@ fn weight(p: [f32; 3]) -> f32 {
     top * bottom
 }
 
+/// Ergebnis von [`merge`].
+pub struct HdrMerged {
+    /// Lineares HDR im Maßstab der Referenzbelichtung
+    pub image: ImageF32,
+    /// Index (in Ladereihenfolge) der Referenzaufnahme – deren Aufnahmedaten
+    /// (Belichtungszeit, ISO, Blende) passen zum Ergebnis, nicht die des ersten Bildes.
+    pub reference: usize,
+}
+
 pub fn merge(
     n: usize,
     load: Loader,
     opts: HdrOptions,
     progress: Progress,
     cancel: &AtomicBool,
-) -> Result<ImageF32> {
+) -> Result<HdrMerged> {
     if n < 2 {
         return Err(Error::Params(
             tr_s(
@@ -307,10 +316,13 @@ pub fn merge(
                 pick(brightest, &bright_img, x, y)
             };
         });
-    Ok(ImageF32 {
-        width: w,
-        height: h,
-        data: acc,
+    Ok(HdrMerged {
+        image: ImageF32 {
+            width: w,
+            height: h,
+            data: acc,
+        },
+        reference: r,
     })
 }
 
@@ -352,6 +364,8 @@ mod tests {
             &cancel,
         )
         .unwrap();
+        assert_eq!(out.reference, 1, "Referenz ist die mittlere Belichtung");
+        let out = out.image;
         // Hellster Bereich: in der Referenz (×1) ausgefressen, im HDR erhalten
         let (x, y) = (560..595)
             .map(|x| (x, 200))
@@ -401,7 +415,10 @@ mod tests {
             deghost: true,
         };
         let out = merge(5, &|i| Ok(imgs[i].clone()), opts, &|_, _, _| {}, &cancel).unwrap();
-        // Referenz ist die mittlere Belichtung (×1); überall im Maßstab der Szene
+        // Referenz ist die mittlere Belichtung (×1, hier Nr. 2 der Eingabe)
+        assert_eq!(out.reference, 2);
+        let out = out.image;
+        // Überall im Maßstab der Szene
         for x in [40usize, 150, 300, 450, 560] {
             let (mut a, mut b) = (0.0, 0.0);
             for y in 150..250 {

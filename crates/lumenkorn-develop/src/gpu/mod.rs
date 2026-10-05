@@ -303,19 +303,57 @@ struct State {
 }
 
 /// Erkennt, ob ein Quellbild schon auf der GPU liegt.
-#[derive(Clone, Copy, PartialEq, Eq)]
-struct ImageKey(usize, usize, usize, u64);
+///
+/// Adresse und Größe allein genügen nicht: Ein freigegebener großer Puffer
+/// wird oft für das nächste gleich große Bild wiederverwendet. Deshalb gehören
+/// dazu (a) Stichproben über das *ganze* Bild – verschiedene Fotos (Serien mit
+/// gleichem Himmel) unterscheiden sich durch Rauschen praktisch überall – und
+/// (b) eine Kennung des Aufrufers (`ident`, 0 = keine). Die braucht es für
+/// Fassungen, die sich nur in einem kleinen Bereich unterscheiden, den keine
+/// Stichprobe sicher trifft: Die Pipeline vergibt jeder neu erzeugten
+/// reparierten Quelle eine fortlaufende Nummer (`pipeline::repaired_source`).
+/// Ein vollständiger Inhalts-Hash wäre bei jedem Reglerzug zu teuer.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct ImageKey(usize, usize, usize, u64, u64);
 
-fn image_key(img: &ImageF32) -> ImageKey {
+/// Zahl der Stichproben für [`image_key`].
+const KEY_SAMPLES: usize = 4096;
+
+fn image_key(img: &ImageF32, ident: u64) -> ImageKey {
     let n = img.data.len();
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for k in 0..64 {
-        let p = img.data[(k * 7919) % n.max(1)];
-        for v in p {
-            h = (h ^ v.to_bits() as u64).wrapping_mul(0x100_0000_01b3);
+    if n > 0 {
+        // Gleichmäßig über alle Zeilen verteilt, je Abschnitt leicht versetzt
+        // (sonst träfen die Proben bei passender Breite immer dieselbe Spalte).
+        let step = n.div_ceil(KEY_SAMPLES).max(1);
+        for k in 0..KEY_SAMPLES.min(n) {
+            let i = (k * step + (k * 7919) % step).min(n - 1);
+            for v in img.data[i] {
+                h = (h ^ v.to_bits() as u64).wrapping_mul(0x100_0000_01b3);
+            }
         }
     }
-    ImageKey(img.data.as_ptr() as usize, img.width, img.height, h)
+    ImageKey(img.data.as_ptr() as usize, img.width, img.height, h, ident)
+}
+
+/// Rückt den Eintrag `pos` ans Ende (zuletzt benutzt).
+fn touch<T>(v: &mut Vec<T>, pos: usize) {
+    let e = v.remove(pos);
+    v.push(e);
+}
+
+/// Behält vom Ende her (zuletzt benutzt) so viele Einträge, wie in `limit`
+/// Bytes passen; ältere am Anfang fallen weg.
+fn evict_oldest<T>(v: &mut Vec<T>, size: impl Fn(&T) -> usize, limit: usize) {
+    let mut bytes = 0usize;
+    let keep_from = v
+        .iter()
+        .rposition(|e| {
+            bytes += size(e);
+            bytes > limit
+        })
+        .map_or(0, |i| i + 1);
+    v.drain(..keep_from);
 }
 
 fn storage(device: &wgpu::Device, label: &str, bytes: u64) -> Buffer {
@@ -764,13 +802,15 @@ impl Gpu {
         opts: &RenderOptions,
         pack: bool,
     ) -> Result<Rendered, String> {
-        self.render_masked(src, params, opts, pack, &src.image)
+        self.render_masked(src, params, opts, pack, &src.image, 0)
     }
 
     /// Wie [`Gpu::render`]; Farbmasken werden aber auf `mask_image` bestimmt.
     /// Mit Reparaturen ist `src` die vorbereitete (reparierte, entrauschte)
     /// Fassung – die CPU bestimmt Farbmasken auf dem Original, die GPU muss
     /// es ebenso tun, sonst wählt dieselbe Maske je nach Weg andere Pixel.
+    /// `ident`: Kennung der Quellfassung für den Puffer-Cache (0 = keine),
+    /// siehe [`ImageKey`].
     pub(crate) fn render_masked(
         &self,
         src: &Source,
@@ -778,6 +818,7 @@ impl Gpu {
         opts: &RenderOptions,
         pack: bool,
         mask_image: &ImageF32,
+        ident: u64,
     ) -> Result<Rendered, String> {
         let p = params.sanitized();
         let raw = src.kind == SourceKind::Raw;
@@ -827,8 +868,8 @@ impl Gpu {
 
         // Quelle (und entrauschte Fassung) vorab ohne Sperre umrechnen, falls
         // kein Puffer sie schon enthält – siehe `to_vec4_seq`.
-        let key = image_key(&src.image);
-        let dn_key = denoised.map(|(_, dn)| image_key(dn));
+        let key = image_key(&src.image, ident);
+        let dn_key = denoised.map(|(_, dn)| image_key(dn, 0));
         let (have_src, have_dn) = {
             let st = self.state.lock().unwrap();
             let fits = |s: &&Bufs| s.cap >= n;
@@ -861,7 +902,7 @@ impl Gpu {
             st.sets[si].src.key = Some(key);
         }
         if let Some((_, dn)) = denoised {
-            let key = image_key(dn);
+            let key = image_key(dn, 0);
             let set = &mut st.sets[si];
             let cap = set.cap;
             let slot = set.dn.get_or_insert_with(|| ImgBuf {
@@ -875,46 +916,34 @@ impl Gpu {
                 slot.key = Some(key);
             }
         }
-        // Masken hochladen (je Ebene ein Puffer, nach Inhalt zwischengespeichert)
-        let mut alpha_idx = Vec::new();
+        // Masken hochladen (je Ebene ein Puffer, nach Inhalt zwischengespeichert).
+        // Reihenfolge = Nutzung: Benutzte rücken ans Ende, verdrängt wird vorn.
         for (_, _, _, a) in &layers {
-            let pos = match st.alphas.iter().position(|(k, _)| Arc::ptr_eq(k, a)) {
-                Some(pos) => pos,
+            match st.alphas.iter().position(|(k, _)| Arc::ptr_eq(k, a)) {
+                Some(pos) => touch(&mut st.alphas, pos),
                 None => {
                     let buf = storage(&self.device, "maske", (a.len() * 4) as u64);
                     self.queue.write_buffer(&buf, 0, bytemuck::cast_slice(a));
                     st.alphas.push((a.clone(), buf));
-                    st.alphas.len() - 1
                 }
-            };
-            alpha_idx.push(pos);
+            }
         }
-        // Höchstens so viele Masken behalten, wie gerade gebraucht + 8
-        let keep = alpha_idx.len() + 8;
+        // Höchstens so viele Masken behalten, wie gerade gebraucht + 8 (die
+        // gerade gebrauchten liegen am Ende und bleiben)
+        let keep = layers.len() + 8;
         if st.alphas.len() > keep {
-            let used: Vec<*const Vec<f32>> = alpha_idx
-                .iter()
-                .map(|&i| Arc::as_ptr(&st.alphas[i].0))
-                .collect();
-            let mut drop_n = st.alphas.len() - keep;
-            st.alphas.retain(|(k, _)| {
-                if drop_n > 0 && !used.contains(&Arc::as_ptr(k)) {
-                    drop_n -= 1;
-                    false
-                } else {
-                    true
-                }
-            });
-            alpha_idx = layers
-                .iter()
-                .map(|(_, _, _, a)| {
-                    st.alphas
-                        .iter()
-                        .position(|(k, _)| Arc::ptr_eq(k, a))
-                        .unwrap()
-                })
-                .collect();
+            let drop_n = st.alphas.len() - keep;
+            st.alphas.drain(..drop_n);
         }
+        let alpha_idx: Vec<usize> = layers
+            .iter()
+            .map(|(_, _, _, a)| {
+                st.alphas
+                    .iter()
+                    .position(|(k, _)| Arc::ptr_eq(k, a))
+                    .expect("eben hochgeladen")
+            })
+            .collect();
 
         // Parameterpuffer: obere Schranke für die Zahl der Durchläufe
         let bound = (64 + 40 * layers.len() as u64) * self.uniform_stride;
@@ -1141,12 +1170,9 @@ impl Gpu {
             // Sehr große Puffer (Export großer Panoramen) nicht dauerhaft belegen
             st.sets.remove(si);
         }
-        // Masken in voller Auflösung nicht unbegrenzt sammeln (Export-Stapel)
-        let mut bytes = 0usize;
-        st.alphas.retain(|(a, _)| {
-            bytes += a.len() * 4;
-            bytes <= (512 << 20)
-        });
+        // Masken in voller Auflösung nicht unbegrenzt sammeln (Export-Stapel);
+        // die zuletzt benutzten (am Ende) bleiben.
+        evict_oldest(&mut st.alphas, |(a, _)| a.len() * 4, 512 << 20);
         drop(st);
         result
     }
@@ -1268,5 +1294,50 @@ impl Gpu {
         };
         set.staging.unmap();
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Gleicher Puffer (also gleiche Adresse), neuer Inhalt nur in der unteren
+    /// Bildhälfte – etwa ein anderes Foto einer Serie mit gleichem Himmel.
+    #[test]
+    fn image_key_sees_changes_outside_top_strip() {
+        let mut img = ImageF32::from_fn(2000, 1000, |x, y| [x as f32, y as f32, 0.5]);
+        let a = image_key(&img, 0);
+        for p in &mut img.data[600 * 2000..] {
+            p[2] = 0.25;
+        }
+        let b = image_key(&img, 0);
+        assert_eq!(a.0, b.0, "Testaufbau: gleiche Adresse");
+        assert_ne!(a, b);
+    }
+
+    /// Fassungen, die sich nur in einem kleinen Flicken unterscheiden, trennt
+    /// erst die Kennung des Aufrufers.
+    #[test]
+    fn image_key_includes_identity() {
+        let img = ImageF32::from_fn(64, 64, |x, y| [x as f32, y as f32, 0.0]);
+        assert_eq!(image_key(&img, 3), image_key(&img, 3));
+        assert_ne!(image_key(&img, 3), image_key(&img, 4));
+    }
+
+    #[test]
+    fn mask_cache_keeps_most_recent() {
+        // Einträge (Name, Bytes); hinten = zuletzt benutzt
+        let mut v = vec![("alt", 300), ("mittel", 300), ("neu", 300)];
+        evict_oldest(&mut v, |e| e.1, 700);
+        assert_eq!(v, [("mittel", 300), ("neu", 300)]);
+        // Wiederbenutzt rückt ans Ende und überlebt
+        let mut v = vec![("a", 300), ("b", 300), ("c", 300)];
+        touch(&mut v, 0);
+        evict_oldest(&mut v, |e| e.1, 700);
+        assert_eq!(v, [("c", 300), ("a", 300)]);
+        // Alles passt: nichts fällt weg
+        let mut v = vec![("a", 1), ("b", 1)];
+        evict_oldest(&mut v, |e| e.1, 2);
+        assert_eq!(v.len(), 2);
     }
 }

@@ -101,7 +101,12 @@ fn has_repairs(p: &DevelopParams) -> bool {
 type RepairedKey = (usize, usize, usize, String);
 /// Zwei Einträge: Vorschau (Proxy) und Zoomansicht (volle Auflösung) wechseln
 /// sich ab – mit nur einem würde jeder Wechsel alles neu einsetzen.
-static REPAIRED: Mutex<Vec<(RepairedKey, Arc<Source>)>> = Mutex::new(Vec::new());
+/// Die Zahl ist die Kennung der Fassung für den GPU-Puffer-Cache.
+static REPAIRED: Mutex<Vec<(RepairedKey, Arc<Source>, u64)>> = Mutex::new(Vec::new());
+/// Fortlaufende Kennung reparierter Fassungen. Eine neue Fassung kann an der
+/// Adresse einer verworfenen liegen und sich nur im Flicken unterscheiden –
+/// die GPU erkennt sie daran sicher als neu (siehe `gpu::ImageKey`).
+static REPAIRED_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 const REPAIRED_ENTRIES: usize = 2;
 
 /// Verwirft die zwischengespeicherten reparierten Quellbilder.
@@ -114,10 +119,11 @@ pub(crate) fn release_large() {
     REPAIRED
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .retain(|(_, s)| s.image.data.len() <= 12 << 20);
+        .retain(|(_, s, _)| s.image.data.len() <= 12 << 20);
 }
 
-fn repaired_source(src: &Source, p: &DevelopParams, opts: &RenderOptions) -> Arc<Source> {
+/// Liefert die reparierte Fassung und ihre Kennung (nie 0).
+fn repaired_source(src: &Source, p: &DevelopParams, opts: &RenderOptions) -> (Arc<Source>, u64) {
     type Key = RepairedKey;
     let ids: Vec<&str> = p
         .repairs
@@ -137,9 +143,9 @@ fn repaired_source(src: &Source, p: &DevelopParams, opts: &RenderOptions) -> Arc
     );
     {
         let mut c = REPAIRED.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(pos) = c.iter().position(|(k, _)| *k == key) {
+        if let Some(pos) = c.iter().position(|(k, _, _)| *k == key) {
             let entry = c.remove(pos);
-            let s = entry.1.clone();
+            let s = (entry.1.clone(), entry.2);
             c.insert(0, entry);
             return s;
         }
@@ -149,11 +155,12 @@ fn repaired_source(src: &Source, p: &DevelopParams, opts: &RenderOptions) -> Arc
     let mut out = src.clone();
     prepare_source(&mut out.image, p, opts);
     let out = Arc::new(out);
+    let id = REPAIRED_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut c = REPAIRED.lock().unwrap_or_else(|e| e.into_inner());
-    c.retain(|(k, _)| *k != key);
-    c.insert(0, (key, out.clone()));
+    c.retain(|(k, _, _)| *k != key);
+    c.insert(0, (key, out.clone(), id));
     c.truncate(REPAIRED_ENTRIES);
-    out
+    (out, id)
 }
 
 /// Entwickelt das Quellbild mit den Parametern und liefert sRGB-kodierte Werte in 0..1.
@@ -169,23 +176,24 @@ pub fn render_auto(src: &Source, params: &DevelopParams, opts: &RenderOptions) -
         let original = &src.image;
         let prepared;
         let local;
-        let (src, opts) = if has_repairs(&p) {
-            prepared = repaired_source(src, &p, opts);
+        let (src, opts, ident) = if has_repairs(&p) {
+            let id;
+            (prepared, id) = repaired_source(src, &p, opts);
             local = RenderOptions {
                 denoised: None,
                 repairs: &NoRepairs,
                 ..*opts
             };
-            (&*prepared, &local)
+            (&*prepared, &local, id)
         } else {
-            (src, opts)
+            (src, opts, 0)
         };
         let mut gp = params.clone();
         if has_repairs(&p) {
             gp.denoise = None;
             gp.repairs.clear();
         }
-        match g.render_masked(src, &gp, opts, false, original) {
+        match g.render_masked(src, &gp, opts, false, original, ident) {
             Ok(crate::gpu::Rendered::Float(img)) => return img,
             Ok(_) => {}
             Err(e) => crate::gpu::note_error(&e),
@@ -206,23 +214,24 @@ pub fn render_auto_rgb8(
         let original = &src.image;
         let prepared;
         let local;
-        let (src, opts) = if has_repairs(&p) {
-            prepared = repaired_source(src, &p, opts);
+        let (src, opts, ident) = if has_repairs(&p) {
+            let id;
+            (prepared, id) = repaired_source(src, &p, opts);
             local = RenderOptions {
                 denoised: None,
                 repairs: &NoRepairs,
                 ..*opts
             };
-            (&*prepared, &local)
+            (&*prepared, &local, id)
         } else {
-            (src, opts)
+            (src, opts, 0)
         };
         let mut gp = params.clone();
         if has_repairs(&p) {
             gp.denoise = None;
             gp.repairs.clear();
         }
-        match g.render_masked(src, &gp, opts, true, original) {
+        match g.render_masked(src, &gp, opts, true, original, ident) {
             Ok(crate::gpu::Rendered::Rgb8(img)) => return img,
             Ok(_) => {}
             Err(e) => crate::gpu::note_error(&e),
