@@ -4,20 +4,15 @@
   // Farbbereiche anteilig (wie das Zielkorrektur-Werkzeug in Lightroom).
   import { onMount } from "svelte";
   import { dev } from "../lib/develop.svelte";
+  import { containRect } from "../lib/frame";
   import { HSL_BANDS, hslWeights, hueOf, samplePixel, setSampleUrl } from "../lib/hsl";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
 
   let { stageW, stageH, imgW, imgH }: { stageW: number; stageH: number; imgW: number; imgH: number } = $props();
 
-  // Angezeigtes Bild (object-fit: contain), wie in MaskOverlay
-  const rect = $derived.by(() => {
-    if (!imgW || !imgH || !stageW || !stageH) return { x: 0, y: 0, w: 0, h: 0 };
-    const s = Math.min(stageW / imgW, stageH / imgH);
-    const w = imgW * s;
-    const h = imgH * s;
-    return { x: (stageW - w) / 2, y: (stageH - h) / 2, w, h };
-  });
+  // Angezeigtes Bild (object-fit: contain)
+  const rect = $derived(containRect(stageW, stageH, imgW, imgH));
 
   let el: HTMLDivElement;
   let drag: { y: number; base: number[]; weights: number[] } | null = null;

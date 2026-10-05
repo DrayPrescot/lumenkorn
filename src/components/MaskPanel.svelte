@@ -1,6 +1,9 @@
 <script lang="ts">
-  import { oklabToCss, type LocalAdjust, type MaskShape } from "../lib/api";
-  import { dev, type NewMaskKind } from "../lib/develop.svelte";
+  // Reiter „Masken“: Ebenenliste, Formen der aktiven Ebene, Pinsel und lokale
+  // Regler. Aufbau wie RepairPanel, aber mit anderen Werkzeugen, Zuständen und
+  // Abständen – deshalb bewusst getrennt; gemeinsam ist nur `describeShape`.
+  import { oklabToCss, type LocalAdjust } from "../lib/api";
+  import { describeShape, dev, type NewMaskKind } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
   import Icon from "./Icon.svelte";
@@ -38,21 +41,6 @@
     if (!m) return;
     if (m.mode === "new") dev.addMask(kind);
     else dev.addShape(kind, m.mode === "subtract");
-  }
-
-  function describe(s: MaskShape): string {
-    switch (s.type) {
-      case "linear":
-        return t("Verlauf");
-      case "radial":
-        return t("Radial");
-      case "brush":
-        return t(s.strokes.length === 1 ? "Pinsel ({n} Strich)" : "Pinsel ({n} Striche)", { n: s.strokes.length });
-      case "color":
-        return t(s.samples.length === 1 ? "Farbe ({n} Ton)" : "Farbe ({n} Töne)", { n: s.samples.length });
-      case "raster":
-        return s.kind === "subject" ? t("Motiv") : s.kind === "sky" ? t("Himmel") : t((s.prompt?.length ?? 0) === 1 ? "Objekt ({n} Punkt)" : "Objekt ({n} Punkte)", { n: s.prompt?.length ?? 0 });
-    }
   }
 
   function toggleShape(i: number, key: "invert" | "subtract") {
@@ -156,7 +144,7 @@
       <ul class="shapes">
         {#each layer.shapes as s, i}
           <li>
-            <span class="kind" class:sub={s.subtract}>{s.subtract ? "−" : "+"} {describe(s)}</span>
+            <span class="kind" class:sub={s.subtract}>{s.subtract ? "−" : "+"} {describeShape(s)}</span>
             {#if s.type === "color"}
               <span class="swatches">
                 {#each s.samples as c}<span class="swatch" style:background={oklabToCss(c.lab)}></span>{/each}

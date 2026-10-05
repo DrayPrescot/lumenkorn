@@ -644,6 +644,8 @@ class Library {
     }
   }
 
+  /** Ordner zum Projekt hinzufügen. Ist er schon enthalten, wird nur
+   *  `recursive` gesetzt – so schaltet ProjectFolders „Unterordner“ um. */
   async addFolderToProject(projectId: number, path: string, recursive = true) {
     try {
       const p = await api.addProjectFolder(projectId, path, recursive);

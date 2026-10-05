@@ -16,6 +16,9 @@ import {
   type TransferGroups,
   transferParams,
 } from "./api";
+import { lib } from "./store.svelte";
+import { isCanceled, t } from "./i18n";
+import type { HslMode } from "./hsl";
 
 export type MaskTool = "linear" | "radial" | "brush" | "object" | "color";
 export type NewMaskKind = MaskTool | "subject" | "sky";
@@ -29,9 +32,22 @@ const MASK_NAMES: Record<NewMaskKind, string> = {
   subject: t("Motiv"),
   sky: t("Himmel"),
 };
-import { lib } from "./store.svelte";
-import { isCanceled, t } from "./i18n";
-import type { HslMode } from "./hsl";
+
+/** Kurzbeschreibung einer Form für die Formenliste (Masken und Reparaturen). */
+export function describeShape(s: MaskShape): string {
+  switch (s.type) {
+    case "linear":
+      return t("Verlauf");
+    case "radial":
+      return t("Radial");
+    case "brush":
+      return t(s.strokes.length === 1 ? "Pinsel ({n} Strich)" : "Pinsel ({n} Striche)", { n: s.strokes.length });
+    case "color":
+      return t(s.samples.length === 1 ? "Farbe ({n} Ton)" : "Farbe ({n} Töne)", { n: s.samples.length });
+    case "raster":
+      return s.kind === "subject" ? t("Motiv") : s.kind === "sky" ? t("Himmel") : t((s.prompt?.length ?? 0) === 1 ? "Objekt ({n} Punkt)" : "Objekt ({n} Punkte)", { n: s.prompt?.length ?? 0 });
+  }
+}
 
 const same = (a: DevelopParams, b: DevelopParams) => JSON.stringify(a) === JSON.stringify(b);
 const clone = (p: DevelopParams): DevelopParams => JSON.parse(JSON.stringify(p));
@@ -54,7 +70,6 @@ class Develop {
   /** Vorher-Knopf gedrückt gehalten (kurzer Vergleich) */
   holdBefore = $state(false);
   loading = $state(false);
-  rendering = $state(false);
 
   /** Zielgröße der Vorschau (Bühne × Pixeldichte). */
   maxEdge = $state(1600);
@@ -264,7 +279,6 @@ class Develop {
 
   // --- Parameter ändern ------------------------------------------------------
 
-  /** Wert setzen (live, z. B. beim Ziehen eines Reglers). */
   // --- HSL ------------------------------------------------------------------
 
   /** Welche Reglergruppe das HSL-Werkzeug zeigt (und die Pipette verändert). */
@@ -289,6 +303,7 @@ class Develop {
     this.schedule();
   }
 
+  /** Wert setzen (live, z. B. beim Ziehen eines Reglers); `commit()` folgt beim Loslassen. */
   set<K extends keyof DevelopParams>(key: K, value: DevelopParams[K]) {
     this.params[key] = value;
     this.schedule();
@@ -358,7 +373,6 @@ class Develop {
     const id = this.imageId;
     if (id === null || !this.ready) return;
     this.#inFlight = true;
-    this.rendering = true;
     try {
       const params = $state.snapshot(this.params) as DevelopParams;
       // Beim Zuschneiden das ganze Bild zeigen; der Rahmen wird darübergelegt.
@@ -375,7 +389,6 @@ class Develop {
       lib.notify(String(e), "error");
     } finally {
       this.#inFlight = false;
-      this.rendering = false;
       if (this.#pending) {
         this.#pending = false;
         this.renderNow();
@@ -548,7 +561,7 @@ class Develop {
       };
     }
     if (kind === "subject" || kind === "sky") {
-      const shape = await this.runAi(kind);
+      const shape = await this.#runAi(kind);
       if (!shape) return;
       layer.shapes.push(shape);
       this.tool = null;
@@ -570,7 +583,7 @@ class Develop {
     const layer = this.layer;
     if (!layer) return;
     if (kind === "subject" || kind === "sky") {
-      const shape = await this.runAi(kind);
+      const shape = await this.#runAi(kind);
       if (!shape) return;
       layer.shapes.push({ ...shape, subtract });
       this.schedule();
@@ -593,7 +606,7 @@ class Develop {
   /** Nächster Pipetten-Klick beginnt eine neue Farbform. */
   #newColor = false;
 
-  private async runAi(kind: "subject" | "sky"): Promise<MaskShape | null> {
+  async #runAi(kind: "subject" | "sky"): Promise<MaskShape | null> {
     if (this.imageId === null) return null;
     this.maskBusy = kind === "subject" ? t("Motiv wird erkannt …") : t("Himmel wird gesucht …");
     try {
@@ -646,11 +659,6 @@ class Develop {
     // Sobald eine Wirkung eingestellt wird, die Überlagerung ausblenden – man
     // will das Ergebnis sehen.
     if (this.showOverlay) this.showOverlay = false;
-    this.schedule();
-  }
-
-  /** Formänderung beim Ziehen (live), `commit()` danach beim Loslassen. */
-  touch() {
     this.schedule();
   }
 

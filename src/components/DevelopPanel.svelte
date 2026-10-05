@@ -23,7 +23,6 @@
     max: number;
     step?: number;
     decimals?: number;
-    unit?: string;
     track?: string;
   }
 
@@ -100,8 +99,8 @@
     { id: "crop", label: t("Zuschnitt"), title: t("Zuschneiden, Geraderichten, Drehen (R)") },
   ];
 
-  function setTab(t: Tab) {
-    if (t === dev.tab) return;
+  function setTab(tab: Tab) {
+    if (tab === dev.tab) return;
     returnTo = null; // Reiter von Hand gewählt: kein automatischer Rücksprung
     if (dev.tab === "crop" && dev.cropMode) dev.applyCrop();
     if (dev.tab === "masks" || dev.tab === "repair") {
@@ -109,9 +108,9 @@
       dev.selectMask(null);
       if (dev.showOverlay) dev.toggleOverlay();
     }
-    dev.tab = t;
+    dev.tab = tab;
     dev.hslPick = false;
-    if (t === "crop") dev.enterCrop();
+    if (tab === "crop") dev.enterCrop();
   }
 
   // Zuschneiden per Taste (R) öffnet den Reiter „Zuschnitt“ und kehrt nach
@@ -159,8 +158,8 @@
 
   // Maskenwerkzeug oder Maske auf dem Bild gewählt → Reiter „Masken“
   $effect(() => {
-    const t = untrack(() => dev.tab);
-    if ((dev.activeMask !== null || dev.tool) && t !== "masks" && t !== "repair") dev.tab = "masks";
+    const cur = untrack(() => dev.tab);
+    if ((dev.activeMask !== null || dev.tool) && cur !== "masks" && cur !== "repair") dev.tab = "masks";
   });
 </script>
 
@@ -175,9 +174,9 @@
   </section>
 
   <div class="tabs" role="tablist" aria-label={t("Bearbeitung")}>
-    {#each tabs as t (t.id)}
-      <button role="tab" aria-selected={dev.tab === t.id} class:on={dev.tab === t.id} title={t.title} onclick={() => setTab(t.id)}>
-        {t.label}{#if t.id === "masks" && dev.params.masks.length}<span class="count">{dev.params.masks.length}</span>{/if}{#if t.id === "repair" && dev.params.repairs.length}<span class="count">{dev.params.repairs.length}</span>{/if}
+    {#each tabs as tab (tab.id)}
+      <button role="tab" aria-selected={dev.tab === tab.id} class:on={dev.tab === tab.id} title={tab.title} onclick={() => setTab(tab.id)}>
+        {tab.label}{#if tab.id === "masks" && dev.params.masks.length}<span class="count">{dev.params.masks.length}</span>{/if}{#if tab.id === "repair" && dev.params.repairs.length}<span class="count">{dev.params.repairs.length}</span>{/if}
       </button>
     {/each}
   </div>
@@ -389,31 +388,6 @@
     margin: 8px 0 0;
     color: var(--faint);
     font-size: var(--step--1);
-  }
-  summary {
-    cursor: pointer;
-    font-weight: 600;
-    font-size: var(--step--1);
-    color: var(--muted);
-    list-style: none;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  summary::before {
-    content: "";
-    width: 0;
-    height: 0;
-    border-left: 4px solid currentColor;
-    border-top: 4px solid transparent;
-    border-bottom: 4px solid transparent;
-    transition: transform 0.12s;
-  }
-  details[open] > summary::before {
-    transform: rotate(90deg);
-  }
-  summary::-webkit-details-marker {
-    display: none;
   }
   .sliders {
     display: grid;

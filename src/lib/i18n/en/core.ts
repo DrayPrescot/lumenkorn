@@ -53,8 +53,6 @@ export default {
   "Blau": "Blue",
   "Lila": "Purple",
   "Magenta": "Magenta",
-  "Einpassen · {pct} %": "Fit · {pct}%",
-  "{pct} %": "{pct}%",
   "Im Browser-Modus können keine Ordner hinzugefügt werden. Starte die App mit `npm run tauri dev`.": "Folders can't be added in browser mode. Start the app with `npm run tauri dev`.",
   "Rauschreduzierung ist nur in der App verfügbar.": "Noise reduction is only available in the app.",
   "Zusammenfügen ist nur in der App verfügbar.": "Merging is only available in the app.",

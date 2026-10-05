@@ -5,7 +5,8 @@ import { DEFAULT_PARAMS, transferParams } from "./api";
 import { t } from "./i18n";
 import type { DevelopParams, Edit, FolderNode, ImageDetail, ImageQuery, ImageSummary, ImageTag, Project, Root } from "./api";
 
-type Img = ImageDetail & { rootId: number; hue: number; edit?: DevelopParams; snapshots: Edit[] };
+// rating/flag gehören zur Bildliste (ImageSummary), nicht zu den Details
+type Img = ImageDetail & { rootId: number; hue: number; rating: number; flag: number; edit?: DevelopParams; snapshots: Edit[] };
 
 const sep = "/";
 const roots: Root[] = [
@@ -121,7 +122,7 @@ function query(q: ImageQuery): ImageSummary[] {
       inScope(i, q) &&
       i.rating >= (q.minRating ?? 0) &&
       words.every((w) =>
-        [i.fileName, i.camera ?? "", i.lens ?? "", ...i.tags.map((t) => t.name)].some((s) => s.toLowerCase().includes(w)),
+        [i.fileName, i.camera ?? "", i.lens ?? "", ...i.tags.map((tag) => tag.name)].some((s) => s.toLowerCase().includes(w)),
       ),
   );
   const by = q.sort ?? "capturedAsc";
@@ -232,7 +233,7 @@ export const mock = {
         return out(img.snapshots);
       }
       case "ai_status":
-        return out({ runtimePath: null, runtimeLoaded: false, runtimeDownloadable: true, modelReady: false, missing: ["vision.onnx", "text.onnx", "vocab.json", "merges.txt"], downloadSize: 161_000_000, modelDir: "(Mock)", masksReady: false, masksMissing: ["subject.onnx", "sam-encoder.onnx", "sam-decoder.onnx"], masksDownloadSize: 287_000_000, repairReady: false, repairDownloadSize: 92_600_000, denoiseReady: false, denoiseDownloadSize: 131_000_000, gpuRuntimes: [{ backend: "webgpu", label: "WebGPU (Vulkan)", version: "1.27.0", installed: false, downloadSize: 25_163_729 }], accel: { active: { library: null, gpuEnabled: false, gpuError: null, placements: [] }, devices: [{ vendor: "AMD", name: "Radeon RX 7900 XTX / XT / GRE", memory: 25_753_026_560, discrete: true }], restartRequired: false, develop: { enabled: true, available: true, info: { name: "AMD Radeon RX 7900 XTX (RADV NAVI31)", backend: "Vulkan", kind: "discrete", driver: "radv Mesa" }, error: null } }, crashNotice: null, downloading: false, loaded: false, error: null, analyzed: 0, total: images.length, settings: { autoTag: true, accel: "auto", developGpu: true, faces: true } });
+        return out({ runtimePath: null, runtimeDownloadable: true, modelReady: false, missing: ["vision.onnx", "text.onnx", "vocab.json", "merges.txt"], downloadSize: 161_000_000, modelDir: "(Mock)", masksReady: false, masksDownloadSize: 287_000_000, repairReady: false, repairDownloadSize: 92_600_000, denoiseReady: false, denoiseDownloadSize: 131_000_000, gpuRuntimes: [{ backend: "webgpu", label: "WebGPU (Vulkan)", version: "1.27.0", installed: false, downloadSize: 25_163_729 }], accel: { active: { library: null, gpuEnabled: false, gpuError: null, placements: [] }, devices: [{ vendor: "AMD", name: "Radeon RX 7900 XTX / XT / GRE", memory: 25_753_026_560, discrete: true }], restartRequired: false, develop: { enabled: true, available: true, info: { name: "AMD Radeon RX 7900 XTX (RADV NAVI31)", backend: "Vulkan", kind: "discrete", driver: "radv Mesa" }, error: null } }, crashNotice: null, downloading: false, loaded: false, error: null, analyzed: 0, total: images.length, settings: { autoTag: true, accel: "auto", developGpu: true, faces: true } });
       case "people_status":
         return out({ ready: true, downloadSize: 38_929_000, enabled: true, analyzed: images.length, total: images.length, faces: 12, error: null });
       case "people_list":
@@ -326,13 +327,13 @@ export const mock = {
         return out(null);
       case "add_tag": {
         const img = images.find((i) => i.id === a.imageId)!;
-        if (!img.tags.some((t) => t.name.toLowerCase() === a.name.toLowerCase()))
+        if (!img.tags.some((tag) => tag.name.toLowerCase() === a.name.toLowerCase()))
           img.tags.unshift({ name: a.name, source: "manual", confidence: null });
         return out(img.tags);
       }
       case "remove_tag": {
         const img = images.find((i) => i.id === a.imageId)!;
-        img.tags = img.tags.filter((t) => t.name !== a.name);
+        img.tags = img.tags.filter((tag) => tag.name !== a.name);
         return out(img.tags);
       }
       case "list_projects":

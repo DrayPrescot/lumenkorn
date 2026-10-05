@@ -199,7 +199,7 @@
     <section>
       <header>
         {@render toggle("people", t("Personen"), lib.people.filter((p) => p.name).length)}
-        <button class="icon-btn" aria-label={t("Alle Personen")} title={t("Personen und Gruppen verwalten")} onclick={() => { lib.mode = "library"; lib.view = "people"; }}>
+        <button class="icon-btn" aria-label={t("Alle Personen")} title={t("Personen und Gruppen verwalten")} onclick={() => lib.openPeople()}>
           <Icon name="stack" size={14} />
         </button>
       </header>
@@ -251,7 +251,7 @@
         <!-- eingeklappt -->
       {:else if lib.peopleStatus?.ready}
         {@const unnamed = lib.people.filter((p) => !p.name && p.faceCount >= 2).length}
-        <button class="item" class:active={lib.view === "people" && lib.mode === "library"} onclick={() => { lib.mode = "library"; lib.view = "people"; }}>
+        <button class="item" class:active={lib.view === "people" && lib.mode === "library"} onclick={() => lib.openPeople()}>
           <Icon name="sparkle" size={15} />
           <span>{unnamed ? t("{n} unbenannte Gruppen", { n: String(unnamed) }) : t("Personen verwalten")}</span>
         </button>
@@ -492,8 +492,6 @@
     min-height: 44px;
     font-size: var(--step--1);
     color: var(--muted);
-  }
-  footer {
     display: grid;
     gap: 8px;
   }

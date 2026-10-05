@@ -91,31 +91,6 @@
     padding: 12px 16px;
     border-bottom: 1px solid var(--line);
   }
-  summary {
-    cursor: pointer;
-    font-weight: 600;
-    font-size: var(--step--1);
-    color: var(--muted);
-    list-style: none;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  summary::before {
-    content: "";
-    width: 0;
-    height: 0;
-    border-left: 4px solid currentColor;
-    border-top: 4px solid transparent;
-    border-bottom: 4px solid transparent;
-    transition: transform 0.12s;
-  }
-  details[open] > summary::before {
-    transform: rotate(90deg);
-  }
-  summary::-webkit-details-marker {
-    display: none;
-  }
   .head {
     display: flex;
     align-items: center;

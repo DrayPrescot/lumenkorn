@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, faceUrl, type FaceInfo, type ImageDetail } from "../lib/api";
+  import { shortPath } from "../lib/format";
   import { lib } from "../lib/store.svelte";
   import Icon from "./Icon.svelte";
   import { locale, num, t, tc } from "../lib/i18n";
@@ -32,8 +33,8 @@
       faces = [];
       return;
     }
-    const t = setTimeout(() => loadFaces(id), SETTLE);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => loadFaces(id), SETTLE);
+    return () => clearTimeout(timer);
   });
   async function faceAct(fn: () => Promise<unknown>) {
     try {
@@ -83,8 +84,8 @@
       selFaces = [];
       return;
     }
-    const t = setTimeout(() => loadSelFaces(ids), SETTLE);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => loadSelFaces(ids), SETTLE);
+    return () => clearTimeout(timer);
   });
 
   type FaceGroup = {
@@ -176,12 +177,12 @@
       return;
     }
     let cancelled = false;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       api.imageDetail(id).then((d) => !cancelled && (detail = d)).catch(() => {});
     }, SETTLE);
     return () => {
       cancelled = true;
-      clearTimeout(t);
+      clearTimeout(timer);
     };
   });
 
@@ -204,11 +205,6 @@
       d.focalLength && { v: `${Math.round(d.focalLength)} mm`, l: t("Brennweite") },
     ].filter((x): x is { v: string; l: string } => !!x);
   });
-
-  const shortDir = (p: string) => {
-    const parts = p.split(/[\\/]/).filter(Boolean);
-    return parts.length > 3 ? `… / ${parts.slice(-3).join(" / ")}` : parts.join(" / ");
-  };
 
   const mb = (b: number) => `${num(b / 1_000_000, { maximumFractionDigits: 1 })} MB`;
 
@@ -296,7 +292,7 @@
     {@const d = detail}
     <section>
       <h3 class="file" title={d.path}>{d.fileName}</h3>
-      <p class="path" title={d.dir}>{shortDir(d.dir)}</p>
+      <p class="path" title={d.dir}>{shortPath(d.dir)}</p>
     </section>
 
     <section class="rate">

@@ -3,18 +3,12 @@
   // innen verschieben, optional mit festem Seitenverhältnis. Drittel-Raster
   // hilft beim Bildaufbau.
   import { dev } from "../lib/develop.svelte";
-  import { frameSize } from "../lib/frame";
+  import { containRect, frameSize } from "../lib/frame";
   import { t } from "../lib/i18n";
 
   let { stageW, stageH, imgW, imgH }: { stageW: number; stageH: number; imgW: number; imgH: number } = $props();
 
-  const rect = $derived.by(() => {
-    if (!imgW || !imgH || !stageW || !stageH) return { x: 0, y: 0, w: 0, h: 0 };
-    const s = Math.min(stageW / imgW, stageH / imgH);
-    const w = imgW * s;
-    const h = imgH * s;
-    return { x: (stageW - w) / 2, y: (stageH - h) / 2, w, h };
-  });
+  const rect = $derived(containRect(stageW, stageH, imgW, imgH));
 
   const c = $derived(dev.params.crop ?? { x: 0, y: 0, w: 1, h: 1 });
   const frame = $derived(frameSize(dev.params, [dev.fullSize[0] || 1, dev.fullSize[1] || 1]));

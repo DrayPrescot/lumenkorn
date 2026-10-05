@@ -29,8 +29,6 @@ export const lang: Lang =
   stored() ?? (typeof navigator !== "undefined" && navigator.language?.toLowerCase().startsWith("de") ? "de" : "en");
 /** Für Zahlen- und Datumsformate */
 export const locale = lang === "de" ? "de-DE" : "en-US";
-/** Explizit gewählt (statt vom System übernommen) */
-export const langChosen = stored() !== null;
 
 const missing = new Set<string>();
 
@@ -85,6 +83,3 @@ export function setLang(l: Lang) {
 export function num(v: number, opts?: Intl.NumberFormatOptions): string {
   return v.toLocaleString(locale, opts);
 }
-
-/** Dezimaltrennzeichen der Sprache */
-export const decimalSep = lang === "de" ? "," : ".";

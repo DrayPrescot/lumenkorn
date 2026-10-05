@@ -1,5 +1,6 @@
 <script lang="ts">
   import { isTauri, pickFolder, type Project } from "../lib/api";
+  import { shortPath } from "../lib/format";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
   import Icon from "./Icon.svelte";
@@ -14,11 +15,6 @@
     if (path) await lib.addFolderToProject(project.id, path, true);
     else if (!isTauri || navigator.userAgent.includes("Android")) pathDialog = true;
   }
-
-  const short = (p: string) => {
-    const parts = p.split(/[\\/]/).filter(Boolean);
-    return parts.length > 3 ? `… / ${parts.slice(-3).join(" / ")}` : parts.join(" / ");
-  };
 </script>
 
 <svelte:window onclick={onclose} />
@@ -29,7 +25,7 @@
     {#each project.folders as f (f.path)}
       <li>
         <Icon name="folder" size={14} />
-        <span class="path" title={f.path}>{short(f.path)}</span>
+        <span class="path" title={f.path}>{shortPath(f.path)}</span>
         <label title={t("Unterordner einbeziehen")}>
           <input type="checkbox" checked={f.recursive} onchange={(e) => lib.addFolderToProject(project.id, f.path, e.currentTarget.checked)} />
           {t("Unterordner")}

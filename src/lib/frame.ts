@@ -63,3 +63,13 @@ export function cropToFrame(p: Geo, cx: number, cy: number): [number, number] {
   const c = p.crop ?? { x: 0, y: 0, w: 1, h: 1 };
   return [c.x + cx * c.w, c.y + cy * c.h];
 }
+
+/** Rechteck des angezeigten Bildes in der Bühne (wie `object-fit: contain`),
+ *  in Pixeln. Leer, solange eine der Größen noch unbekannt ist. */
+export function containRect(stageW: number, stageH: number, imgW: number, imgH: number) {
+  if (!imgW || !imgH || !stageW || !stageH) return { x: 0, y: 0, w: 0, h: 0 };
+  const s = Math.min(stageW / imgW, stageH / imgH);
+  const w = imgW * s;
+  const h = imgH * s;
+  return { x: (stageW - w) / 2, y: (stageH - h) / 2, w, h };
+}

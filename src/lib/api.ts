@@ -90,8 +90,6 @@ export interface ImageDetail {
   exposure: string | null;
   aperture: number | null;
   focalLength: number | null;
-  rating: number;
-  flag: number;
   tags: ImageTag[];
 }
 
@@ -138,8 +136,6 @@ export interface ImageQuery {
   sort?: SortOrder;
   search?: string | null;
   minRating?: number | null;
-  limit?: number | null;
-  offset?: number | null;
 }
 
 export interface ScanReport {
@@ -469,7 +465,6 @@ export interface Benchmark {
 
 export interface AiStatus {
   runtimePath: string | null;
-  runtimeLoaded: boolean;
   runtimeDownloadable: boolean;
   modelReady: boolean;
   missing: string[];
@@ -478,7 +473,6 @@ export interface AiStatus {
   masksReady: boolean;
   repairReady: boolean;
   repairDownloadSize: number;
-  masksMissing: string[];
   masksDownloadSize: number;
   denoiseReady: boolean;
   denoiseDownloadSize: number;
@@ -679,13 +673,14 @@ export async function listen<K extends keyof Events>(event: K, cb: (payload: Eve
 
 let protocolBase: string | null = null;
 
-/** URL für Thumbnail oder Vorschau. `version` umgeht den Browser-Cache nach Änderungen. */
+/** URL des Gesichtsausschnitts (Personen-Ansicht, Infobereich). Im Browser-Mock leer. */
 export function faceUrl(faceId: number): string {
   if (!isTauri) return "";
   protocolBase ??= convertFileSrc("", "lw");
   return `${protocolBase}face/${faceId}`;
 }
 
+/** URL für Thumbnail, Vorschau oder Original. `version` umgeht den Browser-Cache nach Änderungen. */
 export function imageUrl(variant: "thumb" | "preview" | "full", id: number, version = 0): string {
   if (!isTauri) return mock.imageUrl(variant, id);
   // convertFileSrc kennt die plattformabhängige Form (lw://localhost/ bzw. http://lw.localhost/).

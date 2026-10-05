@@ -30,9 +30,9 @@ export function hslWeights(hueDeg: number): number[] {
     let x = h;
     if (x < a) x += 360;
     if (x >= a && x < b) {
-      const t = (x - a) / (b - a);
-      w[i] = 1 - t;
-      w[(i + 1) % 8] = t;
+      const f = (x - a) / (b - a);
+      w[i] = 1 - f;
+      w[(i + 1) % 8] = f;
       break;
     }
   }

@@ -3,7 +3,7 @@
   // mehrere Auswahlen zu einer Reparatur zusammenfassen, erst nach
   // Bestätigung mit KI füllen.
   import { api, type MaskShape, type RepairLayer } from "../lib/api";
-  import { dev, type NewMaskKind } from "../lib/develop.svelte";
+  import { describeShape, dev, type NewMaskKind } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
   import { untrack } from "svelte";
@@ -50,12 +50,6 @@
     if (!m) return;
     if (m.mode === "new") dev.addMask(kind);
     else dev.addShape(kind, m.mode === "subtract");
-  }
-
-  function describe(s: MaskShape): string {
-    if (s.type === "brush") return t(s.strokes.length === 1 ? "Pinsel ({n} Strich)" : "Pinsel ({n} Striche)", { n: s.strokes.length });
-    if (s.type === "raster") return s.kind === "object" ? t((s.prompt?.length ?? 0) === 1 ? "Objekt ({n} Punkt)" : "Objekt ({n} Punkte)", { n: s.prompt?.length ?? 0 }) : s.kind === "subject" ? t("Motiv") : t("Himmel");
-    return s.type === "linear" ? t("Verlauf") : t("Radial");
   }
 
   function removeShape(i: number) {
@@ -148,7 +142,7 @@
       <ul class="shapes">
         {#each active.shapes as s, k}
           <li>
-            <span class="kind" class:sub={s.subtract}>{s.subtract ? "−" : "+"} {describe(s)}</span>
+            <span class="kind" class:sub={s.subtract}>{s.subtract ? "−" : "+"} {describeShape(s)}</span>
             <button class="icon-btn" aria-label={t("Auswahl entfernen")} disabled={!!dev.repairing} onclick={() => removeShape(k)}><Icon name="close" size={11} /></button>
           </li>
         {:else}

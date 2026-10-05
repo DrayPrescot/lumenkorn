@@ -6,18 +6,12 @@
   import { oklabToCss, type MaskShape, type Stroke } from "../lib/api";
   import { dev } from "../lib/develop.svelte";
   import { t } from "../lib/i18n";
-  import { cropToFrame, frameSize, frameToCrop, frameToSource, sourceToFrame, straightenScale } from "../lib/frame";
+  import { containRect, cropToFrame, frameSize, frameToCrop, frameToSource, sourceToFrame, straightenScale } from "../lib/frame";
 
   let { stageW, stageH, imgW, imgH }: { stageW: number; stageH: number; imgW: number; imgH: number } = $props();
 
   // Angezeigtes Bild (object-fit: contain)
-  const rect = $derived.by(() => {
-    if (!imgW || !imgH || !stageW || !stageH) return { x: 0, y: 0, w: 0, h: 0 };
-    const s = Math.min(stageW / imgW, stageH / imgH);
-    const w = imgW * s;
-    const h = imgH * s;
-    return { x: (stageW - w) / 2, y: (stageH - h) / 2, w, h };
-  });
+  const rect = $derived(containRect(stageW, stageH, imgW, imgH));
 
   const q = $derived(((dev.params.rotate % 4) + 4) % 4);
   const crop = $derived(dev.params.crop ?? { x: 0, y: 0, w: 1, h: 1 });
@@ -101,7 +95,7 @@
       // Auf das reaktive Objekt im Zustand zeigen, nicht auf die lokale Kopie
       const live = (shape as Extract<MaskShape, { type: "brush" }>).strokes.at(-1)!;
       drag = { kind: "paint", stroke: live, last: [px, py] };
-      dev.touch();
+      dev.schedule();
     } else if (dev.tool === "object") {
       dev.objectClick({ x: sx, y: sy, positive: !e.altKey });
       return;
@@ -177,7 +171,8 @@
         break;
       }
     }
-    dev.touch();
+    // Live rendern; den Verlaufsschritt legt erst onup() an
+    dev.schedule();
   }
 
   function onup(e: PointerEvent) {
