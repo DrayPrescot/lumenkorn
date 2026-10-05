@@ -57,8 +57,23 @@ and the project uses [Semantic Versioning](https://semver.org/).
   about 2×), color noise gets an extra half-resolution pass, and the strength
   slider maps 0 / 50 / 100 to 0.75× / 1.5× / 3× the estimate (default 50).
   Already denoised photos keep their old result until recomputed.
+- Performance, measured with 50 000 photos and 24 MP images:
+  - **Library:** first face analysis ~9× faster per photo; saving AI results
+    ~4× faster; project filters and the project list ~10× faster; naming or
+    assigning people ~30× faster. Unedited JPEGs open at full size instantly
+    (the original file is shown instead of being re-encoded).
+  - **Develop:** brush masks up to ~40× faster; RAWs load ~30 % faster with
+    ~40 % less memory; local adjustments about twice as fast.
+  - **Merge:** focus stacking needs about half the memory, 10–25 % faster;
+    HDR loads each photo at most twice.
+  - **AI:** faster semantic search; noise reduction needs half the memory.
+  - **Interface:** the info panel no longer reloads on every rating, and
+    compare loads at most two full-size photos at a time.
+
+  Catalog update to version 11 runs automatically on first start.
 
 ### Fixed
+- A project containing a drive root (e.g. `D:\`) showed no photos.
 - Panoramas with a tilted pan kept a wavy horizon: leveling was undone by the
   final centering step.
 - AI model downloads failed on slow connections (total time limit); they now
