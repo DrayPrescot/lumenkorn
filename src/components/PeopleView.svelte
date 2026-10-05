@@ -19,10 +19,14 @@
   /** Benannte Person, deren Name gerade bearbeitet wird */
   let editing = $state<number | null>(null);
 
-  async function act(f: () => Promise<unknown>) {
+  /** Führt eine Änderung aus und lädt neu. Liefert, ob sie gelang – nur dann
+   *  dürfen Aufrufer Erfolg melden (sonst überschriebe das die Fehlermeldung). */
+  async function act(f: () => Promise<unknown>): Promise<boolean> {
+    let ok = true;
     try {
       await f();
     } catch (e) {
+      ok = false;
       lib.notify(String(e), "error");
     }
     await lib.refreshPeople();
@@ -30,13 +34,14 @@
       const p = lib.people.find((x) => x.id === review!.person.id);
       review = p ? { person: p, faces: await api.personFaces(p.id) } : null;
     }
+    return ok;
   }
 
   async function rename(p: Person) {
     const name = (names[p.id] ?? "").trim();
     if (!name) return;
     names[p.id] = "";
-    await act(() => api.personRename(p.id, name));
+    if (!(await act(() => api.personRename(p.id, name)))) return;
     lib.notify(t("„{name}“ gespeichert. Ähnliche Gesichter werden als Vorschläge zugeordnet.", { name }));
   }
 
@@ -66,14 +71,14 @@
 
   async function confirmFaces(ids: number[]) {
     if (!ids.length) return;
-    await act(() => api.facesConfirm(ids));
+    if (!(await act(() => api.facesConfirm(ids)))) return;
     picked = new Set();
     lib.notify(t(ids.length === 1 ? "{n} Gesicht bestätigt" : "{n} Gesichter bestätigt", { n: ids.length }));
   }
 
   async function rejectFaces(ids: number[]) {
     if (!ids.length) return;
-    await act(() => api.facesReassign(ids, null));
+    if (!(await act(() => api.facesReassign(ids, null)))) return;
     picked = new Set();
     lib.notify(t(ids.length === 1 ? "{n} Gesicht herausgenommen" : "{n} Gesichter herausgenommen", { n: ids.length }));
   }

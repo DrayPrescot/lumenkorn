@@ -22,6 +22,7 @@
   // Solange der Dialog offen ist, erreichen Tasten die Ansichten dahinter nicht
   // (sonst dreht [ das Bild, wechselt → das Foto, macht Strg+Z rückgängig …)
   function onkeydown(e: KeyboardEvent) {
+    if (e.key === "F11") return; // Vollbild bleibt auch bei offenem Dialog erreichbar
     if (pathDialog) return;
     e.stopPropagation();
     if (e.key === "Escape") onclose();

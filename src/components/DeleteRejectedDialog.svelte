@@ -34,6 +34,7 @@
 
   // Solange der Dialog offen ist, erreichen Tasten die Ansichten dahinter nicht
   function onkeydown(e: KeyboardEvent) {
+    if (e.key === "F11") return; // Vollbild bleibt auch bei offenem Dialog erreichbar
     e.stopPropagation();
     if (e.key === "Escape" && !busy) onclose();
     else if (e.key === "Enter" && !(e.target instanceof HTMLElement && e.target.closest("form"))) {

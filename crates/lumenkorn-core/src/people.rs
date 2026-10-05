@@ -260,8 +260,11 @@ impl Catalog {
             }
             for (f, person) in faces.iter().zip(&assigned) {
                 tx.execute(
-                    "INSERT INTO faces (image_id, x, y, w, h, score, embedding, person_id)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    // ID über allen je vergebenen (siehe Migration v10)
+                    "INSERT INTO faces (id, image_id, x, y, w, h, score, embedding, person_id)
+                     VALUES (MAX(COALESCE((SELECT MAX(id) FROM faces), 0),
+                                 COALESCE((SELECT v FROM face_id_floor), 0)) + 1,
+                             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                     params![
                         image_id,
                         f.rect[0] as f64,

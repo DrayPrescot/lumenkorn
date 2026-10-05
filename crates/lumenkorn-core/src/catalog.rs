@@ -200,6 +200,17 @@ const MIGRATIONS: &[&str] = &[
     WHERE kind = 'raw'
       AND id IN (SELECT image_id FROM edits WHERE is_current = 1);
     "#,
+    // v10: Gesichts-IDs nie wiederverwenden (wie v7 für Fotos). Die
+    // Gesichtsausschnitte `face/{id}` werden dauerhaft gecacht; nach dem Löschen
+    // der neuesten Gesichter (Fotos entfernt, Personen neu erkannt) bekamen neue
+    // Gesichter sonst deren IDs und die Oberfläche zeigte den alten Ausschnitt.
+    r#"
+    CREATE TABLE face_id_floor (v INTEGER NOT NULL);
+    INSERT INTO face_id_floor (v) SELECT COALESCE(MAX(id), 0) FROM faces;
+    CREATE TRIGGER face_id_floor_del AFTER DELETE ON faces BEGIN
+        UPDATE face_id_floor SET v = MAX(v, OLD.id);
+    END;
+    "#,
 ];
 
 /// Volltextindex der Suche: je Foto ein Eintrag aus Dateiname, Ordner (relativ
@@ -1700,7 +1711,12 @@ mod migration_tests {
             };
             cat.save_develop(&[raw_edited, jpg_edited], &p).unwrap();
             cat.conn
-                .execute_batch("UPDATE images SET thumb_state = 1; PRAGMA user_version = 8;")
+                .execute_batch(
+                    // Stand vor v9 (und damit auch vor v10) nachstellen
+                    "UPDATE images SET thumb_state = 1;
+                     DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
+                     PRAGMA user_version = 8;",
+                )
                 .unwrap();
             [raw_edited, raw_plain, jpg_edited]
         };
@@ -1713,5 +1729,49 @@ mod migration_tests {
                 .unwrap()
         };
         assert_eq!(ids.map(state), [0, 1, 1]);
+    }
+
+    /// v10: Gesichts-IDs werden nach dem Löschen der neuesten Gesichter nicht
+    /// erneut vergeben – auch nicht für einen Katalog, der vor v10 entstand.
+    #[test]
+    fn face_ids_are_never_reused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = tmp.path().join("k.db");
+        let face = |e: f32| crate::people::NewFace {
+            rect: [0.1, 0.1, 0.2, 0.2],
+            score: 0.9,
+            embedding: vec![e, 1.0, 0.0, 0.0],
+        };
+        let (imgs, old_max) = {
+            let mut cat = Catalog::open(&db).unwrap();
+            let imgs = tests_support::insert_dummy_images(&mut cat, 2);
+            let mut idx = cat.people_index().unwrap();
+            cat.save_faces(imgs[0], &[face(0.0)], &mut idx).unwrap();
+            let ids = cat
+                .save_faces(imgs[1], &[face(0.1), face(0.2)], &mut idx)
+                .unwrap();
+            // Zustand vor v10 nachstellen: höchste ID bereits im Bestand
+            cat.conn
+                .execute_batch(
+                    "DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
+                     PRAGMA user_version = 9;",
+                )
+                .unwrap();
+            (imgs, *ids.iter().max().unwrap())
+        };
+        let mut cat = Catalog::open(&db).unwrap();
+        // Neueste Gesichter löschen (wie beim Entfernen des Fotos) …
+        cat.conn
+            .execute("DELETE FROM faces WHERE image_id = ?1", [imgs[1]])
+            .unwrap();
+        // … und neu erkennen: neue IDs liegen über allen je vergebenen
+        let mut idx = cat.people_index().unwrap();
+        let new = cat
+            .save_faces(imgs[1], &[face(0.3), face(0.4)], &mut idx)
+            .unwrap();
+        assert!(new.iter().all(|&id| id > old_max), "{new:?} <= {old_max}");
+        // Erneutes Ersetzen (save_faces löscht vorher) vergibt wieder neue IDs
+        let again = cat.save_faces(imgs[1], &[face(0.5)], &mut idx).unwrap();
+        assert!(again[0] > *new.iter().max().unwrap(), "{again:?} / {new:?}");
     }
 }

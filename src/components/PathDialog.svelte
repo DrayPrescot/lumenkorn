@@ -9,14 +9,24 @@
   }: { title: string; hint: string; onsubmit: (path: string) => void; oncancel: () => void } = $props();
 
   let value = $state("");
+
+  // Tasten nie an die Ansichten dahinter durchreichen, auch ohne Fokus im
+  // Dialog. Escape schließt nur diesen (obersten) Dialog: ein darunterliegender
+  // Export-Dialog ignoriert Tasten, solange dieser offen ist.
+  function onkeydown(e: KeyboardEvent) {
+    if (e.key === "F11") return; // Vollbild bleibt auch bei offenem Dialog erreichbar
+    e.stopPropagation();
+    if (e.key === "Escape") oncancel();
+  }
 </script>
 
+<svelte:window onkeydowncapture={onkeydown} />
+
 <div class="backdrop" role="presentation" onclick={oncancel}>
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_click_events_have_key_events -->
   <form
     class="dialog"
     onclick={(e) => e.stopPropagation()}
-    onkeydown={(e) => e.key === "Escape" && oncancel()}
     onsubmit={(e) => {
       e.preventDefault();
       if (value.trim()) onsubmit(value.trim());

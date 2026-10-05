@@ -208,11 +208,20 @@
     const name = newTag.trim();
     if (!name || !detail) return;
     newTag = "";
-    detail.tags = await api.addTag(detail.id, name);
+    try {
+      detail.tags = await api.addTag(detail.id, name);
+    } catch (e) {
+      lib.notify(String(e), "error");
+    }
   }
 
   async function removeTag(name: string) {
-    if (detail) detail.tags = await api.removeTag(detail.id, name);
+    if (!detail) return;
+    try {
+      detail.tags = await api.removeTag(detail.id, name);
+    } catch (e) {
+      lib.notify(String(e), "error");
+    }
   }
 </script>
 

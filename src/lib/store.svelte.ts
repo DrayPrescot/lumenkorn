@@ -483,7 +483,14 @@ class Library {
   async rejectAndAdvance() {
     const ids = this.#rateTargets();
     if (!ids.length) return;
-    await this.#write(() => api.setFlag(ids, -1));
+    // Wird ohne await aufgerufen: Fehler hier melden statt als unbehandelte
+    // Ablehnung zu verpuffen; bei Fehler nicht weiterspringen.
+    try {
+      await this.#write(() => api.setFlag(ids, -1));
+    } catch (e) {
+      this.#writeFailed(e);
+      return;
+    }
     this.#patch(ids, { flag: -1 });
 
     if (this.mode === "library" && this.view === "compare") {
@@ -572,10 +579,14 @@ class Library {
   }
 
   async removeRoot(id: number) {
-    await api.removeRoot(id);
-    if (this.scope.type === "folder") this.scope = { type: "all" };
-    await Promise.all([this.loadRoots(), this.loadProjects()]);
-    await this.loadImages();
+    try {
+      await api.removeRoot(id);
+      if (this.scope.type === "folder") this.scope = { type: "all" };
+      await Promise.all([this.loadRoots(), this.loadProjects()]);
+      await this.loadImages();
+    } catch (e) {
+      this.notify(String(e), "error");
+    }
   }
 
   async createProject(name: string): Promise<Project | null> {
@@ -601,9 +612,13 @@ class Library {
   }
 
   async removeFolderFromProject(projectId: number, path: string) {
-    const p = await api.removeProjectFolder(projectId, path);
-    this.projects = this.projects.map((x) => (x.id === p.id ? p : x));
-    if (this.scope.type === "project" && this.scope.id === projectId) await this.loadImages(true);
+    try {
+      const p = await api.removeProjectFolder(projectId, path);
+      this.projects = this.projects.map((x) => (x.id === p.id ? p : x));
+      if (this.scope.type === "project" && this.scope.id === projectId) await this.loadImages(true);
+    } catch (e) {
+      this.notify(String(e), "error");
+    }
   }
 
   /** Person umbenennen (z. B. „Max“ → „Max Mustermann“). Gibt es den Namen
@@ -670,9 +685,13 @@ class Library {
   }
 
   async deleteProject(id: number) {
-    await api.deleteProject(id);
-    if (this.scope.type === "project" && this.scope.id === id) this.setScope({ type: "all" });
-    await this.loadProjects();
+    try {
+      await api.deleteProject(id);
+      if (this.scope.type === "project" && this.scope.id === id) this.setScope({ type: "all" });
+      await this.loadProjects();
+    } catch (e) {
+      this.notify(String(e), "error");
+    }
   }
 
   notify(text: string, kind: "info" | "error" = "info") {

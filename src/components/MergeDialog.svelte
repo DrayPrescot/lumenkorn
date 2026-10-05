@@ -68,6 +68,7 @@
   }
 
   function onkeydown(e: KeyboardEvent) {
+    if (e.key === "F11") return; // Vollbild bleibt auch bei offenem Dialog erreichbar
     e.stopPropagation();
     if (e.key === "Escape" && (!started || running)) onclose();
     // Enter startet – außer auf einem Knopf (z. B. „Abbrechen“), der seine eigene Aktion auslöst

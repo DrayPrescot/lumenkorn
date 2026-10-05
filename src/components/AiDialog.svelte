@@ -9,10 +9,21 @@
 
   const s = $derived(lib.ai);
   // Status beim Öffnen frisch holen (Modelle können inzwischen geladen sein)
+  let dialog = $state<HTMLDivElement>();
   onMount(() => {
     void lib.refreshAi();
     void lib.refreshPeople();
+    dialog?.focus();
   });
+
+  // Solange der Dialog offen ist, erreichen Tasten die Ansichten dahinter nicht
+  // (sonst bewerten/markieren X, P, 0–5 … die Fotos hinter dem Dialog) – auch
+  // wenn der Fokus gerade nicht im Dialog liegt.
+  function onkeydown(e: KeyboardEvent) {
+    if (e.key === "F11") return; // Vollbild bleibt auch bei offenem Dialog erreichbar
+    e.stopPropagation();
+    if (e.key === "Escape") onclose();
+  }
   const d = $derived(lib.aiDownload?.progress);
   const mb = (b: number) => `${num(Math.round(b / 1_000_000))} MB`;
   const pct = $derived(d && d.total ? Math.min(100, (d.done / d.total) * 100) : null);
@@ -120,15 +131,17 @@
   }
 </script>
 
+<svelte:window onkeydowncapture={onkeydown} />
+
 <div class="backdrop" role="presentation" onclick={onclose}>
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_click_events_have_key_events -->
   <div
+    bind:this={dialog}
     class="dialog"
     role="dialog"
     aria-label={t("KI")}
     tabindex="-1"
     onclick={(e) => e.stopPropagation()}
-    onkeydown={(e) => { e.stopPropagation(); if (e.key === "Escape") onclose(); }}
   >
     <header>
       <h3><Icon name="sparkle" size={15} /> {t("Lokale KI")}</h3>

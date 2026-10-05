@@ -396,7 +396,15 @@ class Develop {
     if (id === null || !this.ready) return;
     const seq = ++this.#beforeSeq;
     const p = { ...clone(DEFAULT_PARAMS), rotate: this.params.rotate, flipHorizontal: this.params.flipHorizontal };
-    const blob = await api.developRender(id, p, this.maxEdge);
+    let blob: Blob;
+    try {
+      blob = await api.developRender(id, p, this.maxEdge);
+    } catch (e) {
+      // Wird ohne await aufgerufen – Fehler melden statt als unbehandelte
+      // Ablehnung zu verlieren (veraltete Anfragen bleiben still)
+      if (id === this.imageId && seq === this.#beforeSeq) lib.notify(String(e), "error");
+      return;
+    }
     // Nur die neueste Anfrage zählt (schnelles Drehen)
     if (id !== this.imageId || seq !== this.#beforeSeq) return;
     if (this.beforeUrl) URL.revokeObjectURL(this.beforeUrl);
