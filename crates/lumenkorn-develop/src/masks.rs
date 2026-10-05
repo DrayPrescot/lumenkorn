@@ -63,13 +63,16 @@ pub(crate) fn release_cache() {
 
 /// Nur Masken in voller Auflösung verwerfen (nach einem Export).
 pub(crate) fn release_large() {
-    CACHE.lock().unwrap().retain(|e| e.3.len() <= 12 << 20);
+    CACHE
+        .lock()
+        .unwrap()
+        .retain(|e| e.3.len() <= crate::LARGE_PIXELS);
 }
 
 /// Wie [`evaluate`], aber zwischengespeichert: Solange sich die Formen einer
 /// Ebene nicht ändern (etwa beim Ziehen ihrer Regler), wird die Maske nicht
 /// neu berechnet. Für CPU und GPU gleichermaßen.
-pub fn evaluate_cached(
+pub(crate) fn evaluate_cached(
     layer: &MaskLayer,
     w: usize,
     h: usize,
@@ -243,7 +246,7 @@ fn shape_alpha(
 
 // --- Farbmasken ----------------------------------------------------------------
 
-pub use crate::color::oklab;
+use crate::color::oklab;
 
 /// Farbe an der Stelle (x, y) (normiert), gemittelt über eine kleine Fläche,
 /// damit Rauschen und einzelne Pixel nicht zählen.
@@ -305,7 +308,11 @@ fn color_alpha(img: &ImageF32, samples: &[ColorSample], range: f32, invert: bool
     box_blur(&raw, img.width, img.height, radius)
 }
 
-/// Trennbarer Kastenfilter (zwei Durchgänge) mit gleitender Summe.
+/// Trennbarer Kastenfilter (zwei Durchgänge) mit gleitender Summe. Am Rand
+/// schrumpft das Fenster (Mittel nur über vorhandene Pixel) – anders als bei
+/// `local::LumaMap`, deren Verhalten der GPU-Shader nachbildet. Die Farbmaske
+/// wird auch für die GPU hier auf der CPU bestimmt, eine Angleichung würde nur
+/// Masken verändern.
 fn box_blur(src: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
     let pass = |data: &[f32], w: usize, h: usize| -> Vec<f32> {
         // Zeilenweise; Ergebnis transponiert, damit der zweite Durchgang

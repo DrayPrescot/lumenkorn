@@ -27,12 +27,30 @@ use crate::source::{Source, SourceKind};
 use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
 
+// Feste Zahlen der Formeln. Der GPU-Shader bekommt sie beim Laden als
+// WGSL-Konstanten vorangestellt (`gpu::shader_source`) – so gibt es jede nur hier.
+
 /// Grundkontrast, den RAWs ohne Bearbeitung bekommen (wie eine Kamera-JPEG-Kurve).
 pub(crate) const RAW_BASE_CONTRAST: f32 = 0.18;
 /// Vorverstärkung vor der Basiskurve, damit Mittelgrau wie bei Kamera-JPEGs liegt.
-const RAW_BASE_GAIN: f32 = 1.45;
+pub(crate) const RAW_BASE_GAIN: f32 = 1.45;
 /// Szenenwert, der nach Vorverstärkung auf Weiß abgebildet wird.
-const RAW_WHITE: f32 = 4.0;
+pub(crate) const RAW_WHITE: f32 = 4.0;
+/// Beginn der weichen Schulter von [`soft_clip`].
+pub(crate) const SOFT_CLIP_KNEE: f32 = 0.8;
+/// Stärke von Lichter/Tiefen bei ±100: Exponent der Anhebung bzw. Absenkung.
+pub(crate) const SHADOW_HIGHLIGHT_GAIN: f32 = 1.1;
+/// Stärke der Klarheit bei ±100 (Anteil des lokalen Kontrasts).
+pub(crate) const CLARITY_GAIN: f32 = 0.8;
+/// Anteil, mit dem die S-Kurve bei ±100 Kontrast höchstens eingemischt wird.
+pub(crate) const CONTRAST_MIX: f32 = 0.85;
+/// Verstärkung des Unscharf-Maskierens bei 100.
+pub(crate) const SHARPEN_GAIN: f32 = 1.6;
+/// Helligkeitsunterschiede darunter gelten als Rauschen und werden nicht geschärft.
+pub(crate) const SHARPEN_THRESHOLD: f32 = 0.004;
+/// Deckkraft und Farbe der roten Maskenüberlagerung.
+pub(crate) const OVERLAY_OPACITY: f32 = 0.55;
+pub(crate) const OVERLAY_COLOR: [f32; 3] = [0.95, 0.12, 0.12];
 
 /// Zusätzliche Eingaben für [`render_with`].
 pub struct RenderOptions<'a> {
@@ -122,7 +140,7 @@ pub(crate) fn release_large() {
     REPAIRED
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .retain(|(_, s, _)| s.image.data.len() <= 12 << 20);
+        .retain(|(_, s, _)| s.image.data.len() <= crate::LARGE_PIXELS);
 }
 
 /// Liefert die reparierte Fassung und ihre Kennung (nie 0).
@@ -170,38 +188,43 @@ pub fn render(src: &Source, params: &DevelopParams) -> ImageF32 {
     render_with(src, params, &RenderOptions::default())
 }
 
+/// Versucht, auf der GPU zu entwickeln (falls eingeschaltet und das Bild
+/// passt); `None` heißt: auf der CPU rechnen.
+/// Mit Reparaturen bekommt die GPU die zwischengespeicherte reparierte Quelle
+/// und Parameter ohne Entrauschen/Reparaturen – beides steckt schon darin.
+fn try_gpu(
+    src: &Source,
+    params: &DevelopParams,
+    opts: &RenderOptions,
+    rgb8: bool,
+) -> Option<crate::gpu::Rendered> {
+    let g = crate::gpu::active().filter(|g| g.fits(src.image.width * src.image.height))?;
+    let original = &src.image;
+    let p = params.sanitized();
+    let result = if has_repairs(&p) {
+        let (prepared, ident) = repaired_source(src, &p, opts);
+        let local = RenderOptions {
+            denoised: None,
+            repairs: &NoRepairs,
+            ..*opts
+        };
+        let mut gp = params.clone();
+        gp.denoise = None;
+        gp.repairs.clear();
+        g.render_masked(&prepared, &gp, &local, rgb8, original, ident)
+    } else {
+        g.render_masked(src, params, opts, rgb8, original, 0)
+    };
+    result.map_err(|e| crate::gpu::note_error(&e)).ok()
+}
+
 /// Entwickelt auf der GPU, wenn eingeschaltet und möglich, sonst auf der CPU.
 /// Das Ergebnis ist (bis auf Rundung) dasselbe.
 pub fn render_auto(src: &Source, params: &DevelopParams, opts: &RenderOptions) -> ImageF32 {
-    if let Some(g) = crate::gpu::active().filter(|g| g.fits(src.image.width * src.image.height)) {
-        let p = params.sanitized();
-        let original = &src.image;
-        let prepared;
-        let local;
-        let (src, opts, ident) = if has_repairs(&p) {
-            let id;
-            (prepared, id) = repaired_source(src, &p, opts);
-            local = RenderOptions {
-                denoised: None,
-                repairs: &NoRepairs,
-                ..*opts
-            };
-            (&*prepared, &local, id)
-        } else {
-            (src, opts, 0)
-        };
-        let mut gp = params.clone();
-        if has_repairs(&p) {
-            gp.denoise = None;
-            gp.repairs.clear();
-        }
-        match g.render_masked(src, &gp, opts, false, original, ident) {
-            Ok(crate::gpu::Rendered::Float(img)) => return img,
-            Ok(_) => {}
-            Err(e) => crate::gpu::note_error(&e),
-        }
+    match try_gpu(src, params, opts, false) {
+        Some(crate::gpu::Rendered::Float(img)) => img,
+        _ => render_with(src, params, opts),
     }
-    render_with(src, params, opts)
 }
 
 /// Wie [`render_auto`], aber gleich als 8-Bit-RGB (Vorschau, Thumbnails) –
@@ -211,35 +234,10 @@ pub fn render_auto_rgb8(
     params: &DevelopParams,
     opts: &RenderOptions,
 ) -> image::RgbImage {
-    if let Some(g) = crate::gpu::active().filter(|g| g.fits(src.image.width * src.image.height)) {
-        let p = params.sanitized();
-        let original = &src.image;
-        let prepared;
-        let local;
-        let (src, opts, ident) = if has_repairs(&p) {
-            let id;
-            (prepared, id) = repaired_source(src, &p, opts);
-            local = RenderOptions {
-                denoised: None,
-                repairs: &NoRepairs,
-                ..*opts
-            };
-            (&*prepared, &local, id)
-        } else {
-            (src, opts, 0)
-        };
-        let mut gp = params.clone();
-        if has_repairs(&p) {
-            gp.denoise = None;
-            gp.repairs.clear();
-        }
-        match g.render_masked(src, &gp, opts, true, original, ident) {
-            Ok(crate::gpu::Rendered::Rgb8(img)) => return img,
-            Ok(_) => {}
-            Err(e) => crate::gpu::note_error(&e),
-        }
+    match try_gpu(src, params, opts, true) {
+        Some(crate::gpu::Rendered::Rgb8(img)) => img,
+        _ => crate::output::to_rgb8(&render_with(src, params, opts)),
     }
-    crate::output::to_rgb8(&render_with(src, params, opts))
 }
 
 pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -> ImageF32 {
@@ -323,10 +321,10 @@ pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -
             .par_iter_mut()
             .zip(alpha.par_iter())
             .for_each(|(px, a)| {
-                let k = a * 0.55;
-                px[0] += (0.95 - px[0]) * k;
-                px[1] += (0.12 - px[1]) * k;
-                px[2] += (0.12 - px[2]) * k;
+                let k = a * OVERLAY_OPACITY;
+                for (v, c) in px.iter_mut().zip(OVERLAY_COLOR) {
+                    *v += (c - *v) * k;
+                }
             });
     }
 
@@ -429,11 +427,11 @@ fn tone_px(px: [f32; 3], y0: f32, x: usize, yy: usize, t: &Tone, maps: &ToneMaps
         let b = m.sample(x, yy);
         if sh != 0.0 {
             let ws = (1.0 - smoothstep(0.0, 0.55, b)).powi(2);
-            v *= (sh * 1.1 * ws * (1.0 - v).max(0.0)).exp();
+            v *= (sh * SHADOW_HIGHLIGHT_GAIN * ws * (1.0 - v).max(0.0)).exp();
         }
         if hi != 0.0 {
             let wh = smoothstep(0.4, 1.0, b).powi(2);
-            v = 1.0 - (1.0 - v) * (-hi * 1.1 * wh * v.max(0.0)).exp();
+            v = 1.0 - (1.0 - v) * (-hi * SHADOW_HIGHLIGHT_GAIN * wh * v.max(0.0)).exp();
         }
     }
 
@@ -442,7 +440,7 @@ fn tone_px(px: [f32; 3], y0: f32, x: usize, yy: usize, t: &Tone, maps: &ToneMaps
     if let Some(m) = &maps.detail {
         let d = m.sample(x, yy);
         let mid = 4.0 * v * (1.0 - v);
-        v += t.clarity * 0.8 * (y0 - d) * mid;
+        v += t.clarity * CLARITY_GAIN * (y0 - d) * mid;
     }
 
     apply_luma(px, y0, v.clamp(0.0, 1.0))
@@ -603,10 +601,10 @@ fn alpha_bounds(alpha: &[f32], w: usize, h: usize) -> Option<(usize, usize, usiz
     Some((x0, y0, x1, y1))
 }
 
-/// Weiche Schulter über 0,8: helle Bereiche laufen nicht abrupt ins Weiß.
+/// Weiche Schulter über [`SOFT_CLIP_KNEE`]: helle Bereiche laufen nicht abrupt ins Weiß.
 #[inline]
 fn soft_clip(v: f32) -> f32 {
-    const K: f32 = 0.8;
+    const K: f32 = SOFT_CLIP_KNEE;
     if v <= K {
         v.max(0.0)
     } else {
@@ -663,7 +661,7 @@ fn s_curve(v: f32, amount: f32) -> f32 {
     } else {
         0.5 - ((1.0 - 2.0 * v).asin() / 3.0).sin() // Umkehrung von smoothstep
     };
-    v + (target - v) * amount.abs().min(1.0) * 0.85
+    v + (target - v) * amount.abs().min(1.0) * CONTRAST_MIX
 }
 
 /// Überträgt eine Helligkeitsänderung auf RGB, ohne den Farbton zu verschieben.
@@ -722,8 +720,8 @@ fn sharpen(img: &ImageF32, amount: f32) -> ImageF32 {
                 + at(x + 1, yy + 1))
                 / 16.0;
             let d = y[i] - blur;
-            let d = if d.abs() < 0.004 { 0.0 } else { d };
-            let delta = amount * 1.6 * d;
+            let d = if d.abs() < SHARPEN_THRESHOLD { 0.0 } else { d };
+            let delta = amount * SHARPEN_GAIN * d;
             fit_gamut([c[0] + delta, c[1] + delta, c[2] + delta], y[i] + delta)
         })
         .collect();

@@ -20,12 +20,7 @@ const MAGIC: &[u8; 4] = b"LWDN";
 
 /// Dateipfad zu einer ID; `None` bei unsicheren IDs.
 pub fn path(dir: &Path, id: &str) -> Option<std::path::PathBuf> {
-    let ok = !id.is_empty()
-        && id.len() < 100
-        && id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-    ok.then(|| dir.join(format!("{id}.lwdn")))
+    crate::repair::valid_id(id).then(|| dir.join(format!("{id}.lwdn")))
 }
 
 pub fn write(path: &Path, w: usize, h: usize, data: &[[f32; 3]]) -> Result<()> {

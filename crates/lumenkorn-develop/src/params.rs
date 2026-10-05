@@ -3,7 +3,8 @@
 //! Wird als JSON im Katalog gespeichert. Felder dürfen hinzukommen (mit
 //! sinnvollem Standardwert via `#[serde(default)]`), aber nie ihre Bedeutung
 //! ändern – sonst sähen alte Bearbeitungen plötzlich anders aus. Für echte
-//! Brüche gibt es `version`.
+//! Brüche gibt es `version`; bisher gab es keinen, daher liest es noch niemand
+//! (eine Migration käme beim Laden dazu).
 
 use serde::{Deserialize, Serialize};
 
@@ -355,6 +356,8 @@ impl MaskShape {
                         .iter()
                         .all(|s| f(s.x) && f(s.y) && s.lab.iter().all(|v| f(*v)))
             }
+            // Ohne Längengrenze (anders als `repair::valid_id`): zu lange IDs
+            // lehnt erst der Maskenspeicher beim Laden ab, die Form bleibt dann leer.
             MaskShape::Raster { mask_id, .. } => {
                 !mask_id.is_empty()
                     && mask_id
@@ -502,11 +505,7 @@ impl DevelopParams {
             straighten: c(self.straighten, -45.0, 45.0),
             crop,
             denoise: self.denoise.as_ref().and_then(|d| {
-                let ok = !d.id.is_empty()
-                    && d.id.len() < 100
-                    && d.id
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+                let ok = crate::repair::valid_id(&d.id);
                 let amount = if d.amount.is_finite() {
                     d.amount.clamp(0.0, 100.0)
                 } else {

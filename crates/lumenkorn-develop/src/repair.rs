@@ -24,6 +24,8 @@ use std::sync::{Arc, Mutex};
 
 const MAGIC: &[u8; 4] = b"LWRP";
 
+/// Sichere ID für Dateinamen (Flicken, entrauschte Fassungen): nicht leer,
+/// kurz und ohne Pfadzeichen – IDs stammen aus gespeicherten Parametern.
 pub fn valid_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() < 100

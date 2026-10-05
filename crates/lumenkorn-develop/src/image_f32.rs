@@ -1,5 +1,6 @@
 //! Ein einfaches Float-RGB-Bild. Bewusst ohne Generics, damit die Pipeline
-//! übersichtlich bleibt und sich später leicht auf die GPU übertragen lässt.
+//! übersichtlich bleibt; das flache `[f32; 3]`-Feld lässt sich direkt in
+//! GPU-Puffer umrechnen.
 
 use rayon::prelude::*;
 
@@ -11,14 +12,6 @@ pub struct ImageF32 {
 }
 
 impl ImageF32 {
-    pub fn new(width: usize, height: usize) -> Self {
-        Self {
-            width,
-            height,
-            data: vec![[0.0; 3]; width * height],
-        }
-    }
-
     pub fn from_fn(
         width: usize,
         height: usize,
@@ -77,12 +70,12 @@ impl ImageF32 {
     }
 
     /// Verkleinern durch Mittelung aller Quellpixel, die ein Zielpixel abdeckt.
-    pub fn resize_area(&self, w: usize, h: usize) -> ImageF32 {
+    pub(crate) fn resize_area(&self, w: usize, h: usize) -> ImageF32 {
         let sx = self.width as f64 / w as f64;
         let sy = self.height as f64 / h as f64;
         let src = self;
-        // Direkt in die fertige Ausgabe schreiben (früher Zeilen-Vecs, danach
-        // zusammengefügt – eine zweite Kopie der Ausgabe)
+        // Direkt in die fertige Ausgabe schreiben – Zeilen-Vecs müssten danach
+        // noch einmal zusammenkopiert werden.
         let mut data = vec![[0f32; 3]; w * h];
         data.par_chunks_mut(w.max(1))
             .enumerate()

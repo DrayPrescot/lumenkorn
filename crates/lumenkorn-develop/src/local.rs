@@ -83,6 +83,9 @@ impl LumaMap {
     }
 }
 
+// Kastenfilter mit geklemmtem Rand (Randpixel wiederholt). Die GPU rechnet
+// die Karten identisch (`blur_h`/`blur_v` in pipeline.wgsl) – Randverhalten
+// daher nicht an `masks::box_blur` angleichen, sonst weichen CPU und GPU ab.
 fn box_blur_h(data: &mut [f32], w: usize, _h: usize, r: usize) {
     if r == 0 {
         return;

@@ -2,6 +2,10 @@
 // pipeline.rs (CPU). Jede Änderung dort muss hier nachgezogen werden; der Test
 // `gpu_matches_cpu` vergleicht beide Wege Pixel für Pixel.
 //
+// Die festen Zahlen der Formeln (RAW_WHITE, HSL_CENTERS, SHARPEN_GAIN …) sind
+// hier nicht definiert: `gpu::shader_source` stellt sie aus pipeline.rs und
+// color.rs als WGSL-Konstanten voran.
+//
 // Bilder liegen als array<vec4<f32>> (RGB + ungenutzt), Helligkeit, Masken und
 // Karten als array<f32>. Jeder Durchlauf bekommt eigene Parameter über einen
 // dynamischen Offset in den Uniform-Puffer.
@@ -110,11 +114,8 @@ fn s_curve(v: f32, amount: f32) -> f32 {
     } else {
         tgt = 0.5 - sin(asin(1.0 - 2.0 * v) / 3.0);
     }
-    return v + (tgt - v) * min(abs(amount), 1.0) * 0.85;
+    return v + (tgt - v) * min(abs(amount), 1.0) * CONTRAST_MIX;
 }
-
-const RAW_BASE_GAIN: f32 = 1.45;
-const RAW_WHITE: f32 = 4.0;
 
 fn base_t(v: f32) -> f32 {
     let x = v * RAW_BASE_GAIN;
@@ -138,7 +139,7 @@ fn base_curve(c: vec3<f32>) -> vec3<f32> {
 }
 
 fn soft_clip(v: f32) -> f32 {
-    let k = 0.8;
+    let k = SOFT_CLIP_KNEE;
     if (v <= k) {
         return max(v, 0.0);
     }
@@ -266,19 +267,19 @@ fn tone(@builtin(global_invocation_id) id: vec3<u32>) {
         if (u.shadows != 0.0) {
             let s = 1.0 - sstep(0.0, 0.55, b);
             let ws = s * s;
-            v *= exp(u.shadows * 1.1 * ws * max(1.0 - v, 0.0));
+            v *= exp(u.shadows * SHADOW_HIGHLIGHT_GAIN * ws * max(1.0 - v, 0.0));
         }
         if (u.highlights != 0.0) {
             let s = sstep(0.4, 1.0, b);
             let wh = s * s;
-            v = 1.0 - (1.0 - v) * exp(-u.highlights * 1.1 * wh * max(v, 0.0));
+            v = 1.0 - (1.0 - v) * exp(-u.highlights * SHADOW_HIGHLIGHT_GAIN * wh * max(v, 0.0));
         }
     }
     v = s_curve(clamp(v, 0.0, 1.0), u.contrast);
     if ((u.flags & F_DETAIL) != 0u) {
         let d = sample_map(1u, u.dw, u.dh, id.x, id.y);
         let mid = 4.0 * v * (1.0 - v);
-        v += u.clarity * 0.8 * (y0 - d) * mid;
+        v += u.clarity * CLARITY_GAIN * (y0 - d) * mid;
     }
     outa[i] = vec4<f32>(apply_luma(outa[i].xyz, y0, clamp(v, 0.0, 1.0)), 1.0);
 }
@@ -332,8 +333,6 @@ fn oklab_to_linear(c: vec3<f32>) -> vec3<f32> {
         -0.0041960863 * l - 0.7034186 * m + 1.7076147 * s,
     );
 }
-
-const HSL_CENTERS = array<f32, 8>(29.0, 60.0, 110.0, 142.0, 195.0, 264.0, 294.0, 328.0);
 
 fn hsl_band(k: u32, i: u32) -> f32 {
     // k: 0 Farbton, 1 Sättigung, 2 Luminanz
@@ -423,10 +422,10 @@ fn sharpen(@builtin(global_invocation_id) id: vec3<u32>) {
         + fa[u32(ym) * w + u32(xm)] + fa[u32(ym) * w + u32(xp)]
         + fa[u32(yp) * w + u32(xm)] + fa[u32(yp) * w + u32(xp)]) / 16.0;
     var d = c - blur;
-    if (abs(d) < 0.004) {
+    if (abs(d) < SHARPEN_THRESHOLD) {
         d = 0.0;
     }
-    let delta = u.amount * 1.6 * d;
+    let delta = u.amount * SHARPEN_GAIN * d;
     let i = id.y * u.w + id.x;
     outa[i] = vec4<f32>(fit_gamut(ina[i].xyz + vec3<f32>(delta), c + delta), 1.0);
 }
@@ -436,9 +435,9 @@ fn sharpen(@builtin(global_invocation_id) id: vec3<u32>) {
 fn overlay(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= u.w || id.y >= u.h) { return; }
     let i = id.y * u.w + id.x;
-    let k = fa[i] * 0.55;
+    let k = fa[i] * OVERLAY_OPACITY;
     let p = outa[i].xyz;
-    outa[i] = vec4<f32>(p + (vec3<f32>(0.95, 0.12, 0.12) - p) * k, 1.0);
+    outa[i] = vec4<f32>(p + (OVERLAY_COLOR - p) * k, 1.0);
 }
 
 // Pixel des gedrehten und gespiegelten Bildes (Größe ow×oh) aus dem

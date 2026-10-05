@@ -102,7 +102,7 @@ static PROXY: std::sync::Mutex<Option<ProxyEntry>> = std::sync::Mutex::new(None)
 /// Wie [`read`], aber auf höchstens `max_edge` verkleinert. Thumbnail,
 /// Vorschau, Gesichtsanalyse und Bearbeitungs-Proxy fragen dasselbe Bild kurz
 /// nacheinander an – ein 150-MP-Panorama wird so nur einmal voll gelesen.
-pub fn read_downscaled(path: &Path, max_edge: usize) -> Result<(ImageF32, bool)> {
+pub(crate) fn read_downscaled(path: &Path, max_edge: usize) -> Result<(ImageF32, bool)> {
     if max_edge > PROXY_EDGE {
         let (img, scene) = read(path)?;
         return Ok((img.downscale_to(max_edge), scene));

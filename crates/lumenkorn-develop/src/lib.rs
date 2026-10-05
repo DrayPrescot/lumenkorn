@@ -11,8 +11,9 @@
 //!                              │   (für die Bearbeitung als Proxy, z. B. 2048 px)
 //!                              ▼
 //!                       pipeline::render(params)
-//!                              │   Geometrie → Weißabgleich → Belichtung → Basiskurve
-//!                              │   → Tonwerte (lokal) → Präsenz → Farbe → Schärfe
+//!                              │   Entrauschen/Reparaturen → Weißabgleich → Belichtung
+//!                              │   → Basiskurve → Tonwerte → Farbe → HSL → Masken
+//!                              │   → Schärfe → Geometrie (Einzelheiten: [`pipeline`])
 //!                              ▼
 //!                       Anzeige-RGB (sRGB-kodiert, 0..1) ─▶ JPEG / 16-Bit-TIFF
 //! ```
@@ -41,6 +42,10 @@ pub mod repair;
 pub mod source;
 
 pub use error::{Error, Result};
+
+/// Zwischenspeicher bis zu dieser Größe (Pixel, ~12,6 MP) gelten als „klein“
+/// (Vorschau, Thumbnails) und überleben [`release_large_caches`].
+pub(crate) const LARGE_PIXELS: usize = 12 << 20;
 
 /// Gibt alle Zwischenspeicher der Bildbearbeitung frei (reparierte Quelle,
 /// Masken, GPU-Puffer). Für das Verlassen des Entwickeln-Modus: Danach

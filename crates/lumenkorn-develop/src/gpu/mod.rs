@@ -90,10 +90,9 @@ pub fn status() -> GpuStatus {
     }
 }
 
-/// Die GPU, falls eingeschaltet und bereit. Wartet nie auf die Erkennung.
 /// Gibt die zwischengespeicherten GPU-Puffer frei (Bildpuffer, Masken).
 /// Geräte und Shader bleiben – das nächste Rendern legt die Puffer neu an.
-pub fn trim() {
+pub(crate) fn trim() {
     if let Some(Ok(g)) = GPU.get() {
         let mut st = g.state.lock().unwrap();
         st.sets.clear();
@@ -103,14 +102,15 @@ pub fn trim() {
 
 /// Nur die großen Puffer freigeben (nach einem Export) – die der Vorschau
 /// bleiben, damit das Weiterbearbeiten nicht neu hochladen muss.
-pub fn trim_large() {
+pub(crate) fn trim_large() {
     if let Some(Ok(g)) = GPU.get() {
         let mut st = g.state.lock().unwrap();
-        st.sets.retain(|s| s.cap <= KEEP_MAX);
-        st.alphas.retain(|(a, _)| a.len() <= KEEP_MAX);
+        st.sets.retain(|s| s.cap <= crate::LARGE_PIXELS);
+        st.alphas.retain(|(a, _)| a.len() <= crate::LARGE_PIXELS);
     }
 }
 
+/// Die GPU, falls eingeschaltet und bereit. Wartet nie auf die Erkennung.
 pub(crate) fn active() -> Option<&'static Gpu> {
     if !ENABLED.load(Ordering::Relaxed) {
         return None;
@@ -252,8 +252,6 @@ fn lines(n: usize) -> [u32; 3] {
 
 /// Größte Helligkeitskarte (local.rs: 640 px lange Kante)
 const MAP_CAP: usize = 640 * 640;
-/// Puffer bis zu dieser Größe (Pixel) gelten als „klein“ (Vorschau, Thumbnails).
-const KEEP_MAX: usize = 12 << 20;
 /// Größere Sätze bleiben bis hierhin für die Zoomansicht erhalten (sonst
 /// würde jedes Verschieben bei 100 % Gigabytes neu anlegen und hochladen);
 /// freigegeben werden sie beim Verlassen des Entwickelns bzw. nach dem Export.
@@ -314,6 +312,46 @@ struct State {
 /// Ein vollständiger Inhalts-Hash wäre bei jedem Reglerzug zu teuer.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) struct ImageKey(usize, usize, usize, u64, u64);
+
+/// Shader-Quelltext mit den Konstanten aus pipeline.rs/color.rs als Kopf –
+/// so stehen die Zahlen nur einmal im Code. `{:?}` schreibt f32 immer mit
+/// Dezimalpunkt und exakt umkehrbar, der Shader rechnet also mit denselben Werten.
+fn shader_source() -> String {
+    use crate::pipeline::{
+        CLARITY_GAIN, CONTRAST_MIX, OVERLAY_COLOR, OVERLAY_OPACITY, RAW_BASE_GAIN, RAW_WHITE,
+        SHADOW_HIGHLIGHT_GAIN, SHARPEN_GAIN, SHARPEN_THRESHOLD, SOFT_CLIP_KNEE,
+    };
+    let f = |name: &str, v: f32| format!("const {name}: f32 = {v:?};\n");
+    let list = |v: &[f32]| {
+        v.iter()
+            .map(|x| format!("{x:?}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let c = crate::color::HSL_CENTERS;
+    [
+        f("RAW_BASE_GAIN", RAW_BASE_GAIN),
+        f("RAW_WHITE", RAW_WHITE),
+        f("SOFT_CLIP_KNEE", SOFT_CLIP_KNEE),
+        f("SHADOW_HIGHLIGHT_GAIN", SHADOW_HIGHLIGHT_GAIN),
+        f("CLARITY_GAIN", CLARITY_GAIN),
+        f("CONTRAST_MIX", CONTRAST_MIX),
+        f("SHARPEN_GAIN", SHARPEN_GAIN),
+        f("SHARPEN_THRESHOLD", SHARPEN_THRESHOLD),
+        f("OVERLAY_OPACITY", OVERLAY_OPACITY),
+        format!(
+            "const OVERLAY_COLOR = vec3<f32>({});\n",
+            list(&OVERLAY_COLOR)
+        ),
+        format!(
+            "const HSL_CENTERS = array<f32, {}>({});\n",
+            c.len(),
+            list(&c)
+        ),
+        include_str!("pipeline.wgsl").to_string(),
+    ]
+    .concat()
+}
 
 /// Zahl der Stichproben für [`image_key`].
 const KEY_SAMPLES: usize = 4096;
@@ -423,7 +461,7 @@ impl Gpu {
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("pipeline.wgsl"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("pipeline.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(shader_source().into()),
         });
         let storage_entry = |binding: u32, read_only: bool| wgpu::BindGroupLayoutEntry {
             binding,
