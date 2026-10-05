@@ -65,7 +65,7 @@ jobs:
       - name: Cache sample RAWs
         if: runner.os == 'Linux'
         id: rawcache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: raw-samples
           key: oiio-raw-samples-ci-v1
