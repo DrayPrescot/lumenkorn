@@ -748,6 +748,12 @@ class Library {
     this.view = "people";
   }
 
+  /** In der Personenübersicht ist die Gesichter-Prüfung einer Person offen
+   *  (setzt PeopleView) – die Werkzeugleiste zeigt dann „‹ Personen“. */
+  peopleReviewOpen = $state(false);
+  /** Zähler: Werkzeugleiste bittet PeopleView, die Prüfung zu schließen */
+  peopleBack = $state(0);
+
   // --- Seitenleiste ----------------------------------------------------------
 
   /** Eingeklappte Bereiche der Seitenleiste (bleibt über Neustarts erhalten) */

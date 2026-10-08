@@ -34,7 +34,12 @@
     </button>
   </div>
 
-  {#if lib.mode === "library" && (lib.view === "loupe" || lib.view === "compare" || lib.view === "people")}
+  {#if lib.mode === "library" && lib.view === "people" && lib.peopleReviewOpen}
+    <!-- Wie bei den Fotos einer benannten Person: an dieser Stelle zurück zur Personenübersicht -->
+    <button class="btn quiet" onclick={() => lib.peopleBack++} title={t("Zurück zur Übersicht aller Personen")}>
+      <Icon name="back" size={14} /> {t("Personen")}
+    </button>
+  {:else if lib.mode === "library" && (lib.view === "loupe" || lib.view === "compare" || lib.view === "people")}
     <button class="btn quiet" onclick={() => (lib.view = "grid")}><Icon name="back" size={14} /> {t("Raster")}</button>
   {/if}
   {#if lib.scope.type === "person" && lib.view !== "people"}

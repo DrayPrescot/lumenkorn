@@ -6,7 +6,7 @@
   import Icon from "./Icon.svelte";
   import PersonName from "./PersonName.svelte";
   import { isTyping } from "../lib/keys";
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { t } from "../lib/i18n";
 
   const named = $derived(lib.people.filter((p) => p.name));
@@ -108,6 +108,9 @@
     } else if (e.key === "Escape" && picked.size) {
       e.stopPropagation();
       picked = new Set();
+    } else if (e.key === "Escape") {
+      e.stopPropagation();
+      review = null;
     }
   }
 
@@ -126,6 +129,19 @@
     if (p) openReview(p);
   });
 
+  // Werkzeugleiste: „‹ Personen“ statt „‹ Raster“, solange eine Prüfung offen ist
+  $effect(() => {
+    lib.peopleReviewOpen = !!review;
+    return () => (lib.peopleReviewOpen = false);
+  });
+  let backSeen = lib.peopleBack;
+  $effect(() => {
+    if (lib.peopleBack !== backSeen) {
+      backSeen = lib.peopleBack;
+      untrack(() => (review = null));
+    }
+  });
+
   const st = $derived(lib.peopleStatus);
 </script>
 
@@ -135,7 +151,6 @@
   {#if review}
     {@const p = review.person}
     <div class="review-head">
-      <button class="btn quiet" onclick={() => (review = null)}><Icon name="back" size={14} /> {t("Personen")}</button>
       <h2><PersonName person={p} big onrenamed={reopen} /></h2>
       <span class="muted"
         >{p.suggested
