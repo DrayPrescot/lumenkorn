@@ -47,6 +47,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   not just the 30 before and after the current one; the mouse wheel scrolls
   it sideways.
 - Develop: HSL moved below Details and noise reduction.
+- People: unnamed groups with up to 20 photos are collected under a
+  collapsed “Sonstige” (Other) section, so the overview only lists the larger
+  groups; single faces are shown from there on request.
 - The window starts maximized; `F11` toggles fullscreen.
 - RAW detail: Bayer sensors are demosaiced with RCD instead of PPG (sharper
   fine detail, far fewer maze and false-color artifacts), Fujifilm X-Trans with

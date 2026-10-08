@@ -10,9 +10,17 @@
 
   const named = $derived(lib.people.filter((p) => p.name));
   const groups = $derived(lib.people.filter((p) => !p.name));
-  /** Kleine Gruppen (einzelne Gesichter) zunächst ausblenden */
+  /** Unbenannte Gruppen bis zu dieser Fotozahl stehen unter „Sonstige“ –
+   *  bei großen Bibliotheken sind das Hunderte, die die Übersicht verstopfen. */
+  const OTHER_MAX_PHOTOS = 20;
+  const mainGroups = $derived(groups.filter((g) => g.imageCount > OTHER_MAX_PHOTOS));
+  const smallGroups = $derived(groups.filter((g) => g.imageCount <= OTHER_MAX_PHOTOS));
+  const singles = $derived(smallGroups.filter((g) => g.faceCount < 2).length);
+  /** „Sonstige“ aufgeklappt; Karten werden erst dann gezeichnet */
+  let showOther = $state(false);
+  /** Einzelne Gesichter (Gruppen aus nur einem Gesicht) zunächst ausblenden */
   let showSmall = $state(false);
-  const shownGroups = $derived(showSmall ? groups : groups.filter((g) => g.faceCount >= 2));
+  const otherGroups = $derived(showSmall ? smallGroups : smallGroups.filter((g) => g.faceCount >= 2));
 
   let review = $state<{ person: Person; faces: FaceInfo[] } | null>(null);
   let names = $state<Record<number, string>>({});
@@ -229,42 +237,63 @@
       {/each}
     </div>
 
-    <h3>
-      {t("Unbenannte Gruppen")} <span class="muted">{shownGroups.length}</span>
-      {#if groups.length !== shownGroups.length || showSmall}
-        <label class="check">
-          <input type="checkbox" bind:checked={showSmall} /> {t("Einzelne Gesichter zeigen ({n})", { n: groups.length - groups.filter((g) => g.faceCount >= 2).length })}
-        </label>
-      {/if}
-    </h3>
+    <h3>{t("Unbenannte Gruppen")} <span class="muted">{mainGroups.length}</span></h3>
     <div class="cards">
-      {#each shownGroups as p (p.id)}
-        <div class="card">
-          <button class="avatar" onclick={() => openReview(p)} title={t("Gesichter dieser Gruppe")}>
-            {#if p.coverFace}<img src={faceUrl(p.coverFace)} alt="" loading="lazy" />{/if}
-          </button>
-          <form onsubmit={(e) => (e.preventDefault(), rename(p))}>
-            <input
-              type="text"
-              placeholder={t("Wer ist das?")}
-              list="person-names"
-              bind:value={names[p.id]}
-              onkeydown={(e) => e.stopPropagation()}
-            />
-          </form>
-          <div class="muted small">
-            {t(p.faceCount === 1 ? "{n} Gesicht" : "{n} Gesichter", { n: p.faceCount })}, {t(p.imageCount === 1 ? "{n} Foto" : "{n} Fotos", { n: p.imageCount })}
-          </div>
-        </div>
+      {#each mainGroups as p (p.id)}
+        {@render groupCard(p)}
       {:else}
-        <p class="muted hint">{t("Keine unbenannten Gruppen.")}</p>
+        <p class="muted hint">{t("Keine unbenannten Gruppen mit mehr als {n} Fotos.", { n: OTHER_MAX_PHOTOS })}</p>
       {/each}
     </div>
+
+    {#if smallGroups.length}
+      <h3>
+        <button class="toggle" aria-expanded={showOther} onclick={() => (showOther = !showOther)}>
+          <Icon name="chevron" size={12} />
+          {t("Sonstige")} <span class="muted">{otherGroups.length}</span>
+        </button>
+        <span class="muted note">{t("unbenannt, bis {n} Fotos", { n: OTHER_MAX_PHOTOS })}</span>
+        {#if showOther && singles}
+          <label class="check">
+            <input type="checkbox" bind:checked={showSmall} /> {t("Einzelne Gesichter zeigen ({n})", { n: singles })}
+          </label>
+        {/if}
+      </h3>
+      {#if showOther}
+        <div class="cards">
+          {#each otherGroups as p (p.id)}
+            {@render groupCard(p)}
+          {:else}
+            <p class="muted hint">{t("Nur einzelne Gesichter – Häkchen oben zeigt sie.")}</p>
+          {/each}
+        </div>
+      {/if}
+    {/if}
     <datalist id="person-names">
       {#each named as p (p.id)}<option value={p.name}></option>{/each}
     </datalist>
   {/if}
 </div>
+
+{#snippet groupCard(p: Person)}
+  <div class="card">
+    <button class="avatar" onclick={() => openReview(p)} title={t("Gesichter dieser Gruppe")}>
+      {#if p.coverFace}<img src={faceUrl(p.coverFace)} alt="" loading="lazy" />{/if}
+    </button>
+    <form onsubmit={(e) => (e.preventDefault(), rename(p))}>
+      <input
+        type="text"
+        placeholder={t("Wer ist das?")}
+        list="person-names"
+        bind:value={names[p.id]}
+        onkeydown={(e) => e.stopPropagation()}
+      />
+    </form>
+    <div class="muted small">
+      {t(p.faceCount === 1 ? "{n} Gesicht" : "{n} Gesichter", { n: p.faceCount })}, {t(p.imageCount === 1 ? "{n} Foto" : "{n} Fotos", { n: p.imageCount })}
+    </div>
+  </div>
+{/snippet}
 
 <style>
   .people {
@@ -284,6 +313,23 @@
     gap: 10px;
     margin: 18px 0 10px;
     font-size: var(--step-0);
+  }
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font: inherit;
+    font-weight: 600;
+  }
+  .toggle :global(svg) {
+    transition: transform 0.15s;
+  }
+  .toggle[aria-expanded="true"] :global(svg) {
+    transform: rotate(90deg);
+  }
+  .note {
+    font-weight: 400;
+    font-size: var(--step--1);
   }
   .cards {
     display: grid;
