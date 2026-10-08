@@ -96,11 +96,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
   are gone.
 
 ### Fixed
+- People: the face review of a person or group has “‹ Personen” at the top
+  left, like a person's photos (it showed “‹ Raster” there plus a second back
+  button). `Esc` also closes the review.
 - Sky detection selected far too much (walls, grass, foliage, studio
-  backdrops). Each area must now look like sky as a whole – clearly blue, or
-  bright, smooth and spanning the top for grey and cloudy skies – and SAM may
-  only refine the edge, no longer add horizon, water or ground. Tested on 17
-  sky and 56 non-sky photos and variants (warm light, haze, dark, bright).
+  backdrops) – and after a first fix found hardly any sky. Each area must now
+  look like sky as a whole: clearly blue (also with clouds, haze or at dusk),
+  or bright grey with a level horizon below it. Clouds and strips of sky that
+  do not reach the top edge join the sky they touch, unless they lie below
+  it (rocks, snowfields, buildings). SAM only refines the edge. The log
+  records why an area was or was not taken as sky.
   Existing sky masks keep their old result until created again.
 - Choosing another folder, project or person in Develop no longer jumps back
   to the Library: the open photo stays if it is part of the new view,

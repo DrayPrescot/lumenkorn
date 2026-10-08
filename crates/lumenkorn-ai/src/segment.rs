@@ -390,43 +390,68 @@ fn sky_region(img: &RgbImage) -> Vec<bool> {
         SkyKind::No => false,
     };
 
-    // Bereichswachstum je Fläche vom oberen Rand aus
+    // Bereichswachstum über ähnliche Nachbarn. Wolken mit Kanten zum blauen
+    // Himmel werden dabei zu eigenen Flächen; sie kommen im zweiten Schritt
+    // unten dazu (dort mit Prüfung, dass sie nicht unter dem Himmel liegen –
+    // ein Sprung beim Wachsen nahm sonst hellen Fels oder Schnee neben dem
+    // Himmel mit und lief darin nach unten).
+    let similar = |a: usize, b: usize| {
+        let (c, d) = (px[a], px[b]);
+        ((d[0] - c[0]).powi(2) + (d[1] - c[1]).powi(2) + (d[2] - c[2]).powi(2)).sqrt() < 0.05
+    };
+    let band = (h / 12).max(1);
     let mut label = vec![u32::MAX; n];
-    let mut comps: Vec<Vec<usize>> = Vec::new();
-    for x in 0..w {
-        for y in 0..(h / 12).max(1) {
+    let mut parent: Vec<u32> = Vec::new();
+    fn root(parent: &mut [u32], mut a: u32) -> u32 {
+        while parent[a as usize] != a {
+            parent[a as usize] = parent[parent[a as usize] as usize];
+            a = parent[a as usize];
+        }
+        a
+    }
+    // Startpunkte im oberen Bildteil – auch Himmel, der nicht bis zur Kante
+    // reicht (Streifen unter Wolken), wird so zur Fläche; ob er dazugehört,
+    // entscheidet die Prüfung unten.
+    for y in 0..h * 3 / 5 {
+        for x in 0..w {
             let start = y * w + x;
             if label[start] != u32::MAX || !smooth(start) {
                 continue;
             }
-            let id = comps.len() as u32;
-            let mut members = vec![start];
+            let id = parent.len() as u32;
+            parent.push(id);
             label[start] = id;
             let mut queue = VecDeque::from([start]);
             while let Some(i) = queue.pop_front() {
                 let (cx, cy) = (i % w, i / w);
-                let c = px[i];
                 for (dx, dy) in [(-1isize, 0isize), (1, 0), (0, -1), (0, 1)] {
                     let (nx, ny) = (cx as isize + dx, cy as isize + dy);
                     if nx < 0 || ny < 0 || nx >= w as isize || ny >= h as isize {
                         continue;
                     }
                     let j = ny as usize * w + nx as usize;
-                    if label[j] != u32::MAX || !smooth(j) {
+                    if !smooth(j) || !similar(i, j) {
                         continue;
                     }
-                    let d = px[j];
-                    let diff =
-                        ((d[0] - c[0]).powi(2) + (d[1] - c[1]).powi(2) + (d[2] - c[2]).powi(2))
-                            .sqrt();
-                    if diff < 0.05 {
+                    if label[j] == u32::MAX {
                         label[j] = id;
-                        members.push(j);
                         queue.push_back(j);
+                    } else {
+                        let (a, b) = (root(&mut parent, id), root(&mut parent, label[j]));
+                        if a != b {
+                            parent[b as usize] = a;
+                        }
                     }
                 }
             }
-            comps.push(members);
+        }
+    }
+    // Geordnet, damit das Ergebnis nicht von der Reihenfolge einer HashMap abhängt
+    let mut comps: std::collections::BTreeMap<u32, Vec<usize>> = Default::default();
+    for (i, &l) in label.iter().enumerate() {
+        if l != u32::MAX {
+            let r = root(&mut parent, l);
+            comps.entry(r).or_default().push(i);
         }
     }
 
@@ -436,61 +461,158 @@ fn sky_region(img: &RgbImage) -> Vec<bool> {
     let pct = |q: f32| sorted[((sorted.len() - 1) as f32 * q) as usize];
     let (bright_ref, median) = (pct(0.85), pct(0.5));
     let mut region = vec![false; n];
-    for members in &comps {
+    // Flächen, die nicht bis zur Kante reichen oder abgelehnt wurden, für den
+    // zweiten Schritt (siehe unten)
+    struct Later<'a> {
+        members: &'a Vec<usize>,
+        blue: f32,
+        /// B−G über der nötigen Schwelle (positiv = klar blau)
+        blue_margin: f32,
+        mean_lum: f32,
+        mean_grad: f32,
+    }
+    let mut later: Vec<Later> = Vec::new();
+    for members in comps.values() {
         let m = members.len();
-        // Kleine Flecken am Rand (helles Fenster, Lichtreflex) sind kein Himmel
-        if m < n / 100 {
+        // Winzige Flecken (Lichtreflex, Fensterscheibe) sind kein Himmel
+        if m < n / 400 {
             continue;
         }
         // Breite am oberen Rand: Spalten, in denen die Fläche oben ankommt
-        let band = (h / 12).max(1);
         let mut cols = vec![false; w];
         for &i in members.iter().filter(|&&i| i / w < band) {
             cols[i % w] = true;
         }
         let top_width = cols.iter().filter(|c| **c).count();
-        if top_width < w / 10 {
-            continue;
-        }
         let mean_lum = members.iter().map(|&i| lum[i]).sum::<f32>() / m as f32;
         let mean_grad = members.iter().map(|&i| grad[i]).sum::<f32>() / m as f32;
-        let blue = members
+        let blues: Vec<usize> = members
             .iter()
-            .filter(|&&i| kind[i] == SkyKind::Blue)
-            .count() as f32
-            / m as f32;
-        // Wie viel blauer als grün: an Testfotos Himmel ≥ 0,032 (auch mit
-        // Wolken, Dunst, Dämmerung), türkises Laub im Unscharfen ≤ 0,025
-        let over_green = members.iter().map(|&i| px[i][2] - px[i][1]).sum::<f32>() / m as f32;
-        let ok = if blue > 0.5 {
-            // Blauer Himmel: glatt, klar blau und nicht dunkler als das Bild im
-            // Mittel (auch in der Dämmerung nicht)
-            mean_grad < 0.035 && over_green > 0.028 && mean_lum >= median * 0.95
+            .copied()
+            .filter(|&i| kind[i] == SkyKind::Blue)
+            .collect();
+        let blue = blues.len() as f32 / m as f32;
+        // Wie viel blauer als grün (nur die blauen Pixel): an Testfotos Himmel
+        // ≥ 0,032 (auch mit Wolken, Dunst, Dämmerung), türkises Laub ≤ 0,025
+        let (over_green, blue_lum) = if blues.is_empty() {
+            (0.0, 0.0)
         } else {
-            // Grau/Weiß: muss zu den hellsten Teilen gehören. Dazu entweder
-            // sehr glatt (gleichmäßig bedeckt; Wände, Putz und Studio-
-            // hintergründe hatten an Testfotos Kantenwerte 0,013–0,026,
-            // bedeckter Himmel unter 0,01) und oben breit anliegend – oder,
-            // mit Wolkenstruktur, eine große Fläche über die ganze obere Kante
-            // (Wände und Hintergründe sind kleiner oder von Motiven unterbrochen).
-            // Fester Abstand statt Verhältnis: In hellen oder dunstigen Bildern
-            // liegt der Himmel nur wenig über dem Mittel
-            let bright = mean_lum >= bright_ref * 0.95 && mean_lum > median + 0.08;
-            let even = mean_grad < 0.012 && m >= n / 25 && top_width >= w / 3;
-            let clouds = mean_grad < 0.04 && m >= n / 5 && top_width * 10 >= w * 9;
-            bright && (even || clouds)
+            let k = blues.len() as f32;
+            (
+                blues.iter().map(|&i| px[i][2] - px[i][1]).sum::<f32>() / k,
+                blues.iter().map(|&i| lum[i]).sum::<f32>() / k,
+            )
         };
-        log::debug!(
-            "Himmel-Kandidat: Fläche {:.1} %, oben {:.0} %, Helligkeit {mean_lum:.2} \
-             (85 % {bright_ref:.2}, Median {median:.2}), Kante {mean_grad:.3}, blau {blue:.2}, \
-             B−G {over_green:.3} → {ok}",
-            m as f32 / n as f32 * 100.0,
-            top_width as f32 / w as f32 * 100.0
-        );
+        // Sehr heller Himmel ist fast weiß – dort kann Blau nur wenig vor Grün
+        // liegen; die Schwelle sinkt daher zum Weiß hin
+        let need_blue = 0.028 * (2.5 * (1.0 - blue_lum)).min(1.0);
+        // Unterkante: tiefste Zeile je Spalte. Beim Himmel ist das der Horizont
+        // (eher waagerecht), bei Hintergründen hinter Personen die Silhouette
+        // (in der Mitte hoch, an den Seiten tief) – Streuung relativ zur Höhe.
+        let mut bottom = vec![None::<usize>; w];
+        for &i in members {
+            let (x, y) = (i % w, i / w);
+            bottom[x] = Some(bottom[x].map_or(y, |b: usize| b.max(y)));
+        }
+        let bs: Vec<f32> = bottom
+            .iter()
+            .flatten()
+            .map(|&b| b as f32 / h as f32)
+            .collect();
+        let bmean = bs.iter().sum::<f32>() / bs.len().max(1) as f32;
+        let ragged =
+            (bs.iter().map(|b| (b - bmean).powi(2)).sum::<f32>() / bs.len().max(1) as f32).sqrt();
+        // Anteil in der unteren Bildhälfte: Himmel liegt oben, Wände und
+        // Studiohintergründe reichen meist bis weit nach unten
+        let low = members.iter().filter(|&&i| i / w > h / 2).count() as f32 / m as f32;
+        let reaches_top = m >= n / 100 && top_width >= w / 10;
+        let ok = reaches_top
+            && if blue > 0.15 {
+                // Blauer Himmel (auch mit Wolken): klar blau und glatt
+                over_green > need_blue && mean_grad < 0.045
+            } else {
+                // Grau/Weiß: muss zu den hellsten Teilen gehören. Dazu entweder
+                // sehr glatt (gleichmäßig bedeckt; Wände, Putz und Studio-
+                // hintergründe hatten an Testfotos Kantenwerte 0,013–0,026,
+                // bedeckter Himmel unter 0,01) und oben breit anliegend – oder,
+                // mit Wolkenstruktur, groß, oben breit und kaum in der unteren Hälfte.
+                let bright = mean_lum >= bright_ref * 0.9 && mean_lum > median + 0.05;
+                let even = mean_grad < 0.012 && m >= n / 25 && top_width >= w / 3 && low < 0.35;
+                let clouds = mean_grad < 0.045
+                    && m >= n / 12
+                    && top_width * 5 >= w * 2
+                    && low < 0.1
+                    && ragged < 0.14;
+                bright && (even || clouds)
+            };
+        // Größere Flächen ins Log: zeigt bei Problemfotos, woran es lag
+        if m >= n / 50 {
+            log::info!(
+                "Himmel-Fläche: {:.1} % des Bildes, oben {:.0} % der Breite, Helligkeit {mean_lum:.2} \
+                 (85 %-Wert {bright_ref:.2}, Median {median:.2}), Kante {mean_grad:.3}, blau {blue:.2}, \
+                 B−G {over_green:.3} (nötig {need_blue:.3}), unten {low:.2}, Zerklüftung {ragged:.3} → {}",
+                m as f32 / n as f32 * 100.0,
+                top_width as f32 / w as f32 * 100.0,
+                if ok { "Himmel" } else { "nein" }
+            );
+        }
         if ok {
             for &i in members {
                 region[i] = true;
             }
+        } else if low < 0.1 {
+            later.push(Later {
+                members,
+                blue,
+                blue_margin: over_green - need_blue,
+                mean_lum,
+                mean_grad,
+            });
+        }
+    }
+    // Zweiter Schritt: Wolken mit rauem Rand und Himmelsstreifen, die nicht
+    // bis zur Kante reichen, werden beim Wachsen nicht verbunden. Grenzt eine
+    // solche Fläche oben im Bild direkt an erkannten Himmel und ist kaum
+    // dunkler als er, gehört sie dazu. Wasser unter dem Horizont ist deutlich
+    // dunkler als der Himmel darüber und bleibt draußen.
+    for _ in 0..3 {
+        let sky: Vec<usize> = (0..n).filter(|&i| region[i]).collect();
+        if sky.is_empty() {
+            break;
+        }
+        let sky_lum = sky.iter().map(|&i| lum[i]).sum::<f32>() / sky.len() as f32;
+        let near = morph(&region, w, h, 2, true);
+        // Tiefste Himmelszeile je Spalte: Was überwiegend darunter liegt, ist
+        // Vordergrund (Fels, Schneefeld, Gebäude), keine Wolke
+        let mut sky_bottom = vec![None::<usize>; w];
+        for &i in &sky {
+            let (x, y) = (i % w, i / w);
+            sky_bottom[x] = Some(sky_bottom[x].map_or(y, |b: usize| b.max(y)));
+        }
+        let mut added = false;
+        for c in &later {
+            let members = c.members;
+            if region[members[0]] || !members.iter().any(|&i| near[i]) {
+                continue;
+            }
+            let fits = if c.blue > 0.15 {
+                c.blue_margin > 0.0 && c.mean_grad < 0.045
+            } else {
+                let under = members
+                    .iter()
+                    .filter(|&&i| sky_bottom[i % w].is_some_and(|b| i / w > b))
+                    .count();
+                c.mean_grad < 0.06 && under * 2 < members.len()
+            };
+            if fits && c.mean_lum >= sky_lum - 0.15 {
+                for &i in members.iter() {
+                    region[i] = true;
+                }
+                added = true;
+            }
+        }
+        if !added {
+            break;
         }
     }
     if !region.iter().any(|v| *v) {
@@ -785,6 +907,52 @@ mod tests {
         let (w, h) = m.dimensions();
         assert!(m.get_pixel(w / 2, h / 4)[0] > 200, "Himmel");
         assert!(m.get_pixel(w / 2, h * 9 / 10)[0] < 30, "Boden");
+    }
+
+    /// Blauer Himmel mit weißen Quellwolken über dunklem Land, rechts ein
+    /// heller Fels, der in den Himmel ragt.
+    fn clouds_and_rock() -> DynamicImage {
+        DynamicImage::ImageRgb8(RgbImage::from_fn(600, 400, |x, y| {
+            let (fx, fy) = (x as f32, y as f32);
+            let rock = ((fx - 480.0) / 70.0).powi(2) + ((fy - 230.0) / 90.0).powi(2) < 1.0;
+            if rock {
+                let v = (205 + noise(x, y, 6)) as u8;
+                return Rgb([v, v.saturating_sub(8), v.saturating_sub(20)]);
+            }
+            if y > 200 {
+                return Rgb([
+                    (60 + noise(x, y, 10)) as u8,
+                    (55 + noise(x, y, 10)) as u8,
+                    40,
+                ]);
+            }
+            let t = fy / 200.0;
+            let sky = [100.0 + 70.0 * t, 145.0 + 45.0 * t, 225.0 - 15.0 * t];
+            // Wolken mit weichem Rand
+            let c = |cx: f32, cy: f32, rx: f32, ry: f32| {
+                let d = ((fx - cx) / rx).powi(2) + ((fy - cy) / ry).powi(2);
+                (1.2 - d).clamp(0.0, 1.0)
+            };
+            let k = c(120.0, 60.0, 90.0, 35.0)
+                .max(c(330.0, 110.0, 110.0, 40.0))
+                .max(c(520.0, 40.0, 70.0, 30.0));
+            let px = sky.map(|v| v + (240.0 - v) * k);
+            Rgb(px.map(|v| v as u8))
+        }))
+    }
+
+    #[test]
+    fn clouds_belong_to_the_sky_but_the_rock_does_not() {
+        let m = sky_mask(&clouds_and_rock(), None).unwrap();
+        let (w, h) = m.dimensions();
+        let at = |x: f32, y: f32| {
+            m.get_pixel((x / 600.0 * w as f32) as u32, (y / 400.0 * h as f32) as u32)[0]
+        };
+        assert!(at(30.0, 100.0) > 200, "blauer Himmel");
+        assert!(at(120.0, 60.0) > 200, "Wolke links");
+        assert!(at(330.0, 110.0) > 200, "Wolke mitte");
+        assert!(at(480.0, 230.0) < 30, "Fels");
+        assert!(at(200.0, 330.0) < 30, "Land");
     }
 
     #[test]
