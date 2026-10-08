@@ -32,6 +32,8 @@ pub struct DevelopParams {
     // Präsenz
     /// Lokaler Kontrast in den Mitteltönen, −100…100
     pub clarity: f32,
+    /// Dunst entfernen (positiv) bzw. hinzufügen (negativ), −100…100
+    pub dehaze: f32,
     /// Sättigung, die bereits kräftige Farben und Hauttöne schont, −100…100
     pub vibrance: f32,
     pub saturation: f32,
@@ -452,6 +454,7 @@ impl Default for DevelopParams {
             whites: 0.0,
             blacks: 0.0,
             clarity: 0.0,
+            dehaze: 0.0,
             vibrance: 0.0,
             saturation: 0.0,
             sharpen: 0.0,
@@ -492,6 +495,7 @@ impl DevelopParams {
             whites: c(self.whites, -100.0, 100.0),
             blacks: c(self.blacks, -100.0, 100.0),
             clarity: c(self.clarity, -100.0, 100.0),
+            dehaze: c(self.dehaze, -100.0, 100.0),
             vibrance: c(self.vibrance, -100.0, 100.0),
             saturation: c(self.saturation, -100.0, 100.0),
             sharpen: c(self.sharpen, 0.0, 150.0),
@@ -579,6 +583,7 @@ impl DevelopParams {
             out.whites = src.whites;
             out.blacks = src.blacks;
             out.clarity = src.clarity;
+            out.dehaze = src.dehaze;
             out.vibrance = src.vibrance;
             out.saturation = src.saturation;
             out.sharpen = src.sharpen;

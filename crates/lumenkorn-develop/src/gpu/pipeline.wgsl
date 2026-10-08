@@ -19,7 +19,8 @@ struct U {
     contrast: f32, clarity: f32, sat: f32, vib: f32,
     out_w: u32, out_h: u32, rot: u32, flip: u32,
     ow: u32, oh: u32, crop_x: u32, crop_y: u32,
-    st_s: f32, st_c: f32, st_k: f32, _p0: f32,
+    st_s: f32, st_c: f32, st_k: f32, dehaze: f32,
+    haze: f32, haze_lift: f32, _p2: f32, _p3: f32,
     // HSL je Farbbereich (−1…1): [0..2) Farbton, [2..4) Sättigung, [4..6) Luminanz
     hsl: array<vec4<f32>, 6>,
 };
@@ -252,6 +253,37 @@ fn blur_v(@builtin(global_invocation_id) id: vec3<u32>) {
         acc += fa[u32(clamp(y + r + 1, 0, last)) * u.mw + col]
              - fa[u32(clamp(y - r, 0, last)) * u.mw + col];
     }
+}
+
+// Dunkelkanal (kleinster Farbanteil): ina = Bild, fo = Wert je Pixel
+@compute @workgroup_size(16, 16)
+fn dark_pass(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x >= u.w || id.y >= u.h) { return; }
+    let i = id.y * u.w + id.x;
+    let c = ina[i].xyz;
+    fo[i] = min(c.x, min(c.y, c.z));
+}
+
+// Dehaze (pipeline.rs: dehaze/dehaze_px), in place: outa = Bild,
+// fa = Dunkelkanal je Pixel, fb = weichgezeichneter Dunkelkanal (mw×mh)
+@compute @workgroup_size(16, 16)
+fn dehaze_pass(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x >= u.w || id.y >= u.h) { return; }
+    let i = id.y * u.w + id.x;
+    let c = outa[i].xyz;
+    let a = u.haze;
+    if (u.dehaze < 0.0) {
+        outa[i] = vec4<f32>(c + (vec3<f32>(a) - c) * (-u.dehaze * HAZE_ADD), 1.0);
+        return;
+    }
+    let d = min(fa[i], sample_map(0u, u.mw, u.mh, id.x, id.y));
+    let t = max(1.0 - u.dehaze * DEHAZE_GAIN * d / a, DEHAZE_MIN_T);
+    let y = luma(c);
+    var yn = (y - a) / t + a;
+    let v = clamp(yn, 0.0, 1.0);
+    yn = yn + u.haze_lift * 4.0 * v * (1.0 - v);
+    let k = pow(t, -DEHAZE_CHROMA);
+    outa[i] = vec4<f32>(fit_gamut(vec3<f32>(yn) + (c - vec3<f32>(y)) * k, yn), 1.0);
 }
 
 // Tonwerte: outa = Bild (in place), fa = Helligkeit, fb = grobe Karte (mw×mh),

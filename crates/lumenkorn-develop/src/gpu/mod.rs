@@ -169,7 +169,12 @@ struct U {
     st_s: f32,
     st_c: f32,
     st_k: f32,
-    _p0: f32,
+    /// Dehaze −1…1, Dunsthelligkeit und Aufhellung (`pipeline::Haze`)
+    dehaze: f32,
+    haze: f32,
+    haze_lift: f32,
+    _p2: f32,
+    _p3: f32,
     /// HSL je Farbbereich: [0..2) Farbton, [2..4) Sättigung, [4..6) Luminanz
     hsl: [[f32; 4]; 6],
 }
@@ -196,9 +201,11 @@ enum P {
     Overlay,
     Geom,
     Hsl,
+    Dark,
+    Dehaze,
 }
 
-const ENTRY_POINTS: [&str; 13] = [
+const ENTRY_POINTS: [&str; 15] = [
     "prep",
     "luma_pass",
     "map_down",
@@ -212,6 +219,8 @@ const ENTRY_POINTS: [&str; 13] = [
     "overlay",
     "geom",
     "hsl",
+    "dark_pass",
+    "dehaze_pass",
 ];
 
 /// Zuordnung der Puffer zu den Bindungen 1–8 des Shaders.
@@ -318,8 +327,9 @@ pub(crate) struct ImageKey(usize, usize, usize, u64, u64);
 /// Dezimalpunkt und exakt umkehrbar, der Shader rechnet also mit denselben Werten.
 fn shader_source() -> String {
     use crate::pipeline::{
-        CLARITY_GAIN, CONTRAST_MIX, OVERLAY_COLOR, OVERLAY_OPACITY, RAW_BASE_GAIN, RAW_WHITE,
-        SHADOW_HIGHLIGHT_GAIN, SHARPEN_GAIN, SHARPEN_THRESHOLD, SOFT_CLIP_KNEE,
+        CLARITY_GAIN, CONTRAST_MIX, DEHAZE_CHROMA, DEHAZE_GAIN, DEHAZE_MIN_T, HAZE_ADD,
+        OVERLAY_COLOR, OVERLAY_OPACITY, RAW_BASE_GAIN, RAW_WHITE, SHADOW_HIGHLIGHT_GAIN,
+        SHARPEN_GAIN, SHARPEN_THRESHOLD, SOFT_CLIP_KNEE,
     };
     let f = |name: &str, v: f32| format!("const {name}: f32 = {v:?};\n");
     let list = |v: &[f32]| {
@@ -336,6 +346,10 @@ fn shader_source() -> String {
         f("SHADOW_HIGHLIGHT_GAIN", SHADOW_HIGHLIGHT_GAIN),
         f("CLARITY_GAIN", CLARITY_GAIN),
         f("CONTRAST_MIX", CONTRAST_MIX),
+        f("DEHAZE_GAIN", DEHAZE_GAIN),
+        f("DEHAZE_CHROMA", DEHAZE_CHROMA),
+        f("DEHAZE_MIN_T", DEHAZE_MIN_T),
+        f("HAZE_ADD", HAZE_ADD),
         f("SHARPEN_GAIN", SHARPEN_GAIN),
         f("SHARPEN_THRESHOLD", SHARPEN_THRESHOLD),
         f("OVERLAY_OPACITY", OVERLAY_OPACITY),
@@ -825,6 +839,44 @@ impl<'a> Ctx<'a> {
         self.run(P::Tone, u, b, img2d(self.w, self.h));
     }
 
+    /// Wie `dehaze()` in pipeline.rs, in place.
+    fn dehaze(&mut self, img: &'a Buffer, amount: f32, haze: crate::pipeline::Haze) {
+        if amount == 0.0 {
+            return;
+        }
+        let mut u = U {
+            dehaze: amount,
+            haze: haze.level,
+            haze_lift: haze.lift,
+            ..self.base_u()
+        };
+        let mut b = Binds {
+            outa: Some(img),
+            ..Default::default()
+        };
+        if amount > 0.0 {
+            // Dunkelkanal in den Helligkeitspuffer, daraus die Karte
+            let (base_u, y) = (self.base_u(), self.y);
+            self.run(
+                P::Dark,
+                base_u,
+                Binds {
+                    ina: Some(img),
+                    fo: Some(y),
+                    ..Default::default()
+                },
+                img2d(self.w, self.h),
+            );
+            let map = &self.maps[0];
+            let (mw, mh) = self.build_map(map, 256, 2);
+            u.mw = mw;
+            u.mh = mh;
+            b.fa = Some(self.y);
+            b.fb = Some(map);
+        }
+        self.run(P::Dehaze, u, b, img2d(self.w, self.h));
+    }
+
     /// Wie `hsl()` in pipeline.rs, in place.
     fn hsl(&mut self, img: &'a Buffer, h: &crate::params::Hsl) {
         if h.is_neutral() {
@@ -1048,6 +1100,13 @@ impl Gpu {
                 b.inb = Some(&dn.buf);
             }
             cx.run(P::Prep, u, b, img2d(w, h));
+
+            // --- Dunst (Dunsthelligkeit wie auf der CPU aus der Quelle)
+            if p.dehaze != 0.0 {
+                let amount = p.dehaze / 100.0;
+                let haze = crate::pipeline::haze_level(&src.image, &p, raw, amount);
+                cx.dehaze(&set.img, amount, haze);
+            }
 
             // --- Tonwerte und Farbe
             cx.tone(

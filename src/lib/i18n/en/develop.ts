@@ -44,6 +44,7 @@ export default {
   "Sättigung": "Saturation",
   "Details": "Detail",
   "Klarheit": "Clarity",
+  "Dunst entfernen": "Dehaze",
   "Schärfen": "Sharpening",
   "Frei": "Free",
   "Original": "Original",

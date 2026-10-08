@@ -7,6 +7,7 @@
 //! | Weißabgleich           | linear, szenenbezogen        |
 //! | Belichtung             | linear, szenenbezogen        |
 //! | Basiskurve (nur RAW)   | szenen- → anzeigebezogen     |
+//! | Dunst entfernen        | sRGB-kodiert                 |
 //! | Weiß/Schwarz, Lichter/Tiefen, Kontrast, Klarheit | sRGB-kodiert, auf der Helligkeit |
 //! | Dynamik, Sättigung     | sRGB-kodiert                 |
 //! | Lokale Anpassungen (Masken) | wie oben, je Ebene überblendet |
@@ -42,6 +43,23 @@ pub(crate) const SOFT_CLIP_KNEE: f32 = 0.8;
 pub(crate) const SHADOW_HIGHLIGHT_GAIN: f32 = 1.1;
 /// Stärke der Klarheit bei ±100 (Anteil des lokalen Kontrasts).
 pub(crate) const CLARITY_GAIN: f32 = 0.8;
+/// Anteil des geschätzten Dunsts, der bei Dehaze +100 entfernt wird (ω im
+/// Dark-Channel-Prior; unter 1, damit Fernes etwas Tiefe behält).
+pub(crate) const DEHAZE_GAIN: f32 = 0.9;
+/// Untergrenze der Transmission: begrenzt die Verstärkung in sehr dunstigen
+/// Bereichen (sonst Rauschen und ausbrechender Himmel).
+pub(crate) const DEHAZE_MIN_T: f32 = 0.3;
+/// Anteil des Dunsts, der bei Dehaze −100 eingemischt wird.
+pub(crate) const HAZE_ADD: f32 = 0.6;
+/// Anteil der durch Dehaze verlorenen mittleren Helligkeit, der über die
+/// Mitteltöne zurückgegeben wird (Kontrast bleibt, das Bild „säuft nicht ab“).
+pub(crate) const DEHAZE_LIFT: f32 = 0.7;
+/// Farbverstärkung bei Dehaze: Abstand zum Grau × t^−DEHAZE_CHROMA (bei
+/// voller Wirkung ×1,4). Die physikalisch „richtigen“ 1/t wirken grell.
+/// Die Dunstfarbe wird bewusst *nicht* abgezogen: Gemessen an Testfotos
+/// verschob das Abziehen (auch nur zur Hälfte) klare Bilder ins Blaue, weil
+/// die hellsten Flächen dort warm sind und kein Dunst.
+pub(crate) const DEHAZE_CHROMA: f32 = 0.3;
 /// Anteil, mit dem die S-Kurve bei ±100 Kontrast höchstens eingemischt wird.
 pub(crate) const CONTRAST_MIX: f32 = 0.85;
 /// Verstärkung des Unscharf-Maskierens bei 100.
@@ -248,12 +266,14 @@ pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -
     // Mit Reparaturen aus demselben Zwischenspeicher wie die GPU: Flicken
     // einsetzen kostet bei jedem Rendern (Reglerzug) sonst erneut, obwohl
     // sich an der reparierten Quelle nichts ändert.
-    let mut img = if has_repairs(&p) {
-        repaired_source(src, &p, opts).0.image.clone()
-    } else {
-        let mut img = src.image.clone();
-        prepare_source(&mut img, &p, opts);
-        img
+    let repaired = has_repairs(&p).then(|| repaired_source(src, &p, opts).0);
+    let mut img = match &repaired {
+        Some(r) => r.image.clone(),
+        None => {
+            let mut img = src.image.clone();
+            prepare_source(&mut img, &p, opts);
+            img
+        }
     };
     let (w, h) = (img.width, img.height);
 
@@ -277,6 +297,15 @@ pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -
             linear_to_srgb(c[2]),
         ];
     });
+
+    // --- Dunst --------------------------------------------------------------
+    // Dunsthelligkeit aus derselben Quelle wie auf der GPU (dort bekommt
+    // `render_masked` mit Reparaturen die reparierte Fassung)
+    if p.dehaze != 0.0 {
+        let est = repaired.as_ref().map_or(&src.image, |r| &r.image);
+        let amount = p.dehaze / 100.0;
+        dehaze(&mut img, amount, haze_level(est, &p, raw, amount));
+    }
 
     // --- Tonwerte und Farbe ------------------------------------------------
     tone(
@@ -356,6 +385,142 @@ pub(crate) fn sanitize_region(r: Crop) -> Option<Crop> {
     let w = r.w.clamp(0.0, 1.0 - x);
     let h = r.h.clamp(0.0, 1.0 - y);
     (w > 0.0 && h > 0.0).then_some(Crop { x, y, w, h })
+}
+
+/// Kenngrößen für Dehaze, je Bild einmal geschätzt.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Haze {
+    /// Helligkeit des Dunsts (Airlight), sRGB-kodiert, neutral
+    pub level: f32,
+    /// Aufhellung der Mitteltöne, die den Helligkeitsverlust ausgleicht
+    pub lift: f32,
+}
+
+/// Schätzt [`Haze`] für Dehaze mit Stärke `amount`.
+///
+/// Die Dunsthelligkeit kommt wie beim Dark-Channel-Prior aus den dunstigsten
+/// Pixeln (größter kleinster Farbanteil), aber als *neutraler* Grauwert: Die
+/// übliche farbige Schätzung übernimmt meist das Blau des Himmels, und das
+/// Abziehen dieser Farbe lässt das ganze Bild ins Gelbe bzw. Blaue kippen.
+/// Gerechnet wird auf einer Stichprobe der Quelle mit Weißabgleich, Belichtung
+/// und Basiskurve – für CPU und GPU dieselben Zahlen.
+pub(crate) fn haze_level(src: &ImageF32, p: &DevelopParams, raw: bool, amount: f32) -> Haze {
+    let n = src.data.len();
+    if n == 0 {
+        return Haze {
+            level: 1.0,
+            lift: 0.0,
+        };
+    }
+    let wb = white_balance(p.temperature / 100.0, p.tint / 100.0);
+    let gain = 2f32.powf(p.exposure);
+    // Etwa 65 000 gleichmäßig verteilte Stichproben genügen
+    let step = (n / 65_536).max(1);
+    let samples: Vec<[f32; 3]> = src
+        .data
+        .iter()
+        .step_by(step)
+        .map(|px| {
+            let c = [
+                px[0] * wb[0] * gain,
+                px[1] * wb[1] * gain,
+                px[2] * wb[2] * gain,
+            ];
+            let c = if raw {
+                base_curve(c)
+            } else {
+                c.map(|v| v.min(1.0))
+            };
+            c.map(linear_to_srgb)
+        })
+        .collect();
+    let mut dark: Vec<(f32, f32)> = samples
+        .iter()
+        .map(|e| (e[0].min(e[1]).min(e[2]), luma(*e)))
+        .collect();
+    // Die dunstigsten 0,5 % (mindestens eins), davon die mittlere Helligkeit
+    let top = (dark.len() / 200).max(1);
+    dark.select_nth_unstable_by(top - 1, |a, b| b.0.total_cmp(&a.0));
+    let level = (dark[..top].iter().map(|v| v.1).sum::<f32>() / top as f32)
+        // Untergrenze: auch in dunklen Bildern kein Dunst „aus Schwarz“
+        .clamp(0.5, 1.0);
+
+    // Helligkeitsverlust schätzen (mit dem Dunkelkanal des Pixels selbst –
+    // die Karte liegt darunter, der Verlust also eher etwas überschätzt)
+    let mut lift = 0.0;
+    if amount > 0.0 {
+        let (mut before, mut after, mut weight) = (0f64, 0f64, 0f64);
+        for e in &samples {
+            let d = e[0].min(e[1]).min(e[2]);
+            let (yn, _) = dehaze_luma(luma(*e), d, amount, level);
+            before += luma(*e) as f64;
+            after += yn.clamp(0.0, 1.0) as f64;
+            weight += mid_weight(yn) as f64;
+        }
+        if weight > 0.0 {
+            lift = ((before - after) / weight) as f32 * DEHAZE_LIFT;
+        }
+    }
+    Haze {
+        level,
+        lift: lift.clamp(0.0, 0.3),
+    }
+}
+
+/// Gewicht der Mitteltöne (0 bei Schwarz und Weiß, 1 bei 0,5).
+#[inline]
+fn mid_weight(y: f32) -> f32 {
+    let v = y.clamp(0.0, 1.0);
+    4.0 * v * (1.0 - v)
+}
+
+/// J = (I − A) / t + A auf der Helligkeit, mit neutralem A = `level`.
+/// Liefert neue Helligkeit und Transmission t.
+#[inline]
+fn dehaze_luma(y: f32, d: f32, amount: f32, level: f32) -> (f32, f32) {
+    let t = (1.0 - amount * DEHAZE_GAIN * d / level).max(DEHAZE_MIN_T);
+    ((y - level) / t + level, t)
+}
+
+/// Entfernt (`amount` > 0) oder ergänzt (< 0) Dunst, sRGB-kodiert, in place.
+fn dehaze(img: &mut ImageF32, amount: f32, haze: Haze) {
+    if amount < 0.0 {
+        let k = -amount * HAZE_ADD;
+        img.data
+            .par_iter_mut()
+            .for_each(|px| *px = px.map(|v| v + (haze.level - v) * k));
+        return;
+    }
+    let (w, h) = (img.width, img.height);
+    // Dunkelkanal: Dunst hebt den kleinsten Farbanteil an. Weichgezeichnet
+    // (~1 % der Bildbreite) wird daraus die Dunstdichte der Umgebung.
+    let dark: Vec<f32> = img
+        .data
+        .par_iter()
+        .map(|c| c[0].min(c[1]).min(c[2]))
+        .collect();
+    let map = LumaMap::build(&dark, w, h, 256, 2);
+    img.data.par_iter_mut().enumerate().for_each(|(i, px)| {
+        let d = dark[i].min(map.sample(i % w, i / w));
+        *px = dehaze_px(*px, d, amount, haze);
+    });
+}
+
+/// Dunst aus einem Pixel herausrechnen.
+/// `d`: Dunkelkanal – nie über dem des Pixels selbst, sonst bekämen dunkle
+/// Motive vor hellem Himmel einen dunklen Rand (der weichgezeichnete Wert
+/// reicht über die Kante).
+/// Die Helligkeit wird voll entdunstet; der Farbabstand zum Grau wächst nur
+/// gedämpft (siehe [`DEHAZE_CHROMA`]), der Farbton bleibt – keine kippenden,
+/// grellen Farben.
+#[inline]
+fn dehaze_px(c: [f32; 3], d: f32, amount: f32, haze: Haze) -> [f32; 3] {
+    let y = luma(c);
+    let (yn, t) = dehaze_luma(y, d, amount, haze.level);
+    let yn = yn + haze.lift * mid_weight(yn);
+    let k = t.powf(-DEHAZE_CHROMA);
+    let ch = |i: usize| yn + (c[i] - y) * k;
+    fit_gamut([ch(0), ch(1), ch(2)], yn)
 }
 
 /// Tonwert-Parameter, normiert auf −1…1.
@@ -763,6 +928,54 @@ mod tests {
             })
             .collect();
         raster(&v, 16)
+    }
+
+    /// Szene mit Struktur unter neutralem Dunst (sRGB-Werte).
+    fn hazy(haze: f32) -> Source {
+        let v: Vec<[f32; 3]> = (0..64 * 64)
+            .map(|i| {
+                let (x, y) = (i % 64, i / 64);
+                let scene = if (x / 8 + y / 8) % 2 == 0 {
+                    [0.55, 0.35, 0.2]
+                } else {
+                    [0.15, 0.3, 0.45]
+                };
+                scene.map(|c| c * (1.0 - haze) + 0.85 * haze)
+            })
+            .collect();
+        raster(&v, 64)
+    }
+
+    fn spread(img: &ImageF32) -> f32 {
+        let y: Vec<f32> = img.data.iter().map(|c| luma(*c)).collect();
+        let m = y.iter().sum::<f32>() / y.len() as f32;
+        (y.iter().map(|v| (v - m).powi(2)).sum::<f32>() / y.len() as f32).sqrt()
+    }
+
+    #[test]
+    fn dehaze_restores_contrast_and_keeps_hue() {
+        let src = hazy(0.5);
+        let p = |dehaze| DevelopParams {
+            dehaze,
+            ..Default::default()
+        };
+        let before = render(&src, &p(0.0));
+        let after = render(&src, &p(80.0));
+        assert!(spread(&after) > spread(&before) * 1.3, "kein Kontrastgewinn");
+        // Farbton je Pixel bleibt: Reihenfolge der Kanäle unverändert
+        for (a, b) in before.data.iter().zip(&after.data) {
+            let order = |c: &[f32; 3]| (c[0] > c[1], c[1] > c[2], c[0] > c[2]);
+            assert_eq!(order(a), order(b), "{a:?} → {b:?}");
+        }
+        // Neutrales bleibt neutral (kein Blau- oder Gelbstich)
+        let gray = raster(&[[0.6, 0.6, 0.6]; 16], 4);
+        let g = render(&gray, &p(100.0));
+        for c in &g.data {
+            assert!((c[0] - c[2]).abs() < 1e-5 && (c[0] - c[1]).abs() < 1e-5, "{c:?}");
+        }
+        // Negativ: Dunst kommt dazu
+        let more = render(&hazy(0.1), &p(-80.0));
+        assert!(spread(&more) < spread(&render(&hazy(0.1), &p(0.0))) * 0.7);
     }
 
     #[test]

@@ -7,6 +7,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Develop: “Dunst entfernen” (Dehaze) below Clarity, as in Lightroom.
+  Removes haze with a dark-channel estimate but a neutral haze color, so
+  colors keep their hue instead of drifting blue or yellow; the lost
+  brightness is given back in the midtones. Negative values add haze.
 - English user interface. Lumenkorn follows the system language; **DE / EN** at
   the bottom left of the sidebar switches it. Backend messages, AI keywords
   for newly analyzed photos and the Windows installers (German and English

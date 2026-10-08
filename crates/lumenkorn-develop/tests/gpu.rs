@@ -180,6 +180,21 @@ fn cases() -> Vec<(&'static str, DevelopParams)> {
             },
         ),
         (
+            "Dehaze",
+            DevelopParams {
+                dehaze: 70.0,
+                exposure: 0.4,
+                ..d()
+            },
+        ),
+        (
+            "Dehaze negativ (Dunst)",
+            DevelopParams {
+                dehaze: -60.0,
+                ..d()
+            },
+        ),
+        (
             "Farbe",
             DevelopParams {
                 vibrance: 60.0,

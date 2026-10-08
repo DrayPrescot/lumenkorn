@@ -180,6 +180,8 @@ export interface DevelopParams {
   whites: number;
   blacks: number;
   clarity: number;
+  /** Dunst entfernen (positiv) bzw. hinzufügen (negativ), −100…100 */
+  dehaze: number;
   vibrance: number;
   saturation: number;
   sharpen: number;
@@ -339,6 +341,7 @@ export const DEFAULT_PARAMS: DevelopParams = {
   whites: 0,
   blacks: 0,
   clarity: 0,
+  dehaze: 0,
   vibrance: 0,
   saturation: 0,
   sharpen: 0,
@@ -355,7 +358,7 @@ export const DEFAULT_PARAMS: DevelopParams = {
 /** Regler des Reiters „Basis“ (ohne KI-Rauschreduzierung). */
 export const BASIC_KEYS = [
   "temperature", "tint", "exposure", "contrast", "highlights", "shadows",
-  "whites", "blacks", "clarity", "vibrance", "saturation", "sharpen",
+  "whites", "blacks", "clarity", "dehaze", "vibrance", "saturation", "sharpen",
 ] as const;
 
 /**
