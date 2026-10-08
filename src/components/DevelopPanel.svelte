@@ -60,8 +60,8 @@
       title: t("Details"),
       sliders: [
         { key: "clarity", label: t("Klarheit"), min: -100, max: 100 },
-        { key: "dehaze", label: t("Dunst entfernen"), min: -100, max: 100 },
         { key: "sharpen", label: t("Schärfen"), min: 0, max: 150 },
+        { key: "dehaze", label: t("Dunst entfernen"), min: -100, max: 100 },
       ],
     },
   ];

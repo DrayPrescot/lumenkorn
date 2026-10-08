@@ -7,7 +7,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- Develop: “Dunst entfernen” (Dehaze) below Clarity, as in Lightroom.
+- Develop: “Dunst entfernen” (Dehaze) in Details, below Sharpening.
   Removes haze with a dark-channel estimate but a neutral haze color, so
   colors keep their hue instead of drifting blue or yellow; the lost
   brightness is given back in the midtones. Negative values add haze.
