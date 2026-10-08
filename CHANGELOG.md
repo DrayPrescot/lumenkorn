@@ -96,6 +96,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   are gone.
 
 ### Fixed
+- Choosing another folder, project or person in Develop no longer jumps back
+  to the Library: the open photo stays if it is part of the new view,
+  otherwise the first photo there opens.
 - Very large photos got no thumbnail and could not be edited (“Memory limit
   exceeded”): panoramas, upscaled JPEGs, 16-bit TIFFs from about 30 MP and
   32-bit float TIFFs from astro stacking. Huge images are decoded one at a

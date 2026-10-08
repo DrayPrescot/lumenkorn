@@ -169,7 +169,10 @@ class Library {
   }
 
   /** Lädt die Bilder des aktuellen Bereichs. `keepFocus` behält die Auswahl bei. */
-  async loadImages(keepFocus = false) {
+  /** Lädt die Fotos der Ansicht. `keepFocus`: fokussiertes Foto (und Auswahl)
+   *  behalten, soweit noch gelistet. `developFirst`: im Entwickeln-Modus ohne
+   *  behaltenes Foto das erste öffnen, statt zur Bibliothek zu wechseln. */
+  async loadImages(keepFocus = false, developFirst = false) {
     // Anfragen laufen parallel: Nur das Ergebnis der neuesten zählt
     // (sonst kann die Suche nach „so“ die nach „sonne“ überholen).
     const token = ++this.#loadToken;
@@ -195,6 +198,10 @@ class Library {
         const kept = [...this.selection].filter((id) => ids.has(id));
         if (kept.length !== this.selection.size) this.selection = new Set(kept);
       }
+      if (this.focus < 0 && developFirst && this.mode === "develop" && images.length) {
+        this.focus = 0;
+        this.selection = new Set([images[0].id]);
+      }
       if (this.focus < 0 && this.view === "loupe") this.view = "grid";
       // Entwickeln ohne Foto (z. B. nach Suche/Filter): zurück zur Bibliothek
       if (this.focus < 0 && this.mode === "develop") {
@@ -219,8 +226,10 @@ class Library {
     if (scope.type !== "person" || scope.id !== this.reviewPerson) this.reviewPerson = null;
     this.scope = scope;
     this.view = "grid";
-    this.mode = "library";
-    this.loadImages();
+    // Im Entwickeln-Modus bleiben: das geöffnete Foto, falls es auch hier
+    // liegt (z. B. übergeordneter Ordner), sonst das erste der neuen Ansicht
+    if (this.mode === "develop") this.loadImages(true, true);
+    else this.loadImages();
   }
 
   /** Wechselt in den Entwickeln-Modus mit dem fokussierten (oder ersten) Bild. */
