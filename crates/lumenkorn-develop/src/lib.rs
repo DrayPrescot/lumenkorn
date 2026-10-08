@@ -67,8 +67,8 @@ pub fn release_large_caches() {
 pub use image_f32::ImageF32;
 pub use masks::{GrayMask, MaskSource, NoMasks};
 pub use params::{
-    ColorSample, Crop, DenoiseRef, DevelopParams, HSL_BANDS, Hsl, LocalAdjust, MaskLayer,
-    MaskShape, PromptPoint, RepairLayer, Stroke, TransferGroups,
+    ColorGrade, ColorSample, Crop, DenoiseRef, DevelopParams, GradeWheel, HSL_BANDS, Hsl,
+    LocalAdjust, MaskLayer, MaskShape, PromptPoint, RepairLayer, Stroke, TransferGroups,
 };
 pub use pipeline::{RenderOptions, render, render_auto, render_auto_rgb8, render_with};
 pub use source::{Source, SourceKind};

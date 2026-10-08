@@ -5,8 +5,11 @@ import {
   DEFAULT_PARAMS,
   listen,
   NEUTRAL_LOCAL,
+  type ColorGrade,
   type DevelopParams,
   type Edit,
+  type GradeRange,
+  type GradeWheel,
   type ExportProgress,
   type LocalAdjust,
   type MaskLayer,
@@ -292,6 +295,21 @@ class Develop {
     const arr = [...cur[mode]];
     arr[band] = Math.round(Math.max(-100, Math.min(100, value)));
     this.params.hsl = { ...$state.snapshot(cur), [mode]: arr } as DevelopParams["hsl"];
+    this.schedule();
+  }
+
+  /** Im Color Grading ausgewähltes Farbrad (die Regler darunter gelten ihm) */
+  gradeRange = $state<GradeRange>("midtones");
+
+  /** Color Grading: ein Feld eines Farbrads oder Überblenden/Abgleich setzen. */
+  setGrade(range: GradeRange | null, field: keyof GradeWheel | "blending" | "balance", value: number) {
+    const cur = $state.snapshot(this.params.colorGrade ?? DEFAULT_PARAMS.colorGrade) as ColorGrade;
+    if (range && field !== "blending" && field !== "balance") {
+      cur[range] = { ...cur[range], [field]: value };
+    } else if (field === "blending" || field === "balance") {
+      cur[field] = value;
+    }
+    this.params.colorGrade = cur;
     this.schedule();
   }
 

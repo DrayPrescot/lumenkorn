@@ -9,7 +9,7 @@
 //! | Basiskurve (nur RAW)   | szenen- → anzeigebezogen     |
 //! | Dunst entfernen        | sRGB-kodiert                 |
 //! | Weiß/Schwarz, Lichter/Tiefen, Kontrast, Klarheit | sRGB-kodiert, auf der Helligkeit |
-//! | Dynamik, Sättigung     | sRGB-kodiert                 |
+//! | Dynamik, Sättigung, HSL, Color Grading | sRGB-kodiert |
 //! | Lokale Anpassungen (Masken) | wie oben, je Ebene überblendet |
 //! | Schärfen               | sRGB-kodiert, Helligkeit     |
 //! | Drehen, Spiegeln, Crop | zuletzt – Masken und lokale Karten bleiben am Motiv |
@@ -60,6 +60,10 @@ pub(crate) const DEHAZE_LIFT: f32 = 0.7;
 /// verschob das Abziehen (auch nur zur Hälfte) klare Bilder ins Blaue, weil
 /// die hellsten Flächen dort warm sind und kein Dunst.
 pub(crate) const DEHAZE_CHROMA: f32 = 0.3;
+/// Color Grading: Tönung bei Sättigung 100 (Abstand zum Grau, sRGB-kodiert).
+pub(crate) const GRADE_TINT: f32 = 0.2;
+/// Color Grading: Helligkeitsverschiebung bei Luminanz ±100.
+pub(crate) const GRADE_LUM: f32 = 0.2;
 /// Anteil, mit dem die S-Kurve bei ±100 Kontrast höchstens eingemischt wird.
 pub(crate) const CONTRAST_MIX: f32 = 0.85;
 /// Verstärkung des Unscharf-Maskierens bei 100.
@@ -321,6 +325,11 @@ pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -
     );
     color(&mut img, p.saturation / 100.0, p.vibrance / 100.0);
     hsl(&mut img, &p.hsl);
+    if let Some(g) = grade_setup(&p.color_grade) {
+        img.data
+            .par_iter_mut()
+            .for_each(|px| *px = grade_px(*px, &g));
+    }
 
     // --- Lokale Anpassungen ------------------------------------------------
     let mut overlay_alpha = None;
@@ -653,6 +662,84 @@ fn hsl(img: &mut ImageF32, h: &crate::params::Hsl) {
         .for_each(|px| *px = crate::color::hsl_pixel(*px, &adj));
 }
 
+/// Color Grading, vorbereitet für [`grade_px`] (und den GPU-Shader, der
+/// dieselben Zahlen bekommt).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct GradeVals {
+    /// Tiefen, Mitteltöne, Lichter, Global: Tönung (RGB, ohne eigene
+    /// Helligkeit) und Helligkeitsverschiebung
+    pub wheels: [[f32; 4]; 4],
+    /// Grenze zwischen Tiefen und Lichtern (Helligkeit 0…1)
+    pub pivot: f32,
+    /// Breite der Übergänge
+    pub width: f32,
+}
+
+/// `None`, wenn Color Grading nichts ändert.
+pub(crate) fn grade_setup(g: &crate::params::ColorGrade) -> Option<GradeVals> {
+    if g.is_neutral() {
+        return None;
+    }
+    let wheel = |w: &crate::params::GradeWheel| {
+        // Reine Farbe des Farbtons, ohne ihre Helligkeit: die Tönung färbt,
+        // ohne aufzuhellen oder abzudunkeln
+        let c = hue_rgb(w.hue);
+        let y = luma(c);
+        let s = w.saturation / 100.0 * GRADE_TINT;
+        [
+            (c[0] - y) * s,
+            (c[1] - y) * s,
+            (c[2] - y) * s,
+            w.luminance / 100.0 * GRADE_LUM,
+        ]
+    };
+    Some(GradeVals {
+        wheels: [
+            wheel(&g.shadows),
+            wheel(&g.midtones),
+            wheel(&g.highlights),
+            wheel(&g.global),
+        ],
+        // Abgleich +100 schiebt die Grenze nach unten: mehr Lichter
+        pivot: 0.5 - 0.3 * g.balance / 100.0,
+        width: 0.1 + 0.4 * g.blending / 100.0,
+    })
+}
+
+/// Voll gesättigte Farbe eines Farbtons (Grad, 0 = Rot), sRGB.
+fn hue_rgb(h: f32) -> [f32; 3] {
+    let h = h.rem_euclid(360.0) / 60.0;
+    let x = 1.0 - (h % 2.0 - 1.0).abs();
+    match h as u32 {
+        0 => [1.0, x, 0.0],
+        1 => [x, 1.0, 0.0],
+        2 => [0.0, 1.0, x],
+        3 => [0.0, x, 1.0],
+        4 => [x, 0.0, 1.0],
+        _ => [1.0, 0.0, x],
+    }
+}
+
+/// Color Grading für ein Pixel: Gewichte der Tonwertbereiche nach der
+/// Helligkeit, dann Tönung und Helligkeit je Bereich addieren. Schwarz bleibt
+/// schwarz und Weiß weiß – `fit_gamut` nimmt dort die Farbe zurück.
+#[inline]
+fn grade_px(c: [f32; 3], g: &GradeVals) -> [f32; 3] {
+    let y = luma(c);
+    let ws = 1.0 - smoothstep(g.pivot - g.width, g.pivot, y);
+    let wh = smoothstep(g.pivot, g.pivot + g.width, y);
+    let wm = (1.0 - ws - wh).max(0.0);
+    let mut o = c;
+    let mut yn = y;
+    for (w, v) in [ws, wm, wh, 1.0].into_iter().zip(&g.wheels) {
+        for k in 0..3 {
+            o[k] += w * (v[k] + v[3]);
+        }
+        yn += w * v[3];
+    }
+    fit_gamut(o, yn)
+}
+
 pub(crate) fn hsl_adjust(h: &crate::params::Hsl) -> crate::color::HslAdjust {
     crate::color::HslAdjust {
         hue: h.hue.map(|v| v / 100.0),
@@ -961,7 +1048,10 @@ mod tests {
         };
         let before = render(&src, &p(0.0));
         let after = render(&src, &p(80.0));
-        assert!(spread(&after) > spread(&before) * 1.3, "kein Kontrastgewinn");
+        assert!(
+            spread(&after) > spread(&before) * 1.3,
+            "kein Kontrastgewinn"
+        );
         // Farbton je Pixel bleibt: Reihenfolge der Kanäle unverändert
         for (a, b) in before.data.iter().zip(&after.data) {
             let order = |c: &[f32; 3]| (c[0] > c[1], c[1] > c[2], c[0] > c[2]);
@@ -971,11 +1061,66 @@ mod tests {
         let gray = raster(&[[0.6, 0.6, 0.6]; 16], 4);
         let g = render(&gray, &p(100.0));
         for c in &g.data {
-            assert!((c[0] - c[2]).abs() < 1e-5 && (c[0] - c[1]).abs() < 1e-5, "{c:?}");
+            assert!(
+                (c[0] - c[2]).abs() < 1e-5 && (c[0] - c[1]).abs() < 1e-5,
+                "{c:?}"
+            );
         }
         // Negativ: Dunst kommt dazu
         let more = render(&hazy(0.1), &p(-80.0));
         assert!(spread(&more) < spread(&render(&hazy(0.1), &p(0.0))) * 0.7);
+    }
+
+    #[test]
+    fn color_grading_tints_ranges_and_keeps_black_and_white() {
+        use crate::params::{ColorGrade, GradeWheel};
+        let blue_shadows = DevelopParams {
+            color_grade: ColorGrade {
+                shadows: GradeWheel {
+                    hue: 240.0,
+                    saturation: 100.0,
+                    luminance: 0.0,
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let src = raster(&[[0.0; 3], [0.15; 3], [0.5; 3], [0.9; 3], [1.0; 3]], 5);
+        let out = render(&src, &blue_shadows);
+        let d = &out.data;
+        assert!(
+            d[0].iter().all(|v| *v < 1e-5),
+            "Schwarz bleibt schwarz: {:?}",
+            d[0]
+        );
+        assert!(d[1][2] > d[1][0] + 0.05, "Tiefen werden blau: {:?}", d[1]);
+        assert!(
+            (luma(d[1]) - 0.15).abs() < 1e-4,
+            "Helligkeit bleibt: {}",
+            luma(d[1])
+        );
+        assert!(
+            (d[3][2] - d[3][0]).abs() < 1e-4,
+            "Lichter unberührt: {:?}",
+            d[3]
+        );
+        assert!(
+            d[4].iter().all(|v| (*v - 1.0).abs() < 1e-5),
+            "Weiß bleibt weiß"
+        );
+        // Neutral (nur Überblenden/Abgleich verstellt) ändert nichts
+        let neutral = DevelopParams {
+            color_grade: ColorGrade {
+                blending: 10.0,
+                balance: 80.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(
+            render(&src, &neutral).data,
+            render(&src, &DevelopParams::default()).data
+        );
     }
 
     #[test]

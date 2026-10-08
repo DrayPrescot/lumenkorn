@@ -187,6 +187,8 @@ export interface DevelopParams {
   sharpen: number;
   /** HSL je Farbbereich (Rot, Orange, Gelb, Grün, Aquamarin, Blau, Lila, Magenta), −100…100 */
   hsl: Hsl;
+  /** Tönung nach Tonwertbereichen (Farbräder) */
+  colorGrade: ColorGrade;
   rotate: number;
   flipHorizontal: boolean;
   /** Geraderichten in Grad, im Uhrzeigersinn positiv */
@@ -197,6 +199,31 @@ export interface DevelopParams {
   denoise: { id: string; amount: number } | null;
   repairs: RepairLayer[];
 }
+
+/** Ein Farbrad des Color Gradings (params.rs: GradeWheel). */
+export interface GradeWheel {
+  /** Farbton in Grad, 0…360 (0 = Rot) */
+  hue: number;
+  /** Stärke der Tönung, 0…100 */
+  saturation: number;
+  /** Helligkeit des Bereichs, −100…100 */
+  luminance: number;
+}
+
+export type GradeRange = "shadows" | "midtones" | "highlights" | "global";
+
+export interface ColorGrade {
+  shadows: GradeWheel;
+  midtones: GradeWheel;
+  highlights: GradeWheel;
+  global: GradeWheel;
+  /** Weichheit der Übergänge, 0…100 (Standard 50) */
+  blending: number;
+  /** Grenze zwischen Tiefen und Lichtern, −100…100 */
+  balance: number;
+}
+
+const NEUTRAL_WHEEL: GradeWheel = { hue: 0, saturation: 0, luminance: 0 };
 
 /** Welche Teile einer Bearbeitung beim Kopieren/Übertragen mitgehen. */
 export interface TransferGroups {
@@ -346,6 +373,14 @@ export const DEFAULT_PARAMS: DevelopParams = {
   saturation: 0,
   sharpen: 0,
   hsl: { hue: [0, 0, 0, 0, 0, 0, 0, 0], saturation: [0, 0, 0, 0, 0, 0, 0, 0], luminance: [0, 0, 0, 0, 0, 0, 0, 0] },
+  colorGrade: {
+    shadows: { ...NEUTRAL_WHEEL },
+    midtones: { ...NEUTRAL_WHEEL },
+    highlights: { ...NEUTRAL_WHEEL },
+    global: { ...NEUTRAL_WHEEL },
+    blending: 50,
+    balance: 0,
+  },
   rotate: 0,
   flipHorizontal: false,
   straighten: 0,
@@ -371,6 +406,7 @@ export function transferParams(target: DevelopParams, src: DevelopParams, g: Tra
   if (g.basic) {
     for (const k of BASIC_KEYS) out[k] = src[k];
     out.hsl = JSON.parse(JSON.stringify(src.hsl ?? DEFAULT_PARAMS.hsl));
+    out.colorGrade = JSON.parse(JSON.stringify(src.colorGrade ?? DEFAULT_PARAMS.colorGrade));
   }
   if (g.masks) {
     // Eigene KI-Masken bleiben, die übrigen ersetzen die übertragbaren der Quelle

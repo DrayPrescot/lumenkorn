@@ -5,6 +5,7 @@
   import Histogram from "./Histogram.svelte";
   import MaskPanel from "./MaskPanel.svelte";
   import HslSection from "./HslSection.svelte";
+  import ColorGradeSection from "./ColorGradeSection.svelte";
   import RepairPanel from "./RepairPanel.svelte";
   import Icon from "./Icon.svelte";
   import Slider from "./Slider.svelte";
@@ -214,6 +215,7 @@
     {/each}
     <!-- HSL nach Details und Rauschreduzierung: seltener gebraucht -->
     <HslSection />
+    <ColorGradeSection />
 
     <details>
       <summary>{t("Schnappschüsse")} {dev.snapshots.length ? `(${dev.snapshots.length})` : ""}</summary>

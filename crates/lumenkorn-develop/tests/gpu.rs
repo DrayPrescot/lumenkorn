@@ -188,6 +188,36 @@ fn cases() -> Vec<(&'static str, DevelopParams)> {
             },
         ),
         (
+            "Color Grading",
+            DevelopParams {
+                color_grade: lumenkorn_develop::ColorGrade {
+                    shadows: lumenkorn_develop::GradeWheel {
+                        hue: 210.0,
+                        saturation: 60.0,
+                        luminance: -20.0,
+                    },
+                    midtones: lumenkorn_develop::GradeWheel {
+                        hue: 120.0,
+                        saturation: 30.0,
+                        luminance: 0.0,
+                    },
+                    highlights: lumenkorn_develop::GradeWheel {
+                        hue: 40.0,
+                        saturation: 70.0,
+                        luminance: 15.0,
+                    },
+                    global: lumenkorn_develop::GradeWheel {
+                        hue: 300.0,
+                        saturation: 10.0,
+                        luminance: 5.0,
+                    },
+                    blending: 70.0,
+                    balance: -30.0,
+                },
+                ..d()
+            },
+        ),
+        (
             "Dehaze negativ (Dunst)",
             DevelopParams {
                 dehaze: -60.0,

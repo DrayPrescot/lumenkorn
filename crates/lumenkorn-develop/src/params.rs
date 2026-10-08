@@ -44,6 +44,8 @@ pub struct DevelopParams {
 
     /// Farbton, Sättigung und Luminanz je Farbbereich (HSL)
     pub hsl: Hsl,
+    /// Tönung nach Tonwertbereichen (Farbräder)
+    pub color_grade: ColorGrade,
 
     // Geometrie
     /// Vierteldrehungen im Uhrzeigersinn, 0…3
@@ -84,11 +86,93 @@ impl Hsl {
     }
 }
 
+/// Ein Farbrad des Color Gradings.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GradeWheel {
+    /// Farbton in Grad, 0…360 (0 = Rot)
+    pub hue: f32,
+    /// Stärke der Tönung, 0…100
+    pub saturation: f32,
+    /// Helligkeit des Bereichs, −100…100
+    pub luminance: f32,
+}
+
+impl GradeWheel {
+    fn sanitized(&self) -> Self {
+        let c = |v: f32, lo: f32, hi: f32| if v.is_finite() { v.clamp(lo, hi) } else { 0.0 };
+        Self {
+            hue: if self.hue.is_finite() {
+                self.hue.rem_euclid(360.0)
+            } else {
+                0.0
+            },
+            saturation: c(self.saturation, 0.0, 100.0),
+            luminance: c(self.luminance, -100.0, 100.0),
+        }
+    }
+
+    pub fn is_neutral(&self) -> bool {
+        self.saturation == 0.0 && self.luminance == 0.0
+    }
+}
+
+/// Color Grading: Tönung von Tiefen, Mitteltönen und Lichtern (wie Lightroom).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ColorGrade {
+    pub shadows: GradeWheel,
+    pub midtones: GradeWheel,
+    pub highlights: GradeWheel,
+    /// Wirkt auf alle Tonwerte
+    pub global: GradeWheel,
+    /// Wie weich die Bereiche ineinander übergehen, 0…100
+    pub blending: f32,
+    /// Verschiebt die Grenze zwischen Tiefen und Lichtern, −100…100
+    /// (positiv: mehr Bild zählt zu den Lichtern)
+    pub balance: f32,
+}
+
+impl Default for ColorGrade {
+    fn default() -> Self {
+        Self {
+            shadows: GradeWheel::default(),
+            midtones: GradeWheel::default(),
+            highlights: GradeWheel::default(),
+            global: GradeWheel::default(),
+            blending: 50.0,
+            balance: 0.0,
+        }
+    }
+}
+
+impl ColorGrade {
+    /// Ohne Tönung und Helligkeit wirkt es nicht (Überblenden und Abgleich
+    /// allein ändern nichts).
+    pub fn is_neutral(&self) -> bool {
+        [self.shadows, self.midtones, self.highlights, self.global]
+            .iter()
+            .all(GradeWheel::is_neutral)
+    }
+
+    fn sanitized(&self) -> Self {
+        let c = |v: f32, lo: f32, hi: f32, d: f32| if v.is_finite() { v.clamp(lo, hi) } else { d };
+        Self {
+            shadows: self.shadows.sanitized(),
+            midtones: self.midtones.sanitized(),
+            highlights: self.highlights.sanitized(),
+            global: self.global.sanitized(),
+            blending: c(self.blending, 0.0, 100.0, 50.0),
+            balance: c(self.balance, -100.0, 100.0, 0.0),
+        }
+    }
+}
+
 /// Welche Teile einer Bearbeitung beim Übertragen mitgehen.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct TransferGroups {
-    /// Weißabgleich, Licht, Farbe (inkl. HSL), Klarheit, Schärfen
+    /// Weißabgleich, Licht, Farbe (inkl. HSL und Color Grading), Klarheit, Schärfen
     pub basic: bool,
     /// Masken ohne KI-Masken
     pub masks: bool,
@@ -459,6 +543,7 @@ impl Default for DevelopParams {
             saturation: 0.0,
             sharpen: 0.0,
             hsl: Hsl::default(),
+            color_grade: ColorGrade::default(),
             rotate: 0,
             flip_horizontal: false,
             straighten: 0.0,
@@ -504,6 +589,7 @@ impl DevelopParams {
                 saturation: self.hsl.saturation.map(|v| c(v, -100.0, 100.0)),
                 luminance: self.hsl.luminance.map(|v| c(v, -100.0, 100.0)),
             },
+            color_grade: self.color_grade.sanitized(),
             rotate: self.rotate % 4,
             flip_horizontal: self.flip_horizontal,
             straighten: c(self.straighten, -45.0, 45.0),
@@ -588,6 +674,7 @@ impl DevelopParams {
             out.saturation = src.saturation;
             out.sharpen = src.sharpen;
             out.hsl = src.hsl;
+            out.color_grade = src.color_grade;
         }
         if g.masks {
             let is_ai = |m: &MaskLayer| {

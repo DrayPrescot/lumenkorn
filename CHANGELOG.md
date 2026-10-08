@@ -7,6 +7,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Develop: Color Grading below HSL, as in Lightroom – color wheels for
+  shadows, midtones, highlights and global (drag for hue and saturation,
+  double-click resets), luminance per range, blending and balance. Tints
+  never brighten or darken; black and white stay neutral.
 - Develop: “Dunst entfernen” (Dehaze) in Details, below Sharpening.
   Removes haze with a dark-channel estimate but a neutral haze color, so
   colors keep their hue instead of drifting blue or yellow; the lost

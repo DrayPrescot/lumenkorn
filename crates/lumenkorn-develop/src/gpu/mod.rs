@@ -177,6 +177,10 @@ struct U {
     _p3: f32,
     /// HSL je Farbbereich: [0..2) Farbton, [2..4) Sättigung, [4..6) Luminanz
     hsl: [[f32; 4]; 6],
+    /// Color Grading (`pipeline::GradeVals`): Tiefen, Mitten, Lichter, Global
+    grade: [[f32; 4]; 4],
+    /// Grenze, Übergangsbreite, ungenutzt
+    grade_pw: [f32; 4],
 }
 
 const F_RAW: u32 = 1;
@@ -203,9 +207,10 @@ enum P {
     Hsl,
     Dark,
     Dehaze,
+    Grade,
 }
 
-const ENTRY_POINTS: [&str; 15] = [
+const ENTRY_POINTS: [&str; 16] = [
     "prep",
     "luma_pass",
     "map_down",
@@ -221,6 +226,7 @@ const ENTRY_POINTS: [&str; 15] = [
     "hsl",
     "dark_pass",
     "dehaze_pass",
+    "grade",
 ];
 
 /// Zuordnung der Puffer zu den Bindungen 1–8 des Shaders.
@@ -877,6 +883,27 @@ impl<'a> Ctx<'a> {
         self.run(P::Dehaze, u, b, img2d(self.w, self.h));
     }
 
+    /// Wie Color Grading in pipeline.rs (`grade_px`), in place.
+    fn grade(&mut self, img: &'a Buffer, g: &crate::params::ColorGrade) {
+        let Some(v) = crate::pipeline::grade_setup(g) else {
+            return;
+        };
+        let u = U {
+            grade: v.wheels,
+            grade_pw: [v.pivot, v.width, 0.0, 0.0],
+            ..self.base_u()
+        };
+        self.run(
+            P::Grade,
+            u,
+            Binds {
+                outa: Some(img),
+                ..Default::default()
+            },
+            img2d(self.w, self.h),
+        );
+    }
+
     /// Wie `hsl()` in pipeline.rs, in place.
     fn hsl(&mut self, img: &'a Buffer, h: &crate::params::Hsl) {
         if h.is_neutral() {
@@ -1122,6 +1149,7 @@ impl Gpu {
             );
             cx.color(&set.img, p.saturation / 100.0, p.vibrance / 100.0);
             cx.hsl(&set.img, &p.hsl);
+            cx.grade(&set.img, &p.color_grade);
 
             // --- Lokale Anpassungen
             let mut overlay = None;

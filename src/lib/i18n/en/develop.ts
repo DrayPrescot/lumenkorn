@@ -140,4 +140,12 @@ export default {
   "Doppelklick setzt zurück": "Double-click to reset",
   "{label} (Wert eingeben)": "{label} (enter value)",
   "Wert eingeben – Tab springt zum nächsten Regler, ↑/↓ verstellen": "Enter value – Tab jumps to the next slider, ↑/↓ adjust",
+  "Color Grading": "Color Grading",
+  "Mitteltöne": "Midtones",
+  "Global": "Global",
+  "Überblenden": "Blending",
+  "Abgleich": "Balance",
+  "Color Grading zurücksetzen": "Reset Color Grading",
+  "Farbton {h}°, Sättigung {s}": "Hue {h}°, saturation {s}",
+  "Ziehen: Farbton und Sättigung · Doppelklick: zurücksetzen": "Drag: hue and saturation · Double-click: reset",
 } satisfies Record<string, string>;

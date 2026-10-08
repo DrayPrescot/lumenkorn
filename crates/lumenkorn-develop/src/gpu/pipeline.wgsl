@@ -23,6 +23,10 @@ struct U {
     haze: f32, haze_lift: f32, _p2: f32, _p3: f32,
     // HSL je Farbbereich (−1…1): [0..2) Farbton, [2..4) Sättigung, [4..6) Luminanz
     hsl: array<vec4<f32>, 6>,
+    // Color Grading (pipeline.rs: GradeVals): Tiefen, Mitten, Lichter, Global
+    // je Tönung (xyz) und Helligkeit (w); grade_pw = Grenze, Übergangsbreite
+    grade: array<vec4<f32>, 4>,
+    grade_pw: vec4<f32>,
 };
 
 const F_RAW: u32 = 1u;
@@ -253,6 +257,29 @@ fn blur_v(@builtin(global_invocation_id) id: vec3<u32>) {
         acc += fa[u32(clamp(y + r + 1, 0, last)) * u.mw + col]
              - fa[u32(clamp(y - r, 0, last)) * u.mw + col];
     }
+}
+
+// Color Grading (pipeline.rs: grade_px), in place
+@compute @workgroup_size(16, 16)
+fn grade(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x >= u.w || id.y >= u.h) { return; }
+    let i = id.y * u.w + id.x;
+    let c = outa[i].xyz;
+    let y = luma(c);
+    let p = u.grade_pw.x;
+    let wd = u.grade_pw.y;
+    let ws = 1.0 - sstep(p - wd, p, y);
+    let wh = sstep(p, p + wd, y);
+    let wm = max(1.0 - ws - wh, 0.0);
+    let ws4 = array<f32, 4>(ws, wm, wh, 1.0);
+    var o = c;
+    var yn = y;
+    for (var k = 0u; k < 4u; k++) {
+        let v = u.grade[k];
+        o += ws4[k] * (v.xyz + vec3<f32>(v.w));
+        yn += ws4[k] * v.w;
+    }
+    outa[i] = vec4<f32>(fit_gamut(o, yn), 1.0);
 }
 
 // Dunkelkanal (kleinster Farbanteil): ina = Bild, fo = Wert je Pixel
