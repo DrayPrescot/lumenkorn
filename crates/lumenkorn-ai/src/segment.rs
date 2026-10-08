@@ -271,23 +271,28 @@ pub fn sky_mask(img: &DynamicImage, sam: Option<(&Sam, &SamEmbedding)>) -> Resul
             let refined = image::imageops::resize(&m, sw, sh, FilterType::Triangle);
             let iou = iou(&refined, &heuristic);
             log::info!("Himmel: SAM-Übereinstimmung mit Heuristik {iou:.2}");
-            if iou > 0.4 {
-                // Eingeschlossene Löcher (Sonne, Mond) wie bei der Heuristik füllen
-                let bin: Vec<bool> = refined.pixels().map(|p| p[0] > 127).collect();
-                let filled = fill_holes(&bin, sw as usize, sh as usize);
-                let holes = GrayImage::from_fn(sw, sh, |x, y| {
-                    let i = (y * sw + x) as usize;
-                    Luma([if filled[i] && !bin[i] { 255 } else { 0 }])
-                });
-                let holes = image::imageops::resize(
-                    &image::imageops::blur(&holes, 0.8),
-                    w,
-                    h,
-                    FilterType::Triangle,
-                );
+            if iou > 0.6 {
+                // SAM verfeinert nur die Kante: höchstens ein schmaler Saum über
+                // die geprüfte Fläche hinaus (sonst nimmt es Horizont, Inseln,
+                // Wasser oder Boden mit), innen bleibt die Fläche voll – auch
+                // gefüllte Löcher wie die Sonne.
+                let (uw, uh) = (sw as usize, sh as usize);
+                let soft = |b: &[bool]| {
+                    let g = GrayImage::from_fn(sw, sh, |x, y| {
+                        Luma([if b[(y * sw + x) as usize] { 255 } else { 0 }])
+                    });
+                    image::imageops::resize(
+                        &image::imageops::blur(&g, 1.0),
+                        w,
+                        h,
+                        FilterType::Triangle,
+                    )
+                };
+                let upper = soft(&morph(&region, uw, uh, SAM_EDGE, true));
+                let lower = soft(&morph(&region, uw, uh, SAM_EDGE, false));
                 let mut out = image::imageops::resize(&m, w, h, FilterType::Triangle);
-                for (o, hpx) in out.pixels_mut().zip(holes.pixels()) {
-                    o[0] = o[0].max(hpx[0]);
+                for ((o, u), l) in out.pixels_mut().zip(upper.pixels()).zip(lower.pixels()) {
+                    o[0] = o[0].min(u[0]).max(l[0]);
                 }
                 return Ok(out);
             }
@@ -298,76 +303,206 @@ pub fn sky_mask(img: &DynamicImage, sam: Option<(&Sam, &SamEmbedding)>) -> Resul
     Ok(image::imageops::resize(&soft, w, h, FilterType::Triangle))
 }
 
+/// Art eines himmelsartigen Pixels.
+#[derive(Clone, Copy, PartialEq)]
+enum SkyKind {
+    /// Kein Himmel (Grün, Erdtöne, kräftiges Rot, zu dunkel …)
+    No,
+    /// Blau bis Cyan – auch dunkles Dämmerungsblau
+    Blue,
+    /// Helles Grau/Weiß (Wolken, bedeckter Himmel) oder sehr helle warme Töne
+    /// (Sonnenuntergang)
+    Bright,
+}
+
+/// Himmelsfarbe eines Pixels (sRGB 0…1, Helligkeit `y`).
+fn sky_kind(c: [f32; 3], y: f32) -> SkyKind {
+    let (r, g, b) = (c[0], c[1], c[2]);
+    let max = r.max(g).max(b);
+    let chroma = max - r.min(g).min(b);
+    // Blau/Cyan: Blau vorn und Rot klar dahinter
+    if b >= g - 0.02 && b > r + 0.04 && y > 0.06 {
+        return SkyKind::Blue;
+    }
+    // Wolken, Dunst, bedeckter Himmel: hell und fast farblos
+    if y > 0.5 && chroma < 0.12 {
+        return SkyKind::Bright;
+    }
+    // Abendhimmel: sehr hell auch kräftiger warm, sonst nur dezent getönt
+    // (Wände, Haut, Sand scheiden dann über Glätte und Lage der Fläche aus)
+    if g > b && ((y > 0.7 && chroma < 0.45) || (y > 0.45 && chroma < 0.28 && chroma < max * 0.4)) {
+        return SkyKind::Bright;
+    }
+    SkyKind::No
+}
+
+/// Himmel finden (Arbeitsbild ~256 px), ohne KI-Modell.
+///
+/// 1. Jedes Pixel der Fläche muss eine Himmelsfarbe haben ([`sky_kind`]) und
+///    glatt sein; gewachsen wird vom oberen Rand aus über ähnliche Nachbarn.
+///    (Früher genügte ein langsamer Farbverlauf – so lief die Fläche über
+///    Wände, Gras und Studiohintergründe.)
+/// 2. Jede zusammenhängende Fläche muss als Ganzes überzeugen: blaue Flächen
+///    einheitlich blau, helle graue nur, wenn sie zu den hellsten Teilen des
+///    Bildes gehören und sehr glatt sind – das schließt Wände und graue
+///    Hintergründe aus, die sonst genauso aussehen.
+/// 3. Kleine eingeschlossene Löcher (Sonne, Mond, Vögel) werden gefüllt.
 fn sky_region(img: &RgbImage) -> Vec<bool> {
     let (w, h) = img.dimensions();
     let (w, h) = (w as usize, h as usize);
-    let px = |x: usize, y: usize| {
-        let p = img.get_pixel(x as u32, y as u32);
-        [
-            p[0] as f32 / 255.0,
-            p[1] as f32 / 255.0,
-            p[2] as f32 / 255.0,
-        ]
+    let n = w * h;
+    let px: Vec<[f32; 3]> = img
+        .pixels()
+        .map(|p| {
+            [
+                p[0] as f32 / 255.0,
+                p[1] as f32 / 255.0,
+                p[2] as f32 / 255.0,
+            ]
+        })
+        .collect();
+    let lum: Vec<f32> = px
+        .iter()
+        .map(|c| 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2])
+        .collect();
+    let at = |x: usize, y: usize, dx: isize, dy: isize| {
+        let xx = (x as isize + dx).clamp(0, w as isize - 1) as usize;
+        let yy = (y as isize + dy).clamp(0, h as isize - 1) as usize;
+        lum[yy * w + xx]
     };
-    let luma = |c: [f32; 3]| 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-    let lum: Vec<f32> = (0..w * h).map(|i| luma(px(i % w, i / w))).collect();
-    let grad = |x: usize, y: usize| {
-        let l = |dx: isize, dy: isize| {
-            let xx = (x as isize + dx).clamp(0, w as isize - 1) as usize;
-            let yy = (y as isize + dy).clamp(0, h as isize - 1) as usize;
-            lum[yy * w + xx]
-        };
-        ((l(1, 0) - l(-1, 0)).powi(2) + (l(0, 1) - l(0, -1)).powi(2)).sqrt()
+    // Kantenstärke: Gradient über zwei Pixel (fängt auch feine Struktur wie
+    // Laub, Putz oder Stoff, die ein Pixelabstand bei Verkleinerung verwischt)
+    let grad: Vec<f32> = (0..n)
+        .map(|i| {
+            let (x, y) = (i % w, i / w);
+            let g1 =
+                (at(x, y, 1, 0) - at(x, y, -1, 0)).abs() + (at(x, y, 0, 1) - at(x, y, 0, -1)).abs();
+            let g2 =
+                (at(x, y, 2, 0) - at(x, y, -2, 0)).abs() + (at(x, y, 0, 2) - at(x, y, 0, -2)).abs();
+            g1.max(g2 * 0.6)
+        })
+        .collect();
+    let kind: Vec<SkyKind> = (0..n).map(|i| sky_kind(px[i], lum[i])).collect();
+    // Glatt genug für Himmel: blauer Himmel ist sehr glatt, Wolken etwas weniger
+    let smooth = |i: usize| match kind[i] {
+        SkyKind::Blue => grad[i] < 0.07,
+        SkyKind::Bright => grad[i] < 0.09,
+        SkyKind::No => false,
     };
-    let mut sorted = lum.clone();
-    sorted.sort_by(|a, b| a.total_cmp(b));
-    let median = sorted[sorted.len() / 2];
 
-    let candidate = |x: usize, y: usize| {
-        let c = px(x, y);
-        let green = c[1] > c[0] * 1.15 && c[1] > c[2] * 1.15;
-        // Dunkle, kräftig rote/braune Flächen sind praktisch nie Himmel.
-        let earthy = c[0] > c[2] * 1.4 && lum[y * w + x] < 0.45;
-        lum[y * w + x] >= (median * 0.9).min(0.6) && grad(x, y) < 0.08 && !green && !earthy
-    };
-
-    let mut region = vec![false; w * h];
-    let mut queue = VecDeque::new();
+    // Bereichswachstum je Fläche vom oberen Rand aus
+    let mut label = vec![u32::MAX; n];
+    let mut comps: Vec<Vec<usize>> = Vec::new();
     for x in 0..w {
         for y in 0..(h / 12).max(1) {
-            if candidate(x, y) && !region[y * w + x] {
-                region[y * w + x] = true;
-                queue.push_back((x, y));
-            }
-        }
-    }
-    while let Some((x, y)) = queue.pop_front() {
-        let c = px(x, y);
-        for (dx, dy) in [(-1isize, 0isize), (1, 0), (0, -1), (0, 1)] {
-            let (nx, ny) = (x as isize + dx, y as isize + dy);
-            if nx < 0 || ny < 0 || nx >= w as isize || ny >= h as isize {
+            let start = y * w + x;
+            if label[start] != u32::MAX || !smooth(start) {
                 continue;
             }
-            let (nx, ny) = (nx as usize, ny as usize);
-            if region[ny * w + nx] {
-                continue;
+            let id = comps.len() as u32;
+            let mut members = vec![start];
+            label[start] = id;
+            let mut queue = VecDeque::from([start]);
+            while let Some(i) = queue.pop_front() {
+                let (cx, cy) = (i % w, i / w);
+                let c = px[i];
+                for (dx, dy) in [(-1isize, 0isize), (1, 0), (0, -1), (0, 1)] {
+                    let (nx, ny) = (cx as isize + dx, cy as isize + dy);
+                    if nx < 0 || ny < 0 || nx >= w as isize || ny >= h as isize {
+                        continue;
+                    }
+                    let j = ny as usize * w + nx as usize;
+                    if label[j] != u32::MAX || !smooth(j) {
+                        continue;
+                    }
+                    let d = px[j];
+                    let diff =
+                        ((d[0] - c[0]).powi(2) + (d[1] - c[1]).powi(2) + (d[2] - c[2]).powi(2))
+                            .sqrt();
+                    if diff < 0.05 {
+                        label[j] = id;
+                        members.push(j);
+                        queue.push_back(j);
+                    }
+                }
             }
-            let n = px(nx, ny);
-            let diff =
-                ((n[0] - c[0]).powi(2) + (n[1] - c[1]).powi(2) + (n[2] - c[2]).powi(2)).sqrt();
-            if diff < 0.06 && grad(nx, ny) < 0.1 && lum[ny * w + nx] > median * 0.6 {
-                region[ny * w + nx] = true;
-                queue.push_back((nx, ny));
-            }
+            comps.push(members);
         }
     }
 
-    fill_holes(&region, w, h)
+    // Flächen als Ganzes prüfen
+    let mut sorted = lum.clone();
+    sorted.sort_by(|a, b| a.total_cmp(b));
+    let pct = |q: f32| sorted[((sorted.len() - 1) as f32 * q) as usize];
+    let (bright_ref, median) = (pct(0.85), pct(0.5));
+    let mut region = vec![false; n];
+    for members in &comps {
+        let m = members.len();
+        // Kleine Flecken am Rand (helles Fenster, Lichtreflex) sind kein Himmel
+        if m < n / 100 {
+            continue;
+        }
+        // Breite am oberen Rand: Spalten, in denen die Fläche oben ankommt
+        let band = (h / 12).max(1);
+        let mut cols = vec![false; w];
+        for &i in members.iter().filter(|&&i| i / w < band) {
+            cols[i % w] = true;
+        }
+        let top_width = cols.iter().filter(|c| **c).count();
+        if top_width < w / 10 {
+            continue;
+        }
+        let mean_lum = members.iter().map(|&i| lum[i]).sum::<f32>() / m as f32;
+        let mean_grad = members.iter().map(|&i| grad[i]).sum::<f32>() / m as f32;
+        let blue = members
+            .iter()
+            .filter(|&&i| kind[i] == SkyKind::Blue)
+            .count() as f32
+            / m as f32;
+        // Wie viel blauer als grün: an Testfotos Himmel ≥ 0,032 (auch mit
+        // Wolken, Dunst, Dämmerung), türkises Laub im Unscharfen ≤ 0,025
+        let over_green = members.iter().map(|&i| px[i][2] - px[i][1]).sum::<f32>() / m as f32;
+        let ok = if blue > 0.5 {
+            // Blauer Himmel: glatt, klar blau und nicht dunkler als das Bild im
+            // Mittel (auch in der Dämmerung nicht)
+            mean_grad < 0.035 && over_green > 0.028 && mean_lum >= median * 0.95
+        } else {
+            // Grau/Weiß: muss zu den hellsten Teilen gehören. Dazu entweder
+            // sehr glatt (gleichmäßig bedeckt; Wände, Putz und Studio-
+            // hintergründe hatten an Testfotos Kantenwerte 0,013–0,026,
+            // bedeckter Himmel unter 0,01) und oben breit anliegend – oder,
+            // mit Wolkenstruktur, eine große Fläche über die ganze obere Kante
+            // (Wände und Hintergründe sind kleiner oder von Motiven unterbrochen).
+            // Fester Abstand statt Verhältnis: In hellen oder dunstigen Bildern
+            // liegt der Himmel nur wenig über dem Mittel
+            let bright = mean_lum >= bright_ref * 0.95 && mean_lum > median + 0.08;
+            let even = mean_grad < 0.012 && m >= n / 25 && top_width >= w / 3;
+            let clouds = mean_grad < 0.04 && m >= n / 5 && top_width * 10 >= w * 9;
+            bright && (even || clouds)
+        };
+        log::debug!(
+            "Himmel-Kandidat: Fläche {:.1} %, oben {:.0} %, Helligkeit {mean_lum:.2} \
+             (85 % {bright_ref:.2}, Median {median:.2}), Kante {mean_grad:.3}, blau {blue:.2}, \
+             B−G {over_green:.3} → {ok}",
+            m as f32 / n as f32 * 100.0,
+            top_width as f32 / w as f32 * 100.0
+        );
+        if ok {
+            for &i in members {
+                region[i] = true;
+            }
+        }
+    }
+    if !region.iter().any(|v| *v) {
+        return region;
+    }
+    fill_holes(&region, w, h, n / 60)
 }
 
-/// Löcher füllen: alles, was nicht zur Fläche gehört und keinen Weg zum
-/// seitlichen oder unteren Rand hat, liegt im Himmel (Sonne, Mond, Vögel).
-fn fill_holes(region: &[bool], w: usize, h: usize) -> Vec<bool> {
+/// Löcher füllen: Was nicht zur Fläche gehört und keinen Weg zum seitlichen
+/// oder unteren Rand hat, liegt im Himmel (Sonne, Mond, Vögel) – aber nur bis
+/// `max_hole` Pixel je Loch; größere sind Gebäude, Bäume oder Berge.
+fn fill_holes(region: &[bool], w: usize, h: usize, max_hole: usize) -> Vec<bool> {
     let mut outside = vec![false; w * h];
     let mut q = VecDeque::new();
     for x in 0..w {
@@ -396,7 +531,46 @@ fn fill_holes(region: &[bool], w: usize, h: usize) -> Vec<bool> {
             q.push_back((x, y + 1));
         }
     }
-    (0..w * h).map(|i| region[i] || !outside[i]).collect()
+    // Eingeschlossene Bereiche je Loch zählen, nur kleine übernehmen
+    let mut out = region.to_vec();
+    let mut seen = vec![false; w * h];
+    for start in 0..w * h {
+        if region[start] || outside[start] || seen[start] {
+            continue;
+        }
+        let mut hole = vec![start];
+        seen[start] = true;
+        let mut k = 0;
+        while k < hole.len() {
+            let i = hole[k];
+            k += 1;
+            let (x, y) = (i % w, i / w);
+            let mut push = |j: usize| {
+                if !region[j] && !outside[j] && !seen[j] {
+                    seen[j] = true;
+                    hole.push(j);
+                }
+            };
+            if x > 0 {
+                push(i - 1);
+            }
+            if x + 1 < w {
+                push(i + 1);
+            }
+            if y > 0 {
+                push(i - w);
+            }
+            if y + 1 < h {
+                push(i + w);
+            }
+        }
+        if hole.len() <= max_hole {
+            for i in hole {
+                out[i] = true;
+            }
+        }
+    }
+    out
 }
 
 /// SAM unterschätzt Masken in den äußersten Pixelreihen; ohne Korrektur bleibt
@@ -468,6 +642,38 @@ fn sky_prompts(region: &[bool], w: u32, h: u32) -> Vec<Point> {
     }
 }
 
+/// Breite des Saums (Pixel im Arbeitsbild, ~1 % der Kante), in dem SAM die
+/// Himmelskante verschieben darf.
+const SAM_EDGE: usize = 3;
+
+/// Binäres Dilatieren (`grow`) bzw. Erodieren mit quadratischem Radius `r`.
+fn morph(b: &[bool], w: usize, h: usize, r: usize, grow: bool) -> Vec<bool> {
+    // Getrennt waagerecht und senkrecht – bei Quadrat gleichwertig
+    let pass = |src: &[bool], horizontal: bool| -> Vec<bool> {
+        (0..w * h)
+            .map(|i| {
+                let (x, y) = (i % w, i / w);
+                let (lo, hi, at): (usize, usize, Box<dyn Fn(usize) -> usize>) = if horizontal {
+                    (
+                        x.saturating_sub(r),
+                        (x + r).min(w - 1),
+                        Box::new(move |k| y * w + k),
+                    )
+                } else {
+                    (
+                        y.saturating_sub(r),
+                        (y + r).min(h - 1),
+                        Box::new(move |k| k * w + x),
+                    )
+                };
+                let mut it = (lo..=hi).map(|k| src[at(k)]);
+                if grow { it.any(|v| v) } else { it.all(|v| v) }
+            })
+            .collect()
+    };
+    pass(&pass(b, true), false)
+}
+
 fn iou(a: &GrayImage, b: &GrayImage) -> f32 {
     let (mut inter, mut union) = (0u32, 0u32);
     for (p, q) in a.pixels().zip(b.pixels()) {
@@ -515,6 +721,70 @@ mod tests {
         assert!(at(0.2, 0.1) > 200, "Himmel oben links");
         assert!(at(0.75, 0.2) > 200, "Sonne gehört zum Himmel");
         assert!(at(0.5, 0.9) < 30, "Berge unten nicht");
+    }
+
+    /// Leichtes Rauschen wie bei echten Fotos (in Blöcken, damit es das
+    /// Verkleinern auf das Arbeitsbild übersteht).
+    fn noise(x: u32, y: u32, amp: i32) -> i32 {
+        (((x / 4) * 7919 + (y / 4) * 104729) % 23) as i32 * amp / 11 - amp
+    }
+
+    #[test]
+    fn grey_studio_backdrop_is_not_sky() {
+        // Mittelgrauer, leicht fleckiger Hintergrund hinter einer hellen Person
+        let img = DynamicImage::ImageRgb8(RgbImage::from_fn(600, 400, |x, y| {
+            let person =
+                ((x as f32 - 300.0) / 120.0).powi(2) + ((y as f32 - 330.0) / 220.0).powi(2) < 1.0;
+            if person {
+                Rgb([235, 200, 180])
+            } else {
+                let v = (150 + noise(x, y, 14)) as u8;
+                Rgb([v, v, v.saturating_add(4)])
+            }
+        }));
+        let m = sky_mask(&img, None).unwrap();
+        assert!(m.pixels().all(|p| p[0] == 0));
+    }
+
+    #[test]
+    fn teal_bokeh_is_not_sky() {
+        // Unscharfes, türkises Laub hinter einer hellen Blüte
+        let img = DynamicImage::ImageRgb8(RgbImage::from_fn(600, 400, |x, y| {
+            let bloom = ((x as f32 - 300.0).powi(2) + (y as f32 - 220.0).powi(2)).sqrt() < 110.0;
+            if bloom {
+                Rgb([245, 170, 110])
+            } else {
+                let n = noise(x, y, 4);
+                Rgb([(40 + n) as u8, (95 + n) as u8, (100 + n) as u8])
+            }
+        }));
+        let m = sky_mask(&img, None).unwrap();
+        assert!(m.pixels().all(|p| p[0] == 0));
+    }
+
+    #[test]
+    fn dusk_sky_is_found() {
+        // Dunkelblauer Dämmerungshimmel über schwarzer Silhouette mit Lichtern
+        let img = DynamicImage::ImageRgb8(RgbImage::from_fn(600, 400, |x, y| {
+            if y > 300 {
+                if (x / 40) % 3 == 0 && y < 310 {
+                    Rgb([255, 210, 120])
+                } else {
+                    Rgb([10, 10, 14])
+                }
+            } else {
+                let t = y as f32 / 300.0;
+                Rgb([
+                    (15.0 + 20.0 * t) as u8,
+                    (35.0 + 30.0 * t) as u8,
+                    (90.0 + 40.0 * t) as u8,
+                ])
+            }
+        }));
+        let m = sky_mask(&img, None).unwrap();
+        let (w, h) = m.dimensions();
+        assert!(m.get_pixel(w / 2, h / 4)[0] > 200, "Himmel");
+        assert!(m.get_pixel(w / 2, h * 9 / 10)[0] < 30, "Boden");
     }
 
     #[test]

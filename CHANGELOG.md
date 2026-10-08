@@ -96,6 +96,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
   are gone.
 
 ### Fixed
+- Sky detection selected far too much (walls, grass, foliage, studio
+  backdrops). Each area must now look like sky as a whole – clearly blue, or
+  bright, smooth and spanning the top for grey and cloudy skies – and SAM may
+  only refine the edge, no longer add horizon, water or ground. Tested on 17
+  sky and 56 non-sky photos and variants (warm light, haze, dark, bright).
+  Existing sky masks keep their old result until created again.
 - Choosing another folder, project or person in Develop no longer jumps back
   to the Library: the open photo stays if it is part of the new view,
   otherwise the first photo there opens.
