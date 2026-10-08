@@ -316,7 +316,9 @@ enum SkyKind {
 }
 
 /// Himmelsfarbe eines Pixels (sRGB 0…1, Helligkeit `y`).
-fn sky_kind(c: [f32; 3], y: f32) -> SkyKind {
+/// `grey_min`: ab welcher Helligkeit Grau als Himmel in Frage kommt (vom Bild
+/// abhängig, siehe `sky_region`).
+fn sky_kind(c: [f32; 3], y: f32, grey_min: f32) -> SkyKind {
     let (r, g, b) = (c[0], c[1], c[2]);
     let max = r.max(g).max(b);
     let chroma = max - r.min(g).min(b);
@@ -325,7 +327,7 @@ fn sky_kind(c: [f32; 3], y: f32) -> SkyKind {
         return SkyKind::Blue;
     }
     // Wolken, Dunst, bedeckter Himmel: hell und fast farblos
-    if y > 0.5 && chroma < 0.12 {
+    if y > grey_min && chroma < 0.12 {
         return SkyKind::Bright;
     }
     // Abendhimmel: sehr hell auch kräftiger warm, sonst nur dezent getönt
@@ -351,44 +353,65 @@ fn sky_region(img: &RgbImage) -> Vec<bool> {
     let (w, h) = img.dimensions();
     let (w, h) = (w as usize, h as usize);
     let n = w * h;
-    let px: Vec<[f32; 3]> = img
-        .pixels()
-        .map(|p| {
-            [
-                p[0] as f32 / 255.0,
-                p[1] as f32 / 255.0,
-                p[2] as f32 / 255.0,
-            ]
-        })
-        .collect();
-    let lum: Vec<f32> = px
-        .iter()
-        .map(|c| 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2])
-        .collect();
-    let at = |x: usize, y: usize, dx: isize, dy: isize| {
-        let xx = (x as isize + dx).clamp(0, w as isize - 1) as usize;
-        let yy = (y as isize + dy).clamp(0, h as isize - 1) as usize;
-        lum[yy * w + xx]
+    // Merkmale je Pixel: Farbe, Helligkeit, Kantenstärke
+    let features = |img: &RgbImage| {
+        let px: Vec<[f32; 3]> = img
+            .pixels()
+            .map(|p| {
+                [
+                    p[0] as f32 / 255.0,
+                    p[1] as f32 / 255.0,
+                    p[2] as f32 / 255.0,
+                ]
+            })
+            .collect();
+        let lum: Vec<f32> = px
+            .iter()
+            .map(|c| 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2])
+            .collect();
+        let at = |x: usize, y: usize, dx: isize, dy: isize| {
+            let xx = (x as isize + dx).clamp(0, w as isize - 1) as usize;
+            let yy = (y as isize + dy).clamp(0, h as isize - 1) as usize;
+            lum[yy * w + xx]
+        };
+        // Kantenstärke: Gradient über zwei Pixel (fängt auch feine Struktur
+        // wie Laub, Putz oder Stoff, die ein Pixelabstand bei Verkleinerung
+        // verwischt)
+        let grad: Vec<f32> = (0..n)
+            .map(|i| {
+                let (x, y) = (i % w, i / w);
+                let g1 = (at(x, y, 1, 0) - at(x, y, -1, 0)).abs()
+                    + (at(x, y, 0, 1) - at(x, y, 0, -1)).abs();
+                let g2 = (at(x, y, 2, 0) - at(x, y, -2, 0)).abs()
+                    + (at(x, y, 0, 2) - at(x, y, 0, -2)).abs();
+                g1.max(g2 * 0.6)
+            })
+            .collect();
+        (px, lum, grad)
     };
-    // Kantenstärke: Gradient über zwei Pixel (fängt auch feine Struktur wie
-    // Laub, Putz oder Stoff, die ein Pixelabstand bei Verkleinerung verwischt)
-    let grad: Vec<f32> = (0..n)
-        .map(|i| {
-            let (x, y) = (i % w, i / w);
-            let g1 =
-                (at(x, y, 1, 0) - at(x, y, -1, 0)).abs() + (at(x, y, 0, 1) - at(x, y, 0, -1)).abs();
-            let g2 =
-                (at(x, y, 2, 0) - at(x, y, -2, 0)).abs() + (at(x, y, 0, 2) - at(x, y, 0, -2)).abs();
-            g1.max(g2 * 0.6)
-        })
-        .collect();
-    let kind: Vec<SkyKind> = (0..n).map(|i| sky_kind(px[i], lum[i])).collect();
+    // Dünne Linien (Kondensstreifen, Leitungen) zerschneiden den Himmel; die
+    // Stücke verbindet der zweite Schritt unten. Ein Glätten vorab (Median)
+    // ließ die Fläche dagegen durch Gittermasten und über dunstige Horizonte
+    // laufen.
+    let (px, lum, grad) = features(img);
+    // Helligkeitsverteilung des Bildes (auch für die Prüfung der Flächen unten)
+    let mut sorted = lum.clone();
+    sorted.sort_by(|a, b| a.total_cmp(b));
+    let pct = |q: f32| sorted[((sorted.len() - 1) as f32 * q) as usize];
+    let (bright_ref, median) = (pct(0.85), pct(0.5));
+    // Grau kommt als Himmel in Frage, wenn es etwa so hell wie die Bildmitte
+    // oder heller ist (90 % des Medians, mindestens 0,3, höchstens 0,5): trüber
+    // Abend- oder Regenhimmel ist oft nur mittelhell und oben dunkler. Ob eine graue *Fläche* Himmel ist, prüft unten
+    // weiterhin streng (hell im Verhältnis zum Bild, glatt, Horizont).
+    let grey_min = (median * 0.9).clamp(0.3, 0.5);
+    let kind: Vec<SkyKind> = (0..n).map(|i| sky_kind(px[i], lum[i], grey_min)).collect();
     // Glatt genug für Himmel: blauer Himmel ist sehr glatt, Wolken etwas weniger
-    let smooth = |i: usize| match kind[i] {
-        SkyKind::Blue => grad[i] < 0.07,
-        SkyKind::Bright => grad[i] < 0.09,
+    let smooth_by = |k: SkyKind, g: f32| match k {
+        SkyKind::Blue => g < 0.07,
+        SkyKind::Bright => g < 0.09,
         SkyKind::No => false,
     };
+    let smooth = |i: usize| smooth_by(kind[i], grad[i]);
 
     // Bereichswachstum über ähnliche Nachbarn. Wolken mit Kanten zum blauen
     // Himmel werden dabei zu eigenen Flächen; sie kommen im zweiten Schritt
@@ -456,18 +479,14 @@ fn sky_region(img: &RgbImage) -> Vec<bool> {
     }
 
     // Flächen als Ganzes prüfen
-    let mut sorted = lum.clone();
-    sorted.sort_by(|a, b| a.total_cmp(b));
-    let pct = |q: f32| sorted[((sorted.len() - 1) as f32 * q) as usize];
-    let (bright_ref, median) = (pct(0.85), pct(0.5));
     let mut region = vec![false; n];
     // Flächen, die nicht bis zur Kante reichen oder abgelehnt wurden, für den
     // zweiten Schritt (siehe unten)
     struct Later<'a> {
         members: &'a Vec<usize>,
         blue: f32,
-        /// B−G über der nötigen Schwelle (positiv = klar blau)
-        blue_margin: f32,
+        /// Blau genug für Himmel (siehe `blueish` oben)
+        blueish: bool,
         mean_lum: f32,
         mean_grad: f32,
     }
@@ -494,13 +513,20 @@ fn sky_region(img: &RgbImage) -> Vec<bool> {
         let blue = blues.len() as f32 / m as f32;
         // Wie viel blauer als grün (nur die blauen Pixel): an Testfotos Himmel
         // ≥ 0,032 (auch mit Wolken, Dunst, Dämmerung), türkises Laub ≤ 0,025
-        let (over_green, blue_lum) = if blues.is_empty() {
-            (0.0, 0.0)
+        let (over_green, blue_lum, blue_hue) = if blues.is_empty() {
+            (0.0, 0.0, 0.0)
         } else {
             let k = blues.len() as f32;
+            let mut mean = [0f32; 3];
+            for &i in &blues {
+                for c in 0..3 {
+                    mean[c] += px[i][c] / k;
+                }
+            }
             (
                 blues.iter().map(|&i| px[i][2] - px[i][1]).sum::<f32>() / k,
                 blues.iter().map(|&i| lum[i]).sum::<f32>() / k,
+                hue_deg(mean),
             )
         };
         // Sehr heller Himmel ist fast weiß – dort kann Blau nur wenig vor Grün
@@ -526,25 +552,30 @@ fn sky_region(img: &RgbImage) -> Vec<bool> {
         // Studiohintergründe reichen meist bis weit nach unten
         let low = members.iter().filter(|&&i| i / w > h / 2).count() as f32 / m as f32;
         let reaches_top = m >= n / 100 && top_width >= w / 10;
-        let ok = reaches_top
-            && if blue > 0.15 {
-                // Blauer Himmel (auch mit Wolken): klar blau und glatt
-                over_green > need_blue && mean_grad < 0.045
-            } else {
-                // Grau/Weiß: muss zu den hellsten Teilen gehören. Dazu entweder
-                // sehr glatt (gleichmäßig bedeckt; Wände, Putz und Studio-
-                // hintergründe hatten an Testfotos Kantenwerte 0,013–0,026,
-                // bedeckter Himmel unter 0,01) und oben breit anliegend – oder,
-                // mit Wolkenstruktur, groß, oben breit und kaum in der unteren Hälfte.
-                let bright = mean_lum >= bright_ref * 0.9 && mean_lum > median + 0.05;
-                let even = mean_grad < 0.012 && m >= n / 25 && top_width >= w / 3 && low < 0.35;
-                let clouds = mean_grad < 0.045
-                    && m >= n / 12
-                    && top_width * 5 >= w * 2
-                    && low < 0.1
-                    && ragged < 0.14;
-                bright && (even || clouds)
-            };
+        // Gedämpftes Abendblau liegt nur knapp über Grün (an einem Testfoto
+        // 0,024), ist aber bläulich (Farbton um 210°) und sehr glatt. Türkises
+        // Laub liegt um 180°; bläulich-graue Wände und Studiohintergründe
+        // kaum über Grün (≤ 0,016) oder rauer.
+        let blueish = over_green > need_blue
+            || (blue_hue >= 195.0 && over_green >= 0.02 && mean_grad < 0.015);
+        // Blauer Himmel (auch mit Wolken): klar blau, glatt und überwiegend
+        // oben (bläuliche Hintergründe hinter Personen reichen tief hinunter)
+        let blue_sky = blue > 0.15 && blueish && mean_grad < 0.045 && low < 0.5;
+        // Grau/Weiß – auch schwach bläulich, wenn das Blau allein nicht
+        // reicht: muss zu den hellsten Teilen gehören. Dazu entweder sehr glatt
+        // (gleichmäßig bedeckt oder Abendverlauf; Wände, Putz und Studio-
+        // hintergründe hatten an Testfotos Kantenwerte 0,013–0,026, solcher
+        // Himmel unter 0,01) und oben breit anliegend – oder, mit
+        // Wolkenstruktur, groß, oben breit, kaum in der unteren Hälfte und mit
+        // eher waagerechter Unterkante.
+        let bright = mean_lum >= bright_ref * 0.9 && mean_lum > median + 0.03;
+        let even = mean_grad < 0.012 && m >= n / 25 && top_width >= w / 3 && low < 0.35;
+        let clouds =
+            mean_grad < 0.045 && m >= n / 8 && top_width * 5 >= w * 2 && low < 0.1 && ragged < 0.14;
+        // Nicht zu dunkel: dämmrige Innenwände lagen bei 0,30, trüber
+        // Abendhimmel bei 0,5
+        let grey_sky = bright && mean_lum >= 0.35 && (even || clouds);
+        let ok = reaches_top && (blue_sky || grey_sky);
         // Größere Flächen ins Log: zeigt bei Problemfotos, woran es lag
         if m >= n / 50 {
             log::info!(
@@ -560,11 +591,13 @@ fn sky_region(img: &RgbImage) -> Vec<bool> {
             for &i in members {
                 region[i] = true;
             }
-        } else if low < 0.1 {
+        } else if low < 0.5 {
+            // Höchstens zur Hälfte in der unteren Bildhälfte: der untere Teil
+            // eines hohen Himmels ja, ein spiegelnder See nein
             later.push(Later {
                 members,
                 blue,
-                blue_margin: over_green - need_blue,
+                blueish,
                 mean_lum,
                 mean_grad,
             });
@@ -581,7 +614,9 @@ fn sky_region(img: &RgbImage) -> Vec<bool> {
             break;
         }
         let sky_lum = sky.iter().map(|&i| lum[i]).sum::<f32>() / sky.len() as f32;
-        let near = morph(&region, w, h, 2, true);
+        // Bis 4 Pixel (~1,5 % der Breite) Abstand: Kondensstreifen und
+        // Leitungen bleiben nach dem Verkleinern als schmales Band stehen
+        let near = morph(&region, w, h, 4, true);
         // Tiefste Himmelszeile je Spalte: Was überwiegend darunter liegt, ist
         // Vordergrund (Fels, Schneefeld, Gebäude), keine Wolke
         let mut sky_bottom = vec![None::<usize>; w];
@@ -595,15 +630,26 @@ fn sky_region(img: &RgbImage) -> Vec<bool> {
             if region[members[0]] || !members.iter().any(|&i| near[i]) {
                 continue;
             }
-            let fits = if c.blue > 0.15 {
-                c.blue_margin > 0.0 && c.mean_grad < 0.045
-            } else {
-                let under = members
-                    .iter()
-                    .filter(|&&i| sky_bottom[i % w].is_some_and(|b| i / w > b))
-                    .count();
-                c.mean_grad < 0.06 && under * 2 < members.len()
-            };
+            // Was überwiegend unter erkanntem Himmel liegt, ist Vordergrund
+            // (Fels, Schneefeld, Gebäude, dunstiges Gelände) – außer bei einem
+            // sehr glatten, breiten Verlauf (Abendhimmel, Horizontstreifen)
+            let under = members
+                .iter()
+                .filter(|&&i| sky_bottom[i % w].is_some_and(|b| i / w > b))
+                .count();
+            let mut cols = vec![false; w];
+            for &i in members {
+                cols[i % w] = true;
+            }
+            let wide = cols.iter().filter(|c| **c).count() * 2 >= w;
+            let gradient = c.mean_grad < 0.015 && wide;
+            let placed = under * 2 < members.len() || gradient;
+            let fits = placed
+                && if c.blue > 0.15 {
+                    c.blueish && c.mean_grad < 0.045
+                } else {
+                    c.mean_grad < 0.06
+                };
             if fits && c.mean_lum >= sky_lum - 0.15 {
                 for &i in members.iter() {
                     region[i] = true;
@@ -619,6 +665,24 @@ fn sky_region(img: &RgbImage) -> Vec<bool> {
         return region;
     }
     fill_holes(&region, w, h, n / 60)
+}
+
+/// Farbton in Grad (0 = Rot, 120 = Grün, 240 = Blau).
+fn hue_deg(c: [f32; 3]) -> f32 {
+    let (r, g, b) = (c[0], c[1], c[2]);
+    let max = r.max(g).max(b);
+    let d = max - r.min(g).min(b);
+    if d <= 1e-6 {
+        return 0.0;
+    }
+    let h = if max == r {
+        ((g - b) / d).rem_euclid(6.0)
+    } else if max == g {
+        (b - r) / d + 2.0
+    } else {
+        (r - g) / d + 4.0
+    };
+    h * 60.0
 }
 
 /// Löcher füllen: Was nicht zur Fläche gehört und keinen Weg zum seitlichen
@@ -953,6 +1017,45 @@ mod tests {
         assert!(at(330.0, 110.0) > 200, "Wolke mitte");
         assert!(at(480.0, 230.0) < 30, "Fels");
         assert!(at(200.0, 330.0) < 30, "Land");
+    }
+
+    /// Gedämpfter Abendhimmel (oben graublau, unten gelblich-grau) mit
+    /// Kondensstreifen über dunklem Waldrand und hellem, spiegelndem Wasser –
+    /// nachgebildet nach einem Foto, auf dem früher kein Himmel gefunden wurde.
+    fn dusk_with_contrail() -> DynamicImage {
+        DynamicImage::ImageRgb8(RgbImage::from_fn(600, 400, |x, y| {
+            let fy = y as f32;
+            if (250..275).contains(&y) {
+                let n = noise(x, y, 6);
+                return Rgb([(25 + n) as u8, (28 + n) as u8, (30 + n) as u8]);
+            }
+            if y >= 275 {
+                let v = 118.0 + 18.0 * ((x as f32) / 13.0 + fy / 5.0).sin();
+                return Rgb([v as u8, (v * 0.98) as u8, (v * 0.92) as u8]);
+            }
+            // Kondensstreifen: dünne helle Linie quer über den Himmel
+            if (y as i32 - 110 + x as i32 / 12).abs() <= 1 {
+                return Rgb([175, 172, 165]);
+            }
+            let t = fy / 250.0;
+            Rgb([
+                (100.0 + 60.0 * t) as u8,
+                (108.0 + 50.0 * t) as u8,
+                (118.0 + 25.0 * t) as u8,
+            ])
+        }))
+    }
+
+    #[test]
+    fn muted_dusk_sky_with_contrail_is_found() {
+        let m = sky_mask(&dusk_with_contrail(), None).unwrap();
+        let (w, h) = m.dimensions();
+        let at = |x: f32, y: f32| {
+            m.get_pixel((x / 600.0 * w as f32) as u32, (y / 400.0 * h as f32) as u32)[0]
+        };
+        assert!(at(50.0, 20.0) > 200, "graublauer Himmel oben");
+        assert!(at(300.0, 200.0) > 200, "gelblich-grauer Himmel unten");
+        assert!(at(300.0, 330.0) < 30, "Wasser");
     }
 
     #[test]
