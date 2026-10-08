@@ -4,6 +4,7 @@
   import { t } from "../lib/i18n";
   import Icon from "./Icon.svelte";
   import ProjectFolders from "./ProjectFolders.svelte";
+  import PersonName from "./PersonName.svelte";
 
   let {
     ontogglesidebar,
@@ -14,6 +15,11 @@
   let foldersOpen = $state(false);
   let holdStart = 0;
   const project = $derived(lib.scope.type === "project" ? lib.projects.find((p) => p.id === (lib.scope as { id: number }).id) : undefined);
+  // Fotos einer Person: Name im Titel per Klick änderbar
+  const scopePerson = $derived.by(() => {
+    const s = lib.scope;
+    return s.type === "person" ? lib.people.find((x) => x.id === s.id) : undefined;
+  });
 </script>
 
 <div class="bar">
@@ -69,7 +75,11 @@
       <h1>{t("Personen")}</h1>
       <span class="muted">{t("{n} benannt", { n: String(lib.people.filter((p) => p.name).length) })}</span>
     {:else}
-      <h1>{lib.scopeTitle}</h1>
+      {#if scopePerson}
+        <h1><PersonName person={scopePerson} /></h1>
+      {:else}
+        <h1>{lib.scopeTitle}</h1>
+      {/if}
       <span class="muted">{t(lib.images.length === 1 ? "{n} Foto" : "{n} Fotos", { n: String(lib.images.length) })}{lib.selection.size > 1 ? t(", {n} ausgewählt", { n: String(lib.selection.size) }) : ""}</span>
     {/if}
   </div>

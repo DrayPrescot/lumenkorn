@@ -4,6 +4,7 @@
   import { api, faceUrl, type FaceInfo, type Person } from "../lib/api";
   import { lib } from "../lib/store.svelte";
   import Icon from "./Icon.svelte";
+  import PersonName from "./PersonName.svelte";
   import { isTyping } from "../lib/keys";
   import { onMount } from "svelte";
   import { t } from "../lib/i18n";
@@ -12,7 +13,7 @@
   const groups = $derived(lib.people.filter((p) => !p.name));
   /** Unbenannte Gruppen bis zu dieser Fotozahl stehen unter „Sonstige“ –
    *  bei großen Bibliotheken sind das Hunderte, die die Übersicht verstopfen. */
-  const OTHER_MAX_PHOTOS = 20;
+  const OTHER_MAX_PHOTOS = 100;
   const mainGroups = $derived(groups.filter((g) => g.imageCount > OTHER_MAX_PHOTOS));
   const smallGroups = $derived(groups.filter((g) => g.imageCount <= OTHER_MAX_PHOTOS));
   const singles = $derived(smallGroups.filter((g) => g.faceCount < 2).length);
@@ -51,6 +52,14 @@
     names[p.id] = "";
     if (!(await act(() => api.personRename(p.id, name)))) return;
     lib.notify(t("„{name}“ gespeichert. Ähnliche Gesichter werden als Vorschläge zugeordnet.", { name }));
+  }
+
+  /** Nach Umbenennen/Zuordnen: Prüfung der Person zeigen, die jetzt die
+   *  Gesichter hat (bei Zuordnung eine andere als vorher). */
+  async function reopen(id: number) {
+    const p = lib.people.find((x) => x.id === id);
+    if (p) await openReview(p);
+    else review = null;
   }
 
   async function openReview(p: Person) {
@@ -127,7 +136,7 @@
     {@const p = review.person}
     <div class="review-head">
       <button class="btn quiet" onclick={() => (review = null)}><Icon name="back" size={14} /> {t("Personen")}</button>
-      <h2>{p.name ?? t("Unbenannte Gruppe")}</h2>
+      <h2><PersonName person={p} big onrenamed={reopen} /></h2>
       <span class="muted"
         >{p.suggested
           ? t("{faces} Gesichter auf {images} Fotos, {n} vorgeschlagen", { faces: p.faceCount, images: p.imageCount, n: p.suggested })

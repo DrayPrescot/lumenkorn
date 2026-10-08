@@ -696,12 +696,16 @@ class Library {
 
   /** Person umbenennen (z. B. „Max“ → „Max Mustermann“). Gibt es den Namen
    *  schon bei einer anderen Person, werden beide nach Rückfrage zusammengeführt. */
-  async renamePerson(id: number, name: string): Promise<boolean> {
+  /** Benennt eine Person bzw. Gruppe um. Gibt es den Namen schon, wird sie
+   *  dieser Person zugeordnet (bei benannten Personen erst nach Rückfrage).
+   *  Liefert die ID der Person, die danach die Gesichter hat, sonst `null`. */
+  async renamePerson(id: number, name: string): Promise<number | null> {
     name = name.trim();
     const old = this.people.find((p) => p.id === id);
-    if (!name || name === old?.name) return false;
+    if (!name || name === old?.name) return null;
     const other = this.people.find((p) => p.id !== id && p.name?.toLocaleLowerCase("de") === name.toLocaleLowerCase("de"));
-    if (other && !confirm(t("„{name}“ gibt es schon. Beide Personen zu einer zusammenführen?", { name: other.name ?? "" }))) return false;
+    // Unbenannte Gruppe + vorhandener Name = Zuordnung, wie in der Übersicht ohne Rückfrage
+    if (other && old?.name && !confirm(t("„{name}“ gibt es schon. Beide Personen zu einer zusammenführen?", { name: other.name ?? "" }))) return null;
     try {
       const target = await api.personRename(id, name);
       await this.refreshPeople();
@@ -711,15 +715,17 @@ class Library {
       }
       this.notify(
         other
-          ? t("Mit „{name}“ zusammengeführt", { name: other.name ?? "" })
+          ? old?.name
+            ? t("Mit „{name}“ zusammengeführt", { name: other.name ?? "" })
+            : t("„{name}“ zugeordnet", { name: other.name ?? "" })
           : old?.name
             ? t("„{old}“ heißt jetzt „{name}“", { old: old.name, name })
             : t("„{name}“ gespeichert", { name }),
       );
-      return true;
+      return target;
     } catch (e) {
       this.notify(String(e), "error");
-      return false;
+      return null;
     }
   }
 
