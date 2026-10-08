@@ -210,10 +210,9 @@
           {@render denoiseSection()}
         {/if}
       </details>
-      {#if g.id === "color"}
-        <HslSection />
-      {/if}
     {/each}
+    <!-- HSL nach Details und Rauschreduzierung: seltener gebraucht -->
+    <HslSection />
 
     <details>
       <summary>{t("Schnappschüsse")} {dev.snapshots.length ? `(${dev.snapshots.length})` : ""}</summary>

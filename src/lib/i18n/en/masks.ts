@@ -127,4 +127,6 @@ export default {
   "Abgelehnt": "Rejected",
   "Aus dem Vergleich nehmen (Entf)": "Remove from Compare (Del)",
   "Aus dem Vergleich nehmen": "Remove from Compare",
+  "Im Vergleich sind höchstens 12 Fotos möglich.": "Compare shows at most 12 photos.",
+  "Klick: ersetzt das hervorgehobene Foto · Strg-Klick: hinzufügen oder herausnehmen": "Click: replaces the highlighted photo · Ctrl-click: add or remove",
 } satisfies Record<string, string>;

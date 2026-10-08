@@ -371,6 +371,33 @@ class Library {
     if (s.size < 2) this.view = s.size ? "loupe" : "grid";
   }
 
+  /** Klick im Fotostreifen des Vergleichs. Ein verglichenes Foto wird
+   *  hervorgehoben, ein anderes ersetzt das hervorgehobene. Mit `add`
+   *  (Strg-/Umschalt-Klick) kommt es stattdessen dazu bzw. ein verglichenes
+   *  wird herausgenommen. */
+  compareStrip(index: number, add: boolean) {
+    const img = this.images[index];
+    if (!img) return;
+    if (add) {
+      if (this.selection.has(img.id)) {
+        this.removeFromCompare(img.id);
+      } else if (this.compareItems.length >= 12) {
+        this.notify(t("Im Vergleich sind höchstens 12 Fotos möglich."));
+      } else {
+        this.selection = new Set(this.selection).add(img.id);
+        this.focus = index;
+      }
+      return;
+    }
+    if (!this.compareItems.some((x) => x.index === index)) {
+      const s = new Set(this.selection);
+      if (this.focused) s.delete(this.focused.id);
+      s.add(img.id);
+      this.selection = s;
+    }
+    this.focus = index;
+  }
+
   /** Ein Bild groß geöffnet (Einzelansicht, Vergleich oder Entwickeln)? */
   #singleView(): boolean {
     return this.mode === "develop" || this.view === "loupe" || this.view === "compare";

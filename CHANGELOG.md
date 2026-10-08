@@ -41,6 +41,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
   as the rolling “nightly” pre-release.
 
 ### Changed
+- Compare shows the filmstrip too. Clicking a photo there replaces the
+  highlighted one; `Ctrl`/`Shift`-click adds or removes a photo.
+- The filmstrip (single view, Compare, Develop) scrolls through all photos,
+  not just the 30 before and after the current one; the mouse wheel scrolls
+  it sideways.
+- Develop: HSL moved below Details and noise reduction.
 - The window starts maximized; `F11` toggles fullscreen.
 - RAW detail: Bayer sensors are demosaiced with RCD instead of PPG (sharper
   fine detail, far fewer maze and false-color artifacts), Fujifilm X-Trans with

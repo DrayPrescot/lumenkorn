@@ -9,6 +9,7 @@
   import { libraryDims } from "../lib/layout";
   import Icon from "./Icon.svelte";
   import ZoomView from "./ZoomView.svelte";
+  import Filmstrip from "./Filmstrip.svelte";
 
   let linked = $state(true);
   const shared = new ZoomState();
@@ -110,6 +111,7 @@
       </div>
     {/each}
   </div>
+  <Filmstrip compare />
 </div>
 
 <style>
