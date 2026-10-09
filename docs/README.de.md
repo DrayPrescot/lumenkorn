@@ -2,494 +2,481 @@
 
 *[English version](../README.md)*
 
-Lokale Fotoverwaltung und -entwicklung als Alternative zu Lightroom.
-Rust-Kern, Web-Oberfläche, läuft unter Windows, Linux und (mit Einschränkungen) Android.
-Bildbearbeitung und KI nutzen die Grafikkarte (AMD, NVIDIA, Intel) über Vulkan bzw. DirectX 12.
+Lumenkorn ist eine Fotoverwaltung mit RAW-Entwicklung, die komplett auf dem eigenen Rechner läuft.
+Gedacht ist es als Ersatz für Lightroom Classic: Fotos und Bearbeitungen bleiben auf der eigenen
+Platte, es gibt kein Konto, keine Cloud und kein Abo. Die KI-Funktionen nutzen offene Modelle,
+die einmal heruntergeladen werden und danach offline auf Prozessor oder Grafikkarte rechnen.
 
-**Stand:** Bibliothek, non-destruktive RAW-Entwicklung mit Export, lokale Masken
-(Verlauf, Radial, Pinsel, KI: Motiv, Himmel, Objekt per Klick), KI-Rauschreduzierung
-und lokale KI für Verschlagwortung und Inhaltssuche.
+Lumenkorn ist in Rust geschrieben, die Oberfläche in Svelte, zusammengehalten von Tauri 2. Es läuft
+unter Windows und Linux; für Android ist der Code vorbereitet. Bildbearbeitung und KI nutzen die
+Grafikkarte (AMD, NVIDIA, Intel) über DirectX 12 bzw. Vulkan.
 
-**Installer:** Den aktuellen Stand von `main` gibt es immer als Windows-MSI unter
-[Releases → nightly](https://github.com/DrayPrescot/lumenkorn/releases/tag/nightly). Er wird nach
-jedem Push automatisch neu gebaut, sobald alle Prüfungen grün sind. Ein neuer Stand lässt sich über
-den alten installieren. Die MSI ist nicht signiert, daher fragt Windows SmartScreen beim ersten Start
-nach („Weitere Informationen“ → „Trotzdem ausführen“).
+**Installer:** Den aktuellen Stand von `main` gibt es immer als Windows-MSI (deutsch und englisch)
+unter [Releases → nightly](https://github.com/DrayPrescot/lumenkorn/releases/tag/nightly). Er wird
+nach jedem Push neu gebaut, sobald alle Prüfungen grün sind, und lässt sich über den alten
+installieren. Die MSI ist nicht signiert, deshalb fragt Windows SmartScreen beim ersten Start nach
+(„Weitere Informationen“ → „Trotzdem ausführen“).
+
+**Inhalt:** [Bibliothek](#bibliothek) · [Entwickeln](#entwickeln-non-destruktiv) ·
+[Masken](#masken-lokale-anpassungen) · [KI-Funktionen](#ki-funktionen) ·
+[Zusammenfügen](#bilder-zusammenfügen) · [Tastenkürzel](#tastenkürzel) ·
+[So funktioniert Lumenkorn](#so-funktioniert-lumenkorn) · [Technik](#technik) ·
+[Open-Source-Projekte](#genutzte-open-source-projekte) · [Entwickeln am Code](#entwickeln-am-code)
 
 ## Sprache
 
-Die Oberfläche gibt es auf **Deutsch und Englisch**. Lumenkorn folgt der Systemsprache; unten links in
-der Seitenleiste schaltet **DE / EN** um (bleibt gespeichert, die Oberfläche lädt dabei neu). Auch
-Meldungen aus dem Hintergrund (Fehler, Fortschritt) und neu vergebene **KI-Schlagworte** folgen der
-Sprache. Bereits vergebene Schlagworte bleiben, wie sie sind; „KI → Alle neu analysieren“ vergibt
-sie in der neuen Sprache neu. Die Windows-Installer gibt es ebenfalls in beiden Sprachen.
+Die Oberfläche gibt es auf Deutsch und Englisch. Lumenkorn folgt der Systemsprache; **DE / EN**
+unten links in der Seitenleiste schaltet um. Auch Meldungen aus dem Hintergrund und neu vergebene
+KI-Schlagworte folgen der Sprache. Schon vergebene Schlagworte bleiben, „KI → Alle neu analysieren“
+vergibt sie in der neuen Sprache neu.
 
 ## Bibliothek
 
-- **Ordner statt Import.** Du fügst einen Ordner hinzu, Lumenkorn liest ihn ein. Nichts wird kopiert, verschoben oder verändert.
-- **Live-Abgleich.** Neue, geänderte, gelöschte Dateien werden per Dateiüberwachung erkannt (1,5 s nach der letzten Änderung, gebündelt). Abgeglichen werden nur die gemeldeten Dateien und Ordner, nicht der ganze Quellordner – eine neue Datei neben 50 000 anderen kostet einen Dateizugriff statt 50 000 (wichtig bei NAS und Netzlaufwerken). Umbenannte oder verschobene Ordner werden am Inhalt wiedererkannt, Bearbeitungen bleiben erhalten. Nur wenn das System Ereignisse verliert (Pufferüberlauf), wird vollständig abgeglichen; beim Start ebenfalls.
-- **Neue Ordner** erscheinen sofort im Ordnerbaum – auch leere oder solche mit Dateien in nicht
-  unterstützten Formaten. Übersprungene Bilddateien (z. B. HEIC vom Handy) und nicht lesbare
-  Einträge meldet Lumenkorn nach dem Abgleich; „Neu einlesen“ (Rechtsklick auf den Quellordner)
-  bestätigt immer, dass es gelaufen ist.
-- **Umbenennen und Verschieben** außerhalb der App wird über einen Inhalts-Hash erkannt. Bewertung, Schlagworte und Bearbeitungen bleiben am Bild.
-- **Projekte** bündeln beliebig viele Ordner, auch von verschiedenen Laufwerken. Mehrere Ordner auf einmal: in der Seitenleiste mit Strg-Klick (oder Umschalt-Klick für einen Bereich) auswählen, dann Rechtsklick → „Zu … hinzufügen“ oder „Neues Projekt aus diesen Ordnern“ (der Name lässt sich gleich eingeben). Esc hebt die Auswahl auf. Pro Ordner wählbar, ob Unterordner dazugehören. Neue Fotos in diesen Ordnern landen automatisch im Projekt; überlappende Ordner führen nicht zu Dubletten.
-- **Thumbnails** für JPEG, PNG, TIFF, WebP und RAW (NEF, CR2, CR3, ARW, RAF, DNG, ORF, RW2 …). Unbearbeitete RAWs nutzen das eingebettete Kamera-JPEG (schnell); bearbeitete Bilder zeigen die Bearbeitung.
-- **EXIF:** Aufnahmezeit, Kamera, Objektiv, ISO, Belichtung, Blende, Brennweite, Orientierung.
-- **Seitenleiste:** Die Bereiche „Projekte“, „Personen“ und „Ordner“ lassen sich per Klick auf die
-  Überschrift einklappen (bleibt nach einem Neustart so). Eingeklappt bleibt der gerade gewählte
-  Eintrag sichtbar.
-- **Raster** im Blocksatz mit echten Seitenverhältnissen, virtualisiert, Einzelansicht mit Filmstreifen.
-- **Suche** über Dateiname, Ordner, Kamera, Objektiv, Schlagworte und Personen – oder nach Bildinhalt (KI). Mehrere Wörter müssen alle passen, Teilwörter genügen („sonnen“ findet „Sonnenuntergang“); Groß-/Kleinschreibung, Umlaute und Akzente spielen keine Rolle („cafe“ findet „Café“). Ein Volltextindex (SQLite FTS5) macht das auch bei 50 000 Fotos in Millisekunden. Filter nach Mindestbewertung, Sortierung.
+- **Ordner statt Import.** Du fügst einen Ordner hinzu, Lumenkorn liest ihn ein. Nichts wird
+  kopiert, verschoben oder verändert.
+- **Live-Abgleich.** Eine Dateiüberwachung meldet neue, geänderte und gelöschte Dateien. Lumenkorn
+  sammelt die Meldungen 1,5 Sekunden lang und prüft dann nur die gemeldeten Pfade, nicht den ganzen
+  Ordner. Bei 50 000 Fotos auf einem NAS macht das einen großen Unterschied. Vollständig
+  abgeglichen wird beim Start und wenn das System Ereignisse verliert.
+- **Umbenennen und Verschieben** außerhalb der App erkennt Lumenkorn am Inhalts-Hash der Datei.
+  Bewertung, Schlagworte und Bearbeitungen bleiben am Bild.
+- **Neue Ordner** erscheinen sofort im Ordnerbaum, auch leere. Übersprungene Dateien (z. B. HEIC vom
+  Handy) und nicht lesbare Einträge meldet Lumenkorn nach dem Abgleich.
+- **Projekte** bündeln beliebig viele Ordner, auch von verschiedenen Laufwerken. Mehrere Ordner in
+  der Seitenleiste mit Strg- oder Umschalt-Klick wählen, dann Rechtsklick → „Zu … hinzufügen“ oder
+  „Neues Projekt aus diesen Ordnern“. Pro Ordner lässt sich festlegen, ob Unterordner dazugehören.
+- **Formate:** JPEG, PNG, TIFF (8, 16 und 32 Bit), WebP, OpenEXR und RAW (NEF, CR2, CR3, ARW, RAF,
+  DNG, ORF, RW2, PEF und weitere, die rawler kennt). Sehr große Bilder wie Panoramen mit mehreren
+  hundert Megapixeln werden nacheinander geladen und für die Vorschau schon beim Einlesen verkleinert.
+- **Thumbnails:** Unbearbeitete RAWs zeigen das eingebettete Kamera-JPEG, bearbeitete Fotos ihre
+  Bearbeitung.
+- **Raster** im Blocksatz mit echten Seitenverhältnissen, Einzelansicht mit Filmstreifen. Der
+  Filmstreifen reicht über alle Fotos der Ansicht; das Mausrad scrollt ihn seitwärts.
+- **Suche** über Dateiname, Ordner, Kamera, Objektiv, Schlagworte und Personen, oder nach Bildinhalt
+  (KI). Teilwörter genügen („sonnen“ findet „Sonnenuntergang“), Groß- und Kleinschreibung und
+  Akzente spielen keine Rolle. Dazu Filter nach Mindestbewertung und Sortierung.
+- **Seitenleiste:** „Projekte“, „Personen“ und „Ordner“ lassen sich per Klick auf die Überschrift
+  einklappen.
+
+### Vergleichen und Zoomen
+
+- **Vergleich:** Mehrere Fotos auswählen, dann Taste C, Enter oder Rechtsklick → „Groß nebeneinander
+  vergleichen“ (auch im Entwickeln). Bis zu 12 Fotos stehen nebeneinander, mit gekoppeltem Zoom: Zoomen
+  und Verschieben wirkt auf alle an derselben Bildstelle. Unten liegt der Filmstreifen; ein Klick
+  ersetzt das hervorgehobene Foto, Strg-Klick nimmt eines hinzu oder heraus.
+- **Zoom:** Scrollrad (zum Mauszeiger hin), Strg + / −, Strg 0, Z oder Doppelklick (Einpassen ↔ 100 %).
+  100 % heißt ein Bildpixel pro Bildschirmpixel, auch auf HiDPI-Bildschirmen. Beim Hineinzoomen lädt
+  Lumenkorn das Foto in voller Auflösung nach; im Entwickeln wird nur der sichtbare Ausschnitt aus der
+  vollen Auflösung neu gerechnet.
+
+### Aussortieren
+
+- **X** lehnt das Foto ab, **Umschalt+X** lehnt ab und springt zum nächsten. In Einzelansicht,
+  Vergleich und Entwickeln wirken Bewertung und Markierung nur auf das groß gezeigte Foto.
+- Sind in der Ansicht Fotos abgelehnt, zeigt die Werkzeugleiste „N abgelehnt“. Ein Klick (oder
+  Strg+Entf) öffnet die Rückfrage mit Vorschau, Anzahl und Gesamtgröße.
+- Gelöscht wird in den Papierkorb des Systems, wahlweise endgültig. Mit der Datei verschwinden
+  XMP-Begleitdateien, Katalogeintrag, Bearbeitungen, Masken, Entrauschungen, Reparaturen,
+  Vorschauen und Gesichter. Dateien, die sich nicht löschen lassen, bleiben im Katalog und werden
+  gemeldet.
 
 ## Entwickeln (non-destruktiv)
 
-Taste **D** oder „Entwickeln“ oben. Die Originaldatei wird nie verändert; gespeichert wird nur
-der Parametersatz (JSON im Katalog). Änderungen werden automatisch gespeichert.
+Taste **D** oder „Entwickeln“ oben. Die Originaldatei wird nie verändert. Gespeichert wird nur der
+Parametersatz der Bearbeitung, automatisch nach jeder Änderung.
 
-- **RAW-Dekodierung** mit [rawler](https://github.com/dnglab/dnglab) (reines Rust, auch für Android), getestet mit Canon, Nikon, Sony, Panasonic, Olympus und Fujifilm.
-- **Demosaicing:** Bayer-Sensoren mit **RCD** (Ratio Corrected Demosaicing, Standard in RawTherapee
-  und darktable) statt PPG – feine Muster bleiben erhalten, kaum Labyrinth- und Farbsaum-Artefakte
-  (im Test mit Referenzbildern 0,6–2,5 dB, bei feinen Strukturen rund 4 dB besser). Fujifilm X-Trans
-  mit **Markesteijn** (3 Durchgänge) statt bilinear.
-- **Eingangsschärfung** für RAWs, wie Lightroom sie standardmäßig anwendet: einmal in
-  Sensorauflösung direkt nach dem Demosaicing, nur auf der Helligkeit, mit Begrenzung gegen Säume.
-  Die Schwelle richtet sich nach dem gemessenen Rauschen, damit Aufnahmen mit hoher ISO nicht
-  körniger werden. Der Regler „Schärfen“ wirkt zusätzlich.
-- **Pipeline in linearem Float:** Weißabgleich und Belichtung szenenbezogen, eine Basiskurve mit weichem Lichter-Rolloff für RAWs, danach Tonwerte und Farbe. Unbearbeitete JPEGs bleiben exakt wie sie sind.
-- **Regler:** Temperatur, Tönung · Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz · Klarheit, Dynamik, Sättigung · Schärfen · Drehen und Spiegeln.
-- **HSL** (im Reiter Basis): Farbton, Sättigung und Luminanz für acht Farbbereiche (Rot, Orange,
-  Gelb, Grün, Aquamarin, Blau, Lila, Magenta). Gerechnet in Oklch mit weichen Übergängen zwischen
-  benachbarten Bereichen; graue Flächen bleiben bei Farbton und Luminanz unberührt (Blau abdunkeln
-  dunkelt keine grauen Wolken ab). Farbton ±30°, Sättigung bis grau bzw. doppelt, Luminanz ±50 %.
-  Mit der **Pipette** auf eine Farbe im Bild klicken und nach oben (mehr) oder unten (weniger)
-  ziehen – verstellt werden die getroffenen Bereiche anteilig (eine Anzeige nennt sie, z. B.
-  „Blau 70 % · Lila 30 %“); gemessen wird im angezeigten, bearbeiteten Bild. Esc beendet die Pipette.
-- **Zuschneiden** (Taste R): Rahmen über dem ganzen Bild ziehen, mit Drittel-Raster und festen Seitenverhältnissen (Original, 1:1, 4:5, 3:2, 16:9, per ⇄ hoch/quer). Vorgewählt ist „Original“, bei einem bestehenden Zuschnitt dessen Verhältnis. Enter übernimmt, Esc bricht ab.
-- **Geraderichten** um beliebige Winkel (±45°) ohne leere Ecken, mit **Auto**-Funktion: Lumenkorn sucht Horizont und gerade Kanten und schlägt die Korrektur vor (im Test auf ±0,6° genau).
-- Lichter, Tiefen und Klarheit arbeiten **lokal** über weichgezeichnete Helligkeitskarten, deren Radius relativ zur Bildgröße ist – die Vorschau sieht aus wie der Export.
-- **Live-Vorschau** aus einem 2048-px-Proxy im Speicher (RAW einmal dekodieren, danach ~100–250 ms pro Änderung), Histogramm mit Clipping-Anteil, **Vorher/Nachher**: „Original zeigen“ oben in der Leiste (Klick schaltet um, gedrückt halten zeigt kurz) oder Taste `\`.
-- **Werte per Tastatur:** Tab springt von Regler zu Regler, der Wert ist sofort markiert und kann überschrieben werden (Enter übernimmt, Esc verwirft, ↑/↓ ändern schrittweise, mit Umschalt ×10).
-- **Verlauf** (Strg+Z / Strg+Umschalt+Z), **Schnappschüsse**, **Kopieren/Einfügen** von Einstellungen auf beliebig viele ausgewählte Fotos.
-- **Export** in voller Auflösung als JPEG, 16-Bit-TIFF oder PNG, optional verkleinert, im Hintergrund mit Fortschritt. Vorhandene Dateien werden nie überschrieben.
-  Standardziel ist der Unterordner **„Export“** neben dem Original (bei Fotos aus mehreren Ordnern
-  jeweils dort); „Anderer Ordner …“ wählt ein festes Ziel. Von Lumenkorn angelegte Export-Ordner
-  tragen eine versteckte Markierung (`.lumenkorn-export`) und erscheinen nicht in der Bibliothek –
-  wird die Datei gelöscht, nimmt Lumenkorn die Fotos dort auf. Ein schon vorhandener Ordner „Export“
-  bleibt unverändert.
+Der Reiter **Basis** enthält von oben nach unten:
+
+- **Weißabgleich:** Temperatur und Tönung, relativ zum Kamera-Weißabgleich.
+- **Licht:** Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz.
+- **Farbe:** Dynamik, Sättigung.
+- **Details:** Klarheit, Schärfen, **Dunst entfernen** und die KI-Rauschreduzierung. Dunst entfernen
+  schätzt den Dunst nach dem Dark-Channel-Verfahren, aber mit neutraler Dunstfarbe. Farben behalten
+  so ihren Ton, statt ins Blaue oder Gelbe zu kippen; die verlorene Helligkeit wird in den
+  Mitteltönen zurückgegeben. Negative Werte fügen Dunst hinzu.
+- **HSL:** Farbton, Sättigung und Luminanz für acht Farbbereiche, gerechnet in Oklch mit weichen
+  Übergängen. Graue Flächen bleiben bei Farbton und Luminanz unberührt (Blau abdunkeln dunkelt keine
+  grauen Wolken ab). Mit der **Pipette** auf eine Farbe im Bild klicken und nach oben oder unten
+  ziehen; verstellt werden die getroffenen Bereiche anteilig.
+- **Color Grading:** Farbräder für Tiefen, Mitteltöne, Lichter und Global wie in Lightroom. Ziehen
+  setzt Farbton und Sättigung, Doppelklick setzt ein Rad zurück. Dazu Luminanz je Bereich,
+  Überblenden und Abgleich. Die Tönung macht nichts heller oder dunkler, Schwarz und Weiß bleiben
+  neutral.
+- **Schnappschüsse** halten einen Stand fest, zu dem man später zurückkehren kann.
+- **Auf Original zurücksetzen …** ganz unten verwirft nach einer Rückfrage alle Bearbeitungen des
+  Fotos: Regler, Masken, Reparaturen, Rauschreduzierung und Zuschnitt. Schnappschüsse bleiben,
+  Strg+Z macht es rückgängig, solange das Foto offen ist.
+
+Weitere Reiter:
+
+- **Masken:** lokale Anpassungen, siehe unten.
+- **Reparatur:** Störendes mit KI entfernen.
+- **Zuschnitt:** Zuschneiden mit Drittel-Raster und festen Seitenverhältnissen (Original, 1:1, 4:5,
+  3:2, 16:9, per ⇄ hoch oder quer), Geraderichten bis ±45° ohne leere Ecken, mit **Auto**: Lumenkorn
+  sucht Horizont und gerade Kanten und schlägt die Korrektur vor. Drehen und Spiegeln. Taste R
+  öffnet den Reiter, Enter übernimmt, Esc bricht ab.
+
+Außerdem:
+
+- **RAW-Details:** Bayer-Sensoren werden mit RCD demosaikt (Standard in RawTherapee und darktable),
+  Fujifilm X-Trans mit Markesteijn. Danach folgt eine Eingangsschärfung in Sensorauflösung, wie
+  Lightroom sie standardmäßig anwendet: nur auf der Helligkeit, ohne Säume, mit einer Schwelle, die
+  sich nach dem gemessenen Rauschen richtet.
+- **Vorher/Nachher:** „Original zeigen“ oben in der Leiste (Klick schaltet um, gedrückt halten zeigt
+  kurz) oder Taste `\`.
+- **Werte per Tastatur:** Tab springt von Regler zu Regler, der Wert ist markiert und kann
+  überschrieben werden. Enter übernimmt, Esc verwirft, ↑/↓ ändern schrittweise (Umschalt ×10).
+  Doppelklick auf einen Regler setzt ihn zurück.
+- **Verlauf** mit Strg+Z / Strg+Umschalt+Z.
+- **Einstellungen übertragen:** Strg+Umschalt+C kopiert die Basis-Einstellungen, Strg+Umschalt+V
+  fügt sie auf alle ausgewählten Fotos ein (auch per Rechtsklick). Masken, Reparaturen,
+  Rauschreduzierung und Zuschnitt des Zielfotos bleiben unberührt.
+- **Export** als JPEG, 16-Bit-TIFF oder PNG, optional verkleinert, im Hintergrund. Standardziel ist
+  der Unterordner `Export` neben dem Original. Von Lumenkorn angelegte Export-Ordner tragen eine
+  versteckte Markierung (`.lumenkorn-export`) und erscheinen nicht in der Bibliothek. Vorhandene
+  Dateien werden nie überschrieben.
 
 ## Masken (lokale Anpassungen)
 
-Im Entwickeln-Modus unter „Masken“. Jede Maskenebene hat eigene Regler (Belichtung, Kontrast,
-Lichter, Tiefen, Klarheit, Temperatur, Tönung, Sättigung) und kann aus mehreren Formen bestehen,
-die hinzugefügt oder abgezogen werden – z. B. „Himmel minus Kirchturm“.
+Jede Maskenebene hat eigene Regler (Belichtung, Kontrast, Lichter, Tiefen, Klarheit, Temperatur,
+Tönung, Sättigung) und besteht aus einer oder mehreren Formen, die hinzugefügt oder abgezogen werden,
+z. B. „Himmel minus Kirchturm“.
 
-- **Verlauf** und **Radial** werden direkt auf dem Bild gezogen und über Griffe nachjustiert.
-- **Pinsel** mit Größe und weicher Kante; Alt-Taste oder „Radieren“ nimmt Bereiche wieder heraus.
-- **Motiv** (KI, IS-Net): erkennt das Hauptmotiv automatisch.
-- **Himmel** (KI, skyseg/U²-Net): erkennt den Himmel samt Wolken, Dunst und Dämmerung; unsichere Kanten (Baumkronen, Äste) folgen den Farben des Fotos. Ohne die KI-Masken greift eine Heuristik (helle, glatte Flächen vom oberen Rand, Sonne/Mond eingeschlossen).
-- **Objekt** (KI, Segment Anything): auf ein Objekt klicken, weitere Klicks verfeinern, Alt-Klick nimmt heraus.
-- **Farbe** (Pipette): auf eine Farbe im Bild klicken – die Maske erfasst alle Stellen ähnlicher
-  Farbe, auch in Licht und Schatten. Weitere Klicks nehmen Farbtöne hinzu, Alt-Klick entfernt den
-  nächstgelegenen. Der Regler **Farbbereich** bestimmt die Toleranz (beim Ziehen wird die Auswahl
-  rot gezeigt). Gemessen wird im unbearbeiteten Bild, verglichen in Oklab (wahrnehmungsgerecht,
-  vor allem nach Farbart, Helligkeit zählt schwach). Gespeichert werden die gemessenen Farben,
-  nicht die Klickstellen. Kombinierbar wie alle Formen, z. B. „Farbe Blau minus Radial“.
+- **Verlauf** und **Radial** werden auf dem Bild gezogen und über Griffe nachjustiert.
+- **Pinsel** mit Größe und weicher Kante; Alt oder „Radieren“ nimmt Bereiche heraus.
+- **Farbe:** Mit der Pipette auf eine Farbe klicken; die Maske erfasst alle Stellen ähnlicher Farbe,
+  auch in Licht und Schatten. Weitere Klicks nehmen Farbtöne hinzu, Alt-Klick entfernt einen. Der
+  Regler **Farbbereich** bestimmt die Toleranz. Verglichen wird in Oklab, vor allem nach Farbart.
+- **Motiv** (KI): erkennt das Hauptmotiv.
+- **Himmel** (KI): erkennt den Himmel mit Wolken, Dunst und Dämmerung. Unsichere Kanten wie
+  Baumkronen und Äste entscheidet Lumenkorn danach anhand der Farben des Fotos. Ohne die KI-Masken
+  greift eine Erkennung nach Farbe und Fläche.
+- **Objekt** (KI): auf ein Objekt klicken, weitere Klicks verfeinern, Alt-Klick nimmt heraus.
 - **Maske zeigen** (Taste O) legt die Maske rot über das Bild.
 
-Masken beziehen sich auf das aufrechte Original. Drehen, Spiegeln und späteres Zuschneiden
-verschieben sie nicht vom Motiv. KI-Masken liegen als PNG unter `<daten>/masken/`; die Bearbeitung
-speichert ihre ID und – bei „Objekt“ – die Klickpunkte. Auch Thumbnails und Export zeigen die Masken.
+Masken beziehen sich auf das aufrechte Original; Drehen, Spiegeln und späteres Zuschneiden
+verschieben sie nicht vom Motiv. KI-Masken liegen als PNG im Datenordner. Auch Thumbnails und Export
+zeigen die Masken.
 
-Die KI-Masken (IS-Net ~179 MB, Segment Anything ViT-B quantisiert ~109 MB) lädt die App über
-„KI“ unten links von den GitHub-Releases von [rembg](https://github.com/danielgatis/rembg), die
-Himmelserkennung skyseg (~176 MB, U²-Net von [xiongzhu666](https://github.com/xiongzhu666/Sky-Segmentation-and-Post-processing), MIT)
-von [Hugging Face](https://huggingface.co/JianyuanWang/skyseg).
-**Diese Modelle habe ich mit echten Gewichten getestet**: Motiv-Erkennung, Objekt-Klick
-(Fläche auf wenige Prozent genau) und Himmel-Verfeinerung. Auf zwei CPU-Kernen dauert die erste
-Objekt-Auswahl pro Bild etwa 8 s (das Bild-Embedding wird danach für weitere Klicks wiederverwendet,
-jeder weitere Klick ~0,2 s), die Motiv-Erkennung etwa 5 s. Auf einem aktuellen Rechner mit 8 Kernen
-ist es entsprechend schneller.
+## KI-Funktionen
 
-## KI-Rauschreduzierung
+Alle KI-Funktionen sind optional und werden unter **KI** unten links eingerichtet. Jede lädt ihre
+Modelle einmal herunter; danach läuft alles offline.
 
-Im Entwickeln-Modus unter „Details“. Verwendet **DRUNet** (Zhang et al., KAIR, MIT-Lizenz).
+| Funktion | Modell | Download |
+|---|---|---|
+| Schlagworte und Inhaltssuche | CLIP ViT-B/32 | ca. 160 MB inkl. ONNX Runtime |
+| Masken: Motiv, Objekt, Himmel | IS-Net, Segment Anything, skyseg | ca. 465 MB |
+| Rauschreduzierung | DRUNet | ca. 130 MB |
+| Reparatur | LaMa | ca. 93 MB |
+| Personen | YuNet, SFace | ca. 39 MB |
+| Grafikkarte für die KI | ONNX Runtime WebGPU | ca. 25 MB |
 
-- **Kein inoffiziell gehostetes Modell:** Lumenkorn lädt die Original-Gewichte (130 MB) aus dem
-  GitHub-Release von KAIR und baut daraus lokal ein ONNX-Modell. Dafür enthält `lumenkorn-ai` einen
-  kleinen Leser für das alte PyTorch-Format und einen ONNX-Schreiber – PyTorch wird nicht gebraucht.
-- **Rauschstärke wird geschätzt**, getrennt nach Helligkeit (Schatten rauschen stärker) und auf zwei
-  Skalen: Echtes Kamerarauschen ist durch das Demosaicing räumlich korreliert und würde in voller
-  Auflösung allein deutlich unterschätzt.
-- **Farbrauschen** (bunte Flecken) wird zusätzlich in halber Auflösung und kräftiger entfernt;
-  Helligkeitsdetails kommen aus dem Durchgang in voller Auflösung.
-- Der Regler **Stärke** skaliert die Schätzung vor der Berechnung: 0 = ¾ der Schätzung, 50 (Standard)
-  = 1,5-fach, 100 = 3-fach. Nach einer Änderung „Neu berechnen“.
-- Gerechnet wird **einmal in voller Auflösung** im Hintergrund, mit Fortschrittsanzeige und Abbrechen.
-  Das Ergebnis liegt als Zwischenstufe in `<daten>/entrauscht/` (lineares RGB, f16) und wird von
-  Vorschau, Thumbnails und Export genutzt. **Mischung** blendet danach ohne Neuberechnung zum Original.
-- Getestet mit den echten Gewichten: Gaußrauschen σ = 20 → PSNR von 23,0 auf 30,4 dB, Strukturen
-  bleiben erhalten; Download, Konvertierung und Berechnung auch über die Oberfläche durchgespielt.
-- **Dauer:** auf der CPU etwa 20 s pro Megapixel auf zwei Kernen, also bei 24 MP rund 8 Minuten auf
-  einem schwachen und etwa 2 Minuten auf einem 8-Kern-Rechner. Mit Grafikkarte deutlich schneller,
-  siehe nächster Abschnitt.
+### Schlagworte und Inhaltssuche
 
-## Grafikkarte (GPU)
+Lumenkorn analysiert alle Fotos im Hintergrund aus den Thumbnails. Schlagworte kommen aus fünf
+Gruppen: Ort, Motiv, Licht, Wetter, Stil. Innerhalb einer Gruppe konkurrieren die Begriffe mit einer
+neutralen Option, damit nicht jedes Foto irgendein „Wetter“ bekommt. KI-Schlagworte sind gestrichelt
+umrandet und lassen sich entfernen; eigene Schlagworte werden nie überschrieben. Das Vokabular steht in
+`crates/lumenkorn-ai/src/vocab.rs`.
 
-Im KI-Dialog unter „Grafikkarte“. Zwei unabhängige Teile:
+Für die Inhaltssuche den Schalter „KI“ im Suchfeld anklicken und z. B. „Hund am Strand“ eingeben.
+Deutsche Wörter aus dem Vokabular werden für CLIP ins Englische übertragen; englische Beschreibungen
+funktionieren am besten. Gesucht wird innerhalb des gewählten Ordners, Projekts oder der Person.
 
-### Bildbearbeitung
+### Rauschreduzierung
 
-Vorschau, Thumbnails und Export laufen auf der Grafikkarte, sobald eine gefunden ist (Schalter
-„Bildbearbeitung auf der Grafikkarte“, standardmäßig an). Nichts zu installieren: wgpu spricht die
-Karte direkt an – **Vulkan** unter Linux (AMD: Mesa/RADV) und Android, **DirectX 12** oder Vulkan
-unter Windows, Metal unter macOS.
+Im Reiter Basis unter „Details“. Lumenkorn lädt die Original-Gewichte von DRUNet aus dem
+GitHub-Release von KAIR und baut daraus auf dem eigenen Rechner ein ONNX-Modell; PyTorch wird dafür
+nicht gebraucht.
 
-- Alle Stufen der Pipeline sind als Compute-Shader umgesetzt (`crates/lumenkorn-develop/src/gpu/`):
-  Weißabgleich, Belichtung, RAW-Basiskurve, Lichter/Tiefen/Weiß/Schwarz mit den weichgezeichneten
-  Helligkeitskarten, Kontrast, Klarheit, Dynamik/Sättigung, alle Maskenebenen, Schärfen,
-  Masken-Überlagerung, Drehen, Spiegeln, Geraderichten, Zuschneiden, Einmischen der Rauschreduzierung.
-- Nur die *Form* einer Maske (Verlauf, Radial, Pinsel, KI-Maske) wird auf der CPU berechnet – und
-  zwischengespeichert, weil sie sich beim Ziehen der Regler nicht ändert. Davon profitiert auch die CPU.
-- **Gleiches Ergebnis:** Ein Test vergleicht GPU und CPU Pixel für Pixel über alle Regler, Masken
-  und Geometrie-Fälle, für JPEG- und RAW-Quellen: größte Abweichung 0,0001 (weit unter einer 8-Bit-Stufe).
-- **Rückfall:** Keine Karte, nur Software-Rendering, zu wenig Grafikspeicher oder ein Treiberfehler –
-  dann rechnet die CPU-Pipeline, der Grund steht im Dialog. Die Karte wird beim Start im
-  Hintergrund gesucht; bis dahin rechnet die CPU.
-- Speicherbedarf auf der Karte ≈ 90 Byte pro Pixel: ~250 MB für die Vorschau, ~2 GB für den
-  Export eines 24-MP-Bildes (wird danach wieder freigegeben). Passt ein Bild nicht in einen Puffer
-  der Karte, wird es auf der CPU gerechnet.
-- Messen: `cargo run --release -p lumenkorn-develop --example bench` (Vorschaugröße) bzw.
-  `… --example bench -- 6000 4000` (Exportgröße) vergleicht CPU und GPU auf deinem Rechner.
+- Die Rauschstärke wird geschätzt, getrennt nach Helligkeit und auf zwei Skalen. Kamerarauschen ist
+  durch das Demosaicing räumlich korreliert und würde in voller Auflösung allein unterschätzt.
+- Farbrauschen wird zusätzlich in halber Auflösung entfernt.
+- Der Regler **Stärke** skaliert die Schätzung: 0 = ¾, 50 (Standard) = 1,5-fach, 100 = 3-fach.
+- Gerechnet wird einmal in voller Auflösung im Hintergrund. Das Ergebnis liegt im Datenordner und
+  wird von Vorschau, Thumbnails und Export genutzt. **Mischung** blendet ohne Neuberechnung zum
+  Original.
 
-### KI-Modelle
+### Reparatur
 
-Ein Klick lädt eine GPU-fähige ONNX Runtime (~25 MB), danach
-rechnen die KI-Modelle auf der Grafikkarte. **AMD, NVIDIA und Intel** werden gleichermaßen
-unterstützt, über den normalen Grafiktreiber – keine CUDA- oder ROCm-Installation.
+Im Reiter **Reparatur**. Entfernt Staubflecken, Leitungen, Passanten oder Schilder und füllt die
+Stelle passend aus dem Bild.
 
-| System  | Weg (empfohlen zuerst)                         | Paket                                 |
-|---------|------------------------------------------------|---------------------------------------|
-| Linux   | WebGPU über **Vulkan** (bei AMD: Mesa/RADV)     | `onnxruntime-webgpu` 1.27.0           |
-| Windows | WebGPU über **DirectX 12**                     | `onnxruntime-webgpu` 1.27.0           |
-| macOS   | WebGPU über Metal                              | `onnxruntime-webgpu` 1.27.0           |
+- Auswählen mit Pinsel oder Objekt-Klick. „Hinzufügen“ und „Abziehen“ fassen mehrere Auswahlen zu
+  einer Reparatur zusammen. Gerechnet wird erst nach Klick auf **Reparieren**.
+- LaMa rechnet mit 512 × 512 Pixeln. Jeder Bereich wird deshalb mit Umgebung ausgeschnitten,
+  gefüllt und nur innerhalb der weich auslaufenden Auswahl eingesetzt. Kleine Reparaturen bleiben so
+  pixelscharf.
+- Das Ergebnis ist ein Flicken im Datenordner, den die Pipeline direkt nach der Rauschreduzierung
+  einsetzt. Reparaturen lassen sich ausblenden, löschen und neu berechnen.
 
-- Die Pakete sind die offiziellen ONNX-Runtime-Builds von PyPI. Lumenkorn entnimmt ihnen nur die
-  C-Bibliothek (plus den DirectX-Shader-Compiler unter Windows) und prüft vorher die
-  **SHA-256-Prüfsumme**. Abgelegt unter `<daten>/ki/runtime-webgpu/`.
-- **DirectML zurückgezogen:** Die letzte DirectML-Laufzeit (1.24) stürzte auf einer Radeon RX 7900 XTX
-  unter Windows beim Laden der Modelle mit einer Zugriffsverletzung in `onnxruntime.dll` ab. Eine
-  vorhandene `runtime-directml` wird beim Start entfernt, die Einstellung auf „Automatisch“ gesetzt.
-- **Ganz oder gar nicht je Modell:** Ein Modell läuft nur auf der GPU, wenn *alle* seine
-  Operationen dort laufen können; sonst komplett auf der CPU (ständiges Kopieren zwischen GPU und
-  CPU wäre oft langsamer als die CPU allein). Der Dialog zeigt pro Modell, wo es rechnet.
-  Unter WebGPU laufen Rauschreduzierung (DRUNet) und „Motiv“ (IS-Net) vollständig auf der GPU;
-  die quantisierten Modelle (Segment Anything, CLIP-Text) enthalten int8-Operationen ohne
-  WebGPU-Umsetzung und bleiben auf der CPU.
-- **Rechenwerk** „Automatisch“ / „Nur Prozessor“. „Nur Prozessor“ lädt die reine CPU-Laufzeit
-  (falls installiert), damit kein Grafiktreiber-Code im Prozess ist; ein Wechsel der Laufzeit
-  braucht einen Neustart, den der Dialog anbietet.
-- **Fällt die GPU aus** (Treiberproblem, zu wenig Grafikspeicher), rechnet Lumenkorn auf der CPU
-  weiter und zeigt den Fehler im Dialog an.
-- **Absturzschutz:** Native Bibliotheken (ONNX Runtime, Grafiktreiber) können Lumenkorn ohne
-  Fehlermeldung beenden. Vor jedem riskanten Schritt (Laufzeit laden, Modell öffnen, Analyse,
-  Grafikkarte öffnen) legt Lumenkorn eine Markierung im KI-Ordner an und entfernt sie danach.
-  Findet es beim Start noch eine, wird der Auslöser abgeschaltet – GPU-Laufzeit beiseitegelegt
-  (`…deaktiviert`) und KI auf CPU, bzw. Verschlagwortung pausiert, bzw. GPU-Bildbearbeitung aus –
-  und der KI-Dialog erklärt, was passiert ist. Lumenkorn startet so in jedem Fall wieder.
-- **Protokoll:** `<daten>/lumenkorn.log` (Windows: `%APPDATA%\io.github.drayprescot.lumenkorn\lumenkorn.log`),
-  inklusive Rust-Paniken mit Rückverfolgung.
-- **„Geschwindigkeit testen“** misst die Rauschreduzierung an einem 512×512-Testbild und rechnet
-  auf ein 24-MP-Foto hoch.
-- Die Rauschreduzierung rechnet auf der GPU in Kacheln zu 512 Pixeln (plus Rand): Zwischenergebnisse
-  bleiben so unter der 128-MB-Puffergrenze, die WebGPU auf jeder Karte garantiert.
-- Erkannt wird die Grafikkarte unter Linux über `/sys/class/drm` (mit Grafikspeicher bei AMD);
-  unter Windows wählt der Treiber selbst die stärkste Karte, der Dialog nennt dort keinen Namen.
-- Windows braucht wie bei der CPU-Laufzeit das *Microsoft Visual C++ Redistributable (x64)*,
-  das auf den meisten Rechnern vorhanden ist; fehlt es, sagt die Fehlermeldung das.
+### Personen
 
-**Ehrlicher Teststand (beide Teile):** In meiner Bauumgebung gibt es keine Grafikkarte. Getestet habe ich mit
-dem Software-Vulkan-Treiber von Mesa (lavapipe), also über genau denselben WebGPU/Vulkan-Weg, den
-eine AMD-Karte unter Linux nimmt – nur ohne Tempo: Download und Prüfsumme, Laden, Rauschreduzierung
-und „Motiv“ auf der „GPU“ liefern dieselben Ergebnisse wie die CPU (größte Abweichung 2·10⁻⁶ bzw.
-0/255), Umschalten ohne Neustart, Neustart-Weg, Geschwindigkeitstest. **Nicht getestet:** echte
-Geschwindigkeit auf einer echten Karte, DirectML und WebGPU unter Windows (nur Exporte und
-Abhängigkeiten der DLLs geprüft; DirectML stürzte im echten Einsatz ab und ist zurückgezogen),
-macOS. Den Absturzschutz habe ich mit einem simulierten Absturz an derselben Stelle getestet. Für die Bildbearbeitung: Vergleichstest GPU/CPU und
-Bedienung in der App (Regler, Masken, Schalter) über lavapipe; schon dieser Software-Vulkan auf zwei
-CPU-Kernen ist bei Masken und Klarheit etwa doppelt so schnell wie die Rayon-Pipeline (401 statt
-771 ms für 2,8 MP mit drei Maskenebenen) – eine echte Karte sollte im Bereich weniger Millisekunden
-liegen, gemessen habe ich das nicht.
+Nach dem Download sucht Lumenkorn im Hintergrund in allen Fotos nach Gesichtern.
 
-## Lokale KI
+- **Finden und gruppieren:** YuNet findet Gesichter, auch kleine in Gruppenfotos (Suche in Kacheln).
+  Jedes Gesicht wird ausgerichtet und von SFace in einen Merkmalsvektor übersetzt. Ähnliche Gesichter
+  landen in derselben Gruppe; eine Person erscheint höchstens einmal pro Foto.
+- **Benennen:** Einer Gruppe einen Namen geben. Ähnliche Gruppen und neue Fotos werden der Person
+  danach vorgeschlagen; ✓ bestätigt, ✕ nimmt heraus und schlägt das Gesicht nie wieder vor. Ein Name,
+  den es schon gibt, führt beide zusammen.
+- **Name ändern:** Klick auf den Namen einer geöffneten Person oder Gruppe, oder Doppel- bzw.
+  Rechtsklick in der Seitenleiste.
+- **Viele auf einmal:** In „Gesichter prüfen“ Gesichter mit Klick, Umschalt-Klick oder Strg+A wählen
+  und gemeinsam bestätigen oder herausnehmen. Für ausgewählte Fotos zeigt der Infobereich unter
+  „Personen in der Auswahl“ alle erkannten Personen; sie lassen sich dort für alle Fotos neu zuordnen
+  oder entfernen.
+- **Übersicht:** Unbenannte Gruppen mit bis zu 100 Fotos stehen eingeklappt unter „Sonstige“.
+- Die verbreiteten InsightFace-Modelle sind bewusst nicht dabei; sie dürfen nur nichtkommerziell
+  genutzt werden.
 
-Über „KI einrichten“ unten links. Einmaliger Download von ca. 160 MB:
+### Grafikkarte
 
-- **ONNX Runtime 1.28** von den offiziellen GitHub-Releases (Windows x64/ARM64, Linux x64/ARM64, macOS ARM64).
-- **CLIP ViT-B/32** (quantisiert) von Hugging Face ([Xenova/clip-vit-base-patch32](https://huggingface.co/Xenova/clip-vit-base-patch32)).
+Im KI-Dialog unter „Grafikkarte“. Zwei Teile, die unabhängig voneinander laufen:
 
-Danach analysiert Lumenkorn alle Fotos im Hintergrund (aus den Thumbnails, also schnell):
-
-- **Automatische Schlagworte** auf Deutsch in fünf Gruppen – Ort, Motiv, Licht, Wetter, Stil. Innerhalb einer Gruppe konkurrieren die Begriffe mit einer neutralen Option, damit nicht jedes Foto irgendein „Wetter“ bekommt. KI-Schlagworte sind gestrichelt umrandet, tragen ihre Sicherheit und lassen sich entfernen; eigene Schlagworte werden nie überschrieben. Das Vokabular steht in `crates/lumenkorn-ai/src/vocab.rs` und ist leicht erweiterbar.
-- **Inhaltssuche:** „KI“-Schalter im Suchfeld, dann z. B. „Hund am Strand“ oder „Nebel im Wald“. Deutsche Wörter aus dem Vokabular werden für CLIP ins Englische übertragen; englische Beschreibungen funktionieren am besten.
-- Downloads nutzen den Zertifikatsspeicher des Betriebssystems und funktionieren damit auch hinter Firmen-Proxys mit eigenem Stammzertifikat.
-- Alle Daten bleiben auf dem Gerät. `ki/quellen.json` im Datenordner kann die Download-Adressen überschreiben (Spiegelserver, anderes kompatibles CLIP-Modell).
-
-**Ehrlicher Teststand:** Laufzeit-Laden, Tokenizer (identisch mit OpenAIs Referenz, auch bei Umlauten),
-Inferenz, Ranking, Verschlagwortung, Speicherung, Suche und Download-Logik sind mit echter
-ONNX Runtime 1.28 und einem Testmodell gleicher Schnittstelle getestet (`tools/make_ai_test_model.py`).
-Das echte CLIP-Modell konnte ich in meiner Bauumgebung nicht laden (Hugging Face war gesperrt).
-Die Qualität der Schlagworte und die Schwellwerte (`min_p` je Gruppe) solltest du daher mit deinen
-eigenen Fotos prüfen und ggf. nachjustieren.
-
-## KI-Reparatur
-
-Im Entwickeln-Modus im Reiter **Reparatur**. Entfernt Störendes – Staubflecken, Leitungen, Passanten,
-Schilder – und füllt die Stelle passend aus dem restlichen Bild.
-
-- **Auswählen wie bei Masken:** „Neu“ → Pinsel oder Objekt (Klick, Segment Anything). Mit „Hinzufügen“
-  und „Abziehen“ werden mehrere Auswahlen zu **einer** Reparatur zusammengefasst; die Auswahl ist rot
-  zu sehen. Gerechnet wird erst nach Klick auf **„Reparieren“**.
-- **Modell:** LaMa (Apache-2.0), ONNX-Fassung aus dem OpenCV Model Zoo, ~93 MB, Download beim ersten Mal.
-- **Volle Auflösung:** LaMa rechnet mit 512×512. Jeder zusammenhängende Bereich wird deshalb einzeln
-  mit Umgebung ausgeschnitten (mindestens 512 px, sonst das 2,2-Fache des Bereichs), gefüllt und nur
-  innerhalb der leicht erweiterten, weich auslaufenden Auswahl eingesetzt. Kleine Reparaturen bleiben
-  so pixelscharf; sehr große Bereiche werden für das Modell verkleinert und wirken entsprechend weicher.
-- **Non-destruktiv:** Das Ergebnis liegt als Flicken in `<daten>/reparaturen/` (lineares RGB, f16) und
-  wird in der Pipeline direkt nach der Rauschreduzierung eingesetzt – in Vorschau, Zoom, Thumbnails und
-  Export, auf CPU wie GPU. Reparaturen lassen sich ein-/ausblenden, löschen, rückgängig machen.
-  Ändert man die Auswahl danach, zeigt der Reiter „geändert“ und bietet „Neu berechnen“ an.
-- Getestet mit dem echten Modell: aufgemalter Fleck und Strich in einem Foto → mittlere Abweichung zum
-  unversehrten Original im Schadensbereich von 0,59 auf 0,024; in der App Mond aus einem Bergfoto
-  entfernt (zwei Bereiche, 1800×1800, 13 s auf zwei CPU-Kernen).
-
-## Personen
-
-Einrichten über „KI“ → „Personenerkennung herunterladen“ (~39 MB). Danach sucht Lumenkorn im
-Hintergrund in allen Fotos nach Gesichtern (nach der Verschlagwortung).
-
-- **Modelle:** YuNet zum Finden (MIT), SFace zum Wiedererkennen (Apache-2.0), beide aus dem OpenCV
-  Model Zoo. Die verbreiteten InsightFace-Modelle sind bewusst nicht dabei – sie dürfen nur
-  nichtkommerziell genutzt werden.
-- **Finden:** Das Foto (bis 1600 px) wird einmal ganz und einmal in doppelter Auflösung in Kacheln
-  abgesucht, so werden auch kleine Gesichter in Gruppenfotos gefunden. Gesichter unter 20 px fallen weg.
-- **Gruppieren:** Jedes Gesicht wird ausgerichtet (fünf Merkmalspunkte) und in einen 128-dimensionalen
-  Vektor übersetzt. Ähnliche Gesichter (Kosinus ≥ 0,5) landen in derselben Gruppe; eine Person
-  erscheint höchstens einmal pro Foto.
-- **Benennen:** In „Personen verwalten“ einer Gruppe einen Namen geben. Ähnliche Gruppen und neue
-  Fotos werden der Person danach **vorgeschlagen** (gestrichelt bzw. „Lena?“) – ✓ bestätigt, ✕ nimmt
-  heraus und schlägt dieses Gesicht der Person nie wieder vor. Ein gleicher Name führt zwei Personen
-  zusammen. Einzelne Gesichter lassen sich im Infobereich direkt benennen oder ignorieren.
-- **Mehrere Vorschläge auf einmal bestätigen:** In „Gesichter prüfen“ Gesichter anklicken
-  (Umschalt-Klick: Bereich, Strg+A: alle), dann „✓ bestätigen“ oder „✕ Herausnehmen“ für alle
-  gewählten; „Alle Vorschläge bestätigen“ übernimmt sämtliche offenen. Im Raster einer Person:
-  Fotos auswählen, im Infobereich „✓ N bestätigen“.
-- **Zurück zur Übersicht:** In der Fotoansicht einer Person führt „‹ Personen“ oben zur
-  Personenübersicht bzw. zur Gesichter-Prüfung, aus der man gekommen ist.
-- **Umbenennen:** Doppel- oder Rechtsklick auf eine Person in der Seitenleiste bzw. Klick auf den
-  Namen in „Personen verwalten“, z. B. „Max“ → „Max Mustermann“. Bestätigte Gesichter bleiben
-  bestätigt, offene Vorschläge bleiben zu prüfen. Gibt es den neuen Namen schon, werden beide
-  Personen nach Rückfrage zusammengeführt.
-- **Mehrere Fotos auf einmal korrigieren:** Fotos auswählen (Strg-/Umschalt-Klick, Strg+A) – der
-  Infobereich zeigt unter „Personen in der Auswahl“ alle darin erkannten Personen. Je Person lassen
-  sich die Gesichter aller ausgewählten Fotos einer anderen Person zuordnen (Name eingeben) oder
-  mit ✕ herausnehmen. In der Ansicht einer Person verschwinden falsch zugeordnete Fotos sofort.
-- **Filtern und Suchen:** Personen erscheinen in der Seitenleiste; ein Klick zeigt alle ihre Fotos.
-  Die normale Suche findet auch Namen.
-- Gesichter beziehen sich auf das unbearbeitete Foto; Zuschnitt oder Bearbeitung ändern nichts an
-  der Zuordnung. Alles bleibt lokal im Katalog.
-
-**Ehrlicher Teststand:** Mit den echten Modellen und den OpenCV-Beispielfotos geprüft: Gesichtskasten
-von „Lena“ gleich OpenCVs `FaceDetectorYN` (±1 px); dieselbe Person nach Verkleinern und Aufhellen
-0,78 ähnlich, verschiedene Personen 0,11; im Gruppenfoto 49 Gesichter (OpenCV: 58 bei voller
-Auflösung – Lumenkorn sucht auf 1600 px), unter 435 Paaren fremder Gesichter nur 2 über der
-Gruppierschwelle. In der App: Download, Analyse, Gruppen, Benennen, Vorschlag für ein neues Foto,
-Bestätigen, Filtern, Namenssuche. Wie gut es bei deinen Fotos über Jahre (Altern, Brillen, Profile)
-trennt, habe ich nicht prüfen können – die Schwelle steht in `crates/lumenkorn-core/src/people.rs`.
-
-## Vergleichen und Zoomen
-
-- **Vergleich:** Mehrere Fotos mit Strg- bzw. Umschalt-Klick auswählen, dann „Vergleichen“,
-  Taste C, Enter oder Rechtsklick → „Groß nebeneinander vergleichen“ (auch im Entwickeln, mit
-  Auswahl im Filmstreifen). Bis zu 12 Fotos erscheinen groß nebeneinander, mit **gekoppeltem Zoom** (abschaltbar):
-  Zoomen und Verschieben wirkt auf alle gleichzeitig, an derselben Bildstelle – ideal für
-  Schärfevergleiche in Serien. Ein Klick hebt ein Foto hervor; Bewertung und Markierung wirken im
-  Vergleich nur auf dieses. × oder Entf nimmt ein Foto heraus.
-- **Zoom** in Einzelansicht, Vergleich und Entwickeln: Scrollrad (zum Mauszeiger hin), Strg + / −,
-  Strg 0, Z oder Doppelklick (Einpassen ↔ 100 %), Ziehen zum Verschieben. 100 % heißt ein Bildpixel
-  pro Bildschirmpixel, auch auf HiDPI-Bildschirmen.
-- **Echte volle Auflösung:** Die Vorschauen haben 2048 px. Reicht das beim Hineinzoomen nicht, lädt
-  die Bibliothek das ganze Foto in voller Auflösung nach (bearbeitet bzw. aus dem RAW entwickelt; die
-  letzten sechs bleiben im Speicher). Beim Entwickeln wird nur der **sichtbare Ausschnitt** aus der
-  vollen Auflösung gerechnet – mit den aktuellen, noch nicht gespeicherten Reglern – und ersetzt
-  ~0,2 s nach der letzten Bewegung die hochskalierte Vorschau. Auf der GPU kostet der Ausschnitt fast
-  nichts zusätzlich; auf der CPU wird das ganze Bild in Zoomgröße gerechnet.
-- Masken und Zuschnitt bearbeitet man in der Einpassen-Ansicht; beim Zuschneiden springt der Zoom
-  automatisch zurück.
-
-## Aussortieren (Culling)
-
-- **X** lehnt das sichtbare Foto ab (erneut drücken hebt auf), **Umschalt+X** lehnt ab und springt
-  sofort zum nächsten Foto – so geht man eine Serie in der Einzelansicht schnell durch. In der
-  Einzelansicht, im Vergleich und im Entwickeln wirken Bewertung und Markierung immer nur auf das
-  groß angezeigte Foto, auch wenn im Raster mehrere ausgewählt sind.
-- Sobald in der aktuellen Ansicht (Ordner, Projekt, Suche …) Fotos abgelehnt sind, zeigt die
-  Werkzeugleiste **„N abgelehnt“**. Ein Klick (oder Strg+Entf) öffnet die Rückfrage mit Vorschau,
-  Anzahl und Gesamtgröße.
-- Gelöscht wird standardmäßig **in den Papierkorb** des Systems (Windows, macOS, Linux); wahlweise
-  endgültig. Auf Android gibt es keinen Papierkorb, dort wird endgültig gelöscht.
-- Das Backend löscht nur Fotos, die beim Löschen noch abgelehnt sind. Mit der Datei verschwinden
-  XMP-Begleitdateien (`foto.cr3.xmp`; `foto.xmp` nur, wenn kein JPEG/RAW gleichen Namens daneben
-  liegt), Katalogeintrag, Bearbeitungen, Masken, Entrauschungen, Reparaturen, Vorschauen und Gesichter.
-- Dateien, die sich nicht löschen lassen (z. B. schreibgeschützt oder in einem anderen Programm
-  geöffnet), bleiben im Katalog und werden gemeldet.
-
-## Basis-Einstellungen übertragen
-
-Ohne Knöpfe – per Tastenkürzel oder Rechtsklick auf ein Foto (Raster, Filmstreifen,
-Einzelansicht, Entwickeln):
-
-- **Strg+Umschalt+C** kopiert die Basis-Einstellungen des gewählten Fotos.
-- **Strg+Umschalt+V** fügt sie ein – im Raster und im Filmstreifen auf alle ausgewählten Fotos,
-  in Einzelansicht und Vergleich auf das sichtbare.
-- Übertragen wird **nur der Reiter „Basis“**: Weißabgleich, Licht, Farbe, HSL, Klarheit, Schärfen.
-  Masken, Reparaturen, Rauschreduzierung, Zuschnitt und Drehen des Zielfotos bleiben unberührt.
-- Im Entwickeln lässt sich das Einfügen beim geöffneten Foto mit Strg+Z rückgängig machen.
+- **Bildbearbeitung:** Vorschau, Thumbnails und Export laufen auf der Grafikkarte, sobald eine
+  gefunden ist. Es muss nichts installiert werden. Klappt es nicht (keine Karte, zu wenig
+  Grafikspeicher, Treiberfehler), rechnet die CPU, und der Dialog nennt den Grund.
+- **KI:** Ein Klick lädt die WebGPU-Fassung von ONNX Runtime. Sie läuft auf AMD, NVIDIA und Intel über
+  den normalen Treiber, ohne CUDA oder ROCm. Ein Modell läuft nur dann auf der GPU, wenn alle seine
+  Operationen dort laufen können, sonst ganz auf der CPU; der Dialog zeigt pro Modell, wo es rechnet.
+  Die quantisierten Modelle (Segment Anything, CLIP-Text) bleiben auf der CPU.
+- **Absturzschutz:** Vor riskanten Schritten wie dem Laden einer GPU-Laufzeit legt Lumenkorn eine
+  Markierung an. Stürzt die App dabei ab, schaltet der nächste Start den Auslöser ab und erklärt im
+  KI-Dialog, was passiert ist.
+- **„Geschwindigkeit testen“** misst die Rauschreduzierung an einem Testbild und rechnet auf ein
+  24-MP-Foto hoch.
 
 ## Bilder zusammenfügen
 
-Mehrere Fotos auswählen (Strg- oder Umschalt-Klick), dann Rechtsklick → **Zusammenfügen** oder
-per Tastenkürzel. Ein kleiner Dialog zeigt die Optionen, die Berechnung läuft im Hintergrund
-(„Im Hintergrund“ schließt den Dialog, Abbrechen ist jederzeit möglich).
+Mehrere Fotos auswählen, dann Rechtsklick → **Zusammenfügen** oder per Tastenkürzel. Die Berechnung
+läuft im Hintergrund und lässt sich abbrechen.
 
 | | Kürzel | Was passiert |
 |---|---|---|
-| **HDR aus Belichtungsreihe** | Strg+H | Ausrichten (Freihand), Belichtungsverhältnisse aus den Pixeln gemessen (keine EXIF-Angaben nötig), gewichtetes Zusammenführen zur linearen Strahldichte, optional Geisterbilder (bewegte Motive) unterdrücken |
-| **Panorama** | Strg+M | Überlappungen aller Paare suchen (Reihenfolge egal, auch mehrzeilig), Brennweite und Kameradrehungen schätzen, Horizont gerade richten, Projektion zylindrisch / Kugel / perspektivisch, Helligkeit angleichen, weich überblenden, optional auf das größte gefüllte Rechteck zuschneiden |
-| **Focus Stacking** | Strg+Umschalt+F | Ausrichten inkl. Objektiv-Atmen (Merkmale, dann pixelgenaue Nachführung), Laplace-Pyramiden: je Pixel und Größenordnung gewinnt das schärfste Bild |
+| **HDR** | Strg+H | Ausrichten (auch Freihand), Belichtungsverhältnisse aus den Pixeln gemessen, gewichtetes Zusammenführen, optional Geisterbilder unterdrücken. Bis ±6 EV. |
+| **Panorama** | Strg+M | Reihenfolge egal, auch mehrzeilig. Brennweite und Kameradrehungen werden geschätzt, der Horizont ausgerichtet. Projektion zylindrisch, Kugel oder perspektivisch, Helligkeit angeglichen, optional automatisch zugeschnitten. |
+| **Focus Stacking** | Strg+Umschalt+F | Ausrichten einschließlich Objektiv-Atmen, dann gewinnt je Pixel und Größenordnung das schärfste Bild. |
 
-Das Ergebnis ist eine **EXR-Datei** (lineares Rec.709, 16-Bit-Gleitkomma, ZIP-komprimiert) neben dem
-ersten Foto, z. B. `IMG_0412-HDR.exr`, `IMG_0412-Pano.exr`, `IMG_0412-Fokus.exr`. Sie wird sofort in
-den Katalog aufgenommen und ausgewählt, Aufnahmedatum, Kamera und Objektiv stammen vom Referenzfoto.
-Werte über 1,0 bleiben erhalten: Aus RAWs entstandene Ergebnisse werden wie ein RAW entwickelt
-(Basiskurve, Lichter zurückholbar), aus JPEGs entstandene wie ein JPEG. Die Bearbeitungen der
-Quellfotos fließen nicht ein – zusammengefügt werden die unbearbeiteten Originale.
-
-## Entwickeln: Reiter
-
-- **Basis:** Weißabgleich, Licht, Farbe, Details (Klarheit, Schärfen, KI-Rauschreduzierung), Schnappschüsse.
-- **Masken:** Maskenebenen und ihre Regler. Wählt man auf dem Bild eine Maske oder ein Werkzeug, öffnet sich der Reiter von selbst.
-- **Reparatur:** Störendes mit KI entfernen (siehe oben).
-- **Zuschnitt:** Zuschneiden, Seitenverhältnis, Geraderichten (mit Automatik), Drehen, Spiegeln. Der Reiter startet das Zuschneiden; die Taste R öffnet ihn und kehrt nach Enter/Esc zum vorherigen Reiter zurück.
-
-Histogramm, Kopieren/Einfügen/Zurücksetzen und Export bleiben in allen Reitern sichtbar.
+Das Ergebnis ist eine EXR-Datei (lineares 16-Bit-Gleitkomma) neben dem ersten Foto, z. B.
+`IMG_0412-HDR.exr`. Sie kommt sofort in den Katalog. Aus RAWs entstandene Ergebnisse werden wie ein
+RAW entwickelt, Lichter über 1,0 lassen sich also zurückholen. Zusammengefügt werden die
+unbearbeiteten Originale.
 
 ## Tastenkürzel
 
 | Taste | Aktion |
 |---|---|
 | Pfeiltasten | Navigieren |
-| Enter / Leertaste / E | Groß anzeigen (mehrere ausgewählt: nebeneinander im Vergleich) |
+| Enter / Leertaste / E | Groß anzeigen (mehrere ausgewählt: Vergleich) |
 | D | Entwickeln |
 | Esc / G | Zurück zum Raster |
 | 0–5 | Bewertung |
 | P / X / U | Markieren / Ablehnen / Aufheben |
-| Umschalt+X | Ablehnen und zum nächsten Foto (Einzelansicht, Vergleich, Entwickeln, Raster) |
-| Strg+Entf / Strg+Rücktaste | Abgelehnte Fotos der Ansicht von der Festplatte löschen (mit Rückfrage) |
+| Umschalt+X | Ablehnen und zum nächsten Foto |
+| Strg+Entf | Abgelehnte Fotos löschen (mit Rückfrage) |
 | Strg+A | Alles auswählen |
-| Klick mit Strg / Umschalt | Mehrfachauswahl (Raster und Filmstreifen) |
-| C | Ausgewählte Fotos vergleichen (2–12, groß nebeneinander) – auch im Entwickeln und per Rechtsklick |
-| Scrollrad | Zoomen zum Mauszeiger hin (Einzelansicht, Vergleich, Entwickeln) |
+| Strg- / Umschalt-Klick | Mehrfachauswahl |
+| C | Ausgewählte Fotos vergleichen |
+| Scrollrad | Zoomen zum Mauszeiger hin |
 | Strg + / Strg − / Strg 0 | Vergrößern / Verkleinern / Einpassen |
 | Z oder Doppelklick | Einpassen ↔ 100 % |
-| Ziehen | Ausschnitt verschieben (gezoomt) |
 | Entf | Foto aus dem Vergleich nehmen |
 | I | Infobereich ein/aus |
-| \ | Vorher/Nachher (Entwickeln) |
-| F11 | Vollbild ein/aus (das Fenster startet maximiert) |
-| [ / ] | Links/rechts drehen (Entwickeln) |
-| Strg+Z / Strg+Umschalt+Z | Rückgängig / Wiederholen (Entwickeln) |
-| Strg+Umschalt+C / Strg+Umschalt+V | Basis-Einstellungen kopieren / einfügen (auch per Rechtsklick) |
-| O | Maske rot anzeigen (Entwickeln, Maske ausgewählt) |
-| R | Zuschneiden ein/aus (Entwickeln); Enter übernimmt, Esc bricht ab |
-| Esc | Werkzeug bzw. Maske abwählen (Entwickeln) |
+| \ | Vorher/Nachher |
+| F11 | Vollbild |
+| [ / ] | Links / rechts drehen |
+| Strg+Z / Strg+Umschalt+Z | Rückgängig / Wiederholen |
+| Strg+Umschalt+C / Strg+Umschalt+V | Einstellungen kopieren / einfügen |
+| O | Maske rot anzeigen |
+| R | Zuschneiden |
 | Strg+Umschalt+E | Auswahl exportieren |
-| Strg+H / Strg+M / Strg+Umschalt+F | Auswahl zu HDR / Panorama / Focus Stacking zusammenfügen (auch per Rechtsklick) |
-| Doppelklick auf Regler | Regler zurücksetzen |
+| Strg+H / Strg+M / Strg+Umschalt+F | HDR / Panorama / Focus Stacking |
 
-## Arbeitsspeicher und Datenordner
+## So funktioniert Lumenkorn
 
-Rust hat keinen Garbage Collector – Speicher wird frei, sobald niemand ihn mehr hält. Lange
-gehalten werden nur bewusste Zwischenspeicher; Lumenkorn lässt sie zu festen Zeitpunkten los:
+### Aufbau
 
-| Was | Wann freigegeben |
+Lumenkorn besteht aus zwei Hälften. Das Fenster zeigt eine Weboberfläche in Svelte. Alles, was
+Dateien, Pixel oder Modelle anfasst, passiert in Rust. Verbunden sind beide über Tauri: Die Oberfläche
+ruft Rust-Befehle auf und bekommt JSON zurück. Bilder holt sie über ein eigenes URL-Schema (`lw://`),
+damit keine Pixeldaten durch JSON müssen und der Browser-Cache greift.
+
+Der Rust-Teil ist in drei Bibliotheken (Crates) aufgeteilt, die Tauri nicht kennen und sich ohne
+Fenster testen lassen:
+
+- **lumenkorn-core:** Katalog, Ordner-Scan, Dateiüberwachung, Thumbnails, Personen.
+- **lumenkorn-develop:** RAW-Dekodierung, Demosaicing, Entwicklungspipeline für CPU und GPU,
+  Masken, Reparatur-Flicken, Zusammenfügen, Export.
+- **lumenkorn-ai:** ONNX Runtime laden, alle KI-Modelle, Downloads.
+
+Dazu kommt `src-tauri`, die eigentliche App: Befehle für die Oberfläche, Hintergrundaufträge
+(Scan → Thumbnails → KI-Analyse → Gesichter), das `lw://`-Schema, Absturzschutz und Protokoll.
+
+### Katalog
+
+Der Katalog ist eine SQLite-Datenbank im Datenordner. Sie enthält Quellordner, Fotos, Projekte,
+Schlagworte, Gesichter und Bearbeitungen. Beim Scan liest Lumenkorn die EXIF-Daten und berechnet
+für jede Datei einen BLAKE3-Hash. Verschwindet eine Datei und taucht eine mit gleichem Hash woanders
+auf, gilt sie als verschoben und behält ihre Daten. Die Suche nutzt einen FTS5-Volltextindex mit
+Trigrammen, deshalb finden auch Teilwörter etwas.
+
+### Entwicklungspipeline
+
+Eine Bearbeitung ist ein kleines JSON-Dokument mit allen Reglerwerten, Masken und dem Zuschnitt. Zum
+Anzeigen wird das Foto einmal in ein lineares Gleitkommabild umgewandelt: RAWs liest rawler,
+demosaikt werden sie von Lumenkorn selbst (RCD bzw. Markesteijn), danach folgt die Eingangsschärfung.
+JPEG, PNG, TIFF und WebP werden in lineares Licht umgerechnet.
+
+Für die Live-Vorschau liegt dieses Bild mit 2048 Pixeln Kantenlänge im Speicher. Jede
+Regleränderung rechnet die Pipeline auf dieser Vorschau neu, auf der Grafikkarte in wenigen
+Millisekunden. Beim Zoomen wird nur der sichtbare Ausschnitt aus der vollen Auflösung gerechnet, beim
+Export das ganze Bild.
+
+Die Reihenfolge ist fest:
+
+| Stufe | Arbeitsraum |
 |---|---|
-| Bild in voller Auflösung (Zoom), entrauschte Fassungen, Masken, Reparatur-Quelle, GPU-Puffer | beim Verlassen des Entwickelns; nach einem Export nur die großen |
-| KI-Modelle für Masken, Rauschreduzierung, Reparatur | nach 3 Minuten ohne Nutzung |
-| KI-Modelle für Verschlagwortung und Personen | nach 5 Minuten ohne Nutzung |
-| Bearbeitungs-Proxys (4 Fotos × ~35 MB) | bleiben – Zurückkehren ins Entwickeln ist sofort da |
+| Weißabgleich, Belichtung | linear, szenenbezogen |
+| Basiskurve (nur RAW) | Szene → Anzeige |
+| Dunst entfernen | anzeigebezogen |
+| Weiß/Schwarz, Lichter/Tiefen, Kontrast, Klarheit | Helligkeit |
+| Dynamik, Sättigung, HSL, Color Grading | Farbe (HSL in Oklch) |
+| Masken | je Ebene überblendet |
+| Schärfen | Helligkeit |
+| Drehen, Spiegeln, Geraderichten, Zuschneiden | zuletzt |
 
-Ein Modell, das gerade rechnet, wird nie entladen; beim nächsten Gebrauch lädt es in wenigen
-Sekunden neu. Thumbnails bearbeiteter Fotos werden höchstens zu zweit gleichzeitig entwickelt
-(ein RAW braucht dabei bis ~1,5 GB), die Anzeige in voller Auflösung höchstens zweimal parallel.
+Lichter, Tiefen und Klarheit arbeiten mit weichgezeichneten Helligkeitskarten, deren Radius sich nach
+der Bildgröße richtet. Die Vorschau sieht deshalb aus wie der Export. Mit Standardwerten lässt die
+Pipeline ein JPEG unverändert.
 
-**Datenordner:** 90 Sekunden nach dem Start und danach täglich räumt Lumenkorn verwaiste
-Dateien auf: alte Entrauschungen nach erneutem Entrauschen (bis ~360 MB je 60-MP-Foto),
-gelöschte KI-Masken und Reparaturen, Gesichter- und Vorschaubilder entfernter Fotos.
-Was eine Bearbeitung oder ein Schnappschuss noch braucht, bleibt; Dateien jünger als 24 Stunden
-ebenfalls. Das Ergebnis steht im Protokoll (`lumenkorn.log`).
+Die Pipeline gibt es zweimal: in Rust für die CPU (parallel mit Rayon) und als WGSL-Compute-Shader
+für die Grafikkarte über wgpu. Ein Test rechnet alle Regler, Maskenarten und Geometriefälle auf
+beiden und vergleicht die Pixel; die größte erlaubte Abweichung liegt weit unter einer 8-Bit-Stufe.
+Nur die Form einer Maske wird auf der CPU berechnet und zwischengespeichert, weil sie sich beim
+Ziehen eines Reglers nicht ändert.
 
-## Aufbau
+### KI
 
-```
-lumenkorn/
-├── crates/lumenkorn-core/     Katalog, Scanner, Projekte, Thumbnails, Dateiüberwachung
-├── crates/lumenkorn-develop/  RAW-Dekodierung und Entwicklungspipeline (ohne GUI, ohne DB)
-│   ├── params.rs              Parametersatz einer Bearbeitung (versioniert)
-│   ├── source.rs              RAW/Raster → lineares Rec.709-Float-Bild
-│   ├── pipeline.rs            alle Bearbeitungsschritte
-│   ├── local.rs               Helligkeitskarten für lokale Anpassungen
-│   ├── masks.rs               Masken auswerten (Verlauf, Radial, Pinsel, Raster), zwischengespeichert
-│   ├── repair.rs              Flicken der KI-Reparatur: Dateiformat, Einsetzen
-│   ├── gpu/                   dieselbe Pipeline als wgpu-Compute-Shader (pipeline.wgsl)
-│   ├── merge/                 Zusammenfügen: align (Ecken, BRIEF, RANSAC-Homografie, Nachführung),
-│   │                          hdr, pano (Drehungen, Projektionen, Helligkeitsausgleich), focus (Laplace-Pyramiden)
-│   ├── exr_io.rs              EXR lesen/schreiben (Ergebnisse des Zusammenfügens)
-│   └── output.rs              JPEG / 16-Bit-TIFF / PNG
-├── crates/lumenkorn-ai/       CLIP über ONNX Runtime (dynamisch geladen)
-│   ├── clip.rs                Bild-/Text-Embeddings, Ein-/Ausgänge per Name
-│   ├── tokenizer.rs           CLIP-BPE, ohne C-Abhängigkeiten
-│   ├── vocab.rs, tagger.rs    Zero-Shot-Schlagworte
-│   ├── index.rs               semantische Suche
-│   ├── segment.rs             Motiv (IS-Net), Objekt (SAM), Himmel
-│   ├── inpaint.rs             KI-Reparatur (LaMa): Bereiche finden, ausschneiden, füllen
-│   ├── faces.rs               Gesichter finden (YuNet), ausrichten, Merkmalsvektor (SFace)
-│   ├── denoise.rs             DRUNet: Modell bauen, Rauschschätzung, Kachel-Inferenz
-│   ├── torch_legacy.rs        PyTorch-Gewichte (Altformat) ohne PyTorch lesen
-│   ├── onnx_writer.rs         ONNX-Modell ohne Protobuf-Bibliothek schreiben
-│   ├── accel.rs               GPU: Laufzeitwahl, Sitzungen mit Rückfall, Grafikkarten-Erkennung
-│   └── models.rs              Downloads von Laufzeit und Modell
-├── src-tauri/                 Tauri-2-Shell
-│   ├── commands.rs            Bibliotheksbefehle
-│   ├── develop.rs             Proxy-Cache, Live-Vorschau (binär), Export
-│   ├── ai.rs                  Analyse im Hintergrund, Suche, Downloads
-│   ├── worker.rs              Hintergrundaufträge (Scan → Thumbnails → KI)
-│   ├── merge.rs               HDR/Panorama/Focus Stacking im Hintergrund, Ergebnis in den Katalog
-│   └── protocol.rs            lw://-Schema für Bilder
-├── src/                       Svelte-5-Oberfläche
-└── tools/                     Testdaten-Erzeugung
-```
+ONNX Runtime ist nicht fest eingebaut, sondern wird zur Laufzeit geladen. Lumenkorn startet und
+funktioniert also auch ohne, und für jede Plattform kann die passende Fassung heruntergeladen
+werden: die CPU-Fassung von den GitHub-Releases von ONNX Runtime, die WebGPU-Fassung als offizielles
+Paket von PyPI (geprüft per SHA-256). Weil die WebGPU-Laufzeit nicht zwei Modelle gleichzeitig
+rechnen lässt, kommen Rechnungen auf der GPU nacheinander dran.
 
-Die drei Crates kennen weder Tauri noch einander mehr als nötig: `core` nutzt `develop` für
-bearbeitete Thumbnails, `ai` nutzt `develop` nur für Bild- und Flickentypen der Reparatur. Alles Wesentliche lässt sich ohne GUI testen.
+Aufwendige Ergebnisse (entrauschtes Bild, Reparatur-Flicken, KI-Masken) liegen im Datenordner und
+fließen wie jede andere Eingabe in die Pipeline ein. Modelle werden nach einigen Minuten ohne Nutzung
+aus dem Speicher entladen; ein Modell, das gerade rechnet, nie.
 
-**Daten.** Katalog und KI im App-Datenordner (Linux `~/.local/share/io.github.drayprescot.lumenkorn/`,
-Windows `%APPDATA%\io.github.drayprescot.lumenkorn\`), Thumbnails im Cache-Ordner.
-Daten der früheren Fassung „Lichtwerk“ (`de.lichtwerk.app`) werden beim ersten Start übernommen.
+Die Himmelserkennung arbeitet in zwei Schritten: skyseg sagt für jeden Bildpunkt, wie sicher er Himmel
+ist. Wo es unsicher ist, etwa an Ästen, vergleicht Lumenkorn den Bildpunkt mit den Farben von
+sicherem Himmel und sicherem Vordergrund in der Nähe.
+
+### Zusammenfügen
+
+Alle drei Verfahren richten die Bilder zuerst aus: Harris-Ecken auf einem helligkeitsnormierten
+Graubild, BRIEF-Beschreiber, Zuordnung über den Hamming-Abstand und eine Homografie per RANSAC.
+HDR misst danach die Belichtungsverhältnisse und führt zur linearen Strahldichte zusammen. Das
+Panorama schätzt aus allen Bildpaaren Brennweite und Drehungen und projiziert. Focus Stacking
+zerlegt jedes Bild in eine Laplace-Pyramide und behält je Stufe das schärfste Detail.
+
+### Daten und Arbeitsspeicher
+
+- **Datenordner:** Katalog, Bearbeitungen, KI-Modelle und KI-Ergebnisse. Windows
+  `%APPDATA%\io.github.drayprescot.lumenkorn\`, Linux `~/.local/share/io.github.drayprescot.lumenkorn/`.
+  Thumbnails liegen im Cache-Ordner des Systems. Daten der früheren Fassung „Lichtwerk“ werden beim
+  ersten Start übernommen.
+- **Fotoordner** werden nur beschrieben, wenn du es auslöst: abgelehnte Fotos löschen,
+  Zusammenfügen, Export.
+- **Netzwerk** braucht Lumenkorn nur für die KI-Downloads. Downloads nutzen den Zertifikatsspeicher
+  des Betriebssystems und funktionieren damit auch hinter Firmen-Proxys. `ki/quellen.json` im
+  Datenordner kann die Download-Adressen überschreiben, z. B. für einen Spiegelserver.
+- **Aufräumen:** 90 Sekunden nach dem Start und danach täglich löscht Lumenkorn verwaiste Dateien im
+  Datenordner (alte Entrauschungen, gelöschte Masken und Reparaturen, Vorschauen entfernter Fotos).
+  Was eine Bearbeitung oder ein Schnappschuss noch braucht, bleibt.
+- **Speicher:** Zwischenspeicher wie das Bild in voller Auflösung werden beim Verlassen des Entwickelns
+  freigegeben, KI-Modelle nach 3 bzw. 5 Minuten ohne Nutzung. Die Vorschauen der letzten vier
+  bearbeiteten Fotos bleiben im Speicher, damit sie beim Zurückkehren sofort da sind.
+- **Protokoll:** `lumenkorn.log` im Datenordner, mit Fehlern, Rust-Paniken und den Angaben der KI
+  (z. B. „Himmel (KI): Fläche …“).
+
+## Technik
+
+| Bereich | Eingesetzt |
+|---|---|
+| Sprache | Rust 1.95 (Edition 2024), TypeScript |
+| App-Gerüst | Tauri 2 (WebView2 unter Windows, WebKitGTK unter Linux) |
+| Oberfläche | Svelte 5 (Runes), Vite |
+| Datenbank | SQLite über rusqlite, FTS5-Volltextsuche |
+| RAW | rawler (aus dnglab), eigenes RCD- und Markesteijn-Demosaicing |
+| Bilddateien | image-rs, jpeg-encoder, exrs, kamadak-exif |
+| Grafikkarte | wgpu mit WGSL-Compute-Shadern (DirectX 12, Vulkan, Metal) |
+| Parallelisierung | Rayon |
+| KI | ONNX Runtime über ort, CPU oder WebGPU |
+| Downloads | ureq mit dem Zertifikatsspeicher des Systems |
+| CI | GitHub Actions, Mesa lavapipe für GPU-Tests ohne Grafikkarte, Dependabot |
+| Installer | Tauri-Bundler: MSI und NSIS (Windows), deb, rpm, AppImage (Linux) |
+
+## Genutzte Open-Source-Projekte
+
+Lumenkorn baut auf der Arbeit vieler anderer auf. Danke an alle, die diese Projekte pflegen.
+
+**In der App enthalten:**
+[Tauri](https://github.com/tauri-apps/tauri) mit [tauri-plugin-dialog](https://github.com/tauri-apps/plugins-workspace) (MIT/Apache-2.0),
+[Svelte](https://github.com/sveltejs/svelte) (MIT),
+[rawler](https://github.com/dnglab/dnglab) (LGPL-2.1),
+[wgpu](https://github.com/gfx-rs/wgpu) (MIT/Apache-2.0),
+[ort](https://github.com/pykeio/ort) (MIT/Apache-2.0),
+[SQLite](https://sqlite.org) (gemeinfrei) über [rusqlite](https://github.com/rusqlite/rusqlite) (MIT),
+[image](https://github.com/image-rs/image) (MIT/Apache-2.0),
+[jpeg-encoder](https://github.com/vstroebel/jpeg-encoder) (MIT/Apache-2.0, IJG),
+[exrs](https://github.com/johannesvollmer/exrs) (BSD-3-Clause),
+[kamadak-exif](https://github.com/kamadak/exif-rs) (BSD-2-Clause),
+[Rayon](https://github.com/rayon-rs/rayon) (MIT/Apache-2.0),
+[notify](https://github.com/notify-rs/notify) (CC0-1.0),
+[walkdir](https://github.com/BurntSushi/walkdir) (MIT/Unlicense),
+[BLAKE3](https://github.com/BLAKE3-team/BLAKE3) (CC0-1.0/Apache-2.0),
+[trash](https://github.com/Byron/trash-rs) (MIT),
+[ureq](https://github.com/algesten/ureq) (MIT/Apache-2.0),
+[serde](https://github.com/serde-rs/serde) und [serde_json](https://github.com/serde-rs/json) (MIT/Apache-2.0),
+[sha2](https://github.com/RustCrypto/hashes) (MIT/Apache-2.0),
+[flate2](https://github.com/rust-lang/flate2-rs), [tar](https://github.com/composefs/tar-rs) und [zip](https://github.com/zip-rs/zip2) (MIT/Apache-2.0 bzw. MIT),
+[half](https://github.com/VoidStarKat/half-rs), [bytemuck](https://github.com/Lokathor/bytemuck) und [pollster](https://github.com/zesterer/pollster) (MIT/Apache-2.0),
+[regex](https://github.com/rust-lang/regex), [log](https://github.com/rust-lang/log), [env_logger](https://github.com/rust-cli/env_logger), [thiserror](https://github.com/dtolnay/thiserror) (MIT/Apache-2.0),
+[libloading](https://github.com/nagisa/rust_libloading) (ISC),
+die Schrift [Instrument Sans](https://github.com/Instrument/instrument-sans) über [Fontsource](https://fontsource.org) (OFL-1.1).
+
+**Zur Laufzeit geladen (nicht mitgeliefert):**
+
+| Was | Von | Bezugsquelle | Lizenz |
+|---|---|---|---|
+| ONNX Runtime | [Microsoft](https://github.com/microsoft/onnxruntime) | GitHub-Releases, PyPI (WebGPU) | MIT |
+| CLIP ViT-B/32 | OpenAI, ONNX-Fassung von [Xenova](https://huggingface.co/Xenova/clip-vit-base-patch32) | Hugging Face | MIT |
+| IS-Net / DIS | [Xuebin Qin u. a.](https://github.com/xuebinqin/DIS) | Releases von [rembg](https://github.com/danielgatis/rembg) | Apache-2.0 |
+| Segment Anything ViT-B | [Meta AI](https://github.com/facebookresearch/segment-anything) | Releases von rembg | Apache-2.0 |
+| skyseg (U²-Net) | [xiongzhu666](https://github.com/xiongzhu666/Sky-Segmentation-and-Post-processing), auf Basis von [U²-Net](https://github.com/xuebinqin/U-2-Net) | [Hugging Face](https://huggingface.co/JianyuanWang/skyseg) | MIT |
+| DRUNet | Kai Zhang u. a., [KAIR](https://github.com/cszn/KAIR) | Releases von KAIR | MIT |
+| LaMa | [Samsung AI](https://github.com/advimman/lama) | [OpenCV Model Zoo](https://github.com/opencv/opencv_zoo) | Apache-2.0 |
+| YuNet | Shiqi Yu u. a. | OpenCV Model Zoo | MIT |
+| SFace | Yaoyao Zhong u. a. | OpenCV Model Zoo | Apache-2.0 |
+
+**Veröffentlichte Verfahren, die Lumenkorn umsetzt:** RCD-Demosaicing (Luis Sanz Rodríguez),
+Markesteijn-Demosaicing für X-Trans (Frank Markesteijn), Oklab/Oklch (Björn Ottosson), Dark Channel
+Prior (Kaiming He u. a.) als Grundlage für „Dunst entfernen“, Harris-Ecken, BRIEF, RANSAC und
+Hartley-Normierung zum Ausrichten, Laplace-Pyramiden (Burt und Adelson) für Focus Stacking.
+
+**Zum Entwickeln und Testen:** [TypeScript](https://github.com/microsoft/TypeScript),
+[Vite](https://github.com/vitejs/vite), [svelte-check](https://github.com/sveltejs/language-tools),
+die [Tauri-CLI](https://github.com/tauri-apps/tauri), [Mesa](https://www.mesa3d.org) (lavapipe für
+GPU-Tests in der CI), [tempfile](https://github.com/Stebalien/tempfile) und die RAW-Beispiele aus
+[OpenImageIO-images](https://github.com/AcademySoftwareFoundation/OpenImageIO-images), mit denen die
+CI jedes rawler-Update prüft.
 
 ## Entwickeln am Code
 
-Voraussetzungen: Rust (stabil, ≥ 1.90), Node.js ≥ 20, plus die Tauri-Systemabhängigkeiten:
+Voraussetzungen: Rust 1.95 (in `rust-toolchain.toml` festgelegt, rustup installiert es selbst),
+Node.js ab 20 und die Tauri-Systemabhängigkeiten:
 
 - **Windows:** Microsoft C++ Build Tools und WebView2 (ab Windows 10 meist vorhanden).
 - **Linux (Debian/Ubuntu):** `sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev libayatana-appindicator3-dev build-essential`
@@ -498,13 +485,13 @@ Voraussetzungen: Rust (stabil, ≥ 1.90), Node.js ≥ 20, plus die Tauri-Systema
 ```bash
 npm install
 npm run tauri dev        # App mit Hot-Reload starten
-npm run tauri build      # Installer bauen (.msi/.exe bzw. .deb/.AppImage/.rpm)
-npm run dev              # Nur Oberfläche im Browser, mit Beispieldaten
+npm run tauri build      # Installer bauen
+npm run dev              # nur die Oberfläche im Browser, mit Beispieldaten
 
 cargo test --workspace                                               # alle Tests
 cargo run -p lumenkorn-core --example scan -- ~/Bilder               # Scan ohne GUI
 cargo run -p lumenkorn-develop --example develop -- in.NEF out.jpg '{"exposure":0.5}'
-# HDR, Panorama und Focus Stacking an aus einem echten Foto erzeugten Reihen prüfen
+cargo run --release -p lumenkorn-develop --example bench             # CPU gegen GPU
 cargo run --release -p lumenkorn-develop --example merge -- in.CR2 /tmp/merge-test
 
 # Tests mit echten Dateien (optional)
@@ -514,37 +501,34 @@ LUMENKORN_TEST_ORT=/pfad/libonnxruntime.so LUMENKORN_TEST_SEG=/pfad/masken cargo
 LUMENKORN_TEST_ORT=/pfad/libonnxruntime.so LUMENKORN_TEST_DENOISE=/pfad cargo test -p lumenkorn-ai --test denoise
 LUMENKORN_TEST_ORT=/pfad/libonnxruntime.so LUMENKORN_TEST_FACES=/pfad cargo test -p lumenkorn-ai --test faces
 LUMENKORN_TEST_ORT=/pfad/libonnxruntime.so LUMENKORN_TEST_LAMA=/pfad/lama.onnx LUMENKORN_TEST_IMAGE=/pfad/foto.jpg cargo test --release -p lumenkorn-ai --test inpaint
-# Bildbearbeitung GPU gegen CPU (ohne Grafikkarte: Mesa lavapipe + LUMENKORN_GPU_SOFTWARE=1):
+# GPU gegen CPU (ohne Grafikkarte: Mesa lavapipe)
 LUMENKORN_GPU_SOFTWARE=1 cargo test -p lumenkorn-develop --test gpu
-# KI GPU gegen CPU (WebGPU-Laufzeit; ohne Grafikkarte genügt Mesa lavapipe):
 LUMENKORN_TEST_ORT_GPU=/pfad/runtime-webgpu/libonnxruntime.so LUMENKORN_TEST_DENOISE=/pfad LUMENKORN_TEST_SEG=/pfad/masken cargo test --release -p lumenkorn-ai --test gpu
 ```
 
-**Updates der Abhängigkeiten:** Dependabot prüft jeden Montag die Rust-Crates (z. B. rawler),
-npm-Pakete und GitHub-Actions. Patch-Updates kommen je Bereich gesammelt in einem Pull Request, alle
-anderen einzeln. Nach grüner CI übernimmt `.github/workflows/dependabot-automerge.yml` kleine Updates
-automatisch (Patch-Versionen, bei Bibliotheken ab 1.0 auch Minor-Versionen) und startet die CI auf
-`main` – dabei entsteht eine neue Nightly-MSI. Inkompatible Sprünge (neue Major-Version oder unter 1.0
-ein Minor-Sprung wie rawler 0.8 → 0.9) bekommen das Label `manual-review` und bleiben offen. Unter
-Linux prüft die CI jede rawler-Version zusätzlich mit echten RAWs von sieben Kameras
-(OpenImageIO-Testbilder). Rust-Version (`rust-toolchain.toml`), KI-Modelle und ONNX Runtime sind
-bewusst fest und werden von Hand aktualisiert.
+Vor einem Pull Request: `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
+`cargo test --workspace`, `npm run check` und `npm run i18n`.
+
+**Übersetzungen:** Die Texte der Oberfläche stehen im Quelltext auf Deutsch und sind zugleich der
+Schlüssel: `t("Ordner hinzufügen")` ergibt auf Englisch „Add folder“. Die englischen Texte liegen in
+`src/lib/i18n/en/*.ts`. Für Wörter mit mehreren Bedeutungen sucht `tc("kontext", "…")` unter
+`"kontext|…"`. Meldungen aus Rust: `tr!("deutsch", "english")`. `npm run i18n` meldet fehlende
+Übersetzungen und abweichende Platzhalter.
+
+**Abhängigkeiten:** Dependabot prüft jeden Montag Rust-Crates, npm-Pakete und GitHub-Actions. Kleine
+Updates werden nach grüner CI automatisch übernommen, dabei entsteht eine neue Nightly-MSI.
+Inkompatible Sprünge bekommen das Label `manual-review` und bleiben offen. Jede neue rawler-Version
+prüft die CI mit echten RAWs mehrerer Kameras. Rust-Version, KI-Modelle und ONNX Runtime sind bewusst
+festgelegt und werden von Hand aktualisiert.
 
 **Releases:** Ein Versions-Tag wie `v0.2.0` baut die Installer für Windows und Linux und legt einen
 Release-Entwurf an. Von Hand gestartet (Actions → Release → Run workflow) baut der Workflow nur die
-Installer und hebt sie 14 Tage als Download am Lauf auf – zum Testen des Release-Builds.
-
-**Übersetzungen:** Texte der Oberfläche stehen im Quelltext auf Deutsch und sind zugleich der
-Schlüssel: `t("Ordner hinzufügen")` ergibt auf Englisch „Add folder“. Die englischen Texte liegen in
-`src/lib/i18n/en/*.ts` (eine Datei je Bereich); für deutsche Wörter mit mehreren Bedeutungen sucht
-`tc("kontext", "…")` unter `"kontext|…"`. Meldungen aus Rust: `tr!("deutsch", "english")` aus
-`lumenkorn_develop`. `npm run i18n` (läuft auch in der CI) meldet fehlende Übersetzungen und
-abweichende Platzhalter.
+Installer und hebt sie 14 Tage als Download auf.
 
 ## Android
 
-Der Rust-Code ist für Android vorbereitet (`mobile_entry_point`, keine C-Abhängigkeiten außer
-SQLite), die Oberfläche passt sich schmalen Bildschirmen an.
+Der Rust-Code ist für Android vorbereitet, die Oberfläche passt sich schmalen Bildschirmen an.
+Gebaut und getestet ist die Android-Fassung bisher nicht.
 
 ```bash
 # Android Studio mit SDK + NDK installieren, ANDROID_HOME und NDK_HOME setzen
@@ -553,30 +537,41 @@ npm run tauri android init
 npm run tauri android dev
 ```
 
-- **Dateizugriff:** Android erlaubt seit Version 11 keinen freien Zugriff auf Ordnerpfade. Dafür braucht die App *Zugriff auf alle Dateien* (`MANAGE_EXTERNAL_STORAGE`). Nach `tauri android init` in `src-tauri/gen/android/app/src/main/AndroidManifest.xml` ergänzen: `<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />`. Für den Play Store nur mit Begründung zulässig. Der Ordnerdialog liefert dort keine echten Pfade; die App fragt deshalb nach dem Pfad (z. B. `/storage/emulated/0/DCIM`). Die saubere Langfristlösung ist das Storage Access Framework über ein Kotlin-Plugin.
-- **KI:** Für Android gibt es keinen automatischen Laufzeit-Download. `libonnxruntime.so` aus dem offiziellen AAR (`com.microsoft.onnxruntime:onnxruntime-android`) in `<daten>/ki/runtime/` legen oder mitpaketieren; das Modell lädt die App wie auf dem Desktop.
-- Den Android-Build konnte ich nicht testen (kein NDK in der Bauumgebung). Linux ist gebaut und live bedient.
+- **Dateizugriff:** Android erlaubt seit Version 11 keinen freien Zugriff auf Ordnerpfade. Die App
+  braucht dafür *Zugriff auf alle Dateien*: nach `tauri android init` in
+  `src-tauri/gen/android/app/src/main/AndroidManifest.xml`
+  `<uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />` ergänzen. Den Pfad
+  fragt die App ab (z. B. `/storage/emulated/0/DCIM`).
+- **KI:** Für Android gibt es keinen automatischen Download der Laufzeit. `libonnxruntime.so` aus dem
+  offiziellen AAR in `<daten>/ki/runtime/` legen; die Modelle lädt die App wie auf dem Desktop.
 
 ## Fahrplan
 
-1. GPU-Feinschliff nach Messungen auf echter Hardware: Vorschau direkt als Textur anzeigen statt als JPEG zu übertragen, Maskenformen ebenfalls auf der GPU, größere Kacheln bei der Rauschreduzierung.
-2. Masken: Helligkeitsbereich als Form, Masken auf andere Bilder übertragen (KI-Masken dabei neu berechnen).
-3. Mehrsprachiges Textmodell für die Inhaltssuche, hierarchische Schlagworte, XMP-Sidecars (auch für Personennamen).
-
-## Lizenzen
-
-Lumenkorn: MIT oder Apache-2.0 (siehe `LICENSE-MIT`, `LICENSE-APACHE`). Abhängigkeiten u. a.: wgpu (MIT/Apache-2.0), rawler (LGPL-2.1 – bei Weitergabe
-statisch gelinkter Binärdateien die LGPL-Pflichten beachten), ONNX Runtime (MIT),
-CLIP-Gewichte (MIT), IS-Net/DIS (Apache-2.0), Segment Anything (Apache-2.0), skyseg/U²-Net (MIT), DRUNet/KAIR (MIT), YuNet (MIT), SFace (Apache-2.0), LaMa (Apache-2.0), Tauri (MIT/Apache-2.0).
+1. Presets: Einstellungen speichern und auf Fotos anwenden.
+2. Masken: Helligkeitsbereich als Form, Masken auf andere Bilder übertragen.
+3. Mehrsprachiges Textmodell für die Inhaltssuche, hierarchische Schlagworte, XMP-Sidecars.
+4. GPU-Feinschliff nach Messungen auf echter Hardware, z. B. die Vorschau direkt als Textur zeigen.
 
 ## Bekannte Grenzen
 
-- Windows: Pfadvergleiche sind case-sensitiv (`D:\Fotos` und `d:\fotos` wären zwei Ordner).
-- Export eines 24-MP-RAWs braucht kurzzeitig rund 1 GB Arbeitsspeicher (volle Auflösung in Float).
-- Die Vorschau wird nach dem Rechnen auf der GPU als JPEG an die Oberfläche übergeben – bei sehr schnellen Karten ist das der größere Teil der Zeit.
+- Windows: Pfadvergleiche unterscheiden Groß- und Kleinschreibung (`D:\Fotos` und `d:\fotos` wären
+  zwei Ordner).
 - Die Temperatur ist relativ zum Kamera-Weißabgleich, nicht in Kelvin.
-- Jede aktive Maskenebene kostet einen weiteren Durchlauf der Tonwert-Pipeline; ohne Grafikkarte wird die Vorschau bei vielen Ebenen spürbar langsamer.
-- Ändert sich eine Originaldatei nach dem Entrauschen, wird die Zwischenstufe nicht automatisch neu berechnet.
-- Panoramen über volle 360° werden noch nicht unterstützt; Aufnahmen brauchen ~20 % Überlappung. Parallaxe (Kamera nicht um den Objektiv-Drehpunkt geschwenkt) zeigt sich als Doppelkonturen im Nahbereich.
-- Zusammenfügen arbeitet in voller Auflösung auf der CPU: Eine HDR-Reihe aus drei 24-MP-RAWs braucht ~1–2 GB Arbeitsspeicher, große Panoramen entsprechend mehr (begrenzt auf 150 MP).
-- X-Trans-RAWs (Fujifilm) werden bilinear demosaikt – brauchbar, aber weicher als bei Spezialprogrammen.
+- Jede aktive Maskenebene kostet einen weiteren Durchlauf der Tonwert-Pipeline; ohne Grafikkarte wird
+  die Vorschau bei vielen Ebenen spürbar langsamer.
+- Die Vorschau wird nach dem Rechnen auf der GPU als JPEG an die Oberfläche übergeben. Bei sehr
+  schnellen Karten ist das der größere Teil der Zeit.
+- Ändert sich eine Originaldatei nach dem Entrauschen, wird das Ergebnis nicht automatisch neu
+  berechnet.
+- Panoramen über volle 360° gehen noch nicht; Aufnahmen brauchen etwa 20 % Überlappung. Wurde die
+  Kamera nicht um den Objektiv-Drehpunkt geschwenkt, zeigen sich im Nahbereich Doppelkonturen.
+- Zusammenfügen rechnet in voller Auflösung auf der CPU. Eine HDR-Reihe aus drei 24-MP-RAWs braucht
+  etwa 1–2 GB Arbeitsspeicher, Panoramen sind auf 150 MP begrenzt.
+
+## Lizenz
+
+Lumenkorn steht wahlweise unter der MIT- oder der Apache-2.0-Lizenz (`LICENSE-MIT`,
+`LICENSE-APACHE`). rawler steht unter der LGPL-2.1 und wird in den Installern statisch gelinkt; wer
+eine geänderte Fassung nutzen will, ändert die Abhängigkeit `rawler` in
+`crates/lumenkorn-develop/Cargo.toml` und baut selbst. Die KI-Modelle gehören nicht zu Lumenkorn und
+behalten ihre oben genannten Lizenzen.
