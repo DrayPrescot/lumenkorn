@@ -56,6 +56,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
   as the rolling “nightly” pre-release.
 
 ### Changed
+- Develop: “Auf Original zurücksetzen …” at the bottom of the Basis tab
+  removes all edits of the photo (sliders, masks, repairs, noise reduction,
+  crop) after a warning; snapshots stay, `Ctrl+Z` undoes it. It replaces the
+  “Zurücksetzen” button above Export, which did the same without asking.
 - Compare shows the filmstrip too. Clicking a photo there replaces the
   highlighted one; `Ctrl`/`Shift`-click adds or removes a photo.
 - The filmstrip (single view, Compare, Develop) scrolls through all photos,

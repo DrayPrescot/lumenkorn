@@ -63,7 +63,6 @@ export default {
   "Diesen Stand übernehmen": "Restore this state",
   "Schnappschuss löschen": "Delete snapshot",
   "Hält den aktuellen Stand fest, um später dorthin zurückzukehren.": "Captures the current state so you can return to it later.",
-  "Alle Regler zurücksetzen": "Reset all sliders",
   "Zurücksetzen": "Reset",
   "Exportieren …": "Export…",
   "Rauschreduzierung": "Noise reduction",
@@ -148,4 +147,7 @@ export default {
   "Color Grading zurücksetzen": "Reset Color Grading",
   "Farbton {h}°, Sättigung {s}": "Hue {h}°, saturation {s}",
   "Ziehen: Farbton und Sättigung · Doppelklick: zurücksetzen": "Drag: hue and saturation · Double-click: reset",
+  "Alle Bearbeitungen dieses Fotos verwerfen": "Discard all edits of this photo",
+  "Auf Original zurücksetzen …": "Reset to original …",
+  "Alle Bearbeitungen dieses Fotos löschen und es in den Ausgangszustand zurückversetzen?\n\nRegler, Masken, Reparaturen, Rauschreduzierung und Zuschnitt gehen verloren. Schnappschüsse bleiben erhalten; Strg+Z macht es rückgängig, solange das Foto geöffnet ist.": "Delete all edits of this photo and return it to its original state?\n\nSliders, masks, repairs, noise reduction and crop will be lost. Snapshots are kept; Ctrl+Z undoes it while the photo is open.",
 } satisfies Record<string, string>;

@@ -101,6 +101,16 @@
     { id: "crop", label: t("Zuschnitt"), title: t("Zuschneiden, Geraderichten, Drehen (R)") },
   ];
 
+  // Alles verwerfen: Regler, Masken, Reparaturen, Rauschreduzierung, Zuschnitt.
+  // Bleibt über Strg+Z rückgängig zu machen, fragt aber vorher nach.
+  function resetAll() {
+    if (dev.isDefault) return;
+    const ok = confirm(
+      t("Alle Bearbeitungen dieses Fotos löschen und es in den Ausgangszustand zurückversetzen?\n\nRegler, Masken, Reparaturen, Rauschreduzierung und Zuschnitt gehen verloren. Schnappschüsse bleiben erhalten; Strg+Z macht es rückgängig, solange das Foto geöffnet ist."),
+    );
+    if (ok) dev.reset();
+  }
+
   function setTab(tab: Tab) {
     if (tab === dev.tab) return;
     returnTo = null; // Reiter von Hand gewählt: kein automatischer Rücksprung
@@ -235,12 +245,13 @@
         {/each}
       </ul>
     </details>
+
+    <section class="reset">
+      <button class="btn danger wide" disabled={dev.isDefault} onclick={resetAll} title={t("Alle Bearbeitungen dieses Fotos verwerfen")}>{t("Auf Original zurücksetzen …")}</button>
+    </section>
   {/if}
 
   <footer>
-    <div class="row">
-      <button class="btn" disabled={dev.isDefault} onclick={() => dev.reset()} title={t("Alle Regler zurücksetzen")}>{t("Zurücksetzen")}</button>
-    </div>
     <button class="btn primary wide" onclick={onexport}>{t("Exportieren …")}</button>
   </footer>
 </aside>
@@ -402,8 +413,20 @@
     flex-wrap: wrap;
     margin-top: 10px;
   }
-  footer .row {
+  .reset {
+    border-bottom: 0;
+  }
+  .reset .wide {
     margin-top: 0;
+  }
+  .btn.danger:not(:disabled) {
+    color: var(--reject);
+    border-color: color-mix(in srgb, var(--reject) 55%, transparent);
+  }
+  .btn.danger:not(:disabled):hover {
+    background: var(--reject);
+    border-color: var(--reject);
+    color: #fff;
   }
   .denoise {
     display: grid;
