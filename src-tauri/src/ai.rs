@@ -8,7 +8,7 @@ use crate::{AppState, blocking};
 use lumenkorn_ai::accel::{self, Backend, Preference};
 use lumenkorn_ai::index::{from_bytes, to_bytes};
 use lumenkorn_ai::models::{self, Component, Status};
-use lumenkorn_ai::segment::{self, Sam, SamEmbedding, SubjectModel};
+use lumenkorn_ai::segment::{self, Sam, SamEmbedding, SkyModel, SubjectModel};
 use lumenkorn_ai::{Clip, EmbeddingIndex, Tagger, runtime, vocab};
 use lumenkorn_core::maskstore::MaskFiles;
 use lumenkorn_core::thumbs::Variant;
@@ -44,6 +44,7 @@ pub struct AiState {
     pub(crate) settings: Mutex<AiSettings>,
     subject: Mutex<Option<Arc<SubjectModel>>>,
     sam: Mutex<Option<Arc<Sam>>>,
+    sky: Mutex<Option<Arc<SkyModel>>>,
     /// SAM-Embedding des zuletzt geklickten Bildes – das Berechnen dauert Sekunden.
     sam_embedding: Mutex<Option<(i64, Arc<SamEmbedding>)>>,
     denoiser: Mutex<Option<Arc<lumenkorn_ai::denoise::Denoiser>>>,
@@ -256,6 +257,7 @@ impl AiState {
             settings: Mutex::new(settings),
             subject: Mutex::new(None),
             sam: Mutex::new(None),
+            sky: Mutex::new(None),
             sam_embedding: Mutex::new(None),
             denoiser: Mutex::new(None),
             denoising: AtomicBool::new(false),
@@ -346,6 +348,9 @@ pub(crate) fn release_models(
         if drop_if_unused(&ai.sam) {
             out.push("SAM");
         }
+        if drop_if_unused(&ai.sky) {
+            out.push("skyseg");
+        }
         // Das SAM-Embedding gehört zum Modell und ist ohne es wertlos
         if ai.sam.lock().unwrap().is_none() {
             *ai.sam_embedding.lock().unwrap() = None;
@@ -373,6 +378,7 @@ fn unload_models(state: &AppState) {
     *state.ai.load_error.lock().unwrap() = None;
     *state.ai.subject.lock().unwrap() = None;
     *state.ai.sam.lock().unwrap() = None;
+    *state.ai.sky.lock().unwrap() = None;
     *state.ai.sam_embedding.lock().unwrap() = None;
     *state.ai.denoiser.lock().unwrap() = None;
 }
@@ -967,22 +973,31 @@ pub async fn mask_subject(app: AppHandle, id: i64) -> Result<MaskResult, Error> 
     .await
 }
 
-/// „Himmel auswählen“. Nutzt SAM zur Verfeinerung, wenn installiert.
+/// „Himmel auswählen“. Mit dem Himmelsmodell (skyseg) entscheidet die KI;
+/// fehlt es, greift die Farb- und Flächenheuristik, verfeinert durch SAM,
+/// wenn installiert.
 #[tauri::command]
 pub async fn mask_sky(app: AppHandle, id: i64) -> Result<MaskResult, Error> {
     blocking(app, move |state| {
+        state.usage.touch(Slot::Interactive);
         let input = segmentation_input(state, id)?;
-        let sam = models::status(&state.data_dir)
-            .masks_ready
-            .then(|| sam_model(state))
-            .transpose()?;
-        let mask = match &sam {
-            Some(s) => {
-                let emb = sam_embedding(state, s, id)?;
-                segment::sky_mask(&input, Some((s, &emb))).map_err(err)?
-            }
-            None => segment::sky_mask(&input, None).map_err(err)?,
+        let dir = models::masks_dir(&state.data_dir);
+        let status = models::status(&state.data_dir);
+        let t = std::time::Instant::now();
+        let mask = if status.sky_ready {
+            let sky = lazy_model(state, &state.ai.sky, "skyseg (Himmel)", || {
+                SkyModel::load(&dir.join(models::SKY_MODEL)).map_err(err)
+            })?;
+            let _g = analysis_guard(state, tr_s("Himmel", "Sky"));
+            segment::sky_mask(&input, Some(&sky), None).map_err(err)?
+        } else if status.masks_ready {
+            let s = sam_model(state)?;
+            let emb = sam_embedding(state, &s, id)?;
+            segment::sky_mask(&input, None, Some((&s, &emb))).map_err(err)?
+        } else {
+            segment::sky_mask(&input, None, None).map_err(err)?
         };
+        log::info!("Himmelsmaske für Bild {id} in {:.2?}", t.elapsed());
         store(state, None, id, "sky", &mask)
     })
     .await

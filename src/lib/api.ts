@@ -510,6 +510,8 @@ export interface AiStatus {
   downloadSize: number;
   modelDir: string;
   masksReady: boolean;
+  /** KI-Himmelsmodell installiert */
+  skyReady: boolean;
   repairReady: boolean;
   repairDownloadSize: number;
   masksDownloadSize: number;

@@ -13,6 +13,7 @@
 //! <daten>/ki/masken/subject.onnx            (IS-Net, „Motiv auswählen“)
 //! <daten>/ki/masken/sam-encoder.onnx        (Segment Anything, Objekt per Klick)
 //! <daten>/ki/masken/sam-decoder.onnx
+//! <daten>/ki/masken/sky.onnx                (skyseg/U²-Net, „Himmel“)
 //! <daten>/ki/entrauschen/drunet.onnx        (DRUNet, aus drunet_color.pth erzeugt)
 //! <daten>/ki/gesichter/yunet.onnx           (Gesichter finden)
 //! <daten>/ki/gesichter/sface.onnx           (Gesichter wiedererkennen)
@@ -34,6 +35,10 @@ pub const ORT_VERSION: &str = "1.28.0";
 pub const MODEL_ID: &str = "clip-vit-b32";
 const HF: &str = "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main";
 const REMBG: &str = "https://github.com/danielgatis/rembg/releases/download/v0.0.0";
+/// Himmelserkennung skyseg (U²-Net von xiongzhu666, MIT-Lizenz)
+const SKYSEG: &str = "https://huggingface.co/JianyuanWang/skyseg/resolve/main/skyseg.onnx";
+/// Dateiname des Himmelsmodells im Maskenordner
+pub const SKY_MODEL: &str = "sky.onnx";
 
 /// Was heruntergeladen werden soll.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -238,6 +243,11 @@ fn default_masks() -> Vec<FileSpec> {
         f("subject.onnx", "isnet-general-use.onnx", 178_648_008),
         f("sam-encoder.onnx", "vit_b-encoder-quant.onnx", 99_827_815),
         f("sam-decoder.onnx", "vit_b-decoder-quant.onnx", 8_742_591),
+        FileSpec {
+            name: SKY_MODEL.into(),
+            url: SKYSEG.into(),
+            size: Some(176_000_000),
+        },
     ]
 }
 
@@ -366,7 +376,11 @@ pub struct Status {
     /// Geschätzte Downloadgröße der fehlenden Teile in Bytes
     pub download_size: u64,
     pub model_dir: String,
+    /// Motiv und Objekt (IS-Net, SAM) sind installiert
     pub masks_ready: bool,
+    /// Das KI-Himmelsmodell ist installiert (kam später dazu und wird mit den
+    /// Masken nachgeladen; ohne es bleiben Motiv und Objekt nutzbar)
+    pub sky_ready: bool,
     /// Downloadgröße für die Maskenmodelle (inkl. Laufzeit, falls sie fehlt)
     pub masks_download_size: u64,
     pub denoise_ready: bool,
@@ -419,7 +433,14 @@ pub fn status(data_dir: &Path) -> Status {
         .filter(|f| !clip_dir.join(&f.name).is_file())
         .map(|f| f.name.clone())
         .collect();
-    let (masks_ready, masks_download_size) = need(Component::Masks);
+    let (_, masks_download_size) = need(Component::Masks);
+    let masks = masks_dir(data_dir);
+    let sky_ready = masks.join(SKY_MODEL).is_file();
+    let masks_ready = manifest
+        .masks
+        .iter()
+        .filter(|f| f.name != SKY_MODEL)
+        .all(|f| masks.join(&f.name).is_file());
     let (faces_ready, faces_download_size) = need(Component::Faces);
     let (repair_ready, repair_download_size) = need(Component::Repair);
     // Entrauschen: geladen wird die PyTorch-Datei, fertig ist es erst mit dem
@@ -454,6 +475,7 @@ pub fn status(data_dir: &Path) -> Status {
         denoise_ready,
         denoise_download_size,
         masks_ready,
+        sky_ready,
         masks_download_size,
         runtime_path: runtime.map(|p| p.display().to_string()),
         runtime_downloadable: manifest.runtime.is_some(),

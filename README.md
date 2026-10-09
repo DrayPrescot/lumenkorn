@@ -262,6 +262,7 @@ inclusion in this project is dual-licensed in the same way, without any addition
   - CLIP (MIT);
   - IS-Net (Apache-2.0);
   - Segment Anything (Apache-2.0);
+  - skyseg / U²-Net sky segmentation (MIT);
   - DRUNet/KAIR (MIT);
   - LaMa (Apache-2.0);
   - YuNet (MIT);

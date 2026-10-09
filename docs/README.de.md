@@ -87,7 +87,7 @@ die hinzugefügt oder abgezogen werden – z. B. „Himmel minus Kirchturm“.
 - **Verlauf** und **Radial** werden direkt auf dem Bild gezogen und über Griffe nachjustiert.
 - **Pinsel** mit Größe und weicher Kante; Alt-Taste oder „Radieren“ nimmt Bereiche wieder heraus.
 - **Motiv** (KI, IS-Net): erkennt das Hauptmotiv automatisch.
-- **Himmel**: findet den Himmel über eine Heuristik (helle, glatte Flächen vom oberen Rand, Sonne/Mond eingeschlossen). Sind die KI-Masken installiert, verfeinert Segment Anything die Kante.
+- **Himmel** (KI, skyseg/U²-Net): erkennt den Himmel samt Wolken, Dunst und Dämmerung; unsichere Kanten (Baumkronen, Äste) folgen den Farben des Fotos. Ohne die KI-Masken greift eine Heuristik (helle, glatte Flächen vom oberen Rand, Sonne/Mond eingeschlossen).
 - **Objekt** (KI, Segment Anything): auf ein Objekt klicken, weitere Klicks verfeinern, Alt-Klick nimmt heraus.
 - **Farbe** (Pipette): auf eine Farbe im Bild klicken – die Maske erfasst alle Stellen ähnlicher
   Farbe, auch in Licht und Schatten. Weitere Klicks nehmen Farbtöne hinzu, Alt-Klick entfernt den
@@ -102,7 +102,9 @@ verschieben sie nicht vom Motiv. KI-Masken liegen als PNG unter `<daten>/masken/
 speichert ihre ID und – bei „Objekt“ – die Klickpunkte. Auch Thumbnails und Export zeigen die Masken.
 
 Die KI-Masken (IS-Net ~179 MB, Segment Anything ViT-B quantisiert ~109 MB) lädt die App über
-„KI“ unten links von den GitHub-Releases von [rembg](https://github.com/danielgatis/rembg).
+„KI“ unten links von den GitHub-Releases von [rembg](https://github.com/danielgatis/rembg), die
+Himmelserkennung skyseg (~176 MB, U²-Net von [xiongzhu666](https://github.com/xiongzhu666/Sky-Segmentation-and-Post-processing), MIT)
+von [Hugging Face](https://huggingface.co/JianyuanWang/skyseg).
 **Diese Modelle habe ich mit echten Gewichten getestet**: Motiv-Erkennung, Objekt-Klick
 (Fläche auf wenige Prozent genau) und Himmel-Verfeinerung. Auf zwei CPU-Kernen dauert die erste
 Objekt-Auswahl pro Bild etwa 8 s (das Bild-Embedding wird danach für weitere Klicks wiederverwendet,
@@ -565,7 +567,7 @@ npm run tauri android dev
 
 Lumenkorn: MIT oder Apache-2.0 (siehe `LICENSE-MIT`, `LICENSE-APACHE`). Abhängigkeiten u. a.: wgpu (MIT/Apache-2.0), rawler (LGPL-2.1 – bei Weitergabe
 statisch gelinkter Binärdateien die LGPL-Pflichten beachten), ONNX Runtime (MIT),
-CLIP-Gewichte (MIT), IS-Net/DIS (Apache-2.0), Segment Anything (Apache-2.0), DRUNet/KAIR (MIT), YuNet (MIT), SFace (Apache-2.0), LaMa (Apache-2.0), Tauri (MIT/Apache-2.0).
+CLIP-Gewichte (MIT), IS-Net/DIS (Apache-2.0), Segment Anything (Apache-2.0), skyseg/U²-Net (MIT), DRUNet/KAIR (MIT), YuNet (MIT), SFace (Apache-2.0), LaMa (Apache-2.0), Tauri (MIT/Apache-2.0).
 
 ## Bekannte Grenzen
 

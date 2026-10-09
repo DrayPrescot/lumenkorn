@@ -106,7 +106,7 @@ fn sam_segments_clicked_object_and_refines_sky() {
         }
     }));
     let emb = sam.embed(&land).unwrap();
-    let sky = sky_mask(&land, Some((&sam, &emb))).unwrap();
+    let sky = sky_mask(&land, None, Some((&sam, &emb))).unwrap();
     let (w, h) = sky.dimensions();
     let at = |x: f32, y: f32| sky.get_pixel((x * w as f32) as u32, (y * h as f32) as u32)[0];
     assert!(at(0.5, 0.1) > 200 && at(0.5, 0.95) < 30);

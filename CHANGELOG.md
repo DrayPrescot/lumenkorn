@@ -7,6 +7,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- AI sky detection: “Himmel” uses the open-source sky model skyseg (U²-Net,
+  MIT license), downloaded with the AI masks (about 176 MB more). It also
+  finds dark cloud banks, haze and dusk skies and does not take walls or
+  foliage for sky; uncertain edges (tree tops, branches) follow the colors of
+  the photo. Without the model the previous detection is used. After the
+  update, “KI-Masken herunterladen” in the AI dialog loads only the missing
+  sky model.
 - Develop: Color Grading below HSL, as in Lightroom – color wheels for
   shadows, midtones, highlights and global (drag for hue and saturation,
   double-click resets), luminance per range, blending and balance. Tints

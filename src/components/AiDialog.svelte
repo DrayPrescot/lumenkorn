@@ -216,13 +216,13 @@
     {#if s && !lib.aiDownload}
       <div class="sep"></div>
       <h4>{t("KI-Masken")}</h4>
-      {#if s.masksReady}
-        <p class="muted">{t("Installiert: „Motiv“, „Objekt per Klick“ und verfeinerter „Himmel“ im Entwickeln-Modus unter „Masken“.")}</p>
+      {#if s.masksReady && s.skyReady}
+        <p class="muted">{t("Installiert: „Motiv“, „Objekt per Klick“ und KI-„Himmel“ im Entwickeln-Modus unter „Masken“.")}</p>
       {:else}
         <div class="box">
           <p>
-            {t("„Motiv auswählen“ (IS-Net) und „Objekt per Klick“ (Segment Anything) benötigen einmalig etwa")}
-            <strong>{mb(s.masksDownloadSize)}</strong> {t("von GitHub. „Himmel“ funktioniert auch ohne, wird damit aber genauer.")}
+            {t("„Motiv auswählen“ (IS-Net), „Objekt per Klick“ (Segment Anything) und die KI-Himmelserkennung (skyseg) benötigen einmalig etwa")}
+            <strong>{mb(s.masksDownloadSize)}</strong> {t("von GitHub und Hugging Face. „Himmel“ funktioniert auch ohne, wird damit aber deutlich genauer.")}
           </p>
           <button class="btn primary" onclick={() => download("masks")}>{t("KI-Masken herunterladen")}</button>
         </div>

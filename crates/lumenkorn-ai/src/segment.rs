@@ -241,18 +241,159 @@ impl Sam {
 
 // --- Himmel ---------------------------------------------------------------
 
-/// Himmel finden: Bereichswachstum von hellen, glatten Flächen am oberen Rand,
-/// eingeschlossene Löcher (Sonne, Mond) werden gefüllt. Steht SAM zur Verfügung,
-/// verfeinert es die Kante – die Heuristik liefert ihm die Klickpunkte.
-pub fn sky_mask(img: &DynamicImage, sam: Option<(&Sam, &SamEmbedding)>) -> Result<GrayImage> {
+/// Kantenlänge, falls das Modell keine feste Eingabegröße angibt (skyseg: 320).
+const SKY_INPUT: usize = 320;
+
+/// Himmelserkennung mit skyseg (U²-Net, xiongzhu666, MIT): RGB mit
+/// ImageNet-Normierung rein, Himmelswahrscheinlichkeit je Pixel raus.
+pub struct SkyModel {
+    session: Model,
+    input: String,
+    output: String,
+    /// Eingabegröße (Breite, Höhe) laut Modell
+    size: (usize, usize),
+}
+
+impl SkyModel {
+    pub fn load(path: &Path) -> Result<Self> {
+        let mut session = open_session(path)?;
+        let s = session.inspect();
+        let first = s
+            .inputs()
+            .first()
+            .ok_or_else(|| Error::ModelFormat(tr_s("kein Eingang", "no input").into()))?;
+        let input = first.name().to_string();
+        // [1, 3, H, W]; dynamische Achsen (−1) → Standardgröße
+        let dim = |k: usize| {
+            first
+                .dtype()
+                .tensor_shape()
+                .and_then(|s| s.get(k).copied())
+                .filter(|d| *d > 0)
+                .map_or(SKY_INPUT, |d| d as usize)
+        };
+        let size = (dim(3), dim(2));
+        let output = s
+            .outputs()
+            .first()
+            .map(|o| o.name().to_string())
+            .ok_or_else(|| Error::ModelFormat(tr_s("kein Ausgang", "no output").into()))?;
+        Ok(Self {
+            session,
+            input,
+            output,
+            size,
+        })
+    }
+
+    /// Himmelswahrscheinlichkeit (0…255) in Maskengröße.
+    pub fn predict(&self, img: &DynamicImage) -> Result<GrayImage> {
+        const MEAN: [f32; 3] = [0.485, 0.456, 0.406];
+        const STD: [f32; 3] = [0.229, 0.224, 0.225];
+        let (sw, sh) = self.size;
+        let rgb = img
+            .resize_exact(sw as u32, sh as u32, FilterType::Triangle)
+            .to_rgb8();
+        let n = sw * sh;
+        let mut data = vec![0f32; 3 * n];
+        for (i, p) in rgb.pixels().enumerate() {
+            for c in 0..3 {
+                data[c * n + i] = (p[c] as f32 / 255.0 - MEAN[c]) / STD[c];
+            }
+        }
+        let input = Tensor::from_array(([1usize, 3, sh, sw], data))?;
+        let mut session = self.session.lock();
+        let outputs = session.run(vec![(self.input.as_str(), input.into_dyn())])?;
+        let (_, pred) = outputs[self.output.as_str()].try_extract_tensor::<f32>()?;
+        if pred.len() < n {
+            return Err(Error::ModelFormat(
+                tr_s("unerwartete Ausgabegröße", "unexpected output size").into(),
+            ));
+        }
+        let pred = &pred[..n];
+        // U²-Net liefert schon Wahrscheinlichkeiten (Sigmoid im Modell); falls
+        // ein Export rohe Logits ausgibt, hier umrechnen. Bewusst ohne die
+        // Min-Max-Streckung des Referenzcodes: Sie macht auf Fotos ohne Himmel
+        // aus schwachem Rauschen eine volle Maske.
+        let logits = pred.iter().any(|v| *v < -0.01 || *v > 1.01);
+        let prob = |v: f32| {
+            if logits {
+                1.0 / (1.0 + (-v).exp())
+            } else {
+                v.clamp(0.0, 1.0)
+            }
+        };
+        let (mi, ma, sum) = pred
+            .iter()
+            .fold((f32::MAX, f32::MIN, 0f64), |(a, b, s), v| {
+                (a.min(*v), b.max(*v), s + prob(*v) as f64)
+            });
+        log::info!(
+            "Himmel (KI): Ausgabe {mi:.3}…{ma:.3}{}, Mittel {:.3}",
+            if logits { " (Logits)" } else { "" },
+            sum / n as f64
+        );
+        let raw = GrayImage::from_fn(sw as u32, sh as u32, |x, y| {
+            Luma([(prob(pred[y as usize * sw + x as usize]) * 255.0).round() as u8])
+        });
+        let (w, h) = mask_size(img.width(), img.height());
+        Ok(image::imageops::resize(&raw, w, h, FilterType::Triangle))
+    }
+}
+
+/// Himmel finden. Mit `model` (skyseg) entscheidet das KI-Modell, was Himmel
+/// ist; unsichere Kanten folgen danach den Farben des Fotos, so dass Äste
+/// und Horizontlinien sauber bleiben. Ohne Modell: Bereichswachstum von hellen,
+/// glatten Flächen am oberen Rand, eingeschlossene Löcher (Sonne, Mond) werden
+/// gefüllt; steht SAM zur Verfügung, verfeinert es die Kante – die Heuristik
+/// liefert ihm die Klickpunkte.
+pub fn sky_mask(
+    img: &DynamicImage,
+    model: Option<&SkyModel>,
+    sam: Option<(&Sam, &SamEmbedding)>,
+) -> Result<GrayImage> {
     const WORK: u32 = 256;
     let small = img.resize(WORK, WORK, FilterType::Triangle).to_rgb8();
-    let region = sky_region(&small);
     let (sw, sh) = small.dimensions();
-    let area = region.iter().filter(|v| **v).count() as f32 / (sw * sh) as f32;
     let (w, h) = mask_size(img.width(), img.height());
+    let ai = model.map(|m| m.predict(img)).transpose()?;
+    let region = match &ai {
+        Some(p) => ai_region(p, sw as usize, sh as usize),
+        None => sky_region(&small),
+    };
+    let area = region.iter().filter(|v| **v).count() as f32 / (sw * sh) as f32;
+    if ai.is_some() {
+        log::info!("Himmel (KI): Fläche {:.1} %", area * 100.0);
+    }
     if area < 0.02 {
         return Ok(GrayImage::new(w, h));
+    }
+
+    let (uw, uh) = (sw as usize, sh as usize);
+    // Weiche Fassung einer Fläche in Maskengröße
+    let soft = |b: &[bool]| {
+        let g = GrayImage::from_fn(sw, sh, |x, y| {
+            Luma([if b[(y * sw + x) as usize] { 255 } else { 0 }])
+        });
+        image::imageops::resize(&image::imageops::blur(&g, 1.0), w, h, FilterType::Triangle)
+    };
+
+    if let Some(prob) = ai {
+        // Die Wahrscheinlichkeit gibt die Kante vor, die bereinigte Fläche
+        // (ohne Kleinstflecken, Sonne gefüllt) begrenzt sie: innen voll,
+        // außerhalb eines schmalen Saums nichts.
+        let upper = soft(&morph(&region, uw, uh, SAM_EDGE, true));
+        let lower = soft(&morph(&region, uw, uh, SAM_EDGE, false));
+        let mut out = prob;
+        for ((o, u), l) in out.pixels_mut().zip(upper.pixels()).zip(lower.pixels()) {
+            o[0] = o[0].min(u[0]).max(l[0]);
+        }
+        let guide = img.resize_exact(w, h, FilterType::Triangle).to_rgb8();
+        let mut out = refine_edge(&out, &guide);
+        for (o, u) in out.pixels_mut().zip(upper.pixels()) {
+            o[0] = o[0].min(u[0]);
+        }
+        return Ok(out);
     }
 
     let heuristic = GrayImage::from_fn(sw, sh, |x, y| {
@@ -276,18 +417,6 @@ pub fn sky_mask(img: &DynamicImage, sam: Option<(&Sam, &SamEmbedding)>) -> Resul
                 // die geprüfte Fläche hinaus (sonst nimmt es Horizont, Inseln,
                 // Wasser oder Boden mit), innen bleibt die Fläche voll – auch
                 // gefüllte Löcher wie die Sonne.
-                let (uw, uh) = (sw as usize, sh as usize);
-                let soft = |b: &[bool]| {
-                    let g = GrayImage::from_fn(sw, sh, |x, y| {
-                        Luma([if b[(y * sw + x) as usize] { 255 } else { 0 }])
-                    });
-                    image::imageops::resize(
-                        &image::imageops::blur(&g, 1.0),
-                        w,
-                        h,
-                        FilterType::Triangle,
-                    )
-                };
                 let upper = soft(&morph(&region, uw, uh, SAM_EDGE, true));
                 let lower = soft(&morph(&region, uw, uh, SAM_EDGE, false));
                 let mut out = image::imageops::resize(&m, w, h, FilterType::Triangle);
@@ -301,6 +430,139 @@ pub fn sky_mask(img: &DynamicImage, sam: Option<(&Sam, &SamEmbedding)>) -> Resul
     // Leicht weichzeichnen, damit die Kante nicht treppig wirkt.
     let soft = image::imageops::blur(&heuristic, 1.0);
     Ok(image::imageops::resize(&soft, w, h, FilterType::Triangle))
+}
+
+/// Fläche aus der KI-Wahrscheinlichkeit im Arbeitsraster: über 50 %,
+/// Kleinstflecken (unter 0,5 % des Bildes) verworfen, kleine eingeschlossene
+/// Löcher (Sonne, Mond, Vögel) gefüllt.
+fn ai_region(prob: &GrayImage, w: usize, h: usize) -> Vec<bool> {
+    let p = image::imageops::resize(prob, w as u32, h as u32, FilterType::Triangle);
+    let region: Vec<bool> = p.pixels().map(|v| v[0] >= 128).collect();
+    let n = w * h;
+    let region = drop_small(&region, w, h, n / 200);
+    fill_holes(&region, w, h, n / 60)
+}
+
+/// Zusammenhängende Flächen unter `min` Pixeln entfernen.
+fn drop_small(region: &[bool], w: usize, h: usize, min: usize) -> Vec<bool> {
+    let mut out = region.to_vec();
+    let mut seen = vec![false; w * h];
+    for start in 0..w * h {
+        if !region[start] || seen[start] {
+            continue;
+        }
+        let mut comp = vec![start];
+        seen[start] = true;
+        let mut k = 0;
+        while k < comp.len() {
+            let i = comp[k];
+            k += 1;
+            let (x, y) = (i % w, i / w);
+            let mut push = |j: usize| {
+                if region[j] && !seen[j] {
+                    seen[j] = true;
+                    comp.push(j);
+                }
+            };
+            if x > 0 {
+                push(i - 1);
+            }
+            if x + 1 < w {
+                push(i + 1);
+            }
+            if y > 0 {
+                push(i - w);
+            }
+            if y + 1 < h {
+                push(i + w);
+            }
+        }
+        if comp.len() < min {
+            for i in comp {
+                out[i] = false;
+            }
+        }
+    }
+    out
+}
+
+/// Kante an das Foto anpassen. Das Modell rechnet mit 320 px; an Kanten und
+/// in Baumkronen ist seine Maske deshalb grau. Dort wird jedes Pixel mit den
+/// Farben verglichen, die in der Nähe sicher Himmel bzw. sicher kein Himmel
+/// sind, und bekommt seinen Anteil daraus – feine Äste vor hellem Himmel
+/// werden ausgespart, Himmelslücken zwischen ihnen voll genommen.
+fn refine_edge(mask: &GrayImage, guide: &RgbImage) -> GrayImage {
+    const SURE: u8 = 245;
+    const NOT: u8 = 10;
+    let (w, h) = (mask.width() as usize, mask.height() as usize);
+    let r = (w.max(h) / 32).max(4);
+    let px = |k: usize| {
+        let p = guide.as_raw();
+        [0, 1, 2].map(|c| p[k * 3 + c] as f32 / 255.0)
+    };
+    let m = mask.as_raw();
+    // Gewichtete Fenstersummen der sicheren Farben
+    let sums = |sel: &dyn Fn(u8) -> bool| {
+        let wgt: Vec<f32> = m.iter().map(|v| sel(*v) as u8 as f32).collect();
+        let ch: Vec<Vec<f32>> = (0..3)
+            .map(|c| (0..w * h).map(|k| wgt[k] * px(k)[c]).collect())
+            .collect();
+        (
+            box_mean(&wgt, w, h, r),
+            ch.iter().map(|v| box_mean(v, w, h, r)).collect::<Vec<_>>(),
+        )
+    };
+    let (sky_n, sky_c) = sums(&|v| v >= SURE);
+    let (gnd_n, gnd_c) = sums(&|v| v <= NOT);
+    let mut out = mask.clone();
+    for (k, o) in out.as_mut().iter_mut().enumerate() {
+        if *o >= SURE || *o <= NOT || sky_n[k] <= 0.0 {
+            continue;
+        }
+        let c = px(k);
+        let sky = [0, 1, 2].map(|i| sky_c[i][k] / sky_n[k]);
+        let alpha = if gnd_n[k] > 0.0 {
+            let gnd = [0, 1, 2].map(|i| gnd_c[i][k] / gnd_n[k]);
+            let d = [0, 1, 2].map(|i| sky[i] - gnd[i]);
+            let len2: f32 = d.iter().map(|v| v * v).sum();
+            if len2 < 0.003 {
+                // Himmel und Umgebung gleich gefärbt – das Modell weiß es besser
+                continue;
+            }
+            (0..3).map(|i| (c[i] - gnd[i]) * d[i]).sum::<f32>() / len2
+        } else {
+            // Nur Himmel in der Nähe (mitten in einer Baumkrone): nach dem
+            // Farbabstand zum Himmel
+            let dist = (0..3).map(|i| (c[i] - sky[i]).powi(2)).sum::<f32>().sqrt();
+            1.0 - dist / 0.15
+        };
+        *o = (alpha.clamp(0.0, 1.0) * 255.0).round() as u8;
+    }
+    out
+}
+
+/// Mittelwert über ein (2r+1)²-Fenster, am Rand über die vorhandenen Pixel.
+fn box_mean(v: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
+    // Integralbild in f64 (Summen über eine Million Werte)
+    let mut s = vec![0f64; (w + 1) * (h + 1)];
+    for y in 0..h {
+        let mut row = 0f64;
+        for x in 0..w {
+            row += v[y * w + x] as f64;
+            s[(y + 1) * (w + 1) + x + 1] = s[y * (w + 1) + x + 1] + row;
+        }
+    }
+    let mut out = vec![0f32; w * h];
+    for y in 0..h {
+        let (y0, y1) = (y.saturating_sub(r), (y + r + 1).min(h));
+        for x in 0..w {
+            let (x0, x1) = (x.saturating_sub(r), (x + r + 1).min(w));
+            let sum = s[y1 * (w + 1) + x1] - s[y0 * (w + 1) + x1] - s[y1 * (w + 1) + x0]
+                + s[y0 * (w + 1) + x0];
+            out[y * w + x] = (sum / ((y1 - y0) * (x1 - x0)) as f64) as f32;
+        }
+    }
+    out
 }
 
 /// Art eines himmelsartigen Pixels.
@@ -901,7 +1163,7 @@ mod tests {
 
     #[test]
     fn finds_sky_including_sun_and_excludes_mountains() {
-        let m = sky_mask(&landscape(), None).unwrap();
+        let m = sky_mask(&landscape(), None, None).unwrap();
         let (w, h) = m.dimensions();
         let at = |x: f32, y: f32| m.get_pixel((x * w as f32) as u32, (y * h as f32) as u32)[0];
         assert!(at(0.2, 0.1) > 200, "Himmel oben links");
@@ -928,7 +1190,7 @@ mod tests {
                 Rgb([v, v, v.saturating_add(4)])
             }
         }));
-        let m = sky_mask(&img, None).unwrap();
+        let m = sky_mask(&img, None, None).unwrap();
         assert!(m.pixels().all(|p| p[0] == 0));
     }
 
@@ -944,7 +1206,7 @@ mod tests {
                 Rgb([(40 + n) as u8, (95 + n) as u8, (100 + n) as u8])
             }
         }));
-        let m = sky_mask(&img, None).unwrap();
+        let m = sky_mask(&img, None, None).unwrap();
         assert!(m.pixels().all(|p| p[0] == 0));
     }
 
@@ -967,7 +1229,7 @@ mod tests {
                 ])
             }
         }));
-        let m = sky_mask(&img, None).unwrap();
+        let m = sky_mask(&img, None, None).unwrap();
         let (w, h) = m.dimensions();
         assert!(m.get_pixel(w / 2, h / 4)[0] > 200, "Himmel");
         assert!(m.get_pixel(w / 2, h * 9 / 10)[0] < 30, "Boden");
@@ -1007,7 +1269,7 @@ mod tests {
 
     #[test]
     fn clouds_belong_to_the_sky_but_the_rock_does_not() {
-        let m = sky_mask(&clouds_and_rock(), None).unwrap();
+        let m = sky_mask(&clouds_and_rock(), None, None).unwrap();
         let (w, h) = m.dimensions();
         let at = |x: f32, y: f32| {
             m.get_pixel((x / 600.0 * w as f32) as u32, (y / 400.0 * h as f32) as u32)[0]
@@ -1048,7 +1310,7 @@ mod tests {
 
     #[test]
     fn muted_dusk_sky_with_contrail_is_found() {
-        let m = sky_mask(&dusk_with_contrail(), None).unwrap();
+        let m = sky_mask(&dusk_with_contrail(), None, None).unwrap();
         let (w, h) = m.dimensions();
         let at = |x: f32, y: f32| {
             m.get_pixel((x / 600.0 * w as f32) as u32, (y / 400.0 * h as f32) as u32)[0]
@@ -1066,7 +1328,59 @@ mod tests {
             let n = ((x / 8) * 7919 + (y / 8) * 104729) % 97;
             Rgb([(90 + n) as u8, (60 + n / 2) as u8, 40])
         }));
-        let m = sky_mask(&img, None).unwrap();
+        let m = sky_mask(&img, None, None).unwrap();
         assert!(m.pixels().all(|p| p[0] == 0));
+    }
+
+    #[test]
+    fn ai_region_drops_specks_and_fills_the_sun() {
+        // Himmel oben mit „Sonne“ (Loch), dazu ein winziger Fehlfleck unten
+        let (w, h) = (200u32, 100u32);
+        let prob = GrayImage::from_fn(w, h, |x, y| {
+            let sun = (x as i32 - 100).pow(2) + (y as i32 - 20).pow(2) < 36;
+            let speck = (150..153).contains(&x) && (80..83).contains(&y);
+            Luma([if (y < 45 && !sun) || speck { 230 } else { 10 }])
+        });
+        let r = ai_region(&prob, w as usize, h as usize);
+        let at = |x: usize, y: usize| r[y * w as usize + x];
+        assert!(at(100, 20), "Sonne gehört zum Himmel");
+        assert!(at(10, 10) && !at(10, 60));
+        assert!(!at(151, 81), "Kleinstfleck verworfen");
+    }
+
+    #[test]
+    fn edge_refinement_follows_dark_branches() {
+        // Das Modell ist sich um einen dünnen, dunklen Ast herum unsicher
+        // (grauer Streifen) – die Verfeinerung spart den Ast aus und nimmt den
+        // hellen Himmel daneben voll; gleichmäßige Flächen bleiben.
+        let (w, h) = (300u32, 200u32);
+        let guide = RgbImage::from_fn(w, h, |x, y| {
+            if y >= 120 {
+                Rgb([40, 50, 30])
+            } else if (150..152).contains(&x) && y < 110 {
+                Rgb([30, 25, 20])
+            } else {
+                Rgb([150, 180, 230])
+            }
+        });
+        let mask = GrayImage::from_fn(w, h, |x, y| {
+            if (143..159).contains(&x) && y < 100 {
+                return Luma([140]);
+            }
+            Luma([(255.0 * (1.0 - ((y as f32 - 110.0) / 20.0).clamp(0.0, 1.0))) as u8])
+        });
+        let out = refine_edge(&mask, &guide);
+        let v = |x, y| out.get_pixel(x, y)[0];
+        assert!(v(150, 50) < 100, "Ast ausgespart: {}", v(150, 50));
+        assert!(v(146, 50) > 200, "Himmel neben dem Ast: {}", v(146, 50));
+        assert!(v(60, 50) > 245, "Himmel bleibt voll: {}", v(60, 50));
+        assert!(v(60, 180) < 10, "Boden bleibt leer: {}", v(60, 180));
+        // Die weiche Kante rückt an die echte Horizontlinie (y = 120)
+        assert!(
+            v(60, 114) > 200 && v(60, 126) < 60,
+            "{} {}",
+            v(60, 114),
+            v(60, 126)
+        );
     }
 }
