@@ -243,6 +243,12 @@ const MIGRATIONS: &[&str] = &[
     );
     ALTER TABLE persons ADD COLUMN group_id INTEGER REFERENCES person_groups(id) ON DELETE SET NULL;
     "#,
+    // v15: Lichter, Tiefen, Weiß und Schwarz wirken auf andere Tonbereiche –
+    // die Vorschaubilder aller bearbeiteten Fotos neu erzeugen.
+    r#"
+    UPDATE images SET thumb_state = 0
+    WHERE id IN (SELECT image_id FROM edits WHERE is_current = 1);
+    "#,
 ];
 
 /// v11: Der Suchtext eines Fotos wurde bisher bei jeder einzelnen
@@ -2131,7 +2137,9 @@ mod migration_tests {
                 })
                 .unwrap()
         };
-        assert_eq!(ids.map(state), [0, 1, 1]);
+        // Bearbeitete RAWs (v9, v13) und – seit den neuen Tonwertreglern (v15) –
+        // alle bearbeiteten Fotos; unbearbeitete bleiben
+        assert_eq!(ids.map(state), [0, 1, 0]);
     }
 
     /// v11: Ein Katalog von v10 (alte Trigger) behält seinen Suchindex, die

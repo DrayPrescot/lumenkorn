@@ -6,6 +6,22 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Develop: the tone sliders now split the range like in Lightroom.
+  Highlights and Shadows work on the bright and dark half of the image,
+  reaching into the midtones; Whites and Blacks only move the ends of the
+  scale (white and black point) and leave the midtones nearly untouched.
+  Before, Highlights reached only the brightest areas while Whites lifted
+  almost the whole image. Existing edits that use these sliders look
+  different; their thumbnails are rebuilt once.
+- Auto: sets Whites and Blacks before Contrast and goes only part of the way
+  to the targets, so the values depend on the photo instead of sticking to
+  the limits (Whites +70, Blacks −50, Contrast +25).
+
+### Fixed
+- After a restart the large view could show an older, unedited preview
+  from the WebView cache while the filmstrip showed the edit.
+
 ## [1.0.0] – 2026-10-11
 
 ### Added

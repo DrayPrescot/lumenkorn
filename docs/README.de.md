@@ -98,7 +98,9 @@ Der Reiter **Basis** enthält von oben nach unten:
   danach und tont das Schwarzweißbild, etwa kühle Tiefen und warme Lichter oder Sepia.
 
 - **Weißabgleich:** Temperatur und Tönung, relativ zum Kamera-Weißabgleich.
-- **Licht:** Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz.
+- **Licht:** Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz. Lichter und Tiefen wirken auf die
+  helle bzw. dunkle Bildhälfte bis in die Mitteltöne, Weiß und Schwarz nur auf die Enden der Skala
+  (Weiß- und Schwarzpunkt) – die Mitteltöne bleiben dabei nahezu, wo sie sind.
 - **Farbe:** Dynamik, Sättigung.
 - **Details:** Klarheit, Schärfen, **Dunst entfernen** und die KI-Rauschreduzierung. Dunst entfernen
   schätzt den Dunst nach dem Dark-Channel-Verfahren, aber mit neutraler Dunstfarbe. Farben behalten

@@ -329,19 +329,26 @@ fn tone(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= u.w || id.y >= u.h) { return; }
     let i = id.y * u.w + id.x;
     let y0 = fa[i];
-    var v = (y0 - u.black) / (u.white - u.black);
+    var v = y0;
     if ((u.flags & F_BASE) != 0u) {
         let b = sample_map(0u, u.mw, u.mh, id.x, id.y);
         if (u.shadows != 0.0) {
-            let s = 1.0 - sstep(0.0, 0.55, b);
-            let ws = s * s;
+            let ws = 1.0 - sstep(0.1, 0.75, b);
             v *= exp(u.shadows * SHADOW_HIGHLIGHT_GAIN * ws * max(1.0 - v, 0.0));
         }
         if (u.highlights != 0.0) {
-            let s = sstep(0.4, 1.0, b);
-            let wh = s * s;
+            let wh = sstep(0.25, 0.9, b);
             v = 1.0 - (1.0 - v) * exp(-u.highlights * SHADOW_HIGHLIGHT_GAIN * wh * max(v, 0.0));
         }
+    }
+    // Weiß und Schwarz (pipeline.rs: tone_ends); u.white/u.black = Reglerwerte
+    if (u.white != 0.0) {
+        let w = sstep(0.4, 1.0, v);
+        v += u.white * WHITES_GAIN * w * w;
+    }
+    if (u.black != 0.0) {
+        let s = 1.0 - sstep(0.0, 0.6, v);
+        v += u.black * BLACKS_GAIN * s * s;
     }
     v = s_curve(clamp(v, 0.0, 1.0), u.contrast);
     if ((u.flags & F_DETAIL) != 0u) {

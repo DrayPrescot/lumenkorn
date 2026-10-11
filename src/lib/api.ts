@@ -801,11 +801,16 @@ export function faceUrl(faceId: number): string {
 }
 
 /** URL für Thumbnail, Vorschau oder Original. `version` umgeht den Browser-Cache nach Änderungen. */
+const SESSION = Date.now().toString(36);
+
 export function imageUrl(variant: "thumb" | "preview" | "full", id: number, version = 0): string {
   if (!isTauri) return mock.imageUrl(variant, id);
   // convertFileSrc kennt die plattformabhängige Form (lw://localhost/ bzw. http://lw.localhost/).
   protocolBase ??= convertFileSrc("", "lw");
-  return `${protocolBase}${variant}/${id}?v=${version}`;
+  // `SESSION`: Die Version zählt je Programmstart ab 0 – ohne die Kennung des
+  // Starts zeigte die WebView nach einem Neustart ein zwischengespeichertes
+  // Bild aus einer früheren Sitzung (vor der letzten Bearbeitung).
+  return `${protocolBase}${variant}/${id}?v=${SESSION}.${version}`;
 }
 
 // --- Ordnerauswahl ------------------------------------------------------------

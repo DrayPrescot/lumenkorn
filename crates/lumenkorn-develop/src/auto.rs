@@ -12,13 +12,13 @@
 //!    so weit, dass nicht mehr als [`MAX_CLIP`] der Pixel ausfressen. Sehr
 //!    dunkle Szenen (Nacht, Gegenlicht mit viel Schwarz) werden weniger weit
 //!    angehoben, damit sie nicht grau wirken.
-//! 2. **Kontrast:** Streuung der Helligkeit Richtung [`TARGET_SPREAD`],
-//!    vorsichtig (flaue Bilder etwas mehr, harte etwas weniger).
-//! 3. **Lichter / Tiefen:** helle Flächen zurückholen, bis das 98. Perzentil
+//! 2. **Weiß / Schwarz:** hellste Stellen knapp unter Weiß, dunkelste knapp
+//!    über Schwarz – der Tonwertumfang wird genutzt, ohne zu beschneiden.
+//! 3. **Kontrast:** restliche Streuung der Helligkeit Richtung
+//!    [`TARGET_SPREAD`], vorsichtig (flaue Bilder etwas mehr, harte weniger).
+//! 4. **Lichter / Tiefen:** helle Flächen zurückholen, bis das 98. Perzentil
 //!    Zeichnung hat; dunkle Bereiche aufhellen, bis das 8. Perzentil sichtbar
 //!    wird.
-//! 4. **Weiß / Schwarz:** hellste Stellen knapp unter Weiß, dunkelste knapp
-//!    über Schwarz – der Tonwertumfang wird genutzt, ohne zu beschneiden.
 //! 5. **Dynamik:** blasse Bilder bekommen etwas mehr Farbe (nie weniger).
 //!
 //! Masken, Reparaturen und Rauschreduzierung bleiben bei der Messung außen
@@ -37,11 +37,13 @@ const TARGET_MEDIAN: f32 = 0.44;
 /// Höchstens so viele Pixel dürfen durch die Belichtung ausfressen
 const MAX_CLIP: f32 = 0.005;
 /// Ziel für die Standardabweichung der Helligkeit
-const TARGET_SPREAD: f32 = 0.20;
+const TARGET_SPREAD: f32 = 0.18;
 /// Hellste Stellen (99,5. Perzentil des hellsten Farbkanals) knapp unter Weiß
 const TARGET_WHITE: f32 = 0.93;
 /// Dunkelste Stellen (0,5. Perzentil der Helligkeit) knapp über Schwarz
 const TARGET_BLACK: f32 = 0.03;
+/// Anteil des Wegs zu den Zielen für Weiß und Schwarz
+const ENDS_SHARE: f32 = 0.75;
 
 /// Ergebnis: die Werte der automatisch gesetzten Regler.
 #[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize)]
@@ -226,16 +228,36 @@ pub fn auto_tone(src: &Source, base: &DevelopParams) -> AutoTone {
     let max_ev = if bright_share > 0.1 { 0.3 } else { 2.0 - dark };
     a.exposure = (a.exposure.clamp(-2.0, max_ev) / 0.05).round() * 0.05;
 
-    // 2. Kontrast: Streuung in Richtung Ziel, nur teilweise
+    // 2. Weiß und Schwarz: Tonwertumfang nutzen, ohne zu beschneiden. Vor dem
+    // Kontrast, weil das Spreizen der Enden die Streuung schon erhöht – sonst
+    // landete der Kontrast fast immer am Anschlag.
+    // Nur einen Teil des Wegs: flaue Motive (Nebel, Gegenlicht) bleiben etwas
+    // weicher, und der Wert richtet sich nach dem Bild statt am Anschlag zu
+    // kleben
+    let st = measure(&a);
+    let (w0, b0) = (st.pct_max(0.995), st.pct(0.005));
+    let toward = |from: f32, to: f32| from + ENDS_SHARE * (to - from);
+    // Ohne helle Stellen (dunkles Motiv) ist das Ziel unerreichbar – dann
+    // nicht bis zum Anschlag, sonst fressen die wenigen Lichter aus
+    a.whites = solve(-60.0, 60.0, toward(w0, TARGET_WHITE), 9, |w| {
+        measure(&AutoTone { whites: w, ..a }).pct_max(0.995)
+    })
+    .round();
+    a.blacks = solve(-80.0, 40.0, toward(b0, TARGET_BLACK), 9, |b| {
+        measure(&AutoTone { blacks: b, ..a }).pct(0.005)
+    })
+    .round();
+
+    // 3. Kontrast: restliche Streuung in Richtung Ziel, nur teilweise
     let s = measure(&a).spread();
     let wanted = s + 0.5 * (TARGET_SPREAD - s);
     // Weniger Kontrast nur wenig: flaue Bilder wirken schnell grau
-    a.contrast = solve(-10.0, 25.0, wanted, 7, |c| {
+    a.contrast = solve(-15.0, 30.0, wanted, 8, |c| {
         measure(&AutoTone { contrast: c, ..a }).spread()
     })
     .round();
 
-    // 3. Lichter: das 98. Perzentil soll Zeichnung haben (unter 0,92)
+    // 4. Lichter: das 98. Perzentil soll Zeichnung haben (unter 0,92)
     let st = measure(&a);
     if st.pct(0.98) > 0.92 || st.clipped > MAX_CLIP {
         // `f` steigt mit dem Regler; gesucht ist der kleinste Eingriff
@@ -252,16 +274,6 @@ pub fn auto_tone(src: &Source, base: &DevelopParams) -> AutoTone {
         })
         .round();
     }
-
-    // 4. Weiß und Schwarz: Tonwertumfang nutzen, ohne zu beschneiden
-    a.whites = solve(-60.0, 70.0, TARGET_WHITE, 8, |w| {
-        measure(&AutoTone { whites: w, ..a }).pct_max(0.995)
-    })
-    .round();
-    a.blacks = solve(-50.0, 50.0, TARGET_BLACK, 8, |b| {
-        measure(&AutoTone { blacks: b, ..a }).pct(0.005)
-    })
-    .round();
 
     // 5. Dynamik: blasse Bilder etwas farbiger – bei Schwarzweiß gibt es
     // keine Farbe zu messen, dort bleibt der Regler, wie er ist

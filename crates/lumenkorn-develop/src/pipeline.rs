@@ -41,6 +41,9 @@ pub(crate) const RAW_WHITE: f32 = 4.0;
 pub(crate) const SOFT_CLIP_KNEE: f32 = 0.8;
 /// Stärke von Lichter/Tiefen bei ±100: Exponent der Anhebung bzw. Absenkung.
 pub(crate) const SHADOW_HIGHLIGHT_GAIN: f32 = 1.1;
+/// Verschiebung von Weiß bzw. Schwarz am Ende der Tonwertskala bei ±100.
+pub(crate) const WHITES_GAIN: f32 = 0.4;
+pub(crate) const BLACKS_GAIN: f32 = 0.35;
 /// Stärke der Klarheit bei ±100 (Anteil des lokalen Kontrasts).
 pub(crate) const CLARITY_GAIN: f32 = 0.8;
 /// Anteil des geschätzten Dunsts, der bei Dehaze +100 entfernt wird (ω im
@@ -648,23 +651,27 @@ fn tone(img: &mut ImageF32, t: &Tone) {
 #[inline]
 fn tone_px(px: [f32; 3], y0: f32, x: usize, yy: usize, t: &Tone, maps: &ToneMaps) -> [f32; 3] {
     let (sh, hi) = (t.shadows, t.highlights);
-    let black_point = -t.blacks * 0.12;
-    let white_point = 1.0 - t.whites * 0.15;
-    let mut v = (y0 - black_point) / (white_point - black_point);
+    let mut v = y0;
 
-    // Lichter und Tiefen: Gewicht nach der *lokalen* Helligkeit, damit
+    // Lichter und Tiefen: die helle bzw. dunkle Hälfte der Tonwerte, bis in
+    // die Mitteltöne hinein. Gewicht nach der *lokalen* Helligkeit, damit
     // Strukturen in Schatten und Lichtern erhalten bleiben.
     if let Some(m) = &maps.base {
         let b = m.sample(x, yy);
         if sh != 0.0 {
-            let ws = (1.0 - smoothstep(0.0, 0.55, b)).powi(2);
+            let ws = 1.0 - smoothstep(0.1, 0.75, b);
             v *= (sh * SHADOW_HIGHLIGHT_GAIN * ws * (1.0 - v).max(0.0)).exp();
         }
         if hi != 0.0 {
-            let wh = smoothstep(0.4, 1.0, b).powi(2);
+            let wh = smoothstep(0.25, 0.9, b);
             v = 1.0 - (1.0 - v) * (-hi * SHADOW_HIGHLIGHT_GAIN * wh * v.max(0.0)).exp();
         }
     }
+
+    // Weiß und Schwarz: nur die Enden der Skala – Weiß verschiebt die
+    // hellsten Töne (bis zum Ausfressen bzw. weg von Weiß), Schwarz die
+    // dunkelsten; die Mitteltöne bleiben nahezu, wo sie sind.
+    v = tone_ends(v, t.whites, t.blacks);
 
     v = s_curve(v.clamp(0.0, 1.0), t.contrast);
 
@@ -960,6 +967,21 @@ fn base_curve(c: [f32; 3]) -> [f32; 3] {
     out
 }
 
+/// Weiß und Schwarz (−1…1) auf den Tonwert `v` anwenden.
+#[inline]
+fn tone_ends(v: f32, whites: f32, blacks: f32) -> f32 {
+    let mut v = v;
+    if whites != 0.0 {
+        let w = smoothstep(0.4, 1.0, v);
+        v += whites * WHITES_GAIN * w * w;
+    }
+    if blacks != 0.0 {
+        let b = 1.0 - smoothstep(0.0, 0.6, v);
+        v += blacks * BLACKS_GAIN * b * b;
+    }
+    v
+}
+
 /// S-Kurve um die Mitte. Positive Werte erhöhen, negative senken den Kontrast.
 fn s_curve(v: f32, amount: f32) -> f32 {
     if amount == 0.0 {
@@ -1127,6 +1149,42 @@ mod tests {
         // Negativ: Dunst kommt dazu
         let more = render(&hazy(0.1), &p(-80.0));
         assert!(spread(&more) < spread(&render(&hazy(0.1), &p(0.0))) * 0.7);
+    }
+
+    /// Wie stark ein Regler bei +100 einen gleichmäßigen Ton `v` verschiebt.
+    fn tone_shift(v: f32, set: fn(&mut DevelopParams)) -> f32 {
+        let src = raster(&[[v; 3]; 64], 8);
+        let mut p = DevelopParams::default();
+        set(&mut p);
+        render(&src, &p).data[27][1] - render(&src, &DevelopParams::default()).data[27][1]
+    }
+
+    #[test]
+    fn tone_sliders_work_on_their_part_of_the_range() {
+        let lights = |p: &mut DevelopParams| p.highlights = 100.0;
+        let darks = |p: &mut DevelopParams| p.shadows = 100.0;
+        let whites = |p: &mut DevelopParams| p.whites = 100.0;
+        let blacks = |p: &mut DevelopParams| p.blacks = -100.0;
+        let row = |f: fn(&mut DevelopParams)| [0.05, 0.2, 0.5, 0.7, 0.9].map(|v| tone_shift(v, f));
+        let (l, d, w, b) = (row(lights), row(darks), row(whites), row(blacks));
+        // Lichter: helle Töne und obere Mitteltöne, Schatten kaum
+        assert!(l[3] > 0.05 && l[2] > 0.03 && l[0].abs() < 0.01, "{l:?}");
+        // Tiefen: dunkle Töne und untere Mitteltöne, Lichter kaum
+        assert!(d[1] > 0.05 && d[2] > 0.02 && d[4].abs() < 0.01, "{d:?}");
+        // Weiß: nur das obere Ende, Mitteltöne fast unverändert
+        assert!(
+            w[4] > 0.05 && w[2].abs() < 0.015 && w[0].abs() < 1e-3,
+            "{w:?}"
+        );
+        assert!(
+            w[2] < l[2] * 0.2,
+            "Weiß wirkt kaum auf die Mitte, Lichter schon"
+        );
+        // Schwarz: nur das untere Ende
+        assert!(
+            b[0] < -0.03 && b[2].abs() < 0.015 && b[4].abs() < 1e-3,
+            "{b:?}"
+        );
     }
 
     #[test]

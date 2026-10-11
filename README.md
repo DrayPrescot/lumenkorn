@@ -49,6 +49,8 @@ the system language; **DE / EN** at the bottom left of the sidebar switches it.
   vibrance, saturation and sharpening. **Auto** (`Ctrl+U`) sets the tone sliders for a
   balanced result. **Black & White** (`V`) converts the photo; the HSL luminance sliders
   then act as the gray mix and color grading tones it.
+  Highlights and shadows work on the bright and dark half of the image, whites and blacks
+  only on the ends of the scale.
 - HSL for eight color ranges, with an eyedropper that adjusts the color you click on.
 - Color grading with wheels for shadows, midtones, highlights and the whole image, plus
   blending and balance, as in Lightroom.

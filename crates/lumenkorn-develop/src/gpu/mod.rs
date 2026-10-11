@@ -335,9 +335,9 @@ pub(crate) struct ImageKey(usize, usize, usize, u64, u64);
 /// Dezimalpunkt und exakt umkehrbar, der Shader rechnet also mit denselben Werten.
 fn shader_source() -> String {
     use crate::pipeline::{
-        CLARITY_GAIN, CONTRAST_MIX, DEHAZE_CHROMA, DEHAZE_GAIN, DEHAZE_MIN_T, HAZE_ADD,
-        OVERLAY_COLOR, OVERLAY_OPACITY, RAW_BASE_GAIN, RAW_WHITE, SHADOW_HIGHLIGHT_GAIN,
-        SHARPEN_GAIN, SHARPEN_THRESHOLD, SOFT_CLIP_KNEE,
+        BLACKS_GAIN, CLARITY_GAIN, CONTRAST_MIX, DEHAZE_CHROMA, DEHAZE_GAIN, DEHAZE_MIN_T,
+        HAZE_ADD, OVERLAY_COLOR, OVERLAY_OPACITY, RAW_BASE_GAIN, RAW_WHITE, SHADOW_HIGHLIGHT_GAIN,
+        SHARPEN_GAIN, SHARPEN_THRESHOLD, SOFT_CLIP_KNEE, WHITES_GAIN,
     };
     let f = |name: &str, v: f32| format!("const {name}: f32 = {v:?};\n");
     let list = |v: &[f32]| {
@@ -352,6 +352,8 @@ fn shader_source() -> String {
         f("RAW_WHITE", RAW_WHITE),
         f("SOFT_CLIP_KNEE", SOFT_CLIP_KNEE),
         f("SHADOW_HIGHLIGHT_GAIN", SHADOW_HIGHLIGHT_GAIN),
+        f("WHITES_GAIN", WHITES_GAIN),
+        f("BLACKS_GAIN", BLACKS_GAIN),
         f("CLARITY_GAIN", CLARITY_GAIN),
         f("CONTRAST_MIX", CONTRAST_MIX),
         f("DEHAZE_GAIN", DEHAZE_GAIN),
@@ -838,8 +840,9 @@ impl<'a> Ctx<'a> {
             u.flags |= F_DETAIL;
             b.fc = Some(detail);
         }
-        u.black = -t.blacks * 0.12;
-        u.white = 1.0 - t.whites * 0.15;
+        // Feldnamen historisch: tragen die Reglerwerte Schwarz/Weiß (−1…1)
+        u.black = t.blacks;
+        u.white = t.whites;
         u.shadows = t.shadows;
         u.highlights = t.highlights;
         u.contrast = t.contrast;
