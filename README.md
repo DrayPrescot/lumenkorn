@@ -50,6 +50,9 @@ the system language; **DE / EN** at the bottom left of the sidebar switches it.
 - HSL for eight color ranges, with an eyedropper that adjusts the color you click on.
 - Color grading with wheels for shadows, midtones, highlights and the whole image, plus
   blending and balance, as in Lightroom.
+- Lens correction for RAW files (on by default): distortion, color fringes and vignetting,
+  from the correction data the camera writes into the file (Sony ARW, DNG) or from a
+  [Lensfun](https://lensfun.github.io/) profile for about 1,500 lenses.
 - Crop, rotate, flip, and straighten with automatic horizon detection.
 - Local adjustments: linear and radial gradients, brush, color range, and AI masks for
   subject, sky and any object you click on. Shapes can be added to or subtracted from each
@@ -181,6 +184,7 @@ The pipeline runs in a fixed order:
 
 | Step | Works on |
 |---|---|
+| Lens correction (RAW only) | linear, before everything else |
 | White balance, exposure | linear scene light |
 | Base tone curve (RAW only) | scene light → display |
 | Dehaze | display-referred values |
@@ -371,6 +375,7 @@ Lumenkorn would not exist without the following projects. Thank you to everyone 
 | [flate2](https://github.com/rust-lang/flate2-rs), [tar](https://github.com/composefs/tar-rs), [zip](https://github.com/zip-rs/zip2) | unpacking runtime downloads | MIT or Apache-2.0 / MIT |
 | [half](https://github.com/VoidStarKat/half-rs), [bytemuck](https://github.com/Lokathor/bytemuck), [pollster](https://github.com/zesterer/pollster) | 16-bit floats, GPU buffers | MIT or Apache-2.0 |
 | [regex](https://github.com/rust-lang/regex), [log](https://github.com/rust-lang/log), [env_logger](https://github.com/rust-cli/env_logger), [thiserror](https://github.com/dtolnay/thiserror), [libloading](https://github.com/nagisa/rust_libloading) | text processing, logging, errors, loading DLLs | MIT or Apache-2.0 / ISC |
+| [Lensfun](https://github.com/lensfun/lensfun) database (bundled, converted to JSON by `tools/lensfun_db.py`) | lens profiles for lens correction | CC BY-SA 3.0 |
 | [Instrument Sans](https://github.com/Instrument/instrument-sans) via [Fontsource](https://fontsource.org) | interface font | OFL-1.1 |
 
 ### AI models (downloaded on demand, not shipped with the app)
@@ -394,6 +399,12 @@ license only allows non-commercial use.
 - Markesteijn demosaicing for X-Trans (Frank Markesteijn).
 - Oklab and Oklch color spaces (Björn Ottosson) for HSL, color ranges and color grading.
 - Dark channel prior (Kaiming He et al.) as the basis of dehaze.
+- Lens models: Lensfun/Hugin distortion (poly3, poly5, ptlens), TCA and vignetting (pa) models,
+  the DNG opcodes WarpRectilinear and FixVignetteRadial (Adobe DNG specification), and the
+  meaning of Sony's embedded correction tags as worked out by
+  [darktable](https://github.com/darktable-org/darktable) and
+  [RawTherapee](https://github.com/Beep6581/RawTherapee). Lumenkorn implements all of them
+  itself; no code from these projects is included.
 - Harris corners, BRIEF descriptors, RANSAC and Hartley normalization for alignment.
 - Laplacian pyramids (Burt and Adelson) for focus stacking.
 
@@ -425,4 +436,5 @@ inclusion in this project is dual-licensed in the same way, without any addition
 rawler is licensed under the LGPL-2.1, and release builds link it statically. To use a modified
 rawler, change the `rawler` dependency in `crates/lumenkorn-develop/Cargo.toml` and build from
 source as described above. The AI models are not part of Lumenkorn; each keeps the license
-listed above.
+listed above. The bundled Lensfun database (`crates/lumenkorn-develop/data/lensfun.json.gz`)
+is licensed under CC BY-SA 3.0 (`crates/lumenkorn-develop/data/LICENSE-lensfun-db.txt`).

@@ -101,9 +101,16 @@ impl Default for RenderOptions<'_> {
     }
 }
 
-/// Wendet Rauschreduzierung und Reparaturen auf das lineare Quellbild an –
-/// die Stufen vor dem Weißabgleich.
-fn prepare_source(img: &mut ImageF32, p: &DevelopParams, opts: &RenderOptions) {
+/// Wendet Rauschreduzierung, Objektivkorrektur und Reparaturen auf das
+/// lineare Quellbild an – die Stufen vor dem Weißabgleich. Reparaturen, die
+/// auf dem korrigierten Bild berechnet wurden, kommen nach der Korrektur,
+/// ältere (aus dem Original) davor.
+fn prepare_source(
+    img: &mut ImageF32,
+    p: &DevelopParams,
+    opts: &RenderOptions,
+    lens: Option<&crate::lens::LensProfile>,
+) {
     let (w, h) = (img.width, img.height);
     if let (Some(d), Some(dn)) = (&p.denoise, opts.denoised) {
         if dn.width == w && dn.height == h {
@@ -124,15 +131,36 @@ fn prepare_source(img: &mut ImageF32, p: &DevelopParams, opts: &RenderOptions) {
             );
         }
     }
-    for r in p.repairs.iter().filter(|r| r.enabled) {
-        if let Some(patch) = r.result.as_deref().and_then(|id| opts.repairs.get(id)) {
-            patch.apply(img);
+    let repair = |img: &mut ImageF32, corrected: bool| {
+        for r in p
+            .repairs
+            .iter()
+            .filter(|r| r.enabled && (lens.is_none() || r.lens == corrected))
+        {
+            if let Some(patch) = r.result.as_deref().and_then(|id| opts.repairs.get(id)) {
+                patch.apply(img);
+            }
         }
+    };
+    repair(img, false);
+    if let Some(l) = lens {
+        *img = l.apply(img);
+        repair(img, true);
     }
+}
+
+/// Objektivkorrektur, die für dieses Bild gilt (eingeschaltet und Daten da).
+fn lens_of<'a>(src: &'a Source, p: &DevelopParams) -> Option<&'a crate::lens::LensProfile> {
+    p.lens_correction.then_some(src.lens.as_deref()).flatten()
 }
 
 fn has_repairs(p: &DevelopParams) -> bool {
     p.repairs.iter().any(|r| r.enabled && r.result.is_some())
+}
+
+/// Braucht das Bild eine vorbereitete (zwischengespeicherte) Quelle?
+fn needs_prepared(src: &Source, p: &DevelopParams) -> bool {
+    has_repairs(p) || lens_of(src, p).is_some()
 }
 
 /// Für GPU und CPU: Quellbild mit bereits eingesetzten Reparaturen (und
@@ -178,9 +206,10 @@ fn repaired_source(src: &Source, p: &DevelopParams, opts: &RenderOptions) -> (Ar
         crate::gpu::image_key(&src.image, 0),
         opts.denoised.map(|d| crate::gpu::image_key(d, 0)),
         format!(
-            "{:?}|{}",
+            "{:?}|{}|{}",
             p.denoise.as_ref().map(|d| d.amount),
-            ids.join(",")
+            ids.join(","),
+            lens_of(src, p).is_some()
         ),
     );
     {
@@ -195,7 +224,7 @@ fn repaired_source(src: &Source, p: &DevelopParams, opts: &RenderOptions) -> (Ar
     // Ohne Sperre rechnen: `prepare_source` arbeitet parallel (rayon), und
     // parallele Arbeit unter einer Sperre kann sich verklemmen.
     let mut out = src.clone();
-    prepare_source(&mut out.image, p, opts);
+    prepare_source(&mut out.image, p, opts, lens_of(src, p));
     let out = Arc::new(out);
     let id = REPAIRED_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut c = REPAIRED.lock().unwrap_or_else(|e| e.into_inner());
@@ -212,8 +241,9 @@ pub fn render(src: &Source, params: &DevelopParams) -> ImageF32 {
 
 /// Versucht, auf der GPU zu entwickeln (falls eingeschaltet und das Bild
 /// passt); `None` heißt: auf der CPU rechnen.
-/// Mit Reparaturen bekommt die GPU die zwischengespeicherte reparierte Quelle
-/// und Parameter ohne Entrauschen/Reparaturen – beides steckt schon darin.
+/// Mit Reparaturen oder Objektivkorrektur bekommt die GPU die zwischengespeicherte
+/// vorbereitete Quelle und Parameter ohne Entrauschen/Reparaturen – alles steckt
+/// schon darin.
 fn try_gpu(
     src: &Source,
     params: &DevelopParams,
@@ -223,7 +253,7 @@ fn try_gpu(
     let g = crate::gpu::active().filter(|g| g.fits(src.image.width * src.image.height))?;
     let original = &src.image;
     let p = params.sanitized();
-    let result = if has_repairs(&p) {
+    let result = if needs_prepared(src, &p) {
         let (prepared, ident) = repaired_source(src, &p, opts);
         let local = RenderOptions {
             denoised: None,
@@ -266,16 +296,16 @@ pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -
     let p = params.sanitized();
     let raw = src.kind == SourceKind::Raw;
 
-    // --- Rauschreduzierung und Reparaturen (lineares Quellbild) -------------
-    // Mit Reparaturen aus demselben Zwischenspeicher wie die GPU: Flicken
-    // einsetzen kostet bei jedem Rendern (Reglerzug) sonst erneut, obwohl
-    // sich an der reparierten Quelle nichts ändert.
-    let repaired = has_repairs(&p).then(|| repaired_source(src, &p, opts).0);
+    // --- Rauschreduzierung, Objektivkorrektur, Reparaturen (linear) ----------
+    // Mit Reparaturen oder Objektivkorrektur aus demselben Zwischenspeicher wie
+    // die GPU: Entzerren und Flicken einsetzen kostet sonst bei jedem Rendern
+    // (Reglerzug) erneut, obwohl sich an der vorbereiteten Quelle nichts ändert.
+    let repaired = needs_prepared(src, &p).then(|| repaired_source(src, &p, opts).0);
     let mut img = match &repaired {
         Some(r) => r.image.clone(),
         None => {
             let mut img = src.image.clone();
-            prepare_source(&mut img, &p, opts);
+            prepare_source(&mut img, &p, opts, None);
             img
         }
     };
@@ -1004,6 +1034,7 @@ mod tests {
             },
             full_width: w,
             full_height: h,
+            lens: None,
         }
     }
 
@@ -1283,6 +1314,7 @@ mod tests {
             },
             full_width: 2,
             full_height: 1,
+            lens: None,
         };
         let out = render(&src, &DevelopParams::default());
         let mid = out.data[0][1];

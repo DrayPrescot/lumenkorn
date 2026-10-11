@@ -56,6 +56,9 @@ pub struct DevelopParams {
     pub straighten: f32,
     /// Zuschnitt in normierten Koordinaten des gedrehten Bildes
     pub crop: Option<Crop>,
+    /// Objektivkorrektur (Verzeichnung, Farbsäume, Vignettierung) aus den
+    /// Daten der Kamera, sofern das RAW welche enthält. Standard: an.
+    pub lens_correction: bool,
 
     /// Lokale Anpassungen, in Reihenfolge angewendet.
     pub masks: Vec<MaskLayer>,
@@ -257,6 +260,9 @@ pub struct RepairLayer {
     pub result: Option<String>,
     /// Fingerabdruck der Auswahl beim Berechnen (Oberfläche erkennt Änderungen)
     pub result_key: Option<String>,
+    /// Der Flicken wurde auf dem objektivkorrigierten Bild berechnet (und wird
+    /// danach eingesetzt); ältere Flicken stammen aus dem Original.
+    pub lens: bool,
 }
 
 impl RepairLayer {
@@ -566,6 +572,7 @@ impl Default for DevelopParams {
             flip_horizontal: false,
             straighten: 0.0,
             crop: None,
+            lens_correction: true,
             masks: vec![],
             denoise: None,
             repairs: vec![],
@@ -612,6 +619,7 @@ impl DevelopParams {
             flip_horizontal: self.flip_horizontal,
             straighten: c(self.straighten, -45.0, 45.0),
             crop,
+            lens_correction: self.lens_correction,
             denoise: self.denoise.as_ref().and_then(|d| {
                 let ok = crate::repair::valid_id(&d.id);
                 let amount = if d.amount.is_finite() {
@@ -647,6 +655,7 @@ impl DevelopParams {
                     shapes: r.shapes.iter().filter_map(MaskShape::sanitized).collect(),
                     result: r.result.clone().filter(|id| crate::repair::valid_id(id)),
                     result_key: r.result_key.clone(),
+                    lens: r.lens,
                 })
                 .collect(),
         }
@@ -731,9 +740,18 @@ impl DevelopParams {
 
     /// Liest Parameter aus JSON; unbekannte oder fehlende Felder sind kein Fehler.
     pub fn from_json(v: &serde_json::Value) -> Self {
-        serde_json::from_value::<DevelopParams>(v.clone())
-            .unwrap_or_default()
-            .sanitized()
+        let mut p = serde_json::from_value::<DevelopParams>(v.clone()).unwrap_or_default();
+        // Bearbeitungen von vor der Objektivkorrektur: Pinselstriche und
+        // KI-Masken wurden auf dem unkorrigierten Bild gezeichnet und würden
+        // zum Rand hin verrutschen – dort bleibt sie aus, sonst ist sie an.
+        if v.is_object() && v.get("lensCorrection").is_none() {
+            p.lens_correction = !p.masks.iter().any(|m| {
+                m.shapes
+                    .iter()
+                    .any(|s| matches!(s, MaskShape::Brush { .. } | MaskShape::Raster { .. }))
+            });
+        }
+        p.sanitized()
     }
 }
 
@@ -828,6 +846,25 @@ mod tests {
         let old: TransferGroups =
             serde_json::from_value(serde_json::json!({ "basic": true })).unwrap();
         assert_eq!(dst.transfer_from(&src, old).exposure, 1.0);
+    }
+
+    #[test]
+    fn lens_correction_is_on_except_for_old_edits_with_drawn_masks() {
+        assert!(DevelopParams::default().lens_correction);
+        assert!(DevelopParams::from_json(&serde_json::json!({ "exposure": 0.5 })).lens_correction);
+        let brush = serde_json::json!({
+            "masks": [{ "id": "a", "shapes": [{ "type": "brush", "strokes": [{ "points": [[0.5, 0.5]], "radius": 0.05, "feather": 0.5, "opacity": 1.0, "erase": false }] }] }]
+        });
+        assert!(
+            !DevelopParams::from_json(&brush).lens_correction,
+            "alte Pinselmaske"
+        );
+        let mut with_field = brush.clone();
+        with_field["lensCorrection"] = serde_json::json!(true);
+        assert!(
+            DevelopParams::from_json(&with_field).lens_correction,
+            "gespeicherte Wahl gilt"
+        );
     }
 
     #[test]

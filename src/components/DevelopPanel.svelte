@@ -10,7 +10,7 @@
   import Icon from "./Icon.svelte";
   import Slider from "./Slider.svelte";
   import { frameSize } from "../lib/frame";
-  import { api } from "../lib/api";
+  import { api, type LensSource } from "../lib/api";
   import { untrack } from "svelte";
   import { t, locale } from "../lib/i18n";
 
@@ -110,6 +110,22 @@
     );
     if (ok) dev.reset();
   }
+
+  // Was die Objektivkorrektur bei diesem Foto kann, und woher die Daten stammen
+  const lensLines = $derived.by(() => {
+    const l = dev.lensInfo;
+    if (!l) return [dev.raw ? t("Für dieses RAW gibt es weder Korrekturdaten der Kamera noch ein Lensfun-Profil.") : t("Nur für RAWs – JPEGs hat die Kamera schon selbst korrigiert.")];
+    const label = { sony: t("Kameradaten (Sony)"), dng: t("Daten der DNG-Datei"), lensfun: "Lensfun" } as const;
+    const parts: [string, LensSource | null][] = [[t("Verzeichnung"), l.distortion], [t("Farbsäume"), l.chromatic], [t("Vignettierung"), l.vignetting]];
+    const lines: string[] = [];
+    for (const src of ["sony", "dng", "lensfun"] as const) {
+      const what = parts.filter(([, s]) => s === src).map(([n]) => n);
+      const line = `${what.join(", ")}: ${label[src]}`;
+      if (what.length) lines.push(line.charAt(0).toUpperCase() + line.slice(1));
+    }
+    if (l.lens) lines.push(l.lens);
+    return lines;
+  });
 
   function setTab(tab: Tab) {
     if (tab === dev.tab) return;
@@ -226,6 +242,15 @@
     <!-- HSL nach Details und Rauschreduzierung: seltener gebraucht -->
     <HslSection />
     <ColorGradeSection />
+
+    <details open>
+      <summary tabindex="-1">{t("Objektiv")}</summary>
+      <label class="check" class:off={!dev.lensInfo}>
+        <input type="checkbox" checked={dev.params.lensCorrection} disabled={!dev.lensInfo} onchange={(e) => dev.setLens(e.currentTarget.checked)} />
+        {t("Objektivkorrektur")}
+      </label>
+      {#each lensLines as line, i (i)}<p class="meta" class:tight={i > 0}>{line}</p>{/each}
+    </details>
 
     <details>
       <summary>{t("Schnappschüsse")} {dev.snapshots.length ? `(${dev.snapshots.length})` : ""}</summary>
@@ -415,6 +440,21 @@
   }
   .reset {
     border-bottom: 0;
+  }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .check input {
+    accent-color: var(--accent);
+  }
+  .check.off {
+    color: var(--faint);
+  }
+  .meta.tight {
+    margin-top: 2px;
   }
   .reset .wide {
     margin-top: 0;

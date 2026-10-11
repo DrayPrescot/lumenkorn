@@ -37,6 +37,7 @@ fn source(kind: SourceKind, w: usize, h: usize) -> Source {
         kind,
         full_width: w,
         full_height: h,
+        lens: None,
         image,
     }
 }
@@ -546,4 +547,62 @@ fn repairs_match_on_gpu() {
         .fold(0f32, f32::max);
     assert!(max < 1e-3, "GPU weicht ab: {max}");
     gpu::set_enabled(false);
+}
+
+/// Objektivkorrektur: GPU (vorbereitete Quelle) und CPU liefern dasselbe,
+/// ausgeschaltet wirkt sie nicht.
+#[test]
+fn lens_correction_matches_on_gpu() {
+    use lumenkorn_develop::{LensProfile, render_auto};
+    let dist = [
+        11, 4, 0, -13, -29, -53, -81, -117, -156, -204, -254, -312, 0, 0, 0, 0, 0,
+    ];
+    let ca = [
+        22, 640, 640, 640, 512, 512, 512, 384, 384, 384, 384, 256, 0, -128, -128, -128, 0, 0, 128,
+        256, 256, 128, -256, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let vig = [
+        11, 0, 5, 32, 70, 119, 178, 244, 300, 390, 545, 800, 0, 0, 0, 0, 0,
+    ];
+    let mut src = source(SourceKind::Raw, 301, 203);
+    let plain = render_with(&src, &DevelopParams::default(), &RenderOptions::default());
+    src.lens = Some(Arc::new(LensProfile::from_sony(&dist, &ca, &vig).unwrap()));
+    let params = DevelopParams {
+        contrast: 20.0,
+        ..Default::default()
+    };
+    let opts = RenderOptions::default();
+    let cpu = render_with(&src, &params, &opts);
+    let off = render_with(
+        &src,
+        &DevelopParams {
+            lens_correction: false,
+            ..Default::default()
+        },
+        &opts,
+    );
+    assert!(off.data == plain.data, "ausgeschaltet unverändert");
+    assert!(
+        cpu.data
+            != render_with(
+                &src,
+                &DevelopParams {
+                    lens_correction: false,
+                    ..params.clone()
+                },
+                &opts
+            )
+            .data
+    );
+    let Some(_) = gpu_or_skip() else { return };
+    gpu::set_enabled(true);
+    let g = render_auto(&src, &params, &opts);
+    gpu::set_enabled(false);
+    let max = cpu
+        .data
+        .iter()
+        .zip(&g.data)
+        .flat_map(|(a, b)| (0..3).map(move |k| (a[k] - b[k]).abs()))
+        .fold(0f32, f32::max);
+    assert!(max < 1e-3, "GPU weicht ab: {max}");
 }

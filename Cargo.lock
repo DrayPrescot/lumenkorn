@@ -2828,6 +2828,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "exr",
+ "flate2",
  "half",
  "image",
  "jpeg-encoder",

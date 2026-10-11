@@ -102,6 +102,15 @@ Der Reiter **Basis** enthält von oben nach unten:
   setzt Farbton und Sättigung, Doppelklick setzt ein Rad zurück. Dazu Luminanz je Bereich,
   Überblenden und Abgleich. Die Tönung macht nichts heller oder dunkler, Schwarz und Weiß bleiben
   neutral.
+- **Objektiv:** Die **Objektivkorrektur** ist für RAWs standardmäßig an und entfernt
+  Verzeichnung, Farbsäume und Vignettierung. Die Daten kommen aus dem RAW selbst (Sony
+  schreibt sie in jedes ARW, DNG-Dateien enthalten sie oft) oder aus der
+  [Lensfun](https://lensfun.github.io/)-Datenbank mit rund 1 500 Objektiven. Verzeichnung und
+  Farbsäume nimmt Lumenkorn bevorzugt aus der Kamera, weil sie genau für Brennweite und Fokus
+  der Aufnahme gelten; die Vignettierung bevorzugt aus Lensfun, weil Sony sie mit seinen Daten
+  nur teilweise ausgleicht. Unter dem Schalter steht, woher die Daten kommen. Damit keine
+  leeren Ränder entstehen, wird minimal vergrößert. Bearbeitungen von vor dieser Funktion, die
+  Pinsel- oder KI-Masken enthalten, bleiben ohne Korrektur, damit die Masken nicht verrutschen.
 - **Schnappschüsse** halten einen Stand fest, zu dem man später zurückkehren kann.
 - **Auf Original zurücksetzen …** ganz unten verwirft nach einer Rückfrage alle Bearbeitungen des
   Fotos: Regler, Masken, Reparaturen, Rauschreduzierung und Zuschnitt. Schnappschüsse bleiben,
@@ -340,6 +349,7 @@ Die Reihenfolge ist fest:
 |---|---|
 | Weißabgleich, Belichtung | linear, szenenbezogen |
 | Basiskurve (nur RAW) | Szene → Anzeige |
+| Objektivkorrektur (nur RAW) | linear, vor allem anderen |
 | Dunst entfernen | anzeigebezogen |
 | Weiß/Schwarz, Lichter/Tiefen, Kontrast, Klarheit | Helligkeit |
 | Dynamik, Sättigung, HSL, Color Grading | Farbe (HSL in Oklch) |
@@ -445,6 +455,7 @@ Lumenkorn baut auf der Arbeit vieler anderer auf. Danke an alle, die diese Proje
 [half](https://github.com/VoidStarKat/half-rs), [bytemuck](https://github.com/Lokathor/bytemuck) und [pollster](https://github.com/zesterer/pollster) (MIT/Apache-2.0),
 [regex](https://github.com/rust-lang/regex), [log](https://github.com/rust-lang/log), [env_logger](https://github.com/rust-cli/env_logger), [thiserror](https://github.com/dtolnay/thiserror) (MIT/Apache-2.0),
 [libloading](https://github.com/nagisa/rust_libloading) (ISC),
+die [Lensfun](https://github.com/lensfun/lensfun)-Datenbank für die Objektivkorrektur (CC BY-SA 3.0, als JSON mitgeliefert, erzeugt mit `tools/lensfun_db.py`),
 die Schrift [Instrument Sans](https://github.com/Instrument/instrument-sans) über [Fontsource](https://fontsource.org) (OFL-1.1).
 
 **Zur Laufzeit geladen (nicht mitgeliefert):**
@@ -461,7 +472,7 @@ die Schrift [Instrument Sans](https://github.com/Instrument/instrument-sans) üb
 | YuNet | Shiqi Yu u. a. | OpenCV Model Zoo | MIT |
 | SFace | Yaoyao Zhong u. a. | OpenCV Model Zoo | Apache-2.0 |
 
-**Veröffentlichte Verfahren, die Lumenkorn umsetzt:** RCD-Demosaicing (Luis Sanz Rodríguez),
+**Veröffentlichte Verfahren, die Lumenkorn umsetzt:** die Objektivmodelle von Lensfun/Hugin, die DNG-Opcodes WarpRectilinear und FixVignetteRadial, die Bedeutung der Sony-Korrekturdaten nach den Vorarbeiten von [darktable](https://github.com/darktable-org/darktable) und [RawTherapee](https://github.com/Beep6581/RawTherapee) (ohne deren Code), RCD-Demosaicing (Luis Sanz Rodríguez),
 Markesteijn-Demosaicing für X-Trans (Frank Markesteijn), Oklab/Oklch (Björn Ottosson), Dark Channel
 Prior (Kaiming He u. a.) als Grundlage für „Dunst entfernen“, Harris-Ecken, BRIEF, RANSAC und
 Hartley-Normierung zum Ausrichten, Laplace-Pyramiden (Burt und Adelson) für Focus Stacking.
@@ -571,7 +582,8 @@ npm run tauri android dev
 ## Lizenz
 
 Lumenkorn steht wahlweise unter der MIT- oder der Apache-2.0-Lizenz (`LICENSE-MIT`,
-`LICENSE-APACHE`). rawler steht unter der LGPL-2.1 und wird in den Installern statisch gelinkt; wer
+`LICENSE-APACHE`). Die mitgelieferte Lensfun-Datenbank steht unter CC BY-SA 3.0
+(`crates/lumenkorn-develop/data/LICENSE-lensfun-db.txt`). rawler steht unter der LGPL-2.1 und wird in den Installern statisch gelinkt; wer
 eine geänderte Fassung nutzen will, ändert die Abhängigkeit `rawler` in
 `crates/lumenkorn-develop/Cargo.toml` und baut selbst. Die KI-Modelle gehören nicht zu Lumenkorn und
 behalten ihre oben genannten Lizenzen.

@@ -92,6 +92,7 @@ fn main() {
             image: img.clone(),
             full_width: w,
             full_height: h,
+            lens: None,
         };
         let out: ImageF32 = render(&src, &params);
         let mut canvas = image::RgbImage::new(CW as u32, CH as u32);

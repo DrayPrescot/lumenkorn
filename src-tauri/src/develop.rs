@@ -247,6 +247,8 @@ pub struct DevelopInfo {
     full_height: usize,
     raw: bool,
     snapshots: Vec<Edit>,
+    /// Korrekturdaten der Kamera, falls das RAW welche enthält
+    lens: Option<lumenkorn_develop::LensSummary>,
 }
 
 /// Lädt das Bild in den Bearbeitungs-Cache und liefert die aktuelle Bearbeitung.
@@ -261,6 +263,7 @@ pub async fn develop_load(app: AppHandle, id: i64) -> Result<DevelopInfo, Error>
             full_height: src.full_height,
             raw: src.kind == lumenkorn_develop::SourceKind::Raw,
             snapshots: snapshots(&cat, id)?,
+            lens: src.lens.as_ref().map(|l| l.summary()),
         })
     })
     .await
@@ -390,12 +393,24 @@ pub async fn develop_detect_tilt(
         let p = DevelopParams {
             rotate,
             flip_horizontal: flip,
+            lens_correction: lens_setting(state, id),
             ..Default::default()
         };
         let img = lumenkorn_develop::render(&src, &p);
         Ok(lumenkorn_develop::geometry::detect_tilt(&img))
     })
     .await
+}
+
+/// Ob für das Foto die Objektivkorrektur eingeschaltet ist (gespeicherter
+/// Stand; die Oberfläche speichert Änderungen sofort).
+pub(crate) fn lens_setting(state: &AppState, id: i64) -> bool {
+    state
+        .catalog
+        .lock()
+        .unwrap()
+        .develop_params(id)
+        .map_or(true, |p| p.lens_correction)
 }
 
 /// Gespeicherte Einstellungen eines Fotos – zum Kopieren, ohne es zu laden.

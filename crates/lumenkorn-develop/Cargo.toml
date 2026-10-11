@@ -10,6 +10,8 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# Mitgelieferte Lensfun-Datenbank (gzip)
+flate2 = "1.1.10"
 bytemuck = { version = "1.25.2", features = ["derive"] }
 half = "2"
 # Ergebnisse von HDR, Panorama und Focus Stacking: lineares OpenEXR (Halbgleitkomma)

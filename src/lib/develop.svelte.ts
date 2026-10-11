@@ -15,6 +15,7 @@ import {
   type LocalAdjust,
   type MaskLayer,
   type MaskShape,
+  type LensSummary,
   type Preset,
   type PromptPoint,
   type RepairLayer,
@@ -65,6 +66,8 @@ class Develop {
   imageId = $state<number | null>(null);
   params = $state<DevelopParams>(clone(DEFAULT_PARAMS));
   raw = $state(false);
+  /** Korrekturdaten der Kamera für das geöffnete Foto */
+  lensInfo = $state<LensSummary | null>(null);
   fullSize = $state<[number, number]>([0, 0]);
   snapshots = $state<Edit[]>([]);
 
@@ -248,6 +251,7 @@ class Develop {
       this.#setCommitted(clone(p));
       this.#saved = clone(p);
       this.raw = info.raw;
+      this.lensInfo = info.lens ?? null;
       this.fullSize = [info.fullWidth, info.fullHeight];
       this.snapshots = info.snapshots;
       await this.renderNow();
@@ -769,12 +773,15 @@ class Develop {
     this.repairing = { index, done: 0, total: 0 };
     const shapes = $state.snapshot(r.shapes) as MaskShape[];
     try {
-      const result = await api.repairCompute(id, shapes, $state.snapshot(this.params.denoise) as DevelopParams["denoise"]);
+      // Auf dem Bild, wie es angezeigt wird (mit oder ohne Objektivkorrektur)
+      const lens = this.params.lensCorrection && !!this.lensInfo;
+      const result = await api.repairCompute(id, shapes, $state.snapshot(this.params.denoise) as DevelopParams["denoise"], lens);
       if (this.imageId !== id) return;
       const cur = this.params.repairs.find((x) => x.id === r.id);
       if (!cur) return;
       cur.result = result;
       cur.resultKey = this.repairKey(shapes);
+      cur.lens = lens;
       cur.enabled = true;
       this.showOverlay = false;
       this.schedule();
@@ -877,6 +884,16 @@ class Develop {
       lib.images = lib.images.map((i) => (set.has(i.id) ? { ...i, edited: true } : i));
     }
     return true;
+  }
+
+  /** Objektivkorrektur ein/aus – sofort gespeichert, weil KI-Masken und
+   *  Geraderichten im Backend den gespeicherten Stand nutzen. */
+  setLens(on: boolean) {
+    if (this.params.lensCorrection === on) return;
+    this.params.lensCorrection = on;
+    this.schedule();
+    this.commit();
+    this.flush();
   }
 
   // --- Presets ---------------------------------------------------------------

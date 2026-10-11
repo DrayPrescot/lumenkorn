@@ -24,6 +24,8 @@ pub struct Source {
     /// Abmessungen in voller Auflösung (nach Orientierung).
     pub full_width: usize,
     pub full_height: usize,
+    /// Objektivkorrektur aus den Daten der Kamera (nur RAWs, falls vorhanden)
+    pub lens: Option<std::sync::Arc<crate::lens::LensProfile>>,
 }
 
 impl Source {
@@ -55,11 +57,13 @@ impl Source {
                 image: apply_exif_orientation(img, o),
                 full_width,
                 full_height,
+                lens: None,
             });
         }
         // Volle Abmessungen (vor Verkleinerung); Rasterbilder setzen sie
         // selbst, weil sehr große schon beim Linearisieren verkleinert werden.
         let mut full = None;
+        let mut lens = None;
         let (kind, image) = if crate::exr_io::is_exr(path) {
             let (img, scene) = crate::exr_io::read(path)?;
             let kind = if scene {
@@ -71,6 +75,8 @@ impl Source {
         } else if raw {
             let (img, raw_orientation) = decode_raw(path)?;
             let o = orientation.unwrap_or(raw_orientation);
+            lens =
+                crate::lens::LensProfile::read(path, o, img_size(&img, o)).map(std::sync::Arc::new);
             (SourceKind::Raw, apply_exif_orientation(img, o))
         } else {
             let img = crate::raster::open(path)?;
@@ -90,6 +96,7 @@ impl Source {
             image,
             full_width,
             full_height,
+            lens,
         })
     }
 
@@ -102,7 +109,17 @@ impl Source {
             image: self.image.downscale_to(max_edge),
             full_width: self.full_width,
             full_height: self.full_height,
+            lens: self.lens.clone(),
         }
+    }
+}
+
+/// Größe nach dem Aufrichten
+fn img_size(img: &ImageF32, o: u16) -> (usize, usize) {
+    if (5..=8).contains(&o) {
+        (img.height, img.width)
+    } else {
+        (img.width, img.height)
     }
 }
 

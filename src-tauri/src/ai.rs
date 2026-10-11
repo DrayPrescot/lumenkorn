@@ -880,7 +880,13 @@ pub struct MaskResult {
 /// (Masken beziehen sich auf das aufrechte Original, nicht auf Drehung/Zuschnitt).
 fn segmentation_input(state: &AppState, id: i64) -> Result<image::DynamicImage, Error> {
     let src = crate::develop::load_proxy(state, id, segment::MASK_EDGE as usize)?;
-    let img = lumenkorn_develop::render(&src, &DevelopParams::default());
+    // Masken entstehen auf dem Bild, wie es angezeigt wird – mit oder ohne
+    // Objektivkorrektur
+    let p = DevelopParams {
+        lens_correction: crate::develop::lens_setting(state, id),
+        ..Default::default()
+    };
+    let img = lumenkorn_develop::render(&src, &p);
     Ok(image::DynamicImage::ImageRgb8(
         lumenkorn_develop::output::to_rgb8(&img),
     ))

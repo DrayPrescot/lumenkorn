@@ -178,4 +178,12 @@ export default {
   "Klick: umbenennen": "Click: rename",
   "Noch keine Presets. Rechtsklick auf ein bearbeitetes Foto → Preset anwenden → Neues Preset aus diesem Foto.": "No presets yet. Right-click an edited photo → Apply preset → New preset from this photo.",
   "Dieses Foto ist unbearbeitet – es gibt nichts für ein Preset.": "This photo is unedited – there is nothing to save as a preset.",
+  "Nur für RAWs – JPEGs hat die Kamera schon selbst korrigiert.": "RAW files only – the camera has already corrected its JPEGs.",
+  "Verzeichnung": "distortion",
+  "Farbsäume": "color fringes",
+  "Vignettierung": "vignetting",
+  "Objektivkorrektur": "Lens correction",
+  "Für dieses RAW gibt es weder Korrekturdaten der Kamera noch ein Lensfun-Profil.": "There is neither correction data from the camera nor a Lensfun profile for this RAW.",
+  "Kameradaten (Sony)": "camera data (Sony)",
+  "Daten der DNG-Datei": "data in the DNG file",
 } satisfies Record<string, string>;

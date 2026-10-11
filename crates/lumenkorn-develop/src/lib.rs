@@ -32,6 +32,8 @@ pub mod geometry;
 pub mod gpu;
 pub mod i18n;
 mod image_f32;
+pub mod lens;
+pub mod lensfun;
 mod local;
 pub mod masks;
 pub mod merge;
@@ -65,6 +67,7 @@ pub fn release_large_caches() {
     gpu::trim_large();
 }
 pub use image_f32::ImageF32;
+pub use lens::{LensProfile, LensSummary};
 pub use masks::{GrayMask, MaskSource, NoMasks};
 pub use params::{
     ColorGrade, ColorSample, Crop, DenoiseRef, DevelopParams, GradeWheel, HSL_BANDS, Hsl,

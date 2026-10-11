@@ -227,6 +227,13 @@ const MIGRATIONS: &[&str] = &[
         created_at  INTEGER NOT NULL
     );
     "#,
+    // v13: Objektivkorrektur aus den RAW-Daten (standardmäßig an) – die
+    // Vorschaubilder bearbeiteter RAWs neu erzeugen.
+    r#"
+    UPDATE images SET thumb_state = 0
+    WHERE kind = 'raw'
+      AND id IN (SELECT image_id FROM edits WHERE is_current = 1);
+    "#,
 ];
 
 /// v11: Der Suchtext eines Fotos wurde bisher bei jeder einzelnen

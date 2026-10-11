@@ -54,6 +54,7 @@ fn main() {
             image: img.clone(),
             full_width: img.width,
             full_height: img.height,
+            lens: None,
         };
         render(&s, &params)
     };

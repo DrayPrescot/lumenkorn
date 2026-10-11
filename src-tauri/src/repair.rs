@@ -67,6 +67,7 @@ pub async fn repair_compute(
     image_id: i64,
     shapes: Vec<MaskShape>,
     denoise: Option<DenoiseRef>,
+    lens: Option<bool>,
 ) -> Result<String, Error> {
     // Fortschritt wird über `app` gemeldet
     let events = app.clone();
@@ -82,7 +83,14 @@ pub async fn repair_compute(
             ));
         };
         state.repair.cancel.store(false, Ordering::SeqCst);
-        compute(&events, state, image_id, shapes, denoise)
+        compute(
+            &events,
+            state,
+            image_id,
+            shapes,
+            denoise,
+            lens.unwrap_or(false),
+        )
     })
     .await
 }
@@ -93,6 +101,7 @@ fn compute(
     image_id: i64,
     shapes: Vec<MaskShape>,
     denoise: Option<DenoiseRef>,
+    lens: bool,
 ) -> Result<String, Error> {
     let model = inpainter(state)?;
     let job = state.catalog.lock().unwrap().thumb_job(image_id)?;
@@ -116,6 +125,11 @@ fn compute(
                 o[k] += (n[k] - o[k]) * a;
             }
         }
+    }
+    // Auf dem objektivkorrigierten Bild, wie es angezeigt wird (die Pipeline
+    // setzt solche Flicken nach der Korrektur ein)
+    if lens && let Some(l) = &src.lens {
+        src.image = l.apply(&src.image);
     }
     let (w, h) = (src.image.width, src.image.height);
     let layer = MaskLayer {

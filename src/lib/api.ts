@@ -194,6 +194,8 @@ export interface DevelopParams {
   /** Geraderichten in Grad, im Uhrzeigersinn positiv */
   straighten: number;
   crop: { x: number; y: number; w: number; h: number } | null;
+  /** Objektivkorrektur aus den Daten der Kamera (falls das RAW welche enthält) */
+  lensCorrection: boolean;
   masks: MaskLayer[];
   /** KI-Rauschreduzierung: Verweis auf die zwischengespeicherte Fassung */
   denoise: { id: string; amount: number } | null;
@@ -376,6 +378,8 @@ export interface RepairLayer {
   result: string | null;
   /** Fingerabdruck der Auswahl beim Berechnen */
   resultKey: string | null;
+  /** Flicken auf dem objektivkorrigierten Bild berechnet */
+  lens?: boolean;
 }
 
 export interface MaskResult {
@@ -411,6 +415,7 @@ export const DEFAULT_PARAMS: DevelopParams = {
   flipHorizontal: false,
   straighten: 0,
   crop: null,
+  lensCorrection: true,
   masks: [],
   denoise: null,
   repairs: [],
@@ -468,6 +473,18 @@ export interface DevelopInfo {
   fullHeight: number;
   raw: boolean;
   snapshots: Edit[];
+  /** Korrekturdaten der Kamera; null = keine */
+  lens: LensSummary | null;
+}
+
+/** Was die Korrekturdaten eines RAWs abdecken */
+export type LensSource = "sony" | "dng" | "lensfun";
+export interface LensSummary {
+  distortion: LensSource | null;
+  chromatic: LensSource | null;
+  vignetting: LensSource | null;
+  /** Objektiv laut Lensfun */
+  lens: string | null;
 }
 
 export interface ExportOptions {
@@ -679,8 +696,8 @@ export const api = {
   mergeStart: (kind: MergeKind, ids: number[], options: MergeOptions) =>
     call<void>("merge_start", { kind, ids, options }),
   mergeCancel: () => call<void>("merge_cancel"),
-  repairCompute: (imageId: number, shapes: MaskShape[], denoise: DevelopParams["denoise"]) =>
-    call<string>("repair_compute", { imageId, shapes, denoise }),
+  repairCompute: (imageId: number, shapes: MaskShape[], denoise: DevelopParams["denoise"], lens: boolean) =>
+    call<string>("repair_compute", { imageId, shapes, denoise, lens }),
   repairCancel: () => call<void>("repair_cancel"),
   aiDownload: (component: "clip" | "masks" | "denoise" | "faces" | "repair" | Backend = "clip") => call<void>("ai_download", { component }),
   maskSubject: (id: number) => call<MaskResult>("mask_subject", { id }),

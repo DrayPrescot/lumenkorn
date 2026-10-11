@@ -7,6 +7,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Develop: lens correction for RAW files, on by default (“Objektiv” in the
+  Basis tab, below Color Grading). It removes distortion, color fringes and
+  vignetting using the correction data the camera writes into the RAW (Sony
+  ARW, DNG opcodes) or a profile from the bundled Lensfun database (about
+  1,500 lenses, CC BY-SA 3.0). Distortion and color fringes come preferably
+  from the camera, vignetting preferably from Lensfun (Sony's own data only
+  compensates part of it). The panel shows where the data comes from; the
+  image is enlarged just enough to avoid empty borders. Masks, repairs and
+  the horizon detection work on the corrected image. Older edits with brush
+  or AI masks keep the correction off so the masks do not shift. Thumbnails of
+  edited RAWs are regenerated once (catalog version 13).
 - Presets: save settings under a name and apply them to photos, from the
   right-click menu (grid, filmstrip, single view, Develop) → “Preset
   anwenden”. In Develop, hovering a preset in the menu shows its effect on
