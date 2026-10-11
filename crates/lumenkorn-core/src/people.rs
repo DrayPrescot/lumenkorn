@@ -747,12 +747,13 @@ impl Catalog {
             .optional()?;
         match other {
             Some(o) => {
-                self.conn.execute(
+                let tx = self.conn.unchecked_transaction()?;
+                tx.execute(
                     "UPDATE persons SET group_id = ?1 WHERE group_id = ?2",
                     params![o, id],
                 )?;
-                self.conn
-                    .execute("DELETE FROM person_groups WHERE id = ?1", [id])?;
+                tx.execute("DELETE FROM person_groups WHERE id = ?1", [id])?;
+                tx.commit()?;
                 Ok(o)
             }
             None => {
@@ -767,23 +768,27 @@ impl Catalog {
 
     /// Löscht eine Gruppe; ihre Personen bleiben (ohne Gruppe).
     pub fn delete_person_group(&self, id: i64) -> Result<()> {
-        self.conn.execute(
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
             "UPDATE persons SET group_id = NULL WHERE group_id = ?1",
             [id],
         )?;
-        self.conn
-            .execute("DELETE FROM person_groups WHERE id = ?1", [id])?;
+        tx.execute("DELETE FROM person_groups WHERE id = ?1", [id])?;
+        tx.commit()?;
         Ok(())
     }
 
     /// Ordnet Personen einer Gruppe zu (`None`: aus der Gruppe nehmen).
+    /// Eine Anweisung statt einer je Person – jede einzelne wäre sonst eine
+    /// eigene Transaktion mit Schreibvorgang auf der Platte.
     pub fn set_person_group(&self, person_ids: &[i64], group: Option<i64>) -> Result<()> {
-        let mut st = self
-            .conn
-            .prepare("UPDATE persons SET group_id = ?2 WHERE id = ?1")?;
-        for id in person_ids {
-            st.execute(params![id, group])?;
+        if person_ids.is_empty() {
+            return Ok(());
         }
+        self.conn.execute(
+            "UPDATE persons SET group_id = ?2 WHERE id IN (SELECT value FROM json_each(?1))",
+            params![serde_json::to_string(person_ids)?, group],
+        )?;
         Ok(())
     }
 

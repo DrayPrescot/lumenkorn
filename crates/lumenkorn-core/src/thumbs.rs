@@ -309,6 +309,7 @@ fn render_developed(
             denoised: denoised.as_ref(),
             region: None,
             repairs,
+            keep_prepared: false,
         },
     );
     Ok(lumenkorn_develop::output::encode_jpeg_rgb8(&rgb, 84)?)
@@ -345,6 +346,7 @@ fn decode_unedited(
                 denoised: None,
                 region: None,
                 repairs: &NoRepairs,
+                keep_prepared: false,
             },
         );
         return Ok(DynamicImage::ImageRgb8(rgb));

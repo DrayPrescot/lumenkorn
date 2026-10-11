@@ -360,6 +360,7 @@ fn gpu_matches_cpu() {
                     denoised: Some(&dn),
                     region: None,
                     repairs: &lumenkorn_develop::repair::NoRepairs,
+                    keep_prepared: true,
                 };
                 let cpu = render_with(&src, &params, &opts);
                 if name != "Standard" {

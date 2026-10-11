@@ -214,7 +214,7 @@ impl LensProfile {
         };
         let lensfun = shot.as_ref().and_then(|s| crate::lensfun::profile(s, w, h));
         if let Some(s) = &shot {
-            log::info!(
+            log::debug!(
                 "Objektiv: {} {} / {:?}, {:?} mm, f/{:?} → Lensfun: {}, Kameradaten: {}",
                 s.camera_make,
                 s.camera_model,

@@ -87,6 +87,12 @@ pub struct RenderOptions<'a> {
     /// Nur diesen Ausschnitt des fertigen Bildes ausgeben (normiert, nach dem
     /// Zuschnitt) – für die Detailansicht beim Hineinzoomen.
     pub region: Option<Crop>,
+    /// Die vorbereitete Quelle (Objektivkorrektur, Reparaturen) für weitere
+    /// Renderings desselben Bildes behalten – nur für die Bearbeitungsansicht,
+    /// in der Reglerzüge dasselbe Bild immer wieder entwickeln. Einmalige
+    /// Renderings (Vorschaubilder, Export, KI) würden sonst deren Einträge
+    /// verdrängen und Bilder in voller Auflösung im Speicher halten.
+    pub keep_prepared: bool,
 }
 
 impl Default for RenderOptions<'_> {
@@ -97,6 +103,7 @@ impl Default for RenderOptions<'_> {
             denoised: None,
             region: None,
             repairs: &NoRepairs,
+            keep_prepared: false,
         }
     }
 }
@@ -227,6 +234,9 @@ fn repaired_source(src: &Source, p: &DevelopParams, opts: &RenderOptions) -> (Ar
     prepare_source(&mut out.image, p, opts, lens_of(src, p));
     let out = Arc::new(out);
     let id = REPAIRED_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if !opts.keep_prepared {
+        return (out, id);
+    }
     let mut c = REPAIRED.lock().unwrap_or_else(|e| e.into_inner());
     c.retain(|(k, _, _)| *k != key);
     c.insert(0, (key, out.clone(), id));

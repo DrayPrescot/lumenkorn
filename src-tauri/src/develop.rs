@@ -227,6 +227,7 @@ fn render_opts<'a>(state: &'a AppState, denoised: Option<&'a ImageF32>) -> Rende
         denoised,
         region: None,
         repairs: state.repairs.as_ref(),
+        keep_prepared: false,
     }
 }
 
@@ -299,6 +300,7 @@ pub async fn develop_render(
             .and_then(|d| load_denoised(state, &d.id, edge));
         let opts = RenderOptions {
             overlay,
+            keep_prepared: true,
             ..render_opts(state, denoised.as_deref())
         };
         let rgb = lumenkorn_develop::render_auto_rgb8(&src, &params, &opts);
@@ -364,6 +366,7 @@ pub async fn develop_render_detail(
             .and_then(|d| load_denoised_full(state, &d.id, src.image.long_edge()));
         let opts = RenderOptions {
             region: Some(region),
+            keep_prepared: true,
             ..render_opts(state, denoised.as_deref())
         };
         let t = std::time::Instant::now();

@@ -169,8 +169,14 @@ fn solve(
 /// Berechnet die automatischen Tonwerte für `src` auf Basis der aktuellen
 /// Einstellungen `base` (deren Tonregler werden dabei ignoriert).
 pub fn auto_tone(src: &Source, base: &DevelopParams) -> AutoTone {
-    let small = src.downscaled(EDGE);
+    let mut small = src.downscaled(EDGE);
     let mut p = base.sanitized();
+    // Objektivkorrektur einmal vorab statt in jedem der rund 80 Messdurchläufe
+    if p.lens_correction
+        && let Some(l) = small.lens.take()
+    {
+        small.image = l.apply(&small.image);
+    }
     p.masks.clear();
     p.repairs.clear();
     p.denoise = None;
@@ -257,9 +263,14 @@ pub fn auto_tone(src: &Source, base: &DevelopParams) -> AutoTone {
     })
     .round();
 
-    // 5. Dynamik: blasse Bilder etwas farbiger
-    let sat = measure(&a).saturation;
-    a.vibrance = (((0.32 - sat) / 0.32) * 40.0).clamp(0.0, 25.0).round();
+    // 5. Dynamik: blasse Bilder etwas farbiger – bei Schwarzweiß gibt es
+    // keine Farbe zu messen, dort bleibt der Regler, wie er ist
+    a.vibrance = if p.monochrome {
+        base.vibrance
+    } else {
+        let sat = measure(&a).saturation;
+        (((0.32 - sat) / 0.32) * 40.0).clamp(0.0, 25.0).round()
+    };
 
     // Feinschliff der Belichtung nach den übrigen Reglern (kleine Korrektur)
     let m = measure(&a).pct(0.5);
