@@ -282,6 +282,15 @@ fn grade(@builtin(global_invocation_id) id: vec3<u32>) {
     outa[i] = vec4<f32>(fit_gamut(o, yn), 1.0);
 }
 
+// Schwarzweiß (pipeline.rs: monochrome), in place
+@compute @workgroup_size(16, 16)
+fn mono(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x >= u.w || id.y >= u.h) { return; }
+    let i = id.y * u.w + id.x;
+    let y = luma(outa[i].xyz);
+    outa[i] = vec4<f32>(y, y, y, outa[i].w);
+}
+
 // Dunkelkanal (kleinster Farbanteil): ina = Bild, fo = Wert je Pixel
 @compute @workgroup_size(16, 16)
 fn dark_pass(@builtin(global_invocation_id) id: vec3<u32>) {

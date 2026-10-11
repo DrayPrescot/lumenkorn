@@ -196,6 +196,8 @@ export interface DevelopParams {
   hsl: Hsl;
   /** Tönung nach Tonwertbereichen (Farbräder) */
   colorGrade: ColorGrade;
+  /** Schwarzweiß (nach HSL und lokalen Anpassungen; Color Grading tont danach) */
+  monochrome: boolean;
   rotate: number;
   flipHorizontal: boolean;
   /** Geraderichten in Grad, im Uhrzeigersinn positiv */
@@ -410,6 +412,7 @@ export const DEFAULT_PARAMS: DevelopParams = {
   saturation: 0,
   sharpen: 0,
   hsl: { hue: [0, 0, 0, 0, 0, 0, 0, 0], saturation: [0, 0, 0, 0, 0, 0, 0, 0], luminance: [0, 0, 0, 0, 0, 0, 0, 0] },
+  monochrome: false,
   colorGrade: {
     shadows: { ...NEUTRAL_WHEEL },
     midtones: { ...NEUTRAL_WHEEL },
@@ -446,7 +449,7 @@ export function transferParams(target: DevelopParams, src: DevelopParams, g: Tra
   };
   if (g.basic || g.whiteBalance) copy(["temperature", "tint"]);
   if (g.basic || g.light) copy(["exposure", "contrast", "highlights", "shadows", "whites", "blacks"]);
-  if (g.basic || g.color) copy(["vibrance", "saturation"]);
+  if (g.basic || g.color) copy(["vibrance", "saturation", "monochrome"]);
   if (g.basic || g.details) copy(["clarity", "dehaze", "sharpen"]);
   if (g.basic || g.hsl) out.hsl = JSON.parse(JSON.stringify(src.hsl ?? DEFAULT_PARAMS.hsl));
   if (g.basic || g.colorGrade) out.colorGrade = JSON.parse(JSON.stringify(src.colorGrade ?? DEFAULT_PARAMS.colorGrade));

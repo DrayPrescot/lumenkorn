@@ -208,9 +208,10 @@ enum P {
     Dark,
     Dehaze,
     Grade,
+    Mono,
 }
 
-const ENTRY_POINTS: [&str; 16] = [
+const ENTRY_POINTS: [&str; 17] = [
     "prep",
     "luma_pass",
     "map_down",
@@ -227,6 +228,7 @@ const ENTRY_POINTS: [&str; 16] = [
     "dark_pass",
     "dehaze_pass",
     "grade",
+    "mono",
 ];
 
 /// Zuordnung der Puffer zu den Bindungen 1–8 des Shaders.
@@ -1149,7 +1151,10 @@ impl Gpu {
             );
             cx.color(&set.img, p.saturation / 100.0, p.vibrance / 100.0);
             cx.hsl(&set.img, &p.hsl);
-            cx.grade(&set.img, &p.color_grade);
+            // Bei Schwarzweiß kommt das Color Grading erst nach der Umwandlung
+            if !p.monochrome {
+                cx.grade(&set.img, &p.color_grade);
+            }
 
             // --- Lokale Anpassungen
             let mut overlay = None;
@@ -1209,6 +1214,21 @@ impl Gpu {
                 if *want_overlay {
                     overlay = Some(alpha);
                 }
+            }
+
+            // --- Schwarzweiß (wie pipeline.rs: nach den lokalen Anpassungen)
+            if p.monochrome {
+                let u = cx.base_u();
+                cx.run(
+                    P::Mono,
+                    u,
+                    Binds {
+                        outa: Some(&set.img),
+                        ..Default::default()
+                    },
+                    img2d(w, h),
+                );
+                cx.grade(&set.img, &p.color_grade);
             }
 
             // --- Schärfen

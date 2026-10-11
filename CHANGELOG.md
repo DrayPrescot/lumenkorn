@@ -7,6 +7,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Develop: “Schwarzweiß” next to Auto (`V`) turns the photo black and white.
+  The conversion runs after HSL and the local adjustments, so the HSL
+  luminance sliders work as the gray mix (darker blue sky, brighter skin)
+  and masks can't tint it again. Color grading applies afterwards and tones
+  the result (split toning, sepia). Presets and copied settings carry it in
+  the color group.
 - Develop: “Auto” at the top of the Basis tab (`Ctrl+U`) sets exposure,
   contrast, highlights, shadows, whites, blacks and vibrance so the photo
   looks balanced. It develops a small copy with the real pipeline and brings

@@ -908,6 +908,14 @@ class Develop {
     }
   }
 
+  /** Schwarzweiß ein/aus (mit Rückgängig) */
+  setMonochrome(on: boolean) {
+    if (!this.ready || (this.params.monochrome ?? false) === on) return;
+    this.params.monochrome = on;
+    this.schedule();
+    this.commit();
+  }
+
   /** Objektivkorrektur ein/aus – sofort gespeichert, weil KI-Masken und
    *  Geraderichten im Backend den gespeicherten Stand nutzen. */
   setLens(on: boolean) {
@@ -948,7 +956,7 @@ class Develop {
       ...NO_GROUPS,
       whiteBalance: differs(["temperature", "tint"]),
       light: differs(["exposure", "contrast", "highlights", "shadows", "whites", "blacks"]),
-      color: differs(["vibrance", "saturation"]),
+      color: differs(["vibrance", "saturation", "monochrome"]),
       hsl: differs(["hsl"]),
       colorGrade: differs(["colorGrade"]),
       details: differs(["clarity", "dehaze", "sharpen"]),

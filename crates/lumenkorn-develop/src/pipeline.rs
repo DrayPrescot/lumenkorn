@@ -355,10 +355,12 @@ pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -
     );
     color(&mut img, p.saturation / 100.0, p.vibrance / 100.0);
     hsl(&mut img, &p.hsl);
-    if let Some(g) = grade_setup(&p.color_grade) {
+    let grade = grade_setup(&p.color_grade);
+    // Bei Schwarzweiß kommt das Color Grading erst nach der Umwandlung (Tonen)
+    if let (Some(g), false) = (&grade, p.monochrome) {
         img.data
             .par_iter_mut()
-            .for_each(|px| *px = grade_px(*px, &g));
+            .for_each(|px| *px = grade_px(*px, g));
     }
 
     // --- Lokale Anpassungen ------------------------------------------------
@@ -375,6 +377,21 @@ pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -
         }
         if want_overlay {
             overlay_alpha = Some(alpha.clone());
+        }
+    }
+
+    // --- Schwarzweiß ------------------------------------------------------
+    // Nach den lokalen Anpassungen, damit deren Temperatur und Sättigung das
+    // Bild nicht wieder einfärben; danach tont das Color Grading
+    if p.monochrome {
+        img.data.par_iter_mut().for_each(|px| {
+            let y = luma(*px);
+            *px = [y, y, y];
+        });
+        if let Some(g) = &grade {
+            img.data
+                .par_iter_mut()
+                .for_each(|px| *px = grade_px(*px, g));
         }
     }
 
@@ -1100,6 +1117,58 @@ mod tests {
         // Negativ: Dunst kommt dazu
         let more = render(&hazy(0.1), &p(-80.0));
         assert!(spread(&more) < spread(&render(&hazy(0.1), &p(0.0))) * 0.7);
+    }
+
+    #[test]
+    fn monochrome_is_gray_mixes_with_hsl_and_tones_with_grading() {
+        use crate::params::{ColorGrade, GradeWheel, Hsl};
+        let src = raster(
+            &[[0.2, 0.3, 0.8], [0.8, 0.3, 0.2], [0.5; 3], [0.3, 0.7, 0.3]],
+            4,
+        );
+        let bw = DevelopParams {
+            monochrome: true,
+            ..Default::default()
+        };
+        let out = render(&src, &bw);
+        for c in &out.data {
+            assert!(
+                (c[0] - c[1]).abs() < 1e-5 && (c[1] - c[2]).abs() < 1e-5,
+                "nicht grau: {c:?}"
+            );
+        }
+        // HSL-Luminanz Blau wirkt als Grau-Mix: Blau wird dunkler, Rot bleibt
+        let mut hsl = Hsl::default();
+        hsl.luminance[5] = -60.0;
+        let darker = render(&src, &DevelopParams { hsl, ..bw.clone() });
+        assert!(
+            darker.data[0][0] < out.data[0][0] - 0.02,
+            "Blau nicht dunkler"
+        );
+        assert!(
+            (darker.data[1][0] - out.data[1][0]).abs() < 0.01,
+            "Rot verändert"
+        );
+        // Color Grading tont das Schwarzweißbild
+        let toned = render(
+            &src,
+            &DevelopParams {
+                color_grade: ColorGrade {
+                    shadows: GradeWheel {
+                        hue: 240.0,
+                        saturation: 80.0,
+                        luminance: 0.0,
+                    },
+                    ..Default::default()
+                },
+                ..bw.clone()
+            },
+        );
+        assert!(
+            toned.data.iter().any(|c| c[2] > c[0] + 0.02),
+            "keine Tonung: {:?}",
+            toned.data
+        );
     }
 
     #[test]

@@ -46,6 +46,10 @@ pub struct DevelopParams {
     pub hsl: Hsl,
     /// Tönung nach Tonwertbereichen (Farbräder)
     pub color_grade: ColorGrade,
+    /// Schwarzweiß: nach Farbe, HSL und lokalen Anpassungen in Graustufen
+    /// umwandeln (die HSL-Luminanz steuert so den Grau-Mix); Color Grading
+    /// wirkt danach und tont das Schwarzweißbild.
+    pub monochrome: bool,
 
     // Geometrie
     /// Vierteldrehungen im Uhrzeigersinn, 0…3
@@ -187,7 +191,7 @@ pub struct TransferGroups {
     pub white_balance: bool,
     /// Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz
     pub light: bool,
-    /// Dynamik, Sättigung
+    /// Dynamik, Sättigung, Schwarzweiß
     pub color: bool,
     pub hsl: bool,
     pub color_grade: bool,
@@ -568,6 +572,7 @@ impl Default for DevelopParams {
             sharpen: 0.0,
             hsl: Hsl::default(),
             color_grade: ColorGrade::default(),
+            monochrome: false,
             rotate: 0,
             flip_horizontal: false,
             straighten: 0.0,
@@ -615,6 +620,7 @@ impl DevelopParams {
                 luminance: self.hsl.luminance.map(|v| c(v, -100.0, 100.0)),
             },
             color_grade: self.color_grade.sanitized(),
+            monochrome: self.monochrome,
             rotate: self.rotate % 4,
             flip_horizontal: self.flip_horizontal,
             straighten: c(self.straighten, -45.0, 45.0),
@@ -701,6 +707,7 @@ impl DevelopParams {
         if g.basic || g.color {
             out.vibrance = src.vibrance;
             out.saturation = src.saturation;
+            out.monochrome = src.monochrome;
         }
         if g.basic || g.hsl {
             out.hsl = src.hsl;

@@ -188,4 +188,6 @@ export default {
   "Daten der DNG-Datei": "data in the DNG file",
   "Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz und Dynamik automatisch einstellen (Strg+U)": "Set exposure, contrast, highlights, shadows, whites, blacks and vibrance automatically (Ctrl+U)",
   "Wird berechnet …": "Calculating …",
+  "Schwarzweiß": "Black & White",
+  "In Schwarzweiß umwandeln – die HSL-Luminanz steuert den Grau-Mix, Color Grading tont (V)": "Convert to black & white – HSL luminance controls the gray mix, color grading tones the result (V)",
 } satisfies Record<string, string>;

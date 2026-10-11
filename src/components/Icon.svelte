@@ -21,6 +21,7 @@
     export: "M12 3v12M7 8l5-5 5 5M5 15v5h14v-5",
     pipette: "M14.5 6.5l3 3M5 19l1-3 8.5-8.5 2 2L8 18l-3 1zM14 6l1.5-1.5a2.1 2.1 0 0 1 3 3L17 9",
     sparkle: "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z",
+    mono: "M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18zM12 3v18M12 7h4.5M12 11h5.5M12 15h5",
   };
   export type IconName = keyof typeof paths;
 </script>

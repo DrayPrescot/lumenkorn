@@ -62,6 +62,7 @@
     else if (e.key === "ArrowLeft") lib.move(-1);
     else if (e.key === "\\") dev.showBefore = !dev.showBefore;
     else if (e.key.toLowerCase() === "o" && !mod && dev.activeMask !== null) dev.toggleOverlay();
+    else if (e.key.toLowerCase() === "v" && !mod && !e.altKey) dev.setMonochrome(!dev.params.monochrome);
     else if (e.key.toLowerCase() === "r" && !mod) dev.cropMode ? dev.applyCrop() : dev.enterCrop();
     else if (e.key === "Enter" && dev.cropMode) dev.applyCrop();
     else if (e.key === "Escape" && dev.cropMode) dev.cancelCrop();

@@ -445,7 +445,7 @@ export const mock = {
     const svg = decodeURIComponent(url.slice(url.indexOf(",") + 1));
     const gain = Math.pow(2, p.exposure);
     const slope = 1 + p.contrast / 150;
-    const sat = 1 + p.saturation / 100 + p.vibrance / 200;
+    const sat = p.monochrome ? 0 : 1 + p.saturation / 100 + p.vibrance / 200;
     const warm = p.temperature / 400;
     const filter = `<filter id="d"><feColorMatrix type="saturate" values="${Math.max(0, sat)}"/>
       <feComponentTransfer><feFuncR type="linear" slope="${gain * slope * (1 + warm)}" intercept="${(1 - slope) / 2}"/>

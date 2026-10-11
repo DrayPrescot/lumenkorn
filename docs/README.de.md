@@ -92,6 +92,10 @@ Der Reiter **Basis** enthält von oben nach unten:
   echten Pipeline und bringt Regler für Regler auf ein Ziel: mittlere Helligkeit, keine neu
   ausgefressenen Lichter, sichtbare Tiefen, voller Tonwertumfang. Nachtaufnahmen und Motive mit
   großen hellen Flächen (Schnee, Himmel) werden nur wenig aufgehellt. Strg+Z macht es rückgängig.
+- **Schwarzweiß** (V), gleich neben Auto: wandelt das Foto in Graustufen um. Die Umwandlung kommt
+  nach HSL und den lokalen Anpassungen. Die HSL-Luminanz wird so zum Grau-Mix (Blau dunkler gibt
+  einen dramatischen Himmel), und Masken färben das Bild nicht wieder ein. Color Grading wirkt
+  danach und tont das Schwarzweißbild, etwa kühle Tiefen und warme Lichter oder Sepia.
 
 - **Weißabgleich:** Temperatur und Tönung, relativ zum Kamera-Weißabgleich.
 - **Licht:** Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz.
@@ -311,6 +315,7 @@ unbearbeiteten Originale.
 | F11 | Vollbild |
 | [ / ] | Links / rechts drehen |
 | Strg+U | Auto-Tonwerte (Entwickeln) |
+| V | Schwarzweiß ein/aus (Entwickeln) |
 | Strg+Z / Strg+Umschalt+Z | Rückgängig / Wiederholen |
 | Strg+Umschalt+C / Strg+Umschalt+V | Einstellungen kopieren / einfügen |
 | O | Maske rot anzeigen |

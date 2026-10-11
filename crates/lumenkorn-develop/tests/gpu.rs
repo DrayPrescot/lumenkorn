@@ -219,6 +219,37 @@ fn cases() -> Vec<(&'static str, DevelopParams)> {
             },
         ),
         (
+            "Schwarzweiß",
+            DevelopParams {
+                monochrome: true,
+                hsl: lumenkorn_develop::Hsl {
+                    luminance: [0.0, 20.0, 0.0, 0.0, 0.0, -40.0, 0.0, 0.0],
+                    ..Default::default()
+                },
+                ..d()
+            },
+        ),
+        (
+            "Schwarzweiß getont",
+            DevelopParams {
+                monochrome: true,
+                color_grade: lumenkorn_develop::ColorGrade {
+                    shadows: lumenkorn_develop::GradeWheel {
+                        hue: 220.0,
+                        saturation: 40.0,
+                        luminance: 0.0,
+                    },
+                    highlights: lumenkorn_develop::GradeWheel {
+                        hue: 40.0,
+                        saturation: 30.0,
+                        luminance: 0.0,
+                    },
+                    ..Default::default()
+                },
+                ..d()
+            },
+        ),
+        (
             "Dehaze negativ (Dunst)",
             DevelopParams {
                 dehaze: -60.0,

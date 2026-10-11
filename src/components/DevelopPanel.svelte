@@ -221,6 +221,10 @@
         <Icon name="sparkle" size={13} />
         {dev.autoBusy ? t("Wird berechnet …") : t("Auto")}
       </button>
+      <button class="btn wide" class:on={dev.params.monochrome} aria-pressed={!!dev.params.monochrome} disabled={!dev.ready} onclick={() => dev.setMonochrome(!dev.params.monochrome)} title={t("In Schwarzweiß umwandeln – die HSL-Luminanz steuert den Grau-Mix, Color Grading tont (V)")}>
+        <Icon name="mono" size={13} />
+        {t("Schwarzweiß")}
+      </button>
     </section>
     {#each groups as g (g.id)}
       <details open>
@@ -447,9 +451,18 @@
   .reset {
     border-bottom: 0;
   }
+  .auto {
+    display: flex;
+    gap: 6px;
+  }
   .auto .wide {
+    flex: 1;
+    min-width: 0;
     margin-top: 0;
     gap: 6px;
+  }
+  .auto .btn.on {
+    background: color-mix(in srgb, var(--accent) 14%, var(--raised));
   }
   .check {
     display: flex;

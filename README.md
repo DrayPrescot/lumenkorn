@@ -47,7 +47,8 @@ the system language; **DE / EN** at the bottom left of the sidebar switches it.
 ### Develop (non-destructive)
 - White balance, exposure, contrast, highlights, shadows, whites, blacks, clarity, dehaze,
   vibrance, saturation and sharpening. **Auto** (`Ctrl+U`) sets the tone sliders for a
-  balanced result.
+  balanced result. **Black & White** (`V`) converts the photo; the HSL luminance sliders
+  then act as the gray mix and color grading tones it.
 - HSL for eight color ranges, with an eyedropper that adjusts the color you click on.
 - Color grading with wheels for shadows, midtones, highlights and the whole image, plus
   blending and balance, as in Lightroom.
@@ -119,6 +120,7 @@ The installers are not code-signed yet. Windows SmartScreen will ask once
 | `[` / `]` | Rotate left / right |
 | `O` | Show the selected mask in red |
 | `Ctrl+U` | Auto tone (Develop) |
+| `V` | Black & white on/off (Develop) |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste settings |
 | `Ctrl+Shift+E` | Export selection |
