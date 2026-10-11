@@ -27,6 +27,18 @@ Rust + Tauri 2 im Backend, Svelte 5 im Frontend. Ausführliche Beschreibung in
 - Vom Nutzer festgelegt: keine zusätzlichen Knöpfe für das Übertragen von
   Einstellungen; TypeScript 7 (Dependabot) nicht anfassen; KI-Modelle nur echt
   quelloffen (Lizenz in beiden READMEs unter den Open-Source-Projekten nennen).
+- **Ressourcen sparen mit Subagents:** Wo es sinnvoll ist, Teilaufgaben an
+  Subagents mit kleineren Modellen geben (Agent-Werkzeug, Parameter `model`):
+  - `haiku` (Claude Haiku 4.5): Code durchsuchen, Dateien lesen und
+    zusammenfassen, Logs und Testausgaben auswerten, einfache mechanische
+    Änderungen (Übersetzungen nachtragen, Umbenennen).
+  - `sonnet` (Claude Sonnet 5.5): klar umrissene Umsetzungen und Korrekturen,
+    Tests schreiben, Code-Review einzelner Dateien.
+  - Selbst behalten: Entwurf und Architektur, Abwägungen, Änderungen über
+    mehrere Bereiche (z. B. CPU- und GPU-Pipeline zugleich), Rückfragen an den
+    Nutzer und die abschließende Prüfung der Ergebnisse von Subagents.
+  Kleine Aufgaben, die in wenigen Schritten erledigt sind, direkt machen – ein
+  Subagent muss sich erst einlesen und lohnt sich dann nicht.
 - Größere Funktionen: CHANGELOG (`## [Unreleased]`) und beide READMEs ergänzen,
   Text schlicht und nicht nach KI klingend.
 
