@@ -774,7 +774,7 @@ class Library {
   collapsed = $state<Record<string, boolean>>(loadCollapsed());
 
   /** Eingeklappt: Bereiche der Seitenleiste und Personengruppen (`pgroup:<id>`) */
-  toggleSection(key: "projects" | "people" | "folders" | `pgroup:${number}` | `sgroup:${number}`) {
+  toggleSection(key: "projects" | "people" | "folders" | `pgroup:${number | "other"}` | `sgroup:${number | "other"}`) {
     this.collapsed = { ...this.collapsed, [key]: !this.collapsed[key] };
     try {
       localStorage.setItem("lumenkorn.sidebar.collapsed", JSON.stringify(this.collapsed));

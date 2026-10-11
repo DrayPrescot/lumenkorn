@@ -25,13 +25,14 @@
   let renaming = $state<number | null>(null);
   let renamingPerson = $state<number | null>(null);
 
-  // Personen nach Gruppen (Familie, Freunde …); Personen lassen sich auf eine
-  // Gruppe ziehen, auf die übrigen gezogen verlassen sie ihre Gruppe
+  // Personen nach Gruppen (Familie, Freunde …), benannte ohne Gruppe unter
+  // „Sonstige“; Personen lassen sich auf eine Gruppe ziehen, auf „Sonstige“
+  // gezogen verlassen sie ihre Gruppe
   const namedPeople = $derived(lib.people.filter((p) => p.name));
   const groupedAny = $derived(namedPeople.some((p) => p.groupId !== null && lib.personGroups.some((g) => g.id === p.groupId)));
   const ungroupedPeople = $derived(namedPeople.filter((p) => p.groupId === null || !lib.personGroups.some((g) => g.id === p.groupId)));
   let groupDrop = $state<number | null | undefined>(undefined);
-  /** Eine Person wird gerade gezogen (zeigt die Ablage „ohne Gruppe“) */
+  /** Eine Person wird gerade gezogen (zeigt „Sonstige“ als Ablage, auch wenn leer) */
   let draggingPerson = $state(false);
   function personDragOver(e: DragEvent, group: number | null) {
     if (!e.dataTransfer?.types.includes("application/x-lumenkorn-person")) return;
@@ -307,21 +308,28 @@
           {/each}
         {/if}
       {/each}
-      {#if !lib.collapsed.people && groupedAny && (ungroupedPeople.length || draggingPerson)}
-        <div
-          class="ungrouped-drop"
-          class:drop={groupDrop === null}
-          role="group"
-          aria-label={t("Ohne Gruppe")}
-          ondragover={(e) => personDragOver(e, null)}
-          ondragleave={() => groupDrop === null && (groupDrop = undefined)}
-          ondrop={(e) => personDrop(e, null)}
-        >
-          {#each ungroupedPeople as p (p.id)}{@render personItem(p)}{:else}<p class="drop-hint">{t("Hierher ziehen: ohne Gruppe")}</p>{/each}
-        </div>
-      {:else}
+      {#if ungroupedPeople.length || (draggingPerson && groupedAny)}
+        {@const closed = !!lib.collapsed["sgroup:other"]}
+        {#if !lib.collapsed.people}
+          <button
+            class="item pgroup"
+            class:drop={groupDrop === null}
+            aria-expanded={!closed}
+            title={closed ? t("{title} aufklappen", { title: t("Sonstige") }) : t("{title} einklappen", { title: t("Sonstige") })}
+            onclick={() => lib.toggleSection("sgroup:other")}
+            ondragover={(e) => personDragOver(e, null)}
+            ondragleave={() => groupDrop === null && (groupDrop = undefined)}
+            ondrop={(e) => personDrop(e, null)}
+          >
+            <span class="chev" class:closed><Icon name="chevron" size={11} /></span>
+            <span class="gname">{t("Sonstige")}</span>
+            <span class="count">{ungroupedPeople.length}</span>
+          </button>
+        {/if}
         {#each ungroupedPeople as p (p.id)}
-          {#if !lib.collapsed.people || lib.isScope({ type: "person", id: p.id })}{@render personItem(p)}{/if}
+          {#if (!closed && !lib.collapsed.people) || lib.isScope({ type: "person", id: p.id })}
+            <div class="in-group">{@render personItem(p)}</div>
+          {/if}
         {/each}
       {/if}
       {#if lib.collapsed.people}
@@ -330,7 +338,7 @@
         {@const unnamed = lib.people.filter((p) => !p.name && p.faceCount >= 2).length}
         <button class="item" class:active={lib.view === "people" && lib.mode === "library"} onclick={() => lib.openPeople()}>
           <Icon name="sparkle" size={15} />
-          <span>{unnamed ? t("{n} unbenannte Gruppen", { n: String(unnamed) }) : t("Personen verwalten")}</span>
+          <span>{unnamed ? t(unnamed === 1 ? "{n} unbenannte Gruppe" : "{n} unbenannte Gruppen", { n: String(unnamed) }) : t("Personen verwalten")}</span>
         </button>
       {:else}
         <p class="hint">{t("Erkennt Gesichter und gruppiert gleiche Personen – einrichten über „KI“ unten links.")}</p>
@@ -556,20 +564,11 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .item.pgroup.drop,
-  .ungrouped-drop.drop {
+  .item.pgroup.drop {
     outline: 1px dashed var(--accent);
     outline-offset: -1px;
   }
-  .ungrouped-drop {
-    border-radius: var(--radius-s);
-  }
-  .drop-hint {
-    margin: 0;
-    padding: 6px 8px;
-    color: var(--faint);
-    font-size: var(--step--1);
-  }
+
   .in-group {
     padding-left: 12px;
   }

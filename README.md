@@ -79,9 +79,9 @@ right away and is developed like a RAW file, so highlights above 1.0 can still b
 
 ### People
 Faces are found in the background, grouped by similarity, and suggested for a name once you
-have named a few. Suggestions can be confirmed or rejected one by one or many at once. Small
-unnamed groups are collected under *Sonstige* so the overview stays short. Named people can be
-sorted into your own collapsible groups, such as family and friends.
+have named a few. Suggestions can be confirmed or rejected one by one or many at once. Named
+people can be sorted into your own collapsible groups, such as family and friends; the rest are
+listed under *Sonstige*, and faces not named yet under *Unbenannt*, so the overview stays short.
 
 ## Getting started
 

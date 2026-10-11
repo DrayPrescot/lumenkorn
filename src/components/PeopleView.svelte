@@ -11,17 +11,15 @@
 
   const named = $derived(lib.people.filter((p) => p.name));
   const groups = $derived(lib.people.filter((p) => !p.name));
-  /** Unbenannte Gruppen bis zu dieser Fotozahl stehen unter „Sonstige“ –
-   *  bei großen Bibliotheken sind das Hunderte, die die Übersicht verstopfen. */
-  const OTHER_MAX_PHOTOS = 100;
-  const mainGroups = $derived(groups.filter((g) => g.imageCount > OTHER_MAX_PHOTOS));
-  const smallGroups = $derived(groups.filter((g) => g.imageCount <= OTHER_MAX_PHOTOS));
-  const singles = $derived(smallGroups.filter((g) => g.faceCount < 2).length);
-  /** „Sonstige“ aufgeklappt; Karten werden erst dann gezeichnet */
+  /** Alle unbenannten Gruppen stehen unter „Unbenannt“ (eingeklappt) – bei
+   *  großen Bibliotheken sind das Hunderte, die die Übersicht verstopfen. Die
+   *  größten zuerst (Reihenfolge vom Backend). */
+  const singles = $derived(groups.filter((g) => g.faceCount < 2).length);
+  /** „Unbenannt“ aufgeklappt; Karten werden erst dann gezeichnet */
   let showOther = $state(false);
   /** Einzelne Gesichter (Gruppen aus nur einem Gesicht) zunächst ausblenden */
   let showSmall = $state(false);
-  const otherGroups = $derived(showSmall ? smallGroups : smallGroups.filter((g) => g.faceCount >= 2));
+  const otherGroups = $derived(showSmall ? groups : groups.filter((g) => g.faceCount >= 2));
 
   // --- Personengruppen (Familie, Freunde …) ---------------------------------
   const ungrouped = $derived(named.filter((p) => p.groupId === null || !lib.personGroups.some((g) => g.id === p.groupId)));
@@ -30,8 +28,10 @@
   let renamingGroup = $state<number | null>(null);
   /** Karte, deren Gruppen-Menü offen ist */
   let groupMenu = $state<number | null>(null);
-  /** Gruppe unter der gezogenen Karte (`null` = „Ohne Gruppe“) */
+  /** Gruppe unter der gezogenen Karte (`null` = „Sonstige“, keine Gruppe) */
   let dropTarget = $state<number | null | undefined>(undefined);
+  /** Eine Karte wird gezogen (zeigt „Sonstige“ als Ablage, auch wenn leer) */
+  let dragging = $state(false);
 
   async function createGroup(persons: number[] = []) {
     const name = newGroup.trim();
@@ -70,6 +70,7 @@
   function dragStart(e: DragEvent, p: Person) {
     e.dataTransfer?.setData("application/x-lumenkorn-person", String(p.id));
     if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+    dragging = true;
   }
   function dragOver(e: DragEvent, group: number | null) {
     if (!e.dataTransfer?.types.includes("application/x-lumenkorn-person")) return;
@@ -79,6 +80,7 @@
   }
   function drop(e: DragEvent, group: number | null) {
     dropTarget = undefined;
+    dragging = false;
     const id = Number(e.dataTransfer?.getData("application/x-lumenkorn-person"));
     const p = lib.people.find((x) => x.id === id);
     if (!p) return;
@@ -356,49 +358,43 @@
       </section>
     {/each}
 
-    {#if lib.personGroups.length && named.length}
+    {#if ungrouped.length || (lib.personGroups.length && dragging)}
+      {@const open = !lib.collapsed["pgroup:other"]}
       <section
         class="pgroup"
         class:drop={dropTarget === null}
         role="group"
-        aria-label={t("Ohne Gruppe")}
+        aria-label={t("Sonstige")}
         ondragover={(e) => dragOver(e, null)}
         ondragleave={() => dropTarget === null && (dropTarget = undefined)}
         ondrop={(e) => drop(e, null)}
       >
-        <h3 class="sub">{t("Ohne Gruppe")} <span class="muted">{ungrouped.length}</span></h3>
-        <div class="cards">
-          {#each ungrouped as p (p.id)}
-            {@render personCard(p)}
-          {:else}
-            <p class="muted hint">{t("Alle benannten Personen sind in einer Gruppe.")}</p>
-          {/each}
-        </div>
+        <h3>
+          <button class="toggle" aria-expanded={open} onclick={() => lib.toggleSection("pgroup:other")}>
+            <Icon name="chevron" size={12} />
+            {t("Sonstige")} <span class="muted">{ungrouped.length}</span>
+          </button>
+          <span class="muted note">{t("benannt, in keiner Gruppe")}</span>
+        </h3>
+        {#if open}
+          <div class="cards">
+            {#each ungrouped as p (p.id)}
+              {@render personCard(p)}
+            {:else}
+              <p class="muted hint">{t("Hierher ziehen, um eine Person aus ihrer Gruppe zu nehmen.")}</p>
+            {/each}
+          </div>
+        {/if}
       </section>
-    {:else}
-      <div class="cards">
-        {#each named as p (p.id)}
-          {@render personCard(p)}
-        {/each}
-      </div>
     {/if}
 
-    <h3>{t("Unbenannte Gruppen")} <span class="muted">{mainGroups.length}</span></h3>
-    <div class="cards">
-      {#each mainGroups as p (p.id)}
-        {@render groupCard(p)}
-      {:else}
-        <p class="muted hint">{t("Keine unbenannten Gruppen mit mehr als {n} Fotos.", { n: OTHER_MAX_PHOTOS })}</p>
-      {/each}
-    </div>
-
-    {#if smallGroups.length}
+    {#if groups.length}
       <h3>
         <button class="toggle" aria-expanded={showOther} onclick={() => (showOther = !showOther)}>
           <Icon name="chevron" size={12} />
-          {t("Sonstige")} <span class="muted">{otherGroups.length}</span>
+          {t("Unbenannt")} <span class="muted">{otherGroups.length}</span>
         </button>
-        <span class="muted note">{t("unbenannt, bis {n} Fotos", { n: OTHER_MAX_PHOTOS })}</span>
+        <span class="muted note">{t("noch ohne Namen, die größten zuerst")}</span>
         {#if showOther && singles}
           <label class="check">
             <input type="checkbox" bind:checked={showSmall} /> {t("Einzelne Gesichter zeigen ({n})", { n: singles })}
@@ -422,7 +418,7 @@
 </div>
 
 {#snippet personCard(p: Person)}
-  <div class="card" role="group" aria-label={p.name} draggable="true" ondragstart={(e) => dragStart(e, p)} ondragend={() => (dropTarget = undefined)}>
+  <div class="card" role="group" aria-label={p.name} draggable="true" ondragstart={(e) => dragStart(e, p)} ondragend={() => ((dropTarget = undefined), (dragging = false))}>
     <button class="avatar" onclick={() => open(p)} title={t("Fotos von {name}", { name: p.name ?? "" })}>
       {#if p.coverFace}<img src={faceUrl(p.coverFace)} alt="" draggable="false" />{/if}
     </button>
@@ -479,7 +475,7 @@
               </button>
             {/each}
             {#if p.groupId !== null}
-              <button role="menuitem" onclick={() => setGroup(p, null)}><span class="mark"></span>{t("Aus der Gruppe nehmen")}</button>
+              <button role="menuitem" onclick={() => setGroup(p, null)}><span class="mark"></span>{t("Aus der Gruppe nehmen (Sonstige)")}</button>
             {/if}
             {#if lib.personGroups.length}<hr />{/if}
             <form class="gnew" onsubmit={(e) => (e.preventDefault(), createGroup([p.id]))}>
@@ -573,9 +569,6 @@
   }
   .pgroup h3 {
     margin: 14px 0 10px;
-  }
-  .pgroup h3.sub {
-    color: var(--muted);
   }
   .group-actions {
     display: inline-flex;

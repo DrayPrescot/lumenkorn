@@ -48,13 +48,14 @@ const mockPersons: { id: number; name: string; group?: number | null }[] = [
   { id: 3, name: "Clara", group: 2 },
   { id: 4, name: "David", group: 2 },
   { id: 5, name: "Eva" },
+  { id: 6, name: "" }, // unbenannte Gruppe
 ];
 let mockGroups: { id: number; name: string }[] = [{ id: 1, name: "Familie" }, { id: 2, name: "Freunde" }];
 const mockFaces: { id: number; imageId: number; rect: [number, number, number, number]; score: number; personId: number | null; personName: string | null; confirmed: boolean }[] = [];
 function mockPeople() {
   if (!mockFaces.length) {
     images.slice(0, 12).forEach((im, i) =>
-      mockFaces.push({ id: i + 1, imageId: im.id, rect: [0.4, 0.3, 0.2, 0.3], score: 0.9, personId: i % 4 === 3 ? null : 1, personName: i % 4 === 3 ? null : "Anna", confirmed: i % 2 === 0 }),
+      mockFaces.push({ id: i + 1, imageId: im.id, rect: [0.4, 0.3, 0.2, 0.3], score: 0.9, personId: i % 4 === 3 ? 6 : 1, personName: i % 4 === 3 ? null : "Anna", confirmed: i % 2 === 0 }),
     );
     // weitere benannte Personen für die Gruppen-Ansicht
     images.slice(12, 40).forEach((im, i) => {
@@ -65,7 +66,7 @@ function mockPeople() {
   return mockPersons
     .map((p) => {
       const fs = mockFaces.filter((f) => f.personId === p.id);
-      return { id: p.id, name: p.name, faceCount: fs.length, suggested: fs.filter((f) => !f.confirmed).length, imageCount: fs.length, coverFace: fs[0]?.id ?? null, groupId: p.group ?? null };
+      return { id: p.id, name: p.name || null, faceCount: fs.length, suggested: fs.filter((f) => !f.confirmed).length, imageCount: fs.length, coverFace: fs[0]?.id ?? null, groupId: p.group ?? null };
     })
     .filter((p) => p.faceCount > 0);
 }

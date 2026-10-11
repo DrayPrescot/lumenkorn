@@ -173,4 +173,5 @@ export default {
   "Vorschaugröße": "Thumbnail size",
   "Informationen": "Info",
   "Informationen (I)": "Info (I)",
+  "{n} unbenannte Gruppe": "{n} unnamed group",
 } satisfies Record<string, string>;

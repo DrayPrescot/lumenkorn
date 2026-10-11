@@ -8,13 +8,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 - People: groups such as “Familie” or “Freunde”. “+ Gruppe” in the people
-  overview creates one; each group is a collapsible section like “Sonstige”
+  overview creates one; each group is a collapsible section like “Unbenannt”
   (remembered across restarts), with its people inside. Drag a person's card
-  onto a group, or use the folder icon on the card, to assign it; people
-  without a group are listed below. Groups can be renamed (double-click) and
+  onto a group, or use the folder icon on the card, to assign it; named
+  people without a group are collected under the collapsible “Sonstige”, all
+  unnamed groups under “Unbenannt”. Groups can be renamed (double-click) and
   deleted without losing the people. The sidebar lists people by group too,
   each group collapsible on its own; drag a person onto a group there, or
-  onto the people without a group to take it out. Catalog update to version 14.
+  onto “Sonstige” to take it out. Catalog update to version 14.
 - Develop: lens correction for RAW files, on by default (“Objektiv” in the
   Basis tab, below Color Grading). It removes distortion, color fringes and
   vignetting using the correction data the camera writes into the RAW (Sony
@@ -94,9 +95,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   not just the 30 before and after the current one; the mouse wheel scrolls
   it sideways.
 - Develop: HSL moved below Details and noise reduction.
-- People: unnamed groups with up to 100 photos are collected under a
-  collapsed “Sonstige” (Other) section, so the overview only lists the larger
-  groups; single faces are shown from there on request.
+- People: all unnamed groups are collected under a collapsed “Unbenannt”
+  (Unnamed) section, largest first, so the overview stays short; single faces
+  are shown from there on request.
 - People: the name of an opened person or group (face review and photo view)
   can be changed by clicking it; entering an existing name assigns the group
   to that person.
