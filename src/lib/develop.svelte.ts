@@ -886,6 +886,28 @@ class Develop {
     return true;
   }
 
+  /** „Auto“ rechnet gerade */
+  autoBusy = $state(false);
+
+  /** „Auto“: Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz und Dynamik
+   *  vorschlagen lassen und übernehmen (mit Rückgängig). */
+  async autoTone() {
+    const id = this.imageId;
+    if (id === null || !this.ready || this.autoBusy) return;
+    this.autoBusy = true;
+    try {
+      const a = await api.developAuto(id, $state.snapshot(this.params) as DevelopParams);
+      if (this.imageId !== id) return;
+      Object.assign(this.params, a);
+      this.schedule();
+      this.commit();
+    } catch (e) {
+      lib.notify(String(e), "error");
+    } finally {
+      this.autoBusy = false;
+    }
+  }
+
   /** Objektivkorrektur ein/aus – sofort gespeichert, weil KI-Masken und
    *  Geraderichten im Backend den gespeicherten Stand nutzen. */
   setLens(on: boolean) {

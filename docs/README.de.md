@@ -87,6 +87,12 @@ Parametersatz der Bearbeitung, automatisch nach jeder Änderung.
 
 Der Reiter **Basis** enthält von oben nach unten:
 
+- **Auto** (Strg+U): stellt Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz und Dynamik so
+  ein, dass das Foto ausgewogen aussieht. Lumenkorn entwickelt dafür eine kleine Kopie mit der
+  echten Pipeline und bringt Regler für Regler auf ein Ziel: mittlere Helligkeit, keine neu
+  ausgefressenen Lichter, sichtbare Tiefen, voller Tonwertumfang. Nachtaufnahmen und Motive mit
+  großen hellen Flächen (Schnee, Himmel) werden nur wenig aufgehellt. Strg+Z macht es rückgängig.
+
 - **Weißabgleich:** Temperatur und Tönung, relativ zum Kamera-Weißabgleich.
 - **Licht:** Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz.
 - **Farbe:** Dynamik, Sättigung.
@@ -304,6 +310,7 @@ unbearbeiteten Originale.
 | \ | Vorher/Nachher |
 | F11 | Vollbild |
 | [ / ] | Links / rechts drehen |
+| Strg+U | Auto-Tonwerte (Entwickeln) |
 | Strg+Z / Strg+Umschalt+Z | Rückgängig / Wiederholen |
 | Strg+Umschalt+C / Strg+Umschalt+V | Einstellungen kopieren / einfügen |
 | O | Maske rot anzeigen |

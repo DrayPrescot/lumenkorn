@@ -74,6 +74,7 @@
     else if (mod && e.key.toLowerCase() === "z" && e.shiftKey) dev.redo();
     else if (mod && e.key.toLowerCase() === "z") dev.undo();
     else if (mod && e.key.toLowerCase() === "y") dev.redo();
+    else if (mod && e.key.toLowerCase() === "u") dev.autoTone();
     else return;
     e.preventDefault();
   }

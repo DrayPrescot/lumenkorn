@@ -226,6 +226,9 @@ export const mock = {
         await new Promise((r) => setTimeout(r, 400)); // RAW-Dekodierung simulieren
         return out({ params: img.edit ?? null, fullWidth: img.width, fullHeight: img.height, raw: img.ext !== "jpg", snapshots: img.snapshots, lens: img.ext !== "jpg" ? { distortion: "sony", chromatic: "sony", vignetting: "lensfun", lens: "Sony FE 24-70mm f/2.8 GM II" } : null });
       }
+      case "develop_auto":
+        await new Promise((r) => setTimeout(r, 300));
+        return out({ exposure: 0.45, contrast: 18, highlights: -22, shadows: 15, whites: 34, blacks: -21, vibrance: 12 });
       case "develop_detect_tilt":
         return out(1.5);
       case "develop_params": {

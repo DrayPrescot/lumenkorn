@@ -186,4 +186,6 @@ export default {
   "Für dieses RAW gibt es weder Korrekturdaten der Kamera noch ein Lensfun-Profil.": "There is neither correction data from the camera nor a Lensfun profile for this RAW.",
   "Kameradaten (Sony)": "camera data (Sony)",
   "Daten der DNG-Datei": "data in the DNG file",
+  "Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz und Dynamik automatisch einstellen (Strg+U)": "Set exposure, contrast, highlights, shadows, whites, blacks and vibrance automatically (Ctrl+U)",
+  "Wird berechnet …": "Calculating …",
 } satisfies Record<string, string>;

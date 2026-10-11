@@ -216,6 +216,12 @@
   {:else if dev.tab === "crop"}
     {@render cropSection()}
   {:else}
+    <section class="auto">
+      <button class="btn wide" disabled={dev.autoBusy || !dev.ready} onclick={() => dev.autoTone()} title={t("Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz und Dynamik automatisch einstellen (Strg+U)")}>
+        <Icon name="sparkle" size={13} />
+        {dev.autoBusy ? t("Wird berechnet …") : t("Auto")}
+      </button>
+    </section>
     {#each groups as g (g.id)}
       <details open>
         <summary tabindex="-1">{g.title}</summary>
@@ -440,6 +446,10 @@
   }
   .reset {
     border-bottom: 0;
+  }
+  .auto .wide {
+    margin-top: 0;
+    gap: 6px;
   }
   .check {
     display: flex;

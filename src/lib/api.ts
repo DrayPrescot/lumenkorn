@@ -484,6 +484,17 @@ export interface DevelopInfo {
   lens: LensSummary | null;
 }
 
+/** Vorschlag von „Auto“ für die Tonregler */
+export interface AutoTone {
+  exposure: number;
+  contrast: number;
+  highlights: number;
+  shadows: number;
+  whites: number;
+  blacks: number;
+  vibrance: number;
+}
+
 /** Was die Korrekturdaten eines RAWs abdecken */
 export type LensSource = "sony" | "dng" | "lensfun";
 export interface LensSummary {
@@ -655,6 +666,7 @@ export const api = {
     const buf = await tauriInvoke<ArrayBuffer>("develop_render_detail", { id, params, region, scale });
     return new Blob([buf], { type: "image/jpeg" });
   },
+  developAuto: (id: number, params: DevelopParams) => call<AutoTone>("develop_auto", { id, params }),
   developDetectTilt: (id: number, rotate: number, flip: boolean) =>
     call<number | null>("develop_detect_tilt", { id, rotate, flip }),
   developSave: (ids: number[], params: DevelopParams) => call<void>("develop_save", { ids, params }),

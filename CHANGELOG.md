@@ -7,6 +7,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Develop: “Auto” at the top of the Basis tab (`Ctrl+U`) sets exposure,
+  contrast, highlights, shadows, whites, blacks and vibrance so the photo
+  looks balanced. It develops a small copy with the real pipeline and brings
+  each slider in turn to a target (median brightness, no new clipping,
+  visible shadows, full tonal range), so it fits the base curve, lens
+  correction and crop. Night shots and scenes with large bright areas (snow,
+  sky) are brightened only a little. `Ctrl+Z` undoes it.
 - People: groups such as “Familie” or “Freunde”. “+ Gruppe” in the people
   overview creates one; each group is a collapsible section like “Unbenannt”
   (remembered across restarts), with its people inside. Drag a person's card

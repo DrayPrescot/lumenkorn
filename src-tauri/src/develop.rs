@@ -402,6 +402,24 @@ pub async fn develop_detect_tilt(
     .await
 }
 
+/// „Auto“: Tonwerte und Dynamik für das Foto mit den übergebenen (noch
+/// ungespeicherten) Einstellungen vorschlagen.
+#[tauri::command]
+pub async fn develop_auto(
+    app: AppHandle,
+    id: i64,
+    params: DevelopParams,
+) -> Result<lumenkorn_develop::auto::AutoTone, Error> {
+    blocking(app, move |state| {
+        let src = load_proxy(state, id, PROXY_EDGE)?;
+        let t = std::time::Instant::now();
+        let a = lumenkorn_develop::auto::auto_tone(&src, &params);
+        log::info!("Auto für Bild {id} in {:.2?}: {a:?}", t.elapsed());
+        Ok(a)
+    })
+    .await
+}
+
 /// Ob für das Foto die Objektivkorrektur eingeschaltet ist (gespeicherter
 /// Stand; die Oberfläche speichert Änderungen sofort).
 pub(crate) fn lens_setting(state: &AppState, id: i64) -> bool {
