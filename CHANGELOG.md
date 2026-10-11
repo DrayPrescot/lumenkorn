@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0] – 2026-10-11
+
 ### Added
 - Develop: “Schwarzweiß” next to Auto (`V`) turns the photo black and white.
   The conversion runs after HSL and the local adjustments, so the HSL

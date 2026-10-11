@@ -24,7 +24,7 @@ There is no account, no cloud and no subscription. The AI features (keywords, se
 content, masks, noise reduction, object removal, face recognition) use open models that are
 downloaded once and then run offline on your CPU or GPU.
 
-The project is young (version 0.1). It is mainly used on Windows and is also built and tested
+Lumenkorn is at version 1.0. It is mainly used on Windows and is also built and tested
 on Linux. The interface is in German and English and follows
 the system language; **DE / EN** at the bottom left of the sidebar switches it.
 
