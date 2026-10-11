@@ -7,6 +7,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Presets: save settings under a name and apply them to photos, from the
+  right-click menu (grid, filmstrip, single view, Develop) → “Preset
+  anwenden”. In Develop, hovering a preset in the menu shows its effect on
+  the open photo; a click applies it (`Ctrl+Z` undoes it), also to all
+  selected photos at once. “Neues Preset aus diesem Foto …” saves the edit of
+  the clicked photo and lets you choose what belongs to it: white balance,
+  light, color, HSL, color grading, details, masks (without AI masks) and
+  crop/rotate. “Presets verwalten …” renames and deletes them. Catalog update
+  to version 12.
 - AI sky detection: “Himmel” uses the open-source sky model skyseg (U²-Net,
   MIT license), downloaded with the AI masks (about 176 MB more). It also
   finds dark cloud banks, haze and dusk skies and does not take walls or

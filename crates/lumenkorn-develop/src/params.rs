@@ -172,12 +172,24 @@ impl ColorGrade {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct TransferGroups {
-    /// Weißabgleich, Licht, Farbe (inkl. HSL und Color Grading), Klarheit, Schärfen
+    /// Weißabgleich, Licht, Farbe (inkl. HSL und Color Grading), Klarheit,
+    /// Dunst, Schärfen – alles aus den feineren Gruppen darunter
     pub basic: bool,
     /// Masken ohne KI-Masken
     pub masks: bool,
     /// Zuschnitt, Drehen, Spiegeln, Geraderichten
     pub geometry: bool,
+    // Feinere Gruppen für Presets (mit `basic` sind sie alle enthalten)
+    /// Temperatur, Tönung
+    pub white_balance: bool,
+    /// Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz
+    pub light: bool,
+    /// Dynamik, Sättigung
+    pub color: bool,
+    pub hsl: bool,
+    pub color_grade: bool,
+    /// Klarheit, Dunst entfernen, Schärfen
+    pub details: bool,
 }
 
 impl Default for TransferGroups {
@@ -186,6 +198,12 @@ impl Default for TransferGroups {
             basic: true,
             masks: false,
             geometry: false,
+            white_balance: false,
+            light: false,
+            color: false,
+            hsl: false,
+            color_grade: false,
+            details: false,
         }
     }
 }
@@ -659,22 +677,32 @@ impl DevelopParams {
     /// Masken aus Verlauf, Radial und Pinsel sind normiert und passen überall.
     pub fn transfer_from(&self, src: &DevelopParams, g: TransferGroups) -> DevelopParams {
         let mut out = self.clone();
-        if g.basic {
+        if g.basic || g.white_balance {
             out.temperature = src.temperature;
             out.tint = src.tint;
+        }
+        if g.basic || g.light {
             out.exposure = src.exposure;
             out.contrast = src.contrast;
             out.highlights = src.highlights;
             out.shadows = src.shadows;
             out.whites = src.whites;
             out.blacks = src.blacks;
-            out.clarity = src.clarity;
-            out.dehaze = src.dehaze;
+        }
+        if g.basic || g.color {
             out.vibrance = src.vibrance;
             out.saturation = src.saturation;
-            out.sharpen = src.sharpen;
+        }
+        if g.basic || g.hsl {
             out.hsl = src.hsl;
+        }
+        if g.basic || g.color_grade {
             out.color_grade = src.color_grade;
+        }
+        if g.basic || g.details {
+            out.clarity = src.clarity;
+            out.dehaze = src.dehaze;
+            out.sharpen = src.sharpen;
         }
         if g.masks {
             let is_ai = |m: &MaskLayer| {
@@ -762,6 +790,7 @@ mod tests {
                 basic: true,
                 masks: true,
                 geometry: true,
+                ..TransferGroups::default()
             },
         );
         assert_eq!(all.rotate, 1);
@@ -772,6 +801,33 @@ mod tests {
             "eigene KI-Maske bleibt, fremde nicht"
         );
         assert_eq!(all.denoise.as_ref().unwrap().id, "9-dn-1");
+    }
+
+    #[test]
+    fn fine_groups_transfer_only_their_sliders() {
+        let src = DevelopParams::from_json(&serde_json::json!({
+            "exposure": 1.0, "temperature": 20.0, "saturation": -100.0, "clarity": 30.0
+        }));
+        let dst = DevelopParams::from_json(
+            &serde_json::json!({ "exposure": -0.5, "temperature": -10.0 }),
+        );
+        let g = TransferGroups {
+            basic: false,
+            color: true,
+            details: true,
+            ..TransferGroups::default()
+        };
+        let out = dst.transfer_from(&src, g);
+        assert_eq!((out.saturation, out.clarity), (-100.0, 30.0));
+        assert_eq!(
+            (out.exposure, out.temperature),
+            (-0.5, -10.0),
+            "Licht und Weißabgleich bleiben"
+        );
+        // Alte Aufrufe (nur `basic`) übertragen weiter alles
+        let old: TransferGroups =
+            serde_json::from_value(serde_json::json!({ "basic": true })).unwrap();
+        assert_eq!(dst.transfer_from(&src, old).exposure, 1.0);
     }
 
     #[test]

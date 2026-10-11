@@ -6,7 +6,7 @@ use crate::formats::ImageKind;
 use crate::metadata::Metadata;
 use crate::model::*;
 use crate::paths::{self, SEP};
-use lumenkorn_develop::DevelopParams;
+use lumenkorn_develop::{DevelopParams, TransferGroups};
 use lumenkorn_develop::{i18n::tr_s, tr};
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, Row, params, params_from_iter};
@@ -216,6 +216,17 @@ const MIGRATIONS: &[&str] = &[
     "#,
     // v11: Leistung (siehe `SEARCH_DIRTY`)
     SEARCH_DIRTY,
+    // v12: Presets – benannte Einstellungen, die sich auf beliebige Fotos
+    // anwenden lassen. `groups` sagt, welche Teile von `params` dazugehören.
+    r#"
+    CREATE TABLE IF NOT EXISTS presets (
+        id          INTEGER PRIMARY KEY,
+        name        TEXT NOT NULL,
+        params      TEXT NOT NULL,
+        groups      TEXT NOT NULL,
+        created_at  INTEGER NOT NULL
+    );
+    "#,
 ];
 
 /// v11: Der Suchtext eines Fotos wurde bisher bei jeder einzelnen
@@ -1416,6 +1427,68 @@ impl Catalog {
     }
 
     // ------------------------------------------------------------------
+    // Presets
+    // ------------------------------------------------------------------
+
+    /// Alle Presets, alphabetisch.
+    pub fn presets(&self) -> Result<Vec<Preset>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT id, name, params, groups, created_at FROM presets")?;
+        let rows = st.query_map([], |r| {
+            let params: String = r.get(2)?;
+            let groups: String = r.get(3)?;
+            Ok(Preset {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                params: serde_json::from_str::<serde_json::Value>(&params)
+                    .map(|v| DevelopParams::from_json(&v))
+                    .unwrap_or_default(),
+                groups: serde_json::from_str(&groups).unwrap_or_default(),
+                created_at: r.get(4)?,
+            })
+        })?;
+        let mut out: Vec<Preset> = rows.collect::<std::result::Result<_, _>>()?;
+        out.sort_by_key(|p| p.name.to_lowercase());
+        Ok(out)
+    }
+
+    /// Legt ein Preset an. Fotospezifisches (KI-Rauschreduzierung,
+    /// KI-Reparaturen, KI-Masken) gehört nie dazu.
+    pub fn create_preset(
+        &self,
+        name: &str,
+        params: &DevelopParams,
+        groups: TransferGroups,
+    ) -> Result<i64> {
+        let p = DevelopParams::default().transfer_from(&params.sanitized(), groups);
+        self.conn.execute(
+            "INSERT INTO presets (name, params, groups, created_at) VALUES (?1, ?2, ?3, ?4)",
+            params![
+                name,
+                serde_json::to_string(&p)?,
+                serde_json::to_string(&groups)?,
+                now()
+            ],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    pub fn rename_preset(&self, id: i64, name: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE presets SET name = ?2 WHERE id = ?1",
+            params![id, name],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_preset(&self, id: i64) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM presets WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    // ------------------------------------------------------------------
     // KI: Embeddings und automatische Schlagworte
     // ------------------------------------------------------------------
 
@@ -2215,5 +2288,41 @@ mod project_tests {
         assert_eq!(count(&[(a, true), (&ab, true)]), 3, "überlappend: einmal");
         assert_eq!(count(&[(a, false), (&ab, false)]), 2);
         assert_eq!(count(&[(&dirs[2], true), (&ab, false)]), 2);
+    }
+
+    #[test]
+    fn presets_keep_only_their_groups_and_nothing_photo_specific() {
+        let cat = Catalog::open_in_memory().unwrap();
+        let p = DevelopParams::from_json(&serde_json::json!({
+            "exposure": 1.0, "saturation": -100.0, "rotate": 1,
+            "denoise": { "id": "7-dn-1", "amount": 80.0 }
+        }));
+        let g = TransferGroups {
+            basic: false,
+            color: true,
+            ..TransferGroups::default()
+        };
+        cat.create_preset("schwarzweiß", &p, g).unwrap();
+        cat.create_preset("Alles", &p, TransferGroups::default())
+            .unwrap();
+        let list = cat.presets().unwrap();
+        assert_eq!(
+            list.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(),
+            vec!["Alles", "schwarzweiß"],
+            "alphabetisch, ohne Groß/klein"
+        );
+        let bw = &list[1];
+        assert_eq!(bw.groups, g);
+        assert_eq!(bw.params.saturation, -100.0);
+        assert_eq!(
+            bw.params.exposure, 0.0,
+            "nicht gewählte Gruppen bleiben neutral"
+        );
+        assert!(bw.params.denoise.is_none() && bw.params.rotate == 0);
+        cat.rename_preset(bw.id, "SW").unwrap();
+        cat.delete_preset(list[0].id).unwrap();
+        let list = cat.presets().unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].name, "SW");
     }
 }

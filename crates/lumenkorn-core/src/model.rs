@@ -220,6 +220,18 @@ pub enum ScanPhase {
     Writing,
 }
 
+/// Benannte Einstellungen zum Anwenden auf beliebige Fotos. Nur die Teile von
+/// `params`, die `groups` nennt, werden übertragen.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Preset {
+    pub id: i64,
+    pub name: String,
+    pub params: lumenkorn_develop::DevelopParams,
+    pub groups: lumenkorn_develop::TransferGroups,
+    pub created_at: i64,
+}
+
 /// Eine gespeicherte Bearbeitung. `params` ist der vollständige,
 /// non-destruktive Parametersatz der Entwicklungspipeline als JSON.
 #[derive(Debug, Clone, Serialize, Deserialize)]

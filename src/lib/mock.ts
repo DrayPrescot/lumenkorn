@@ -1,9 +1,9 @@
 // Mock-Backend für die Arbeit an der Oberfläche im normalen Browser.
 // Erzeugt eine Beispielbibliothek mit Platzhalterbildern.
 
-import { DEFAULT_PARAMS, transferParams } from "./api";
+import { DEFAULT_PARAMS, NO_GROUPS, transferParams } from "./api";
 import { t } from "./i18n";
-import type { DevelopParams, Edit, FolderNode, ImageDetail, ImageQuery, ImageSummary, ImageTag, Project, Root } from "./api";
+import type { DevelopParams, Edit, Preset, FolderNode, ImageDetail, ImageQuery, ImageSummary, ImageTag, Project, Root } from "./api";
 
 // rating/flag gehören zur Bildliste (ImageSummary), nicht zu den Details
 type Img = ImageDetail & { rootId: number; hue: number; rating: number; flag: number; edit?: DevelopParams; snapshots: Edit[] };
@@ -29,6 +29,16 @@ const lenses = ["FE 24-70mm F2.8 GM II", "XF33mmF1.4 R LM WR", "RF35mm F1.8 MACR
 const tagPool = ["Berge", "Meer", "Himmel", "Person", "Gebäude", "Straße", "Nacht", "Schnee", "Bier", "Porträt", "Hund"];
 
 let nextId = 1;
+// Beispiel-Presets für die Browser-Vorschau
+const demoPreset = (id: number, name: string, p: Partial<DevelopParams>, g: Partial<typeof NO_GROUPS>): Preset =>
+  ({ id, name, params: { ...structuredClone(DEFAULT_PARAMS), ...p }, groups: { ...NO_GROUPS, ...g }, createdAt: 0 });
+// Erst beim ersten Zugriff anlegen: api.ts und mock.ts importieren sich gegenseitig
+let presetStore: Preset[] | null = null;
+const demoPresets = (): Preset[] => [
+  demoPreset(1, "Matt und weich", { contrast: -20, blacks: 25, highlights: -30, saturation: -10 }, { light: true, color: true }),
+  demoPreset(2, "Schwarzweiß kontrastreich", { saturation: -100, contrast: 35, clarity: 20 }, { light: true, color: true, details: true }),
+  demoPreset(3, "Warmer Abend", { temperature: 25, tint: 5, vibrance: 15 }, { whiteBalance: true, color: true }),
+];
 const images: Img[] = [];
 
 // Beispiel-Gesichter: die ersten zwölf Fotos je ein Gesicht – „Anna“ (bestätigt oder vorgeschlagen) oder ohne Zuordnung
@@ -217,6 +227,21 @@ export const mock = {
       case "develop_save":
         for (const i of images.filter((i) => a.ids.includes(i.id))) i.edit = a.params;
         return out(null);
+      case "preset_list":
+        return out((presetStore ??= demoPresets()));
+      case "preset_create": {
+        const params = transferParams(structuredClone(DEFAULT_PARAMS), a.params, a.groups);
+        presetStore = [...(presetStore ??= demoPresets()), { id: Date.now(), name: a.name.trim(), params, groups: a.groups, createdAt: Date.now() / 1000 }]
+          .sort((x, y) => x.name.localeCompare(y.name, "de", { sensitivity: "base" }));
+        return out(presetStore);
+      }
+      case "preset_rename":
+        presetStore = (presetStore ??= demoPresets()).map((p) => (p.id === a.id ? { ...p, name: a.name.trim() || p.name } : p))
+          .sort((x, y) => x.name.localeCompare(y.name, "de", { sensitivity: "base" }));
+        return out(presetStore);
+      case "preset_delete":
+        presetStore = (presetStore ??= demoPresets()).filter((p) => p.id !== a.id);
+        return out(presetStore);
       case "develop_snapshot": {
         const img = images.find((i) => i.id === a.id)!;
         img.snapshots.unshift({ id: Date.now(), imageId: img.id, name: a.name || "Schnappschuss", params: structuredClone(img.edit!), isCurrent: false, createdAt: Date.now() / 1000, updatedAt: 0 });

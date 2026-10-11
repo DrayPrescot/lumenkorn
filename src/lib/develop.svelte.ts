@@ -5,6 +5,7 @@ import {
   DEFAULT_PARAMS,
   listen,
   NEUTRAL_LOCAL,
+  NO_GROUPS,
   type ColorGrade,
   type DevelopParams,
   type Edit,
@@ -14,6 +15,7 @@ import {
   type LocalAdjust,
   type MaskLayer,
   type MaskShape,
+  type Preset,
   type PromptPoint,
   type RepairLayer,
   type TransferGroups,
@@ -56,7 +58,7 @@ const same = (a: DevelopParams, b: DevelopParams) => JSON.stringify(a) === JSON.
 const clone = (p: DevelopParams): DevelopParams => JSON.parse(JSON.stringify(p));
 
 /** Übertragen wird ausschließlich der Reiter „Basis“ (ohne Rauschreduzierung). */
-const BASIC_ONLY: TransferGroups = { basic: true, masks: false, geometry: false };
+const BASIC_ONLY: TransferGroups = { ...NO_GROUPS, basic: true };
 
 class Develop {
   /** Bild, das gerade entwickelt wird. */
@@ -214,6 +216,7 @@ class Develop {
     const token = ++this.#loadToken;
     await this.flush();
     if (token !== this.#loadToken) return;
+    this.#dropPreview();
     this.imageId = id;
     this.#paramsFor = null;
     this.loading = true;
@@ -257,6 +260,7 @@ class Develop {
   }
 
   close() {
+    this.#dropPreview();
     const wasOpen = this.imageId !== null;
     // Erst speichern, dann die großen Puffer im Backend freigeben
     const saved = this.flush();
@@ -794,7 +798,8 @@ class Develop {
     clearTimeout(this.#saveTimer);
     const id = this.imageId;
     if (id === null || !this.ready) return;
-    const p = $state.snapshot(this.params) as DevelopParams;
+    // Eine Preset-Vorschau wird nie gespeichert
+    const p = this.#hoverBase ?? ($state.snapshot(this.params) as DevelopParams);
     if (same(p, this.#saved)) return;
     this.#saved = clone(p);
     // Speichervorgänge strikt nacheinander: Die Befehle laufen im Backend
@@ -844,27 +849,160 @@ class Develop {
       return;
     }
     if (!ids.length) return;
-    const src = clip.params;
+    if (!(await this.#transfer(ids, clip.params, BASIC_ONLY))) return;
+    lib.notify(t(ids.length === 1 ? "Basis-Einstellungen auf {n} Foto übertragen" : "Basis-Einstellungen auf {n} Fotos übertragen", { n: ids.length }));
+  }
+
+  /** Teile von `src` auf die Fotos `ids` übertragen; beim geöffneten Foto mit
+   *  Rückgängig, bei den übrigen im Backend. */
+  async #transfer(ids: number[], src: DevelopParams, groups: TransferGroups): Promise<boolean> {
+    this.previewPreset(null);
     // Vor jedem Warten festlegen, was wohin geht (Bildwechsel währenddessen)
     const openId = this.ready ? this.imageId : null;
     const others = ids.filter((i) => i !== openId);
     if (openId !== null && ids.includes(openId)) {
-      this.replace(transferParams($state.snapshot(this.params) as DevelopParams, src, BASIC_ONLY)); // mit Rückgängig
+      this.replace(transferParams($state.snapshot(this.params) as DevelopParams, src, groups)); // mit Rückgängig
       await this.flush();
     }
     if (others.length) {
       try {
         // Nach laufenden Speichervorgängen – sonst überschreibt ein älterer Stand das Einfügen
         await this.#saving;
-        await api.developTransfer(others, src, BASIC_ONLY);
+        await api.developTransfer(others, src, groups);
       } catch (e) {
         lib.notify(String(e), "error");
-        return;
+        return false;
       }
       const set = new Set(others);
       lib.images = lib.images.map((i) => (set.has(i.id) ? { ...i, edited: true } : i));
     }
-    lib.notify(t(ids.length === 1 ? "Basis-Einstellungen auf {n} Foto übertragen" : "Basis-Einstellungen auf {n} Fotos übertragen", { n: ids.length }));
+    return true;
+  }
+
+  // --- Presets ---------------------------------------------------------------
+
+  presets = $state<Preset[]>([]);
+  #presetsLoaded = false;
+  /** Stand vor der Vorschau eines Presets (Maus über dem Eintrag) */
+  #hoverBase: DevelopParams | null = null;
+  #hoverTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Preset, dessen Wirkung gerade gezeigt wird */
+  previewing = $state<number | null>(null);
+
+  async loadPresets(force = false) {
+    if (this.#presetsLoaded && !force) return;
+    this.#presetsLoaded = true;
+    try {
+      this.presets = await api.presetList();
+    } catch (e) {
+      this.#presetsLoaded = false;
+      lib.notify(String(e), "error");
+    }
+  }
+
+  /** Gruppen, in denen eine Bearbeitung vom Standard abweicht – Vorauswahl
+   *  beim Anlegen eines Presets. */
+  changedGroups(p: DevelopParams): TransferGroups {
+    const d = DEFAULT_PARAMS;
+    const differs = (keys: (keyof DevelopParams)[]) => keys.some((k) => JSON.stringify(p[k]) !== JSON.stringify(d[k]));
+    return {
+      ...NO_GROUPS,
+      whiteBalance: differs(["temperature", "tint"]),
+      light: differs(["exposure", "contrast", "highlights", "shadows", "whites", "blacks"]),
+      color: differs(["vibrance", "saturation"]),
+      hsl: differs(["hsl"]),
+      colorGrade: differs(["colorGrade"]),
+      details: differs(["clarity", "dehaze", "sharpen"]),
+      masks: p.masks.some((m) => !m.shapes.some((s) => s.type === "raster")),
+      geometry: differs(["crop", "straighten", "rotate", "flipHorizontal"]),
+    };
+  }
+
+  /** Offener Preset-Dialog: neues Preset aus einem Foto, oder Verwalten */
+  presetDialog = $state<{ mode: "create"; name: string; params: DevelopParams } | { mode: "manage" } | null>(null);
+
+  /** „Neues Preset aus diesem Foto …“: beim geöffneten Foto der aktuelle
+   *  (noch nicht gespeicherte) Stand, sonst die gespeicherte Bearbeitung. */
+  async openCreatePreset(id: number, name: string) {
+    this.previewPreset(null);
+    let params: DevelopParams;
+    try {
+      params = this.ready && this.imageId === id ? clone($state.snapshot(this.params) as DevelopParams) : await api.developParams(id);
+    } catch (e) {
+      lib.notify(String(e), "error");
+      return;
+    }
+    if (same(params, DEFAULT_PARAMS)) {
+      lib.notify(t("Dieses Foto ist unbearbeitet – es gibt nichts für ein Preset."));
+      return;
+    }
+    this.presetDialog = { mode: "create", name, params };
+  }
+
+  async createPreset(name: string, groups: TransferGroups, params: DevelopParams) {
+    try {
+      this.presets = await api.presetCreate(name, params, { ...groups, basic: false });
+      lib.notify(t("Preset „{name}“ gespeichert", { name: name.trim() }));
+      return true;
+    } catch (e) {
+      lib.notify(String(e), "error");
+      return false;
+    }
+  }
+
+  async renamePreset(p: Preset, name: string) {
+    if (!name.trim() || name.trim() === p.name) return;
+    try {
+      this.presets = await api.presetRename(p.id, name);
+    } catch (e) {
+      lib.notify(String(e), "error");
+    }
+  }
+
+  async deletePreset(p: Preset) {
+    if (!confirm(t("Preset „{name}“ löschen? Fotos, auf die es angewendet wurde, bleiben unverändert.", { name: p.name }))) return;
+    try {
+      this.presets = await api.presetDelete(p.id);
+    } catch (e) {
+      lib.notify(String(e), "error");
+    }
+  }
+
+  /** Preset auf Fotos anwenden (Standard: das geöffnete bzw. die Auswahl). */
+  async applyPreset(p: Preset, ids: number[]) {
+    if (!ids.length) return;
+    if (!(await this.#transfer(ids, p.params, { ...p.groups, basic: false }))) return;
+    lib.notify(t(ids.length === 1 ? "Preset „{name}“ angewendet" : "Preset „{name}“ auf {n} Fotos angewendet", { name: p.name, n: ids.length }));
+  }
+
+  /** Vorschau verwerfen, ohne den Stand zurückzuschreiben (Fotowechsel). */
+  #dropPreview() {
+    clearTimeout(this.#hoverTimer);
+    this.#hoverBase = null;
+    this.previewing = null;
+  }
+
+  /** Wirkung eines Presets im geöffneten Foto zeigen, ohne es anzuwenden
+   *  (`null` stellt den Stand davor wieder her). */
+  previewPreset(p: Preset | null) {
+    clearTimeout(this.#hoverTimer);
+    if (!p) {
+      if (this.#hoverBase) {
+        this.params = this.#hoverBase;
+        this.#hoverBase = null;
+        this.schedule();
+      }
+      this.previewing = null;
+      return;
+    }
+    if (!this.ready) return;
+    // Kurz warten: Beim Überfahren der Liste nicht jeden Eintrag rendern
+    this.#hoverTimer = setTimeout(() => {
+      this.#hoverBase ??= clone($state.snapshot(this.params) as DevelopParams);
+      this.params = transferParams(this.#hoverBase, p.params, { ...p.groups, basic: false });
+      this.previewing = p.id;
+      this.schedule();
+    }, 120);
   }
 
   // --- Schnappschüsse --------------------------------------------------------

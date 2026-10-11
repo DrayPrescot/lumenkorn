@@ -3,7 +3,7 @@
 use crate::worker::Job;
 use crate::{AppState, blocking};
 use lumenkorn_core::formats::ImageKind;
-use lumenkorn_core::{Catalog, Edit, Error};
+use lumenkorn_core::{Catalog, Edit, Error, Preset};
 use lumenkorn_develop::i18n::tr_s;
 use lumenkorn_develop::output::{self, ExportOptions};
 use lumenkorn_develop::{Crop, DevelopParams, ImageF32, RenderOptions, Source, tr};
@@ -521,6 +521,53 @@ pub fn develop_transfer(
     }
     state.worker.submit(Job::Thumbs);
     Ok(())
+}
+
+// --- Presets ------------------------------------------------------------------
+// Angewendet werden sie wie Einfügen über `develop_transfer` mit den Gruppen des
+// Presets; hier nur Anlegen, Umbenennen, Löschen.
+
+#[tauri::command(async)]
+pub fn preset_list(state: State<AppState>) -> Result<Vec<Preset>, Error> {
+    state.catalog.lock().unwrap().presets()
+}
+
+#[tauri::command(async)]
+pub fn preset_create(
+    state: State<AppState>,
+    name: String,
+    params: DevelopParams,
+    groups: lumenkorn_develop::TransferGroups,
+) -> Result<Vec<Preset>, Error> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(Error::Invalid(
+            tr_s(
+                "Das Preset braucht einen Namen.",
+                "The preset needs a name.",
+            )
+            .into(),
+        ));
+    }
+    let cat = state.catalog.lock().unwrap();
+    cat.create_preset(name, &params, groups)?;
+    cat.presets()
+}
+
+#[tauri::command(async)]
+pub fn preset_rename(state: State<AppState>, id: i64, name: String) -> Result<Vec<Preset>, Error> {
+    let cat = state.catalog.lock().unwrap();
+    if !name.trim().is_empty() {
+        cat.rename_preset(id, name.trim())?;
+    }
+    cat.presets()
+}
+
+#[tauri::command(async)]
+pub fn preset_delete(state: State<AppState>, id: i64) -> Result<Vec<Preset>, Error> {
+    let cat = state.catalog.lock().unwrap();
+    cat.delete_preset(id)?;
+    cat.presets()
 }
 
 #[tauri::command(async)]

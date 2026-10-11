@@ -227,12 +227,38 @@ const NEUTRAL_WHEEL: GradeWheel = { hue: 0, saturation: 0, luminance: 0 };
 
 /** Welche Teile einer Bearbeitung beim Kopieren/Übertragen mitgehen. */
 export interface TransferGroups {
-  /** Weißabgleich, Licht, Farbe, Klarheit, Schärfen */
+  /** Weißabgleich, Licht, Farbe, Klarheit, Schärfen – alle feinen Gruppen */
   basic: boolean;
   /** Masken ohne KI-Masken */
   masks: boolean;
   /** Zuschnitt, Drehen, Spiegeln, Geraderichten */
   geometry: boolean;
+  /** Temperatur, Tönung */
+  whiteBalance: boolean;
+  /** Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz */
+  light: boolean;
+  /** Dynamik, Sättigung */
+  color: boolean;
+  hsl: boolean;
+  colorGrade: boolean;
+  /** Klarheit, Dunst entfernen, Schärfen */
+  details: boolean;
+}
+
+/** Keine Gruppe – Ausgangspunkt für eigene Auswahl (immer vollständig senden:
+ *  im Backend ist `basic` ohne Angabe an). */
+export const NO_GROUPS: TransferGroups = {
+  basic: false, masks: false, geometry: false,
+  whiteBalance: false, light: false, color: false, hsl: false, colorGrade: false, details: false,
+};
+
+/** Benannte Einstellungen, anwendbar auf beliebige Fotos (nur `groups`). */
+export interface Preset {
+  id: number;
+  name: string;
+  params: DevelopParams;
+  groups: TransferGroups;
+  createdAt: number;
 }
 
 /** Koordinaten normiert auf das aufrechte Original (vor Drehen/Zuschnitt). */
@@ -403,11 +429,15 @@ export const BASIC_KEYS = [
  */
 export function transferParams(target: DevelopParams, src: DevelopParams, g: TransferGroups): DevelopParams {
   const out: DevelopParams = JSON.parse(JSON.stringify(target));
-  if (g.basic) {
-    for (const k of BASIC_KEYS) out[k] = src[k];
-    out.hsl = JSON.parse(JSON.stringify(src.hsl ?? DEFAULT_PARAMS.hsl));
-    out.colorGrade = JSON.parse(JSON.stringify(src.colorGrade ?? DEFAULT_PARAMS.colorGrade));
-  }
+  const copy = (keys: readonly (keyof DevelopParams)[]) => {
+    for (const k of keys) (out as unknown as Record<string, unknown>)[k] = src[k];
+  };
+  if (g.basic || g.whiteBalance) copy(["temperature", "tint"]);
+  if (g.basic || g.light) copy(["exposure", "contrast", "highlights", "shadows", "whites", "blacks"]);
+  if (g.basic || g.color) copy(["vibrance", "saturation"]);
+  if (g.basic || g.details) copy(["clarity", "dehaze", "sharpen"]);
+  if (g.basic || g.hsl) out.hsl = JSON.parse(JSON.stringify(src.hsl ?? DEFAULT_PARAMS.hsl));
+  if (g.basic || g.colorGrade) out.colorGrade = JSON.parse(JSON.stringify(src.colorGrade ?? DEFAULT_PARAMS.colorGrade));
   if (g.masks) {
     // Eigene KI-Masken bleiben, die übrigen ersetzen die übertragbaren der Quelle
     const isAi = (m: MaskLayer) => m.shapes.some((s) => s.type === "raster");
@@ -610,6 +640,11 @@ export const api = {
   developParams: (id: number) => call<DevelopParams>("develop_params", { id }),
   developTransfer: (ids: number[], source: DevelopParams, groups: TransferGroups) =>
     call<void>("develop_transfer", { ids, source, groups }),
+  presetList: () => call<Preset[]>("preset_list"),
+  presetCreate: (name: string, params: DevelopParams, groups: TransferGroups) =>
+    call<Preset[]>("preset_create", { name, params, groups }),
+  presetRename: (id: number, name: string) => call<Preset[]>("preset_rename", { id, name }),
+  presetDelete: (id: number) => call<Preset[]>("preset_delete", { id }),
   developSnapshot: (id: number, name: string) => call<Edit[]>("develop_snapshot", { id, name }),
   developRestore: (editId: number) => call<DevelopParams>("develop_restore", { editId }),
   developDeleteSnapshot: (id: number, editId: number) =>
