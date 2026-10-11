@@ -8,6 +8,7 @@ use crate::{AppState, blocking};
 use lumenkorn_ai::accel::{self, Backend, Preference};
 use lumenkorn_ai::index::{from_bytes, to_bytes};
 use lumenkorn_ai::models::{self, Component, Status};
+use lumenkorn_ai::parts;
 use lumenkorn_ai::segment::{self, Sam, SamEmbedding, SkyModel, SubjectModel};
 use lumenkorn_ai::{Clip, EmbeddingIndex, Tagger, runtime, vocab};
 use lumenkorn_core::maskstore::MaskFiles;
@@ -45,6 +46,10 @@ pub struct AiState {
     subject: Mutex<Option<Arc<SubjectModel>>>,
     sam: Mutex<Option<Arc<Sam>>>,
     sky: Mutex<Option<Arc<SkyModel>>>,
+    /// Personen und Tiere: Detektor, Teil-Segmentierung, Gesichtsnetz
+    owl: Mutex<Option<Arc<parts::Owl>>>,
+    parts_seg: Mutex<Option<Arc<parts::PartsSeg>>>,
+    mesh: Mutex<Option<Arc<parts::FaceMesh>>>,
     /// SAM-Embedding des zuletzt geklickten Bildes – das Berechnen dauert Sekunden.
     sam_embedding: Mutex<Option<(i64, Arc<SamEmbedding>)>>,
     denoiser: Mutex<Option<Arc<lumenkorn_ai::denoise::Denoiser>>>,
@@ -258,6 +263,9 @@ impl AiState {
             subject: Mutex::new(None),
             sam: Mutex::new(None),
             sky: Mutex::new(None),
+            owl: Mutex::new(None),
+            parts_seg: Mutex::new(None),
+            mesh: Mutex::new(None),
             sam_embedding: Mutex::new(None),
             denoiser: Mutex::new(None),
             denoising: AtomicBool::new(false),
@@ -351,6 +359,15 @@ pub(crate) fn release_models(
         if drop_if_unused(&ai.sky) {
             out.push("skyseg");
         }
+        if drop_if_unused(&ai.owl) {
+            out.push("OWLv2");
+        }
+        if drop_if_unused(&ai.parts_seg) {
+            out.push("Selfie Multiclass");
+        }
+        if drop_if_unused(&ai.mesh) {
+            out.push("Face Mesh");
+        }
         // Das SAM-Embedding gehört zum Modell und ist ohne es wertlos
         if ai.sam.lock().unwrap().is_none() {
             *ai.sam_embedding.lock().unwrap() = None;
@@ -379,6 +396,9 @@ fn unload_models(state: &AppState) {
     *state.ai.subject.lock().unwrap() = None;
     *state.ai.sam.lock().unwrap() = None;
     *state.ai.sky.lock().unwrap() = None;
+    *state.ai.owl.lock().unwrap() = None;
+    *state.ai.parts_seg.lock().unwrap() = None;
+    *state.ai.mesh.lock().unwrap() = None;
     *state.ai.sam_embedding.lock().unwrap() = None;
     *state.ai.denoiser.lock().unwrap() = None;
 }
@@ -879,7 +899,16 @@ pub struct MaskResult {
 /// Quellbild für die Segmentierung: unbearbeitet entwickelt, Originalausrichtung
 /// (Masken beziehen sich auf das aufrechte Original, nicht auf Drehung/Zuschnitt).
 fn segmentation_input(state: &AppState, id: i64) -> Result<image::DynamicImage, Error> {
-    let src = crate::develop::load_proxy(state, id, segment::MASK_EDGE as usize)?;
+    segmentation_input_at(state, id, segment::MASK_EDGE)
+}
+
+/// Wie [`segmentation_input`], mit eigener längster Kante.
+fn segmentation_input_at(
+    state: &AppState,
+    id: i64,
+    edge: u32,
+) -> Result<image::DynamicImage, Error> {
+    let src = crate::develop::load_proxy(state, id, edge as usize)?;
     // Masken entstehen auf dem Bild, wie es angezeigt wird – mit oder ohne
     // Objektivkorrektur
     let p = DevelopParams {
@@ -1005,6 +1034,86 @@ pub async fn mask_sky(app: AppHandle, id: i64) -> Result<MaskResult, Error> {
         };
         log::info!("Himmelsmaske für Bild {id} in {:.2?}", t.elapsed());
         store(state, None, id, "sky", &mask)
+    })
+    .await
+}
+
+/// Modelle für Personen und Tiere (mit den KI-Masken nachgeladen).
+fn parts_needed(state: &AppState) -> Result<(), Error> {
+    masks_needed(state)?;
+    if !models::status(&state.data_dir).parts_ready {
+        return Err(Error::Invalid(parts::missing_hint().into()));
+    }
+    Ok(())
+}
+
+fn owl_model(state: &AppState) -> Result<Arc<parts::Owl>, Error> {
+    parts_needed(state)?;
+    lazy_model(state, &state.ai.owl, "OWLv2", || {
+        parts::Owl::load(&models::masks_dir(&state.data_dir)).map_err(err)
+    })
+}
+
+/// „Person“: die ganze Person oder ein Teil davon, bei allen Personen im Foto
+#[tauri::command]
+pub async fn mask_person(
+    app: AppHandle,
+    id: i64,
+    part: parts::PersonPart,
+) -> Result<MaskResult, Error> {
+    blocking(app, move |state| {
+        let owl = owl_model(state)?;
+        let dir = models::masks_dir(&state.data_dir);
+        let seg = lazy_model(state, &state.ai.parts_seg, "Selfie Multiclass", || {
+            parts::PartsSeg::load(&dir.join(parts::SEG_FILE)).map_err(err)
+        })?;
+        let mesh = lazy_model(state, &state.ai.mesh, "Face Mesh", || {
+            parts::FaceMesh::load(&dir.join(parts::MESH_FILE)).map_err(err)
+        })?;
+        // SAM nur für die ganze Person (Umriss)
+        let sam = if part == parts::PersonPart::Person {
+            let s = sam_model(state)?;
+            let e = sam_embedding(state, &s, id)?;
+            Some((s, e))
+        } else {
+            None
+        };
+        let input = segmentation_input_at(state, id, parts::PARTS_EDGE)?;
+        let t = std::time::Instant::now();
+        let _g = analysis_guard(state, tr_s("Personen", "People"));
+        let m = parts::PartModels {
+            owl: &owl,
+            seg: &seg,
+            mesh: &mesh,
+            sam: sam.as_ref().map(|(s, e)| (s.as_ref(), e.as_ref())),
+        };
+        let mask = parts::person_mask(&input, part, &m).map_err(err)?;
+        log::info!(
+            "Personenmaske ({part:?}) für Bild {id} in {:.2?}",
+            t.elapsed()
+        );
+        store(state, None, id, "person", &mask)
+    })
+    .await
+}
+
+/// „Tier“: alle Tiere einer Art (Vögel, Säugetiere, Reptilien oder alle)
+#[tauri::command]
+pub async fn mask_animal(
+    app: AppHandle,
+    id: i64,
+    kind: parts::AnimalKind,
+) -> Result<MaskResult, Error> {
+    blocking(app, move |state| {
+        let owl = owl_model(state)?;
+        let sam = sam_model(state)?;
+        let emb = sam_embedding(state, &sam, id)?;
+        let input = segmentation_input(state, id)?;
+        let t = std::time::Instant::now();
+        let _g = analysis_guard(state, tr_s("Tiere", "Animals"));
+        let mask = parts::animal_mask(&input, kind, &owl, (&sam, &emb)).map_err(err)?;
+        log::info!("Tiermaske ({kind:?}) für Bild {id} in {:.2?}", t.elapsed());
+        store(state, None, id, "animal", &mask)
     })
     .await
 }

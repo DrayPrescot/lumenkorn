@@ -4,6 +4,7 @@
 //! - [`tagger`]: Zero-Shot-Verschlagwortung gegen ein deutsches Vokabular.
 //! - [`index`]: semantische Suche über die Embeddings aller Bilder.
 //! - [`segment`]: Masken – Motiv, Objekt per Klick (SAM), Himmel.
+//! - [`parts`]: Masken für Personen(teile) und Tiere (OWLv2, MediaPipe).
 //! - [`denoise`]: Rauschreduzierung mit DRUNet.
 //! - [`faces`]: Personenerkennung (YuNet + SFace).
 //! - [`inpaint`]: KI-Reparatur (LaMa).
@@ -22,6 +23,7 @@ pub mod index;
 pub mod inpaint;
 pub mod models;
 mod onnx_writer;
+pub mod parts;
 pub mod runtime;
 pub mod segment;
 pub mod tagger;

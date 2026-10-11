@@ -59,7 +59,8 @@ the system language; **DE / EN** at the bottom left of the sidebar switches it.
   [Lensfun](https://lensfun.github.io/) profile for about 1,500 lenses.
 - Crop, rotate, flip, and straighten with automatic horizon detection.
 - Local adjustments: linear and radial gradients, brush, color range, and AI masks for
-  subject, sky and any object you click on. Shapes can be added to or subtracted from each
+  subject, sky, people (whole or parts such as hair, eyes, lips or skin), animals (birds,
+  mammals, reptiles) and any object you click on. Shapes can be added to or subtracted from each
   other ("sky minus church tower").
 - AI noise reduction and AI repair (remove dust, power lines, people, signs).
 - History with undo/redo, snapshots, copy and paste of settings to many photos, and a
@@ -236,6 +237,7 @@ the same time.
 | Subject mask | IS-Net (DIS) | Predicts the main subject. |
 | Object mask | Segment Anything ViT-B | Turns your clicks into a mask; the image embedding is computed once per photo. |
 | Sky mask | skyseg (U²-Net) | Predicts the sky. Uncertain edges, such as tree tops, are then decided by comparing each pixel with the colors of nearby sure sky and sure foreground. Without the model a color-based rule set is used. |
+| Person and animal masks | OWLv2, MediaPipe Selfie Multiclass and Face Mesh, Segment Anything | OWLv2 finds people, faces and animals from text queries. Whole people and animals are cut out by Segment Anything from the found box; hair, skin and clothes come from Selfie Multiclass on a crop around each person or face; eyes, iris, brows and lips are outlined from the 478 Face Mesh points. |
 | Noise reduction | DRUNet | Lumenkorn downloads the original PyTorch weights and converts them to ONNX on your machine. The noise level is estimated per brightness and on two scales; color noise gets an extra pass at half resolution. |
 | Object removal | LaMa | Each area is cut out with some surroundings, filled and blended back at full resolution. |
 | Faces | YuNet, SFace | YuNet finds faces (also small ones in group photos, by searching in tiles), SFace turns each aligned face into a vector. Similar vectors form a group. |
@@ -393,6 +395,9 @@ Lumenkorn would not exist without the following projects. Thank you to everyone 
 | IS-Net / DIS | [Xuebin Qin et al.](https://github.com/xuebinqin/DIS) | [rembg](https://github.com/danielgatis/rembg) releases | Apache-2.0 |
 | Segment Anything (ViT-B, quantized) | [Meta AI](https://github.com/facebookresearch/segment-anything) | rembg releases | Apache-2.0 |
 | skyseg (U²-Net) | [xiongzhu666](https://github.com/xiongzhu666/Sky-Segmentation-and-Post-processing), based on [U²-Net](https://github.com/xuebinqin/U-2-Net) | [Hugging Face](https://huggingface.co/JianyuanWang/skyseg) | MIT |
+| OWLv2 (base, patch16) | [Google Research](https://github.com/google-research/scenic/tree/main/scenic/projects/owl_vit); ONNX conversion by [Xenova](https://huggingface.co/Xenova/owlv2-base-patch16) | Hugging Face | Apache-2.0 |
+| MediaPipe Selfie Multiclass | [Google](https://ai.google.dev/edge/mediapipe/solutions/vision/image_segmenter); ONNX conversion by [senty-au](https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX) | Hugging Face | Apache-2.0 |
+| MediaPipe Face Mesh V2 | [Google](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker); ONNX conversion for [QtMeshEditor](https://huggingface.co/fernandotonon/QtMeshEditor-facemesh-onnx) | Hugging Face | Apache-2.0 |
 | DRUNet | Kai Zhang et al., [KAIR](https://github.com/cszn/KAIR) | KAIR releases | MIT |
 | LaMa | [Samsung AI](https://github.com/advimman/lama) | [OpenCV Model Zoo](https://github.com/opencv/opencv_zoo) | Apache-2.0 |
 | YuNet | Shiqi Yu et al. | OpenCV Model Zoo | MIT |

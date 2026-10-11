@@ -274,7 +274,7 @@ export const mock = {
         return out(img.snapshots);
       }
       case "ai_status":
-        return out({ runtimePath: null, runtimeDownloadable: true, modelReady: false, missing: ["vision.onnx", "text.onnx", "vocab.json", "merges.txt"], downloadSize: 161_000_000, modelDir: "(Mock)", masksReady: false, skyReady: false, masksDownloadSize: 463_000_000, repairReady: false, repairDownloadSize: 92_600_000, denoiseReady: false, denoiseDownloadSize: 131_000_000, gpuRuntimes: [{ backend: "webgpu", label: "WebGPU (Vulkan)", version: "1.27.0", installed: false, downloadSize: 25_163_729 }], accel: { active: { library: null, gpuEnabled: false, gpuError: null, placements: [] }, devices: [{ vendor: "AMD", name: "Radeon RX 7900 XTX / XT / GRE", memory: 25_753_026_560, discrete: true }], restartRequired: false, develop: { enabled: true, available: true, info: { name: "AMD Radeon RX 7900 XTX (RADV NAVI31)", backend: "Vulkan", kind: "discrete", driver: "radv Mesa" }, error: null } }, crashNotice: null, downloading: false, loaded: false, error: null, analyzed: 0, total: images.length, settings: { autoTag: true, accel: "auto", developGpu: true, faces: true } });
+        return out({ runtimePath: null, runtimeDownloadable: true, modelReady: false, missing: ["vision.onnx", "text.onnx", "vocab.json", "merges.txt"], downloadSize: 161_000_000, modelDir: "(Mock)", masksReady: true, skyReady: true, partsReady: true, masksDownloadSize: 0, repairReady: false, repairDownloadSize: 92_600_000, denoiseReady: false, denoiseDownloadSize: 131_000_000, gpuRuntimes: [{ backend: "webgpu", label: "WebGPU (Vulkan)", version: "1.27.0", installed: false, downloadSize: 25_163_729 }], accel: { active: { library: null, gpuEnabled: false, gpuError: null, placements: [] }, devices: [{ vendor: "AMD", name: "Radeon RX 7900 XTX / XT / GRE", memory: 25_753_026_560, discrete: true }], restartRequired: false, develop: { enabled: true, available: true, info: { name: "AMD Radeon RX 7900 XTX (RADV NAVI31)", backend: "Vulkan", kind: "discrete", driver: "radv Mesa" }, error: null } }, crashNotice: null, downloading: false, loaded: false, error: null, analyzed: 0, total: images.length, settings: { autoTag: true, accel: "auto", developGpu: true, faces: true } });
       case "people_status":
         return out({ ready: true, downloadSize: 38_929_000, enabled: true, analyzed: images.length, total: images.length, faces: 12, error: null });
       case "people_list":
@@ -359,6 +359,8 @@ export const mock = {
       case "mask_sky":
       case "develop_sample_color":
         return out([0.55, 0.12 * Math.cos(a.x * 6), 0.12 * Math.sin(a.y * 6)]);
+      case "mask_person":
+      case "mask_animal":
       case "mask_object":
         await new Promise((r) => setTimeout(r, 600));
         return out({ maskId: a.maskId ?? `mock-${Date.now()}`, coverage: 0.3 });

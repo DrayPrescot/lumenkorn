@@ -18,6 +18,8 @@ import {
   type LensSummary,
   type Preset,
   type PromptPoint,
+  type PersonPart,
+  type AnimalKind,
   type RepairLayer,
   type TransferGroups,
   transferParams,
@@ -27,9 +29,29 @@ import { isCanceled, t } from "./i18n";
 import type { HslMode } from "./hsl";
 
 export type MaskTool = "linear" | "radial" | "brush" | "object" | "color";
-export type NewMaskKind = MaskTool | "subject" | "sky";
+/** KI-Masken, die ohne Klick sofort berechnet werden */
+export type AiMaskKind = "subject" | "sky" | `person:${PersonPart}` | `animal:${AnimalKind}`;
+export type NewMaskKind = MaskTool | AiMaskKind;
 
-const MASK_NAMES: Record<NewMaskKind, string> = {
+export const PERSON_PARTS: [PersonPart, string][] = [
+  ["person", t("Ganze Person")],
+  ["face", t("Gesichtshaut")],
+  ["hair", t("Haare")],
+  ["eyes", t("Augen")],
+  ["iris", t("Iris")],
+  ["brows", t("Augenbrauen")],
+  ["lips", t("Lippen")],
+  ["bodySkin", t("Körperhaut")],
+  ["clothes", t("Kleidung")],
+];
+export const ANIMAL_KINDS: [AnimalKind, string][] = [
+  ["all", t("Alle Tiere")],
+  ["bird", t("Vögel")],
+  ["mammal", t("Säugetiere")],
+  ["reptile", t("Reptilien")],
+];
+
+const MASK_NAMES: Record<MaskTool | "subject" | "sky", string> = {
   linear: t("Verlauf"),
   radial: t("Radial"),
   brush: t("Pinsel"),
@@ -38,6 +60,22 @@ const MASK_NAMES: Record<NewMaskKind, string> = {
   subject: t("Motiv"),
   sky: t("Himmel"),
 };
+
+/** Name einer neuen Maske bzw. Beschreibung einer KI-Form */
+function maskName(kind: NewMaskKind | "object"): string {
+  if (kind.startsWith("person:")) {
+    const part = kind.slice(7);
+    return part === "person" ? t("Person") : (PERSON_PARTS.find(([p]) => p === part)?.[1] ?? t("Person"));
+  }
+  if (kind.startsWith("animal:")) {
+    const k = kind.slice(7);
+    return k === "all" ? t("Tiere") : (ANIMAL_KINDS.find(([a]) => a === k)?.[1] ?? t("Tiere"));
+  }
+  return MASK_NAMES[kind as keyof typeof MASK_NAMES];
+}
+
+const isAiKind = (k: NewMaskKind): k is AiMaskKind =>
+  k === "subject" || k === "sky" || k.startsWith("person:") || k.startsWith("animal:");
 
 /** Kurzbeschreibung einer Form für die Formenliste (Masken und Reparaturen). */
 export function describeShape(s: MaskShape): string {
@@ -51,7 +89,8 @@ export function describeShape(s: MaskShape): string {
     case "color":
       return t(s.samples.length === 1 ? "Farbe ({n} Ton)" : "Farbe ({n} Töne)", { n: s.samples.length });
     case "raster":
-      return s.kind === "subject" ? t("Motiv") : s.kind === "sky" ? t("Himmel") : t((s.prompt?.length ?? 0) === 1 ? "Objekt ({n} Punkt)" : "Objekt ({n} Punkte)", { n: s.prompt?.length ?? 0 });
+      if (s.kind === "object") return t((s.prompt?.length ?? 0) === 1 ? "Objekt ({n} Punkt)" : "Objekt ({n} Punkte)", { n: s.prompt?.length ?? 0 });
+      return maskName(s.kind);
   }
 }
 
@@ -577,16 +616,17 @@ class Develop {
         resultKey: null,
       };
     } else {
-      const n = this.params.masks.filter((m) => m.name.startsWith(MASK_NAMES[kind])).length;
+      const base = maskName(kind);
+      const n = this.params.masks.filter((m) => m.name.startsWith(base)).length;
       layer = {
         id: `m${Date.now().toString(36)}`,
-        name: n ? `${MASK_NAMES[kind]} ${n + 1}` : MASK_NAMES[kind],
+        name: n ? `${base} ${n + 1}` : base,
         enabled: true,
         shapes: [],
         adjust: { ...NEUTRAL_LOCAL },
       };
     }
-    if (kind === "subject" || kind === "sky") {
+    if (isAiKind(kind)) {
       const shape = await this.#runAi(kind);
       if (!shape) return;
       layer.shapes.push(shape);
@@ -608,7 +648,7 @@ class Develop {
   async addShape(kind: NewMaskKind, subtract: boolean) {
     const layer = this.layer;
     if (!layer) return;
-    if (kind === "subject" || kind === "sky") {
+    if (isAiKind(kind)) {
       const shape = await this.#runAi(kind);
       if (!shape) return;
       layer.shapes.push({ ...shape, subtract });
@@ -632,13 +672,31 @@ class Develop {
   /** Nächster Pipetten-Klick beginnt eine neue Farbform. */
   #newColor = false;
 
-  async #runAi(kind: "subject" | "sky"): Promise<MaskShape | null> {
+  async #runAi(kind: AiMaskKind): Promise<MaskShape | null> {
     if (this.imageId === null) return null;
-    this.maskBusy = kind === "subject" ? t("Motiv wird erkannt …") : t("Himmel wird gesucht …");
+    const id = this.imageId;
+    const person = kind.startsWith("person:") ? (kind.slice(7) as PersonPart) : null;
+    const animal = kind.startsWith("animal:") ? (kind.slice(7) as AnimalKind) : null;
+    this.maskBusy =
+      kind === "subject" ? t("Motiv wird erkannt …")
+      : kind === "sky" ? t("Himmel wird gesucht …")
+      : person ? t("Personen werden gesucht …")
+      : t("Tiere werden gesucht …");
     try {
-      const r = kind === "subject" ? await api.maskSubject(this.imageId) : await api.maskSky(this.imageId);
-      if (r.coverage < 0.005) {
-        lib.notify(kind === "sky" ? t("Kein Himmel gefunden.") : t("Kein Motiv gefunden."));
+      const r =
+        kind === "subject" ? await api.maskSubject(id)
+        : kind === "sky" ? await api.maskSky(id)
+        : person ? await api.maskPerson(id, person)
+        : await api.maskAnimal(id, animal!);
+      // Teile wie Augen oder Iris sind winzig – nur „gar nichts“ melden
+      const empty = person || animal ? r.coverage <= 0 : r.coverage < 0.005;
+      if (empty) {
+        lib.notify(
+          kind === "sky" ? t("Kein Himmel gefunden.")
+          : kind === "subject" ? t("Kein Motiv gefunden.")
+          : person ? (["person", "hair", "bodySkin", "clothes"].includes(person) ? t("Keine Person gefunden.") : t("Kein Gesicht gefunden."))
+          : t("Kein passendes Tier gefunden."),
+        );
       }
       return { type: "raster", maskId: r.maskId, kind };
     } catch (e) {

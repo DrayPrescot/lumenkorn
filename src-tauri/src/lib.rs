@@ -218,6 +218,8 @@ pub fn run() {
             ai::semantic_search,
             ai::mask_subject,
             ai::mask_sky,
+            ai::mask_person,
+            ai::mask_animal,
             ai::mask_object,
             ai::denoise_start,
             ai::denoise_cancel,

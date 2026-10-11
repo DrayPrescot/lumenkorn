@@ -341,11 +341,17 @@ export type MaskShape =
   | {
       type: "raster";
       maskId: string;
-      kind: "subject" | "sky" | "object";
+      /** `person:<Teil>` bzw. `animal:<Art>` für Personen und Tiere */
+      kind: "subject" | "sky" | "object" | `person:${PersonPart}` | `animal:${AnimalKind}`;
       prompt?: PromptPoint[];
       invert?: boolean;
       subtract?: boolean;
     };
+
+/** Teil einer Person für eine Maske */
+export type PersonPart = "person" | "face" | "hair" | "bodySkin" | "clothes" | "eyes" | "iris" | "brows" | "lips";
+/** Tierart für eine Maske */
+export type AnimalKind = "all" | "bird" | "mammal" | "reptile";
 
 export interface LocalAdjust {
   exposure: number;
@@ -580,6 +586,8 @@ export interface AiStatus {
   masksReady: boolean;
   /** KI-Himmelsmodell installiert */
   skyReady: boolean;
+  /** Personen und Tiere (OWLv2, Selfie Multiclass, Face Mesh) installiert */
+  partsReady: boolean;
   repairReady: boolean;
   repairDownloadSize: number;
   masksDownloadSize: number;
@@ -729,6 +737,8 @@ export const api = {
   aiDownload: (component: "clip" | "masks" | "denoise" | "faces" | "repair" | Backend = "clip") => call<void>("ai_download", { component }),
   maskSubject: (id: number) => call<MaskResult>("mask_subject", { id }),
   maskSky: (id: number) => call<MaskResult>("mask_sky", { id }),
+  maskPerson: (id: number, part: PersonPart) => call<MaskResult>("mask_person", { id, part }),
+  maskAnimal: (id: number, kind: AnimalKind) => call<MaskResult>("mask_animal", { id, kind }),
   developSampleColor: (id: number, x: number, y: number) =>
     call<[number, number, number]>("develop_sample_color", { id, x, y }),
   maskObject: (id: number, points: PromptPoint[], maskId: string | null) =>

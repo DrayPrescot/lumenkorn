@@ -111,6 +111,13 @@ pub struct SamEmbedding {
     scale: f32,
 }
 
+impl SamEmbedding {
+    /// Größe der Masken, die SAM für dieses Embedding liefert
+    pub fn size(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+}
+
 pub struct Sam {
     encoder: Model,
     decoder: Model,
@@ -182,6 +189,18 @@ impl Sam {
         // Füllpunkt, wie es der ONNX-Export ohne Rahmen erwartet
         coords.extend([0.0, 0.0]);
         labels.push(-1.0);
+        self.decode(emb, coords, labels)
+    }
+
+    /// Maske für einen Rahmen (normiert: x0, y0, x1, y1) – „das Objekt in
+    /// diesem Rechteck“; SAM bekommt die Ecken als Punkte mit Kennung 2 und 3.
+    pub fn predict_box(&self, emb: &SamEmbedding, rect: [f32; 4]) -> Result<GrayImage> {
+        let (sx, sy) = (emb.width as f32 * emb.scale, emb.height as f32 * emb.scale);
+        let coords = vec![rect[0] * sx, rect[1] * sy, rect[2] * sx, rect[3] * sy];
+        self.decode(emb, coords, vec![2.0, 3.0])
+    }
+
+    fn decode(&self, emb: &SamEmbedding, coords: Vec<f32>, labels: Vec<f32>) -> Result<GrayImage> {
         let n = labels.len();
 
         let inputs = vec![
@@ -491,7 +510,7 @@ fn drop_small(region: &[bool], w: usize, h: usize, min: usize) -> Vec<bool> {
 /// Farben verglichen, die in der Nähe sicher Himmel bzw. sicher kein Himmel
 /// sind, und bekommt seinen Anteil daraus – feine Äste vor hellem Himmel
 /// werden ausgespart, Himmelslücken zwischen ihnen voll genommen.
-fn refine_edge(mask: &GrayImage, guide: &RgbImage) -> GrayImage {
+pub(crate) fn refine_edge(mask: &GrayImage, guide: &RgbImage) -> GrayImage {
     const SURE: u8 = 245;
     const NOT: u8 = 10;
     let (w, h) = (mask.width() as usize, mask.height() as usize);

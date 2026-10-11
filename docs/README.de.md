@@ -173,6 +173,10 @@ z. B. „Himmel minus Kirchturm“.
   Baumkronen und Äste entscheidet Lumenkorn danach anhand der Farben des Fotos. Ohne die KI-Masken
   greift eine Erkennung nach Farbe und Fläche.
 - **Objekt** (KI): auf ein Objekt klicken, weitere Klicks verfeinern, Alt-Klick nimmt heraus.
+- **Person** (KI): die ganze Person oder nur einen Teil – Gesichtshaut, Haare, Augen, Iris,
+  Augenbrauen, Lippen, Körperhaut oder Kleidung. Gilt für alle Personen im Foto; einzelne nimmt man
+  mit **Abziehen** und dem Pinsel heraus.
+- **Tier** (KI): alle Tiere, nur Vögel, nur Säugetiere oder nur Reptilien.
 - **Maske zeigen** (Taste O) legt die Maske rot über das Bild.
 
 Masken beziehen sich auf das aufrechte Original; Drehen, Spiegeln und späteres Zuschneiden
@@ -187,7 +191,7 @@ Modelle einmal herunter; danach läuft alles offline.
 | Funktion | Modell | Download |
 |---|---|---|
 | Schlagworte und Inhaltssuche | CLIP ViT-B/32 | ca. 160 MB inkl. ONNX Runtime |
-| Masken: Motiv, Objekt, Himmel | IS-Net, Segment Anything, skyseg | ca. 465 MB |
+| Masken: Motiv, Objekt, Himmel, Person, Tier | IS-Net, Segment Anything, skyseg, OWLv2, MediaPipe | ca. 640 MB |
 | Rauschreduzierung | DRUNet | ca. 130 MB |
 | Reparatur | LaMa | ca. 93 MB |
 | Personen | YuNet, SFace | ca. 39 MB |
@@ -489,6 +493,9 @@ die Schrift [Instrument Sans](https://github.com/Instrument/instrument-sans) üb
 | IS-Net / DIS | [Xuebin Qin u. a.](https://github.com/xuebinqin/DIS) | Releases von [rembg](https://github.com/danielgatis/rembg) | Apache-2.0 |
 | Segment Anything ViT-B | [Meta AI](https://github.com/facebookresearch/segment-anything) | Releases von rembg | Apache-2.0 |
 | skyseg (U²-Net) | [xiongzhu666](https://github.com/xiongzhu666/Sky-Segmentation-and-Post-processing), auf Basis von [U²-Net](https://github.com/xuebinqin/U-2-Net) | [Hugging Face](https://huggingface.co/JianyuanWang/skyseg) | MIT |
+| OWLv2 (base, patch16) | [Google Research](https://github.com/google-research/scenic/tree/main/scenic/projects/owl_vit), ONNX-Fassung von [Xenova](https://huggingface.co/Xenova/owlv2-base-patch16) | Hugging Face | Apache-2.0 |
+| MediaPipe Selfie Multiclass | [Google](https://ai.google.dev/edge/mediapipe/solutions/vision/image_segmenter), ONNX-Umwandlung von [senty-au](https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX) | Hugging Face | Apache-2.0 |
+| MediaPipe Face Mesh V2 | [Google](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker), ONNX-Umwandlung für [QtMeshEditor](https://huggingface.co/fernandotonon/QtMeshEditor-facemesh-onnx) | Hugging Face | Apache-2.0 |
 | DRUNet | Kai Zhang u. a., [KAIR](https://github.com/cszn/KAIR) | Releases von KAIR | MIT |
 | LaMa | [Samsung AI](https://github.com/advimman/lama) | [OpenCV Model Zoo](https://github.com/opencv/opencv_zoo) | Apache-2.0 |
 | YuNet | Shiqi Yu u. a. | OpenCV Model Zoo | MIT |

@@ -3,16 +3,19 @@
   // Regler. Aufbau wie RepairPanel, aber mit anderen Werkzeugen, Zuständen und
   // Abständen – deshalb bewusst getrennt; gemeinsam ist nur `describeShape`.
   import { oklabToCss, type LocalAdjust } from "../lib/api";
-  import { describeShape, dev, type NewMaskKind } from "../lib/develop.svelte";
+  import { ANIMAL_KINDS, describeShape, dev, PERSON_PARTS, type NewMaskKind } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
   import Icon from "./Icon.svelte";
   import Slider from "./Slider.svelte";
 
   let menu = $state<{ mode: "new" | "add" | "subtract" } | null>(null);
+  /** Aufgeklappte Gruppe im Menü */
+  let group = $state<"person" | "animal" | null>(null);
   let renaming = $state<number | null>(null);
 
   const aiReady = $derived(!!lib.ai?.masksReady);
+  const partsReady = $derived(aiReady && !!lib.ai?.partsReady);
 
   const kinds: { kind: NewMaskKind; label: string; hint: string; ai?: boolean }[] = [
     { kind: "subject", label: t("Motiv"), hint: t("Hauptmotiv automatisch erkennen"), ai: true },
@@ -38,6 +41,7 @@
   function pick(kind: NewMaskKind) {
     const m = menu;
     menu = null;
+    group = null;
     if (!m) return;
     if (m.mode === "new") dev.addMask(kind);
     else dev.addShape(kind, m.mode === "subtract");
@@ -83,7 +87,7 @@
   });
 </script>
 
-<svelte:window onclick={() => (menu = null)} />
+<svelte:window onclick={() => ((menu = null), (group = null))} />
 
 <section class="masks">
   <header>
@@ -231,8 +235,35 @@
         <span class="l">{k.label}</span>
         <span class="h">{disabled ? t("KI-Masken fehlen") : k.hint}</span>
       </button>
+      {#if k.kind === "sky"}
+        {@render groupItem("person", t("Person"), t("Ganz oder einzelne Teile"), PERSON_PARTS.map(([p, l]) => [`person:${p}`, l] as [NewMaskKind, string]))}
+        {@render groupItem("animal", t("Tier"), t("Vögel, Säugetiere, Reptilien"), ANIMAL_KINDS.map(([a, l]) => [`animal:${a}`, l] as [NewMaskKind, string]))}
+      {/if}
     {/each}
   </div>
+{/snippet}
+
+{#snippet groupItem(id: "person" | "animal", label: string, hint: string, items: [NewMaskKind, string][])}
+  {@const disabled = !partsReady}
+  <button
+    role="menuitem"
+    aria-haspopup="menu"
+    aria-expanded={group === id}
+    {disabled}
+    onclick={() => (group = group === id ? null : id)}
+    title={disabled ? t("Benötigt die KI-Modelle für Personen und Tiere (unten links unter „KI“ nachladen)") : hint}
+  >
+    <Icon name="sparkle" size={12} />
+    <span class="l">{label} <span class="chev" class:open={group === id}>▸</span></span>
+    <span class="h">{disabled ? t("KI-Modelle fehlen") : hint}</span>
+  </button>
+  {#if group === id}
+    <div class="sub" role="group" aria-label={label}>
+      {#each items as [kind, l] (kind)}
+        <button role="menuitem" onclick={() => pick(kind)}><span class="sp"></span><span class="l">{l}</span><span></span></button>
+      {/each}
+    </div>
+  {/if}
 {/snippet}
 
 <style>
@@ -313,6 +344,23 @@
   }
   .menu :global(svg) {
     color: var(--accent);
+  }
+  .menu .sub {
+    margin: 0 0 4px 22px;
+    padding-left: 6px;
+    border-left: 1px solid var(--line);
+  }
+  .menu .sub button {
+    padding: 4px 8px;
+  }
+  .menu .chev {
+    display: inline-block;
+    margin-left: 4px;
+    color: var(--faint);
+    transition: transform 0.12s;
+  }
+  .menu .chev.open {
+    transform: rotate(90deg);
   }
   .menu .h {
     color: var(--faint);

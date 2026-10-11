@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Masks: “Person” selects the whole person or one part (facial skin, hair,
+  eyes, iris, eyebrows, lips, body skin, clothes) of everyone in the photo;
+  “Animal” selects all animals, birds, mammals or reptiles. Uses OWLv2 to
+  find them, MediaPipe Selfie Multiclass and Face Mesh for the parts and
+  Segment Anything for outlines (all Apache 2.0, downloaded with the AI
+  masks; about 177 MB more).
+
 ### Changed
 - Develop: the tone sliders now split the range like in Lightroom.
   Highlights and Shadows work on the bright and dark half of the image,

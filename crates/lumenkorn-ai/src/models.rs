@@ -39,6 +39,13 @@ const REMBG: &str = "https://github.com/danielgatis/rembg/releases/download/v0.0
 const SKYSEG: &str = "https://huggingface.co/JianyuanWang/skyseg/resolve/main/skyseg.onnx";
 /// Dateiname des Himmelsmodells im Maskenordner
 pub const SKY_MODEL: &str = "sky.onnx";
+/// OWLv2 (Google, Apache 2.0) als ONNX von Xenova; Tokenizer wie CLIP
+const OWLV2: &str = "https://huggingface.co/Xenova/owlv2-base-patch16/resolve/main";
+/// MediaPipe Selfie Multiclass (Google, Apache 2.0), unverändert nach ONNX umgewandelt
+const SELFIE_MULTICLASS: &str =
+    "https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX/resolve/main/onnx/model.onnx";
+/// MediaPipe Face Mesh V2 (Google, Apache 2.0), unverändert nach ONNX umgewandelt
+const FACE_MESH: &str = "https://huggingface.co/fernandotonon/QtMeshEditor-facemesh-onnx/resolve/main/face_landmarks.onnx";
 
 /// Was heruntergeladen werden soll.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -248,6 +255,32 @@ fn default_masks() -> Vec<FileSpec> {
             url: SKYSEG.into(),
             size: Some(176_000_000),
         },
+        // Personen und Tiere (alle Apache 2.0); Größen gerundet
+        FileSpec {
+            name: crate::parts::OWL_FILE.into(),
+            url: format!("{OWLV2}/onnx/model_quantized.onnx"),
+            size: Some(155_000_000),
+        },
+        FileSpec {
+            name: crate::parts::OWL_VOCAB.into(),
+            url: format!("{HF}/vocab.json"),
+            size: Some(860_000),
+        },
+        FileSpec {
+            name: crate::parts::OWL_MERGES.into(),
+            url: format!("{HF}/merges.txt"),
+            size: Some(525_000),
+        },
+        FileSpec {
+            name: crate::parts::SEG_FILE.into(),
+            url: SELFIE_MULTICLASS.into(),
+            size: Some(16_500_000),
+        },
+        FileSpec {
+            name: crate::parts::MESH_FILE.into(),
+            url: FACE_MESH.into(),
+            size: Some(4_920_000),
+        },
     ]
 }
 
@@ -381,6 +414,9 @@ pub struct Status {
     /// Das KI-Himmelsmodell ist installiert (kam später dazu und wird mit den
     /// Masken nachgeladen; ohne es bleiben Motiv und Objekt nutzbar)
     pub sky_ready: bool,
+    /// Personen und Tiere (OWLv2, Selfie Multiclass, Face Mesh) – wie der
+    /// Himmel mit den Masken nachgeladen
+    pub parts_ready: bool,
     /// Downloadgröße für die Maskenmodelle (inkl. Laufzeit, falls sie fehlt)
     pub masks_download_size: u64,
     pub denoise_ready: bool,
@@ -436,10 +472,11 @@ pub fn status(data_dir: &Path) -> Status {
     let (_, masks_download_size) = need(Component::Masks);
     let masks = masks_dir(data_dir);
     let sky_ready = masks.join(SKY_MODEL).is_file();
+    let parts_ready = crate::parts::FILES.iter().all(|f| masks.join(f).is_file());
     let masks_ready = manifest
         .masks
         .iter()
-        .filter(|f| f.name != SKY_MODEL)
+        .filter(|f| f.name != SKY_MODEL && !crate::parts::FILES.contains(&f.name.as_str()))
         .all(|f| masks.join(&f.name).is_file());
     let (faces_ready, faces_download_size) = need(Component::Faces);
     let (repair_ready, repair_download_size) = need(Component::Repair);
@@ -476,6 +513,7 @@ pub fn status(data_dir: &Path) -> Status {
         denoise_download_size,
         masks_ready,
         sky_ready,
+        parts_ready,
         masks_download_size,
         runtime_path: runtime.map(|p| p.display().to_string()),
         runtime_downloadable: manifest.runtime.is_some(),
