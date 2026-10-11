@@ -97,6 +97,13 @@ pre-release. It is rebuilt after every push that passes CI, and a new version in
 the old one. Tagged versions on the [Releases](https://github.com/DrayPrescot/lumenkorn/releases)
 page also include Linux packages (`.deb`, `.rpm`, `.AppImage`).
 
+### Updates
+Shortly after starting, Lumenkorn checks once whether a newer version has been released on
+GitHub. If there is one, it shows what changed and asks; **Install now** downloads it, checks
+its signature, installs it and restarts, **Later** asks again at the next start. Catalog and
+edits are kept. Updates follow the versioned releases (not *nightly*); the AppImage updates
+itself on Linux, `.deb` and `.rpm` are updated by the package manager.
+
 The installers are not code-signed yet. Windows SmartScreen will ask once
 ("More info" → "Run anyway").
 
@@ -352,7 +359,10 @@ every rawler update against real RAW files from several cameras. The Rust toolch
 models and ONNX Runtime are pinned on purpose and updated by hand.
 
 A version tag such as `v0.2.0` builds the Windows and Linux installers and creates a draft
-release.
+release. Its text is the version's section of the CHANGELOG. With the secret
+`TAURI_SIGNING_PRIVATE_KEY` (minisign key from `npx tauri signer generate`; the public key is in
+`tauri.conf.json`) the installers are signed for the updater and `latest.json` is attached; once
+the draft is published, installed copies offer the update.
 
 ## Open-source projects used by Lumenkorn
 

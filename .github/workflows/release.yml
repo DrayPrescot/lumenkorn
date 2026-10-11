@@ -19,6 +19,10 @@ jobs:
       matrix:
         platform: [windows-latest, ubuntu-22.04]
     runs-on: ${{ matrix.platform }}
+    env:
+      # Updater: ohne den Signaturschlüssel (Secret) entstehen die Installer
+      # wie bisher, nur ohne Update-Daten
+      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -37,14 +41,36 @@ jobs:
           cache: npm
       - run: npm ci
 
+      # Text des Releases: der Abschnitt dieser Version aus dem CHANGELOG
+      # (erscheint auch im Update-Dialog der App)
+      - name: Release notes from CHANGELOG
+        id: notes
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" 'index($0, "## [" v "]") == 1 {on=1; next} on && /^## \[/ {exit} on {print}' CHANGELOG.md > notes.md
+          { echo "body<<NOTES_EOF"; cat notes.md; echo "NOTES_EOF"; } >> "$GITHUB_OUTPUT"
+
+      # Updates in der App: Installer signieren und latest.json anhängen
+      - name: Enable updater artifacts
+        if: env.HAS_UPDATER_KEY == 'true'
+        shell: bash
+        run: |
+          node -e "const fs=require('fs');const f='src-tauri/tauri.conf.json';const c=JSON.parse(fs.readFileSync(f,'utf8'));c.bundle.createUpdaterArtifacts=true;fs.writeFileSync(f,JSON.stringify(c,null,2))"
+
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           # Without a tag no release is created – only the installers are built
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Lumenkorn {0}', github.ref_name) || '' }}
           releaseBody: |
+            ${{ steps.notes.outputs.body }}
+
             See [CHANGELOG.md](https://github.com/DrayPrescot/lumenkorn/blob/main/CHANGELOG.md) for details.
 
             Lumenkorn statically links rawler (LGPL-2.1). To relink with a modified rawler,

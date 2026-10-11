@@ -353,6 +353,15 @@ export const mock = {
         }
         return out(pid);
       }
+      case "update_check":
+        // Im Browser nur mit ?update in der Adresse (für die Gestaltung)
+        return out(
+          location.search.includes("update")
+            ? { version: "1.1.0", current: "1.0.0", date: null, notes: "### Added\n- Masks: “Person” selects the whole person or one part.\n- “Animal” selects birds, mammals or reptiles.\n\n### Changed\n- Tone sliders now split the range like in Lightroom." }
+            : null,
+        );
+      case "update_install":
+        throw t("Updates sind nur in der App verfügbar.");
       case "ai_benchmark":
         return out({ gpu: false, backend: "CPU", size: 512, seconds: 6.1, seconds24mp: 558 });
       case "mask_subject":

@@ -17,6 +17,11 @@ nach jedem Push neu gebaut, sobald alle Prüfungen grün sind, und lässt sich �
 installieren. Die MSI ist nicht signiert, deshalb fragt Windows SmartScreen beim ersten Start nach
 („Weitere Informationen“ → „Trotzdem ausführen“).
 
+**Updates:** Kurz nach dem Start schaut Lumenkorn einmal auf GitHub nach einer neueren Version. Gibt
+es eine, zeigt es, was neu ist, und fragt: **Jetzt installieren** lädt sie, prüft die Signatur,
+installiert und startet neu; **Später** fragt beim nächsten Start wieder. Katalog und Bearbeitungen
+bleiben erhalten. Updates kommen aus den Versions-Releases, nicht aus *nightly*.
+
 **Inhalt:** [Bibliothek](#bibliothek) · [Entwickeln](#entwickeln-non-destruktiv) ·
 [Masken](#masken-lokale-anpassungen) · [KI-Funktionen](#ki-funktionen) ·
 [Zusammenfügen](#bilder-zusammenfügen) · [Tastenkürzel](#tastenkürzel) ·
@@ -562,8 +567,12 @@ prüft die CI mit echten RAWs mehrerer Kameras. Rust-Version, KI-Modelle und ONN
 festgelegt und werden von Hand aktualisiert.
 
 **Releases:** Ein Versions-Tag wie `v0.2.0` baut die Installer für Windows und Linux und legt einen
-Release-Entwurf an. Von Hand gestartet (Actions → Release → Run workflow) baut der Workflow nur die
-Installer und hebt sie 14 Tage als Download auf.
+Release-Entwurf an; sein Text ist der Abschnitt der Version aus dem CHANGELOG. Von Hand gestartet
+(Actions → Release → Run workflow) baut der Workflow nur die Installer und hebt sie 14 Tage als
+Download auf. Mit dem Secret `TAURI_SIGNING_PRIVATE_KEY` (minisign-Schlüssel aus
+`npx tauri signer generate`, der öffentliche Schlüssel steht in `tauri.conf.json`) werden die
+Installer für den Updater signiert und `latest.json` angehängt. Sobald der Entwurf veröffentlicht
+ist, bieten installierte Programme das Update an.
 
 ## Android
 

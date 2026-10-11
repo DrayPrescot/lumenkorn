@@ -56,5 +56,16 @@
         ]
       }
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDBDRjJBMjQ1N0NEMjUwNjAKUldSZ1VOSjhSYUx5REZacTZaZ0ZFYkxwZU9KWmVEdTNiYnhoYUplNFUyQ1gwN01nQ2lQTVg1OGsK",
+      "endpoints": [
+        "https://github.com/DrayPrescot/lumenkorn/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

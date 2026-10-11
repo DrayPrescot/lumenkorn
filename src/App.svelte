@@ -14,6 +14,7 @@
   import DeleteRejectedDialog from "./components/DeleteRejectedDialog.svelte";
   import ContextMenu from "./components/ContextMenu.svelte";
   import MergeDialog from "./components/MergeDialog.svelte";
+  import UpdateDialog from "./components/UpdateDialog.svelte";
   import PresetDialog from "./components/PresetDialog.svelte";
   import { isTauri, type ImageSummary } from "./lib/api";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -170,6 +171,8 @@
 {#if dev.presetDialog}
   <PresetDialog />
 {/if}
+
+<UpdateDialog />
 
 {#if deleteImages}
   <DeleteRejectedDialog images={deleteImages} onclose={() => (deleteImages = null)} />

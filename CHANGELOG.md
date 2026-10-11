@@ -7,6 +7,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Updates: shortly after starting, Lumenkorn checks once for a newer release
+  on GitHub, shows what changed and asks. “Install now” downloads it, checks
+  its signature, installs and restarts; “Later” asks again at the next start.
 - Masks: “Person” selects the whole person or one part (facial skin, hair,
   eyes, iris, eyebrows, lips, body skin, clothes) of everyone in the photo;
   “Animal” selects all animals, birds, mammals or reptiles. Uses OWLv2 to

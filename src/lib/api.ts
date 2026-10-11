@@ -704,6 +704,8 @@ export const api = {
   aiSetSettings: (settings: AiSettings) => call<void>("ai_set_settings", { settings }),
   aiBenchmark: () => call<Benchmark>("ai_benchmark"),
   appRestart: () => call<void>("app_restart"),
+  updateCheck: () => call<UpdateInfo | null>("update_check"),
+  updateInstall: () => call<void>("update_install"),
   aiDismissNotice: () => call<void>("ai_dismiss_notice"),
   peopleStatus: () => call<PeopleStatus>("people_status"),
   peopleList: () => call<Person[]>("people_list"),
@@ -771,6 +773,15 @@ export interface MergeProgress {
 
 // --- Ereignisse ---------------------------------------------------------------
 
+/** Neuere Version auf GitHub */
+export interface UpdateInfo {
+  version: string;
+  current: string;
+  /** Text des Releases (Markdown) */
+  notes: string | null;
+  date: string | null;
+}
+
 export interface Events {
   "scan-progress": ScanProgress;
   "library-changed": ScanReport;
@@ -784,6 +795,7 @@ export interface Events {
   "ai-download": AiDownloadEvent;
   "repair-progress": { imageId: number; done: number; total: number };
   "merge-progress": MergeProgress;
+  "update-progress": { done: number; total: number | null; installing: boolean };
   "denoise-progress": {
     imageId: number;
     done: number;

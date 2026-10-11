@@ -12,6 +12,7 @@ mod merge;
 mod people;
 mod protocol;
 mod repair;
+mod updater;
 mod worker;
 
 use lumenkorn_core::Catalog;
@@ -53,14 +54,18 @@ pub struct AppState {
     /// Wann KI-Modelle zuletzt gebraucht wurden (zum Entladen)
     pub usage: memory::Usage,
     pub merge: merge::MergeState,
+    pub updater: updater::UpdaterState,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logfile::init();
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    // Updates von GitHub (nur Desktop)
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    builder
         .register_asynchronous_uri_scheme_protocol("lw", protocol::handle)
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
@@ -140,6 +145,7 @@ pub fn run() {
                 denoised_dir,
                 usage: memory::Usage::default(),
                 merge: merge::MergeState::default(),
+                updater: updater::UpdaterState::default(),
             });
             memory::start_janitor(app.handle().clone());
             Ok(())
@@ -192,6 +198,8 @@ pub fn run() {
             ai::ai_cancel_download,
             ai::ai_benchmark,
             ai::app_restart,
+            updater::update_check,
+            updater::update_install,
             ai::ai_dismiss_notice,
             people::people_status,
             people::people_list,

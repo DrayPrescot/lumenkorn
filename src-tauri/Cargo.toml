@@ -32,4 +32,5 @@ env_logger = "0.11"
 
 # Papierkorb des Betriebssystems (Windows, macOS, Linux/freedesktop)
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
 trash = "5"

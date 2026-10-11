@@ -174,4 +174,12 @@ export default {
   "Informationen": "Info",
   "Informationen (I)": "Info (I)",
   "{n} unbenannte Gruppe": "{n} unnamed group",
+  "Update verfügbar": "Update available",
+  "Lumenkorn {version} ist erschienen – installiert ist {current}.": "Lumenkorn {version} is out – you have {current}.",
+  "Das Update wird von GitHub geladen, auf seine Signatur geprüft und installiert; danach startet Lumenkorn neu. Katalog und Bearbeitungen bleiben erhalten.": "The update is downloaded from GitHub, its signature is checked and it is installed; then Lumenkorn restarts. Your catalog and edits are kept.",
+  "Später": "Later",
+  "Jetzt installieren": "Install now",
+  "Wird installiert – Lumenkorn startet gleich neu …": "Installing – Lumenkorn will restart in a moment …",
+  "Wird geladen: {done} von {total}": "Downloading: {done} of {total}",
+  "Updates sind nur in der App verfügbar.": "Updates are only available in the app.",
 } satisfies Record<string, string>;
