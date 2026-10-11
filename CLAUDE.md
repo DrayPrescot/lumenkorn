@@ -83,6 +83,11 @@ starten“).
 
 ## Release
 
+0. **Vor jedem Release alle Prüfungen aus „Prüfen vor jedem Commit“ laufen
+   lassen** (fmt, clippy, `cargo test --workspace` inklusive GPU-Test, check,
+   i18n, build). Schlägt etwas fehl, wird nicht gebaut und nichts
+   veröffentlicht – erst beheben. Ohne GitHub Actions gibt es keine zweite
+   Prüfung, diese hier ist die einzige.
 1. Version in `Cargo.toml` (`[workspace.package]`), `package.json`,
    `package-lock.json` und `src-tauri/tauri.conf.json` erhöhen,
    `cargo update -w`, im CHANGELOG unter `## [Unreleased]` den Abschnitt
