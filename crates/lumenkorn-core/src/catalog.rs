@@ -234,6 +234,15 @@ const MIGRATIONS: &[&str] = &[
     WHERE kind = 'raw'
       AND id IN (SELECT image_id FROM edits WHERE is_current = 1);
     "#,
+    // v14: Personengruppen (Familie, Freunde …) – jede Person in höchstens einer
+    r#"
+    CREATE TABLE person_groups (
+        id          INTEGER PRIMARY KEY,
+        name        TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        created_at  INTEGER NOT NULL
+    );
+    ALTER TABLE persons ADD COLUMN group_id INTEGER REFERENCES person_groups(id) ON DELETE SET NULL;
+    "#,
 ];
 
 /// v11: Der Suchtext eines Fotos wurde bisher bei jeder einzelnen
@@ -2057,7 +2066,9 @@ mod migration_tests {
     use super::*;
 
     /// Stand vor v11 nachstellen (die Trigger ersetzt v11 ohnehin).
-    const UNDO_V11: &str = "DROP TRIGGER search_person_del; DROP TABLE search_dirty;
+    const UNDO_V11: &str = "ALTER TABLE persons DROP COLUMN group_id; DROP TABLE person_groups;
+        DROP TABLE IF EXISTS presets;
+        DROP TRIGGER search_person_del; DROP TABLE search_dirty;
         DROP INDEX faces_visible; DROP INDEX images_root_dir;
         CREATE INDEX images_root ON images(root_id);
         CREATE INDEX images_hash ON images(quick_hash);

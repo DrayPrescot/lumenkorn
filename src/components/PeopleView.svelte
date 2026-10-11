@@ -23,6 +23,69 @@
   let showSmall = $state(false);
   const otherGroups = $derived(showSmall ? smallGroups : smallGroups.filter((g) => g.faceCount >= 2));
 
+  // --- Personengruppen (Familie, Freunde …) ---------------------------------
+  const ungrouped = $derived(named.filter((p) => p.groupId === null || !lib.personGroups.some((g) => g.id === p.groupId)));
+  let creating = $state(false);
+  let newGroup = $state("");
+  let renamingGroup = $state<number | null>(null);
+  /** Karte, deren Gruppen-Menü offen ist */
+  let groupMenu = $state<number | null>(null);
+  /** Gruppe unter der gezogenen Karte (`null` = „Ohne Gruppe“) */
+  let dropTarget = $state<number | null | undefined>(undefined);
+
+  async function createGroup(persons: number[] = []) {
+    const name = newGroup.trim();
+    if (!name) return;
+    const id = await lib.groupAction(() => api.personGroupCreate(name, persons));
+    if (id === null) return;
+    newGroup = "";
+    creating = false;
+    groupMenu = null;
+    // Neue Gruppe aufgeklappt zeigen
+    if (lib.collapsed[`pgroup:${id}`]) lib.toggleSection(`pgroup:${id}`);
+    lib.notify(persons.length ? t("Gruppe „{name}“ angelegt und zugeordnet", { name }) : t("Gruppe „{name}“ angelegt", { name }));
+  }
+
+  async function renameGroup(id: number, name: string) {
+    if (renamingGroup !== id) return;
+    renamingGroup = null;
+    const g = lib.personGroups.find((x) => x.id === id);
+    if (!name.trim() || name.trim() === g?.name) return;
+    const other = lib.personGroups.find((x) => x.id !== id && x.name.toLowerCase() === name.trim().toLowerCase());
+    if (other && !confirm(t("Die Gruppe „{name}“ gibt es schon. Beide zusammenlegen?", { name: other.name }))) return;
+    await lib.groupAction(() => api.personGroupRename(id, name));
+  }
+
+  async function deleteGroup(id: number, name: string) {
+    if (!confirm(t("Gruppe „{name}“ löschen? Die Personen bleiben erhalten, nur ohne Gruppe.", { name }))) return;
+    await lib.groupAction(() => api.personGroupDelete(id));
+  }
+
+  async function setGroup(p: Person, group: number | null) {
+    groupMenu = null;
+    if (p.groupId === group) return;
+    await lib.groupAction(() => api.personSetGroup([p.id], group));
+  }
+
+  function dragStart(e: DragEvent, p: Person) {
+    e.dataTransfer?.setData("application/x-lumenkorn-person", String(p.id));
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+  }
+  function dragOver(e: DragEvent, group: number | null) {
+    if (!e.dataTransfer?.types.includes("application/x-lumenkorn-person")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    dropTarget = group;
+  }
+  function drop(e: DragEvent, group: number | null) {
+    dropTarget = undefined;
+    const id = Number(e.dataTransfer?.getData("application/x-lumenkorn-person"));
+    const p = lib.people.find((x) => x.id === id);
+    if (!p) return;
+    e.preventDefault();
+    setGroup(p, group);
+  }
+
   let review = $state<{ person: Person; faces: FaceInfo[] } | null>(null);
   let names = $state<Record<number, string>>({});
   /** Benannte Person, deren Name gerade bearbeitet wird */
@@ -101,6 +164,11 @@
   }
 
   function onkeydown(e: KeyboardEvent) {
+    if (groupMenu !== null && e.key === "Escape") {
+      e.stopPropagation();
+      groupMenu = null;
+      return;
+    }
     if (!review || isTyping(e)) return;
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a") {
       e.preventDefault();
@@ -145,7 +213,7 @@
   const st = $derived(lib.peopleStatus);
 </script>
 
-<svelte:window {onkeydown} />
+<svelte:window {onkeydown} onpointerdown={(e) => groupMenu !== null && !(e.target as Element).closest?.(".gwrap") && (groupMenu = null)} />
 
 <div class="people scroll">
   {#if review}
@@ -205,61 +273,115 @@
       <p class="muted progress">{t("Gesichter werden gesucht: {done} von {total} Fotos, {faces} Gesichter gefunden …", { done: st.analyzed, total: st.total, faces: st.faces })}</p>
     {/if}
 
-    <h3>{t("Personen")} <span class="muted">{named.length}</span></h3>
+    <h3>
+      {t("Personen")} <span class="muted">{named.length}</span>
+      {#if named.length}
+        <button class="btn small quiet" onclick={() => (creating = true)} title={t("Gruppe für Personen anlegen, z. B. Familie oder Freunde")}>
+          <Icon name="plus" size={11} /> {t("Gruppe")}
+        </button>
+      {/if}
+    </h3>
     {#if !named.length}
       <p class="muted hint">{t("Gib unten einer Gruppe einen Namen – ähnliche Gesichter auf anderen Fotos werden dann dieser Person vorgeschlagen.")}</p>
     {/if}
-    <div class="cards">
-      {#each named as p (p.id)}
-        <div class="card">
-          <button class="avatar" onclick={() => open(p)} title={t("Fotos von {name}", { name: p.name ?? "" })}>
-            {#if p.coverFace}<img src={faceUrl(p.coverFace)} alt="" />{/if}
-          </button>
-          {#if editing === p.id}
-            <form
-              onsubmit={async (e) => {
-                e.preventDefault();
-                const v = (e.currentTarget.elements.namedItem("n") as HTMLInputElement).value;
-                editing = null;
-                await lib.renamePerson(p.id, v);
-              }}
-            >
+    {#if creating}
+      <form class="newgroup" onsubmit={(e) => (e.preventDefault(), createGroup())}>
+        <!-- svelte-ignore a11y_autofocus -->
+        <input
+          type="text"
+          placeholder={t("Name der Gruppe, z. B. Familie")}
+          bind:value={newGroup}
+          autofocus
+          onkeydown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Escape") creating = false;
+          }}
+        />
+        <button class="btn primary small" type="submit" disabled={!newGroup.trim()}>{t("Anlegen")}</button>
+        <button class="btn quiet small" type="button" onclick={() => (creating = false)}>{t("Abbrechen")}</button>
+      </form>
+    {/if}
+
+    {#each lib.personGroups as g (g.id)}
+      {@const members = named.filter((p) => p.groupId === g.id)}
+      {@const open = !lib.collapsed[`pgroup:${g.id}`]}
+      <section
+        class="pgroup"
+        class:drop={dropTarget === g.id}
+        role="group"
+        aria-label={g.name}
+        ondragover={(e) => dragOver(e, g.id)}
+        ondragleave={() => dropTarget === g.id && (dropTarget = undefined)}
+        ondrop={(e) => drop(e, g.id)}
+      >
+        <h3>
+          {#if renamingGroup === g.id}
+            <form onsubmit={(e) => (e.preventDefault(), renameGroup(g.id, (e.currentTarget.elements.namedItem("n") as HTMLInputElement).value))}>
               <!-- svelte-ignore a11y_autofocus -->
               <input
                 type="text"
                 name="n"
-                value={p.name}
+                value={g.name}
                 autofocus
                 onfocus={(e) => e.currentTarget.select()}
-                onblur={() => (editing = null)}
+                onblur={(e) => renameGroup(g.id, e.currentTarget.value)}
                 onkeydown={(e) => {
                   e.stopPropagation();
-                  if (e.key === "Escape") editing = null;
+                  if (e.key === "Escape") renamingGroup = null;
                 }}
               />
             </form>
           {:else}
-            <button class="name" title={t("Klicken zum Umbenennen")} onclick={() => (editing = p.id)}>{p.name}</button>
-          {/if}
-          <div class="muted small">{t(p.imageCount === 1 ? "{n} Foto" : "{n} Fotos", { n: p.imageCount })}</div>
-          <div class="row">
-            {#if p.suggested}
-              <button class="btn small accent" onclick={() => openReview(p)}>{t("{n} prüfen", { n: p.suggested })}</button>
-            {:else}
-              <button class="btn small quiet" onclick={() => openReview(p)}>{t("Gesichter")}</button>
-            {/if}
-            <button
-              class="icon-btn"
-              title={t("Person löschen (Fotos bleiben)")}
-              aria-label={t("Person löschen")}
-              onclick={() => confirm(t("„{name}“ löschen? Die Gesichter werden wieder unbenannt.", { name: p.name ?? "" })) && act(() => api.personDelete(p.id))}
-            >
-              <Icon name="close" size={12} />
+            <button class="toggle" aria-expanded={open} onclick={() => lib.toggleSection(`pgroup:${g.id}`)} ondblclick={() => (renamingGroup = g.id)} title={t("Klick: auf-/zuklappen · Doppelklick: umbenennen")}>
+              <Icon name="chevron" size={12} />
+              {g.name} <span class="muted">{members.length}</span>
             </button>
+            <span class="group-actions">
+              <button class="icon-btn" title={t("Gruppe umbenennen")} aria-label={t("Gruppe umbenennen")} onclick={() => (renamingGroup = g.id)}>✎</button>
+              <button class="icon-btn" title={t("Gruppe löschen (Personen bleiben)")} aria-label={t("Gruppe löschen")} onclick={() => deleteGroup(g.id, g.name)}>
+                <Icon name="close" size={12} />
+              </button>
+            </span>
+          {/if}
+        </h3>
+        {#if open}
+          <div class="cards">
+            {#each members as p (p.id)}
+              {@render personCard(p)}
+            {:else}
+              <p class="muted hint">{t("Noch leer – Personen hierher ziehen oder an der Karte über das Ordnersymbol zuordnen.")}</p>
+            {/each}
           </div>
+        {/if}
+      </section>
+    {/each}
+
+    {#if lib.personGroups.length && named.length}
+      <section
+        class="pgroup"
+        class:drop={dropTarget === null}
+        role="group"
+        aria-label={t("Ohne Gruppe")}
+        ondragover={(e) => dragOver(e, null)}
+        ondragleave={() => dropTarget === null && (dropTarget = undefined)}
+        ondrop={(e) => drop(e, null)}
+      >
+        <h3 class="sub">{t("Ohne Gruppe")} <span class="muted">{ungrouped.length}</span></h3>
+        <div class="cards">
+          {#each ungrouped as p (p.id)}
+            {@render personCard(p)}
+          {:else}
+            <p class="muted hint">{t("Alle benannten Personen sind in einer Gruppe.")}</p>
+          {/each}
         </div>
-      {/each}
-    </div>
+      </section>
+    {:else}
+      <div class="cards">
+        {#each named as p (p.id)}
+          {@render personCard(p)}
+        {/each}
+      </div>
+    {/if}
 
     <h3>{t("Unbenannte Gruppen")} <span class="muted">{mainGroups.length}</span></h3>
     <div class="cards">
@@ -298,6 +420,93 @@
     </datalist>
   {/if}
 </div>
+
+{#snippet personCard(p: Person)}
+  <div class="card" role="group" aria-label={p.name} draggable="true" ondragstart={(e) => dragStart(e, p)} ondragend={() => (dropTarget = undefined)}>
+    <button class="avatar" onclick={() => open(p)} title={t("Fotos von {name}", { name: p.name ?? "" })}>
+      {#if p.coverFace}<img src={faceUrl(p.coverFace)} alt="" draggable="false" />{/if}
+    </button>
+    {#if editing === p.id}
+      <form
+        onsubmit={async (e) => {
+          e.preventDefault();
+          const v = (e.currentTarget.elements.namedItem("n") as HTMLInputElement).value;
+          editing = null;
+          await lib.renamePerson(p.id, v);
+        }}
+      >
+        <!-- svelte-ignore a11y_autofocus -->
+        <input
+          type="text"
+          name="n"
+          value={p.name}
+          autofocus
+          onfocus={(e) => e.currentTarget.select()}
+          onblur={() => (editing = null)}
+          onkeydown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Escape") editing = null;
+          }}
+        />
+      </form>
+    {:else}
+      <button class="name" title={t("Klicken zum Umbenennen")} onclick={() => (editing = p.id)}>{p.name}</button>
+    {/if}
+    <div class="muted small">{t(p.imageCount === 1 ? "{n} Foto" : "{n} Fotos", { n: p.imageCount })}</div>
+    <div class="row">
+      {#if p.suggested}
+        <button class="btn small accent" onclick={() => openReview(p)}>{t("{n} prüfen", { n: p.suggested })}</button>
+      {:else}
+        <button class="btn small quiet" onclick={() => openReview(p)}>{t("Gesichter")}</button>
+      {/if}
+      <span class="gwrap">
+        <button
+          class="icon-btn"
+          class:on={groupMenu === p.id}
+          title={t("Gruppe zuordnen")}
+          aria-label={t("Gruppe zuordnen")}
+          aria-haspopup="menu"
+          aria-expanded={groupMenu === p.id}
+          onclick={() => (groupMenu = groupMenu === p.id ? null : p.id)}
+        >
+          <Icon name="folder" size={12} />
+        </button>
+        {#if groupMenu === p.id}
+          <div class="gmenu" role="menu">
+            {#each lib.personGroups as g (g.id)}
+              <button role="menuitemradio" aria-checked={p.groupId === g.id} onclick={() => setGroup(p, g.id)}>
+                <span class="mark">{p.groupId === g.id ? "✓" : ""}</span>{g.name}
+              </button>
+            {/each}
+            {#if p.groupId !== null}
+              <button role="menuitem" onclick={() => setGroup(p, null)}><span class="mark"></span>{t("Aus der Gruppe nehmen")}</button>
+            {/if}
+            {#if lib.personGroups.length}<hr />{/if}
+            <form class="gnew" onsubmit={(e) => (e.preventDefault(), createGroup([p.id]))}>
+              <input
+                type="text"
+                placeholder={t("Neue Gruppe …")}
+                bind:value={newGroup}
+                onkeydown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Escape") groupMenu = null;
+                }}
+              />
+            </form>
+          </div>
+        {/if}
+      </span>
+      <button
+        class="icon-btn"
+        title={t("Person löschen (Fotos bleiben)")}
+        aria-label={t("Person löschen")}
+        onclick={() => confirm(t("„{name}“ löschen? Die Gesichter werden wieder unbenannt.", { name: p.name ?? "" })) && act(() => api.personDelete(p.id))}
+      >
+        <Icon name="close" size={12} />
+      </button>
+    </div>
+  </div>
+{/snippet}
 
 {#snippet groupCard(p: Person)}
   <div class="card">
@@ -350,6 +559,94 @@
   }
   .toggle[aria-expanded="true"] :global(svg) {
     transform: rotate(90deg);
+  }
+  .pgroup {
+    border-radius: var(--radius-m);
+    margin: 0 -8px;
+    padding: 0 8px 4px;
+    outline: 2px dashed transparent;
+    outline-offset: -2px;
+  }
+  .pgroup.drop {
+    outline-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+  }
+  .pgroup h3 {
+    margin: 14px 0 10px;
+  }
+  .pgroup h3.sub {
+    color: var(--muted);
+  }
+  .group-actions {
+    display: inline-flex;
+    gap: 2px;
+    opacity: 0;
+  }
+  .pgroup h3:hover .group-actions,
+  .group-actions:focus-within {
+    opacity: 1;
+  }
+  .pgroup h3 form input {
+    font: inherit;
+    font-weight: 600;
+    width: 220px;
+  }
+  .newgroup {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin: 0 0 8px;
+  }
+  .newgroup input {
+    width: 240px;
+  }
+  .card[draggable="true"] {
+    cursor: grab;
+  }
+  .gwrap {
+    position: relative;
+  }
+  .icon-btn.on {
+    color: var(--accent);
+  }
+  .gmenu {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 180px;
+    padding: 4px;
+    display: grid;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-m);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+    text-align: left;
+  }
+  .gmenu button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-radius: var(--radius-s);
+    white-space: nowrap;
+  }
+  .gmenu button:hover {
+    background: var(--raised);
+  }
+  .gmenu .mark {
+    width: 12px;
+    color: var(--accent);
+  }
+  .gmenu hr {
+    border: 0;
+    border-top: 1px solid var(--line);
+    margin: 4px 2px;
+  }
+  .gmenu .gnew input {
+    width: 100%;
+    text-align: left;
   }
   .note {
     font-weight: 400;

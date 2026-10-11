@@ -36,6 +36,16 @@ pub struct Person {
     pub image_count: i64,
     /// Gesicht für das Vorschaubild
     pub cover_face: Option<i64>,
+    /// Personengruppe (Familie, Freunde …)
+    pub group_id: Option<i64>,
+}
+
+/// Eine Gruppe von Personen, z. B. „Familie“.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonGroup {
+    pub id: i64,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -82,6 +92,20 @@ fn person_name(name: &str) -> Result<&str> {
     if name.is_empty() {
         return Err(Error::Invalid(
             tr_s("Bitte einen Namen eingeben", "Please enter a name").into(),
+        ));
+    }
+    Ok(name)
+}
+
+fn group_name(name: &str) -> Result<&str> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(Error::Invalid(
+            tr_s(
+                "Bitte einen Namen für die Gruppe eingeben",
+                "Please enter a group name",
+            )
+            .into(),
         ));
     }
     Ok(name)
@@ -385,7 +409,8 @@ impl Catalog {
             "SELECT p.id, p.name,
                     COUNT(f.id), COALESCE(SUM(f.confirmed = 0), 0), COUNT(DISTINCT f.image_id),
                     (SELECT f2.id FROM faces f2 WHERE f2.person_id = p.id AND f2.hidden = 0
-                     ORDER BY f2.confirmed DESC, f2.w * f2.h * f2.score DESC LIMIT 1)
+                     ORDER BY f2.confirmed DESC, f2.w * f2.h * f2.score DESC LIMIT 1),
+                    p.group_id
              FROM persons p JOIN faces f ON f.person_id = p.id AND f.hidden = 0
              GROUP BY p.id
              ORDER BY p.name IS NULL, p.name COLLATE NOCASE, COUNT(f.id) DESC",
@@ -398,6 +423,7 @@ impl Catalog {
                 suggested: r.get(3)?,
                 image_count: r.get(4)?,
                 cover_face: r.get(5)?,
+                group_id: r.get(6)?,
             })
         })?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
@@ -581,6 +607,12 @@ impl Catalog {
                     &format!("UPDATE faces SET person_id = ?1, confirmed = {confirm} WHERE person_id = ?2"),
                     params![other, person_id],
                 )?;
+                // Die Gruppe bleibt erhalten, falls nur die zusammengeführte eine hatte
+                tx.execute(
+                    "UPDATE persons SET group_id = COALESCE(group_id,
+                        (SELECT group_id FROM persons WHERE id = ?2)) WHERE id = ?1",
+                    params![other, person_id],
+                )?;
                 tx.execute("DELETE FROM persons WHERE id = ?1", [person_id])?;
                 Ok(other)
             }
@@ -668,6 +700,91 @@ impl Catalog {
             )
             .optional()?
             .flatten())
+    }
+
+    // --- Personengruppen ------------------------------------------------------
+
+    /// Alle Gruppen, alphabetisch.
+    pub fn person_groups(&self) -> Result<Vec<PersonGroup>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT id, name FROM person_groups ORDER BY name COLLATE NOCASE")?;
+        let rows = st.query_map([], |r| {
+            Ok(PersonGroup {
+                id: r.get(0)?,
+                name: r.get(1)?,
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Legt eine Gruppe an – gibt es den Namen schon, wird diese geliefert.
+    pub fn create_person_group(&self, name: &str) -> Result<i64> {
+        let name = group_name(name)?;
+        self.conn.execute(
+            "INSERT INTO person_groups (name, created_at) VALUES (?1, ?2)
+             ON CONFLICT(name) DO NOTHING",
+            params![name, now()],
+        )?;
+        Ok(self.conn.query_row(
+            "SELECT id FROM person_groups WHERE name = ?1",
+            [name],
+            |r| r.get(0),
+        )?)
+    }
+
+    /// Benennt eine Gruppe um; gibt es den Namen schon, werden beide
+    /// zusammengelegt. Liefert die ID der Gruppe danach.
+    pub fn rename_person_group(&self, id: i64, name: &str) -> Result<i64> {
+        let name = group_name(name)?;
+        let other: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT id FROM person_groups WHERE name = ?1 AND id != ?2",
+                params![name, id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        match other {
+            Some(o) => {
+                self.conn.execute(
+                    "UPDATE persons SET group_id = ?1 WHERE group_id = ?2",
+                    params![o, id],
+                )?;
+                self.conn
+                    .execute("DELETE FROM person_groups WHERE id = ?1", [id])?;
+                Ok(o)
+            }
+            None => {
+                self.conn.execute(
+                    "UPDATE person_groups SET name = ?2 WHERE id = ?1",
+                    params![id, name],
+                )?;
+                Ok(id)
+            }
+        }
+    }
+
+    /// Löscht eine Gruppe; ihre Personen bleiben (ohne Gruppe).
+    pub fn delete_person_group(&self, id: i64) -> Result<()> {
+        self.conn.execute(
+            "UPDATE persons SET group_id = NULL WHERE group_id = ?1",
+            [id],
+        )?;
+        self.conn
+            .execute("DELETE FROM person_groups WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// Ordnet Personen einer Gruppe zu (`None`: aus der Gruppe nehmen).
+    pub fn set_person_group(&self, person_ids: &[i64], group: Option<i64>) -> Result<()> {
+        let mut st = self
+            .conn
+            .prepare("UPDATE persons SET group_id = ?2 WHERE id = ?1")?;
+        for id in person_ids {
+            st.execute(params![id, group])?;
+        }
+        Ok(())
     }
 
     /// Person löschen – die Gesichter bleiben, sind aber keiner Person mehr zugeordnet.
@@ -905,6 +1022,62 @@ mod tests {
         assert!(back.iter().all(|f| f.person_id != Some(ben)));
         // Leerer Name wird abgelehnt
         assert!(cat.reassign_faces(&wrong, Some("  "), &mut c).is_err());
+    }
+
+    #[test]
+    fn people_can_be_put_into_groups() {
+        let (mut cat, imgs) = catalog_with_images(3);
+        let mut c = None;
+        let mut idx = cat.people_index().unwrap();
+        add(&mut cat, &mut idx, imgs[0], face(0, 0.1));
+        add(&mut cat, &mut idx, imgs[1], face(3, 0.1));
+        let g0 = cat.image_faces(imgs[0]).unwrap()[0].person_id.unwrap();
+        let g1 = cat.image_faces(imgs[1]).unwrap()[0].person_id.unwrap();
+        let anna = cat.name_person(g0, "Anna", &mut c).unwrap();
+        let ben = cat.name_person(g1, "Ben", &mut c).unwrap();
+
+        let fam = cat.create_person_group(" Familie ").unwrap();
+        assert_eq!(
+            cat.create_person_group("familie").unwrap(),
+            fam,
+            "gleicher Name"
+        );
+        let friends = cat.create_person_group("Freunde").unwrap();
+        assert!(cat.create_person_group("  ").is_err());
+        cat.set_person_group(&[anna], Some(fam)).unwrap();
+        cat.set_person_group(&[ben], Some(friends)).unwrap();
+        let group_of = |cat: &Catalog, id| {
+            cat.list_people()
+                .unwrap()
+                .into_iter()
+                .find(|p| p.id == id)
+                .unwrap()
+                .group_id
+        };
+        assert_eq!(group_of(&cat, anna), Some(fam));
+        assert_eq!(
+            cat.person_groups()
+                .unwrap()
+                .iter()
+                .map(|g| g.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Familie", "Freunde"]
+        );
+
+        // Zusammenlegen per Umbenennen
+        assert_eq!(cat.rename_person_group(friends, "familie").unwrap(), fam);
+        assert_eq!(group_of(&cat, ben), Some(fam));
+        assert_eq!(cat.person_groups().unwrap().len(), 1);
+
+        // Personen zusammenführen: Gruppe bleibt
+        cat.set_person_group(&[anna], None).unwrap();
+        let merged = cat.name_person(ben, "Anna", &mut c).unwrap();
+        assert_eq!((merged, group_of(&cat, anna)), (anna, Some(fam)));
+
+        // Gruppe löschen: Personen bleiben, ohne Gruppe
+        cat.delete_person_group(fam).unwrap();
+        assert_eq!(group_of(&cat, anna), None);
+        assert!(cat.person_groups().unwrap().is_empty());
     }
 
     /// Umbenennen einer schon benannten Person behält offene Vorschläge;

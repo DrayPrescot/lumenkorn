@@ -108,6 +108,13 @@ export interface Person {
   suggested: number;
   imageCount: number;
   coverFace: number | null;
+  /** Personengruppe (Familie, Freunde …) */
+  groupId: number | null;
+}
+/** Gruppe von Personen, z. B. „Familie“ */
+export interface PersonGroup {
+  id: number;
+  name: string;
 }
 export interface FaceInfo {
   id: number;
@@ -689,6 +696,11 @@ export const api = {
   faceReject: (faceId: number) => call<void>("face_reject", { faceId }),
   faceHide: (faceId: number) => call<void>("face_hide", { faceId }),
   personDelete: (id: number) => call<void>("person_delete", { id }),
+  personGroups: () => call<PersonGroup[]>("person_groups"),
+  personGroupCreate: (name: string, persons: number[] = []) => call<number>("person_group_create", { name, persons }),
+  personGroupRename: (id: number, name: string) => call<number>("person_group_rename", { id, name }),
+  personGroupDelete: (id: number) => call<void>("person_group_delete", { id }),
+  personSetGroup: (persons: number[], group: number | null) => call<void>("person_set_group", { persons, group }),
   peopleRescan: () => call<void>("people_rescan"),
   /** `strength`: Reglerwert 0–100 (50 = Standard) */
   denoiseStart: (id: number, strength = 50) => call<void>("denoise_start", { id, strength }),

@@ -6,7 +6,7 @@ use crate::ai::{analysis_guard, err, lazy_model};
 use lumenkorn_ai::faces::{self, FaceDetector, FaceEmbedder};
 use lumenkorn_ai::models;
 use lumenkorn_core::Error;
-use lumenkorn_core::people::{FaceInfo, NewFace, PeopleIndex, Person};
+use lumenkorn_core::people::{FaceInfo, NewFace, PeopleIndex, Person, PersonGroup};
 use lumenkorn_core::thumbs::decode_for_analysis;
 use lumenkorn_develop::i18n::tr_s;
 use serde::Serialize;
@@ -249,6 +249,50 @@ pub fn people_status(state: State<AppState>) -> Result<PeopleStatus, Error> {
 #[tauri::command(async)]
 pub fn people_list(state: State<AppState>) -> Result<Vec<Person>, Error> {
     state.catalog.lock().unwrap().list_people()
+}
+
+#[tauri::command(async)]
+pub fn person_groups(state: State<AppState>) -> Result<Vec<PersonGroup>, Error> {
+    state.catalog.lock().unwrap().person_groups()
+}
+
+/// Neue Gruppe (oder die vorhandene gleichen Namens); mit `persons` gleich
+/// diese Personen hineinlegen. Liefert die ID der Gruppe.
+#[tauri::command(async)]
+pub fn person_group_create(
+    state: State<AppState>,
+    name: String,
+    persons: Vec<i64>,
+) -> Result<i64, Error> {
+    let cat = state.catalog.lock().unwrap();
+    let id = cat.create_person_group(&name)?;
+    if !persons.is_empty() {
+        cat.set_person_group(&persons, Some(id))?;
+    }
+    Ok(id)
+}
+
+#[tauri::command(async)]
+pub fn person_group_rename(state: State<AppState>, id: i64, name: String) -> Result<i64, Error> {
+    state.catalog.lock().unwrap().rename_person_group(id, &name)
+}
+
+#[tauri::command(async)]
+pub fn person_group_delete(state: State<AppState>, id: i64) -> Result<(), Error> {
+    state.catalog.lock().unwrap().delete_person_group(id)
+}
+
+#[tauri::command(async)]
+pub fn person_set_group(
+    state: State<AppState>,
+    persons: Vec<i64>,
+    group: Option<i64>,
+) -> Result<(), Error> {
+    state
+        .catalog
+        .lock()
+        .unwrap()
+        .set_person_group(&persons, group)
 }
 
 #[tauri::command(async)]

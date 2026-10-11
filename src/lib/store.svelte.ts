@@ -1,7 +1,7 @@
 // Zentraler Oberflächenzustand (Svelte-5-Runes).
 
 import { isCanceled, lang, num, t, tc } from "./i18n";
-import { api, listen, type AiStatus, type Person, type PeopleStatus, type AiDownloadEvent, type DeleteReport, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress } from "./api";
+import { api, listen, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type DeleteReport, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress } from "./api";
 
 class Library {
   roots = $state<Root[]>([]);
@@ -33,6 +33,8 @@ class Library {
   message = $state<{ text: string; kind: "info" | "error" } | null>(null);
   ai = $state<AiStatus | null>(null);
   people = $state<Person[]>([]);
+  /** Personengruppen (Familie, Freunde …), alphabetisch */
+  personGroups = $state<PersonGroup[]>([]);
   peopleStatus = $state<PeopleStatus | null>(null);
   /** Erhöht sich, wenn Gesichter eines Bildes neu erkannt wurden. */
   facesVersion = $state<Record<number, number>>({});
@@ -135,10 +137,22 @@ class Library {
 
   async refreshPeople() {
     try {
-      [this.people, this.peopleStatus] = await Promise.all([api.peopleList(), api.peopleStatus()]);
+      [this.people, this.peopleStatus, this.personGroups] = await Promise.all([api.peopleList(), api.peopleStatus(), api.personGroups()]);
     } catch {
       this.people = [];
     }
+  }
+
+  /** Änderung an Personengruppen ausführen, Fehler melden, neu laden. */
+  async groupAction<T>(f: () => Promise<T>): Promise<T | null> {
+    let r: T | null = null;
+    try {
+      r = await f();
+    } catch (e) {
+      this.notify(String(e), "error");
+    }
+    await this.refreshPeople();
+    return r;
   }
 
   async refreshAi() {
@@ -759,7 +773,8 @@ class Library {
   /** Eingeklappte Bereiche der Seitenleiste (bleibt über Neustarts erhalten) */
   collapsed = $state<Record<string, boolean>>(loadCollapsed());
 
-  toggleSection(key: "projects" | "people" | "folders") {
+  /** Eingeklappt: Bereiche der Seitenleiste und Personengruppen (`pgroup:<id>`) */
+  toggleSection(key: "projects" | "people" | "folders" | `pgroup:${number}`) {
     this.collapsed = { ...this.collapsed, [key]: !this.collapsed[key] };
     try {
       localStorage.setItem("lumenkorn.sidebar.collapsed", JSON.stringify(this.collapsed));

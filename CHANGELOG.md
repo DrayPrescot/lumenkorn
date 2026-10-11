@@ -7,6 +7,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- People: groups such as “Familie” or “Freunde”. “+ Gruppe” in the people
+  overview creates one; each group is a collapsible section like “Sonstige”
+  (remembered across restarts), with its people inside. Drag a person's card
+  onto a group, or use the folder icon on the card, to assign it; people
+  without a group are listed below. Groups can be renamed (double-click) and
+  deleted without losing the people. Catalog update to version 14.
 - Develop: lens correction for RAW files, on by default (“Objektiv” in the
   Basis tab, below Color Grading). It removes distortion, color fringes and
   vignetting using the correction data the camera writes into the RAW (Sony

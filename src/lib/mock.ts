@@ -42,18 +42,30 @@ const demoPresets = (): Preset[] => [
 const images: Img[] = [];
 
 // Beispiel-Gesichter: die ersten zwölf Fotos je ein Gesicht – „Anna“ (bestätigt oder vorgeschlagen) oder ohne Zuordnung
-const mockPersons: { id: number; name: string }[] = [{ id: 1, name: "Anna" }];
+const mockPersons: { id: number; name: string; group?: number | null }[] = [
+  { id: 1, name: "Anna", group: 1 },
+  { id: 2, name: "Ben", group: 1 },
+  { id: 3, name: "Clara", group: 2 },
+  { id: 4, name: "David", group: 2 },
+  { id: 5, name: "Eva" },
+];
+let mockGroups: { id: number; name: string }[] = [{ id: 1, name: "Familie" }, { id: 2, name: "Freunde" }];
 const mockFaces: { id: number; imageId: number; rect: [number, number, number, number]; score: number; personId: number | null; personName: string | null; confirmed: boolean }[] = [];
 function mockPeople() {
   if (!mockFaces.length) {
     images.slice(0, 12).forEach((im, i) =>
       mockFaces.push({ id: i + 1, imageId: im.id, rect: [0.4, 0.3, 0.2, 0.3], score: 0.9, personId: i % 4 === 3 ? null : 1, personName: i % 4 === 3 ? null : "Anna", confirmed: i % 2 === 0 }),
     );
+    // weitere benannte Personen für die Gruppen-Ansicht
+    images.slice(12, 40).forEach((im, i) => {
+      const p = mockPersons[1 + (i % 4)];
+      mockFaces.push({ id: 100 + i, imageId: im.id, rect: [0.4, 0.3, 0.2, 0.3], score: 0.9, personId: p.id, personName: p.name, confirmed: true });
+    });
   }
   return mockPersons
     .map((p) => {
       const fs = mockFaces.filter((f) => f.personId === p.id);
-      return { id: p.id, name: p.name, faceCount: fs.length, suggested: fs.filter((f) => !f.confirmed).length, imageCount: fs.length, coverFace: fs[0]?.id ?? null };
+      return { id: p.id, name: p.name, faceCount: fs.length, suggested: fs.filter((f) => !f.confirmed).length, imageCount: fs.length, coverFace: fs[0]?.id ?? null, groupId: p.group ?? null };
     })
     .filter((p) => p.faceCount > 0);
 }
@@ -263,6 +275,34 @@ export const mock = {
         return out({ ready: true, downloadSize: 38_929_000, enabled: true, analyzed: images.length, total: images.length, faces: 12, error: null });
       case "people_list":
         return out(mockPeople());
+      case "person_groups":
+        return out([...mockGroups].sort((x, y) => x.name.localeCompare(y.name, "de")));
+      case "person_group_create": {
+        const name = String(a.name).trim();
+        if (!name) throw t("Bitte einen Namen für die Gruppe eingeben");
+        let g = mockGroups.find((x) => x.name.toLowerCase() === name.toLowerCase());
+        if (!g) mockGroups.push((g = { id: Date.now(), name }));
+        for (const p of mockPersons.filter((p) => a.persons.includes(p.id))) p.group = g.id;
+        return out(g.id);
+      }
+      case "person_group_rename": {
+        const name = String(a.name).trim();
+        const other = mockGroups.find((x) => x.id !== a.id && x.name.toLowerCase() === name.toLowerCase());
+        if (other) {
+          for (const p of mockPersons.filter((p) => p.group === a.id)) p.group = other.id;
+          mockGroups = mockGroups.filter((x) => x.id !== a.id);
+          return out(other.id);
+        }
+        mockGroups = mockGroups.map((x) => (x.id === a.id ? { ...x, name } : x));
+        return out(a.id);
+      }
+      case "person_group_delete":
+        for (const p of mockPersons.filter((p) => p.group === a.id)) p.group = null;
+        mockGroups = mockGroups.filter((x) => x.id !== a.id);
+        return out(null);
+      case "person_set_group":
+        for (const p of mockPersons.filter((p) => a.persons.includes(p.id))) p.group = a.group;
+        return out(null);
       case "person_faces":
         return out(mockFaces.filter((f) => f.personId === a.id));
       case "image_faces":
