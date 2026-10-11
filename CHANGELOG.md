@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.1] – 2026-10-11
+
 ### Added
 - AI agents (MCP): a built-in Model Context Protocol server lets Claude,
   ChatGPT/Codex and other agents search, view, rate, tag, develop, mask and

@@ -12,7 +12,8 @@ src-tauri/gen/
 *.log
 
 # Editors and OS files
-.vscode/
+.vscode/*
+!.vscode/tasks.json
 .idea/
 *.swp
 .DS_Store

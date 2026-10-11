@@ -597,6 +597,11 @@ Download auf. Mit dem Secret `TAURI_SIGNING_PRIVATE_KEY` (minisign-Schlüssel au
 Installer für den Updater signiert und `latest.json` angehängt. Sobald der Entwurf veröffentlicht
 ist, bieten installierte Programme das Update an.
 
+**Release ohne GitHub Actions:** In VS Code **Terminal → Aufgabe ausführen → „Lumenkorn: Release
+bauen“** (oder `node tools/release_local.mjs <Pfad zu lumenkorn-updater.key>`) baut die
+Windows-Installer, signiert sie und erzeugt `latest.json`. Die beiden MSI und `latest.json` dann
+in ein veröffentlichtes Release mit dem Tag `v<Version>` hochladen.
+
 ## Android
 
 Der Rust-Code ist für Android vorbereitet, die Oberfläche passt sich schmalen Bildschirmen an.

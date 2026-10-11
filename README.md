@@ -24,7 +24,7 @@ There is no account, no cloud and no subscription. The AI features (keywords, se
 content, masks, noise reduction, object removal, face recognition) use open models that are
 downloaded once and then run offline on your CPU or GPU.
 
-Lumenkorn is at version 1.0. It is mainly used on Windows and is also built and tested
+Lumenkorn is at version 1.0.1. It is mainly used on Windows and is also built and tested
 on Linux. The interface is in German and English and follows
 the system language; **DE / EN** at the bottom left of the sidebar switches it.
 
@@ -383,6 +383,11 @@ release. Its text is the version's section of the CHANGELOG. With the secret
 `TAURI_SIGNING_PRIVATE_KEY` (minisign key from `npx tauri signer generate`; the public key is in
 `tauri.conf.json`) the installers are signed for the updater and `latest.json` is attached; once
 the draft is published, installed copies offer the update.
+
+Without GitHub Actions, the VS Code task **Lumenkorn: Release bauen** (or
+`node tools/release_local.mjs <path to lumenkorn-updater.key>`) builds the Windows installers,
+signs them and writes `latest.json`; upload both MSI files and `latest.json` to a published
+release tagged `v<version>`.
 
 ## Open-source projects used by Lumenkorn
 
