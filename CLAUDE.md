@@ -29,7 +29,7 @@ Rust + Tauri 2 im Backend, Svelte 5 im Frontend. Ausführliche Beschreibung in
   quelloffen (Lizenz in beiden READMEs unter den Open-Source-Projekten nennen).
 - **Ressourcen sparen mit Subagents:** Wo es sinnvoll ist, Teilaufgaben an
   Subagents mit kleineren Modellen geben (Agent-Werkzeug, Parameter `model`):
-  - `haiku` (Claude Haiku 4.5): Code durchsuchen, Dateien lesen und
+  - `haiku` (Claude Haiku 5.5): Code durchsuchen, Dateien lesen und
     zusammenfassen, Logs und Testausgaben auswerten, einfache mechanische
     Änderungen (Übersetzungen nachtragen, Umbenennen).
   - `sonnet` (Claude Sonnet 5.5): klar umrissene Umsetzungen und Korrekturen,
