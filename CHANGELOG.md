@@ -7,6 +7,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- AI agents (MCP): a built-in Model Context Protocol server lets Claude,
+  ChatGPT/Codex and other agents search, view, rate, tag, develop, mask and
+  export photos. Off by default (AI → AI agents); stdio via `lumenkorn --mcp`
+  (starts the app if needed) and local HTTP with an access key. No tool
+  deletes anything; changes show up live and can be undone in Develop.
 - Updates: shortly after starting, Lumenkorn checks once for a newer release
   on GitHub, shows what changed and asks. “Install now” downloads it, checks
   its signature, installs and restarts; “Later” asks again at the next start.

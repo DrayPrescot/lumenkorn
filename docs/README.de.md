@@ -23,7 +23,7 @@ installiert und startet neu; **Später** fragt beim nächsten Start wieder. Kata
 bleiben erhalten. Updates kommen aus den Versions-Releases, nicht aus *nightly*.
 
 **Inhalt:** [Bibliothek](#bibliothek) · [Entwickeln](#entwickeln-non-destruktiv) ·
-[Masken](#masken-lokale-anpassungen) · [KI-Funktionen](#ki-funktionen) ·
+[Masken](#masken-lokale-anpassungen) · [KI-Funktionen](#ki-funktionen) · [KI-Agenten](#ki-agenten-mcp) ·
 [Zusammenfügen](#bilder-zusammenfügen) · [Tastenkürzel](#tastenkürzel) ·
 [So funktioniert Lumenkorn](#so-funktioniert-lumenkorn) · [Technik](#technik) ·
 [Open-Source-Projekte](#genutzte-open-source-projekte) · [Entwickeln am Code](#entwickeln-am-code)
@@ -285,6 +285,29 @@ Im KI-Dialog unter „Grafikkarte“. Zwei Teile, die unabhängig voneinander la
   KI-Dialog, was passiert ist.
 - **„Geschwindigkeit testen“** misst die Rauschreduzierung an einem Testbild und rechnet auf ein
   24-MP-Foto hoch.
+
+## KI-Agenten (MCP)
+
+Lumenkorn bringt einen Server für das [Model Context Protocol](https://modelcontextprotocol.io)
+mit. Damit können KI-Agenten wie Claude oder ChatGPT/Codex das Programm bedienen, etwa „Suche alle
+Fotos vom Strand mit mindestens drei Sternen, mach sie wärmer und exportiere sie als JPEG“. Die
+Schnittstelle ist anfangs aus und wird unter **KI → KI-Agenten (MCP)** eingeschaltet; dort stehen
+auch die fertigen Angaben zum Kopieren.
+
+- **stdio** (Claude Desktop, OpenAI Codex und die meisten anderen Agenten): Programm
+  `lumenkorn.exe` (mit vollem Pfad), Argument `--mcp`. Diese kleine Brücke startet Lumenkorn bei
+  Bedarf und reicht alles an das laufende Programm weiter.
+- **HTTP** (Claude Code und andere Agenten, die es können): `http://127.0.0.1:47823/mcp` mit dem
+  Header `Authorization: Bearer <Schlüssel>`. Der Schlüssel liegt in `mcp.json` im Datenordner;
+  verbinden kann sich nur dieser Rechner, Anfragen von Webseiten werden abgewiesen.
+
+Werkzeuge: `list_library`, `search_photos` (Text, Inhaltssuche, Ordner, Projekt, Person,
+Bewertung, Markierung), `get_photo`, `view_photo` (das Foto als Bild mit seinen Bearbeitungen),
+`rate_photos`, `flag_photos`, `tag_photos`, `get_develop_settings`, `set_develop_settings`
+(beliebige Entwicklungswerte ändern), `auto_tone`, `reset_photos`, `apply_preset`,
+`copy_settings`, `add_mask` (KI-Maske wie Himmel, `person:eyes` oder `animal:bird` mit lokalen
+Anpassungen), `export_photos` und `show_photo`. Keines löscht Fotos oder entfernt Ordner.
+Änderungen erscheinen sofort im Programm; beim gerade entwickelten Foto macht Strg+Z sie rückgängig.
 
 ## Bilder zusammenfügen
 

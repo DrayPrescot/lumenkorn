@@ -201,6 +201,20 @@ class Develop {
   }
 
   constructor() {
+    // Ein KI-Agent hat die Bearbeitung des geöffneten Fotos geändert:
+    // übernehmen (mit Rückgängig)
+    listen("develop-external", async ({ ids }) => {
+      const id = this.imageId;
+      if (id === null || !this.ready || !ids.includes(id)) return;
+      // Nicht vorher speichern – das überschriebe die Änderung des Agenten
+      clearTimeout(this.#saveTimer);
+      try {
+        const p = await api.developParams(id);
+        if (this.imageId === id) this.replace(p);
+      } catch (e) {
+        lib.notify(String(e), "error");
+      }
+    });
     listen("repair-progress", (e) => {
       if (this.repairing && e.imageId === this.imageId) this.repairing = { ...this.repairing, done: e.done, total: e.total };
     });

@@ -34,6 +34,7 @@ const demoPreset = (id: number, name: string, p: Partial<DevelopParams>, g: Part
   ({ id, name, params: { ...structuredClone(DEFAULT_PARAMS), ...p }, groups: { ...NO_GROUPS, ...g }, createdAt: 0 });
 // Erst beim ersten Zugriff anlegen: api.ts und mock.ts importieren sich gegenseitig
 let presetStore: Preset[] | null = null;
+let mcpOn = false;
 const demoPresets = (): Preset[] => [
   demoPreset(1, "Matt und weich", { contrast: -20, blacks: 25, highlights: -30, saturation: -10 }, { light: true, color: true }),
   demoPreset(2, "Schwarzweiß kontrastreich", { saturation: -100, contrast: 35, clarity: 20 }, { light: true, color: true, details: true }),
@@ -360,6 +361,12 @@ export const mock = {
             ? { version: "1.1.0", current: "1.0.0", date: null, notes: "### Added\n- Masks: “Person” selects the whole person or one part.\n- “Animal” selects birds, mammals or reptiles.\n\n### Changed\n- Tone sliders now split the range like in Lightroom." }
             : null,
         );
+      case "mcp_status":
+      case "mcp_set_enabled":
+      case "mcp_new_token": {
+        if (cmd === "mcp_set_enabled") mcpOn = !!a.enabled;
+        return out({ enabled: mcpOn, running: mcpOn, url: mcpOn ? "http://127.0.0.1:47823/mcp" : null, token: "3f9c1e7a5b2d4c6e8f0a1b2c3d4e5f60", command: "C:\\Program Files\\Lumenkorn\\lumenkorn.exe" });
+      }
       case "update_install":
         throw t("Updates sind nur in der App verfügbar.");
       case "ai_benchmark":

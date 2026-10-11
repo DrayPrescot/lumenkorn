@@ -7,6 +7,7 @@ mod cull;
 mod develop;
 mod guard;
 mod logfile;
+mod mcp;
 mod memory;
 mod merge;
 mod people;
@@ -55,6 +56,12 @@ pub struct AppState {
     pub usage: memory::Usage,
     pub merge: merge::MergeState,
     pub updater: updater::UpdaterState,
+    pub mcp: mcp::McpState,
+}
+
+/// `lumenkorn --mcp`: stdio-Brücke für KI-Agenten (siehe `mcp`)
+pub fn run_mcp_stdio() {
+    mcp::run_stdio();
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -146,7 +153,9 @@ pub fn run() {
                 usage: memory::Usage::default(),
                 merge: merge::MergeState::default(),
                 updater: updater::UpdaterState::default(),
+                mcp: mcp::McpState::default(),
             });
+            mcp::start_if_enabled(app.handle());
             memory::start_janitor(app.handle().clone());
             Ok(())
         })
@@ -199,6 +208,9 @@ pub fn run() {
             ai::ai_benchmark,
             ai::app_restart,
             updater::update_check,
+            mcp::mcp_status,
+            mcp::mcp_set_enabled,
+            mcp::mcp_new_token,
             updater::update_install,
             ai::ai_dismiss_notice,
             people::people_status,

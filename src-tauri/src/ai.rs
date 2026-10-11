@@ -891,9 +891,9 @@ pub async fn semantic_search(
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MaskResult {
-    mask_id: String,
+    pub(crate) mask_id: String,
     /// Anteil der Bildfläche, 0…1 – 0 heißt „nichts gefunden“
-    coverage: f32,
+    pub(crate) coverage: f32,
 }
 
 /// Quellbild für die Segmentierung: unbearbeitet entwickelt, Originalausrichtung

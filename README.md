@@ -107,6 +107,26 @@ itself on Linux, `.deb` and `.rpm` are updated by the package manager.
 The installers are not code-signed yet. Windows SmartScreen will ask once
 ("More info" → "Run anyway").
 
+### AI agents (MCP)
+Lumenkorn has a built-in [Model Context Protocol](https://modelcontextprotocol.io) server, so
+AI agents such as Claude or ChatGPT/Codex can operate it. It is off by default; switch it on
+under **AI → AI agents (MCP)**, where the dialog also shows the exact settings to copy.
+
+- **stdio** (Claude Desktop, OpenAI Codex and most other agents): command `lumenkorn.exe`
+  (full path) with the argument `--mcp`. This small bridge starts Lumenkorn if needed and passes
+  everything to the running app.
+- **HTTP** (Claude Code and other agents that support it): `http://127.0.0.1:47823/mcp` with
+  the header `Authorization: Bearer <key>`. The key is stored in `mcp.json` in the data folder;
+  only this computer can connect, and requests from websites are refused.
+
+Tools: `list_library`, `search_photos` (text, content search, folder, project, person,
+rating, flag), `get_photo`, `view_photo` (the photo as an image with its edits), `rate_photos`,
+`flag_photos`, `tag_photos`, `get_develop_settings`, `set_develop_settings` (merge any develop
+values), `auto_tone`, `reset_photos`, `apply_preset`, `copy_settings`, `add_mask` (AI mask such
+as sky, person:eyes or animal:bird with local adjustments), `export_photos` and `show_photo`.
+None of them deletes photos or removes folders. Changes appear in the app right away; for the
+photo open in Develop they can be undone with `Ctrl+Z`.
+
 ### First steps
 1. Click **+** next to *Ordner* and choose a folder with photos.
 2. Rate with `0`–`5`, flag with `P` / `X`, and press `D` to develop the selected photo.

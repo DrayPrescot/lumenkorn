@@ -106,6 +106,11 @@ class Library {
       for (const id of ids) this.thumbVersion[id] = (this.thumbVersion[id] ?? 0) + 1;
     });
     listen("job-error", ({ message }) => this.notify(message, "error"));
+    // KI-Agent (MCP): Schlagworte geändert, Foto zeigen
+    listen("tags-changed", ({ ids }) => {
+      for (const id of ids) this.tagsVersion[id] = (this.tagsVersion[id] ?? 0) + 1;
+    });
+    listen("mcp-show", ({ id, develop }) => this.showPhoto(id, develop));
     listen("merge-progress", (e) => {
       this.mergeProgress = e;
       if (e.finished) this.#mergeDone(e);
@@ -244,6 +249,27 @@ class Library {
     // liegt (z. B. übergeordneter Ordner), sonst das erste der neuen Ansicht
     if (this.mode === "develop") this.loadImages(true, true);
     else this.loadImages();
+  }
+
+  /** Foto zeigen (für KI-Agenten): in der aktuellen Liste, sonst unter
+   *  „Alle Fotos“ ohne Filter; mit `develop` gleich im Entwickeln-Modus. */
+  async showPhoto(id: number, develop = false) {
+    let index = this.images.findIndex((i) => i.id === id);
+    if (index < 0) {
+      this.search = "";
+      this.minRating = 0;
+      this.scope = { type: "all" };
+      await this.loadImages();
+      index = this.images.findIndex((i) => i.id === id);
+    }
+    if (index < 0) return;
+    this.select(index);
+    if (develop) {
+      this.mode = "develop";
+    } else {
+      this.mode = "library";
+      this.view = "loupe";
+    }
   }
 
   /** Wechselt in den Entwickeln-Modus mit dem fokussierten (oder ersten) Bild. */

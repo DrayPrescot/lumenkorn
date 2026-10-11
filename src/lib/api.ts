@@ -706,6 +706,9 @@ export const api = {
   appRestart: () => call<void>("app_restart"),
   updateCheck: () => call<UpdateInfo | null>("update_check"),
   updateInstall: () => call<void>("update_install"),
+  mcpStatus: () => call<McpStatus>("mcp_status"),
+  mcpSetEnabled: (enabled: boolean) => call<McpStatus>("mcp_set_enabled", { enabled }),
+  mcpNewToken: () => call<McpStatus>("mcp_new_token"),
   aiDismissNotice: () => call<void>("ai_dismiss_notice"),
   peopleStatus: () => call<PeopleStatus>("people_status"),
   peopleList: () => call<Person[]>("people_list"),
@@ -773,6 +776,16 @@ export interface MergeProgress {
 
 // --- Ereignisse ---------------------------------------------------------------
 
+/** MCP-Schnittstelle für KI-Agenten */
+export interface McpStatus {
+  enabled: boolean;
+  running: boolean;
+  url: string | null;
+  token: string;
+  /** Programm für die stdio-Brücke (`<command> --mcp`) */
+  command: string;
+}
+
 /** Neuere Version auf GitHub */
 export interface UpdateInfo {
   version: string;
@@ -796,6 +809,11 @@ export interface Events {
   "repair-progress": { imageId: number; done: number; total: number };
   "merge-progress": MergeProgress;
   "update-progress": { done: number; total: number | null; installing: boolean };
+  /** Ein KI-Agent hat Bearbeitungen geändert */
+  "develop-external": { ids: number[] };
+  /** Ein KI-Agent möchte ein Foto zeigen */
+  "mcp-show": { id: number; develop: boolean };
+  "tags-changed": { ids: number[] };
   "denoise-progress": {
     imageId: number;
     done: number;

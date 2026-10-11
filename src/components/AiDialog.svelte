@@ -2,6 +2,7 @@
   import { api, type AccelPreference, type Backend, type Benchmark } from "../lib/api";
   import { lib } from "../lib/store.svelte";
   import Icon from "./Icon.svelte";
+  import McpSection from "./McpSection.svelte";
   import { onMount } from "svelte";
   import { t, num } from "../lib/i18n";
 
@@ -275,6 +276,10 @@
           <button class="btn primary" onclick={() => download("faces").then(() => lib.refreshPeople())}>{t("Personenerkennung herunterladen")}</button>
         </div>
       {/if}
+    {/if}
+
+    {#if !lib.aiDownload}
+      <McpSection />
     {/if}
 
     {#if s && !lib.aiDownload}

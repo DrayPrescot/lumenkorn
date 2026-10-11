@@ -10,5 +10,9 @@ fn main() {
         // SAFETY: Noch läuft nur dieser eine Thread.
         unsafe { std::env::set_var("RUST_MIN_STACK", (16usize << 20).to_string()) };
     }
+    // KI-Agenten starten Lumenkorn als MCP-Server über stdin/stdout
+    if std::env::args().any(|a| a == "--mcp") {
+        return lumenkorn_lib::run_mcp_stdio();
+    }
     lumenkorn_lib::run()
 }
