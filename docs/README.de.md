@@ -240,7 +240,9 @@ Nach dem Download sucht Lumenkorn im Hintergrund in allen Fotos nach Gesichtern.
   „Freunde“. Jede Gruppe ist ein eigener Abschnitt, der sich wie „Sonstige“ einklappen lässt.
   Zugeordnet wird per Ziehen der Personenkarte auf die Gruppe oder über das Ordnersymbol an der
   Karte; eine Person gehört zu höchstens einer Gruppe. Doppelklick auf den Gruppennamen benennt
-  um, ✕ löscht die Gruppe (die Personen bleiben).
+  um, ✕ löscht die Gruppe (die Personen bleiben). Auch die Seitenleiste ordnet die Personen nach
+  Gruppen; jede lässt sich dort für sich einklappen, und Personen lassen sich auch dort auf eine
+  Gruppe ziehen oder aus ihr heraus.
 - **Übersicht:** Unbenannte Gruppen mit bis zu 100 Fotos stehen eingeklappt unter „Sonstige“.
 - Die verbreiteten InsightFace-Modelle sind bewusst nicht dabei; sie dürfen nur nichtkommerziell
   genutzt werden.

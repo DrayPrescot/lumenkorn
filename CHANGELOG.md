@@ -12,7 +12,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   (remembered across restarts), with its people inside. Drag a person's card
   onto a group, or use the folder icon on the card, to assign it; people
   without a group are listed below. Groups can be renamed (double-click) and
-  deleted without losing the people. Catalog update to version 14.
+  deleted without losing the people. The sidebar lists people by group too,
+  each group collapsible on its own; drag a person onto a group there, or
+  onto the people without a group to take it out. Catalog update to version 14.
 - Develop: lens correction for RAW files, on by default (“Objektiv” in the
   Basis tab, below Color Grading). It removes distortion, color fringes and
   vignetting using the correction data the camera writes into the RAW (Sony

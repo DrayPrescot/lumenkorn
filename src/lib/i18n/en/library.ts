@@ -149,4 +149,5 @@ export default {
   "Aus der Gruppe nehmen": "Remove from group",
   "Neue Gruppe …": "New group …",
   "Bitte einen Namen für die Gruppe eingeben": "Please enter a group name",
+  "Hierher ziehen: ohne Gruppe": "Drop here: no group",
 } satisfies Record<string, string>;

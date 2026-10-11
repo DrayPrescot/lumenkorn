@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, faceUrl, isTauri, pickFolder, type FolderNode, type Root } from "../lib/api";
+  import { api, faceUrl, isTauri, pickFolder, type FolderNode, type Person, type Root } from "../lib/api";
   import { lib, topFolders } from "../lib/store.svelte";
   import { lang, setLang, t, tc } from "../lib/i18n";
   import FolderTree from "./FolderTree.svelte";
@@ -24,6 +24,30 @@
   let menu = $state<{ x: number; y: number; node: FolderNode; root?: Root; paths: string[] } | null>(null);
   let renaming = $state<number | null>(null);
   let renamingPerson = $state<number | null>(null);
+
+  // Personen nach Gruppen (Familie, Freunde …); Personen lassen sich auf eine
+  // Gruppe ziehen, auf die übrigen gezogen verlassen sie ihre Gruppe
+  const namedPeople = $derived(lib.people.filter((p) => p.name));
+  const groupedAny = $derived(namedPeople.some((p) => p.groupId !== null && lib.personGroups.some((g) => g.id === p.groupId)));
+  const ungroupedPeople = $derived(namedPeople.filter((p) => p.groupId === null || !lib.personGroups.some((g) => g.id === p.groupId)));
+  let groupDrop = $state<number | null | undefined>(undefined);
+  /** Eine Person wird gerade gezogen (zeigt die Ablage „ohne Gruppe“) */
+  let draggingPerson = $state(false);
+  function personDragOver(e: DragEvent, group: number | null) {
+    if (!e.dataTransfer?.types.includes("application/x-lumenkorn-person")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    groupDrop = group;
+  }
+  function personDrop(e: DragEvent, group: number | null) {
+    groupDrop = undefined;
+    draggingPerson = false;
+    const id = Number(e.dataTransfer?.getData("application/x-lumenkorn-person"));
+    const p = lib.people.find((x) => x.id === id);
+    if (!p) return;
+    e.preventDefault();
+    if (p.groupId !== group) lib.groupAction(() => api.personSetGroup([p.id], group));
+  }
 
   onMount(async () => {
     platform = (await api.appInfo()).platform;
@@ -91,6 +115,59 @@
 
   const scanningRoot = $derived(lib.scan ? lib.roots.find((r) => r.id === lib.scan!.rootId) : undefined);
 </script>
+
+{#snippet personItem(p: Person)}
+  {#if renamingPerson === p.id}
+          <form
+            onsubmit={async (e) => {
+              e.preventDefault();
+              const v = (e.currentTarget.elements.namedItem("n") as HTMLInputElement).value;
+              renamingPerson = null;
+              await lib.renamePerson(p.id, v);
+            }}
+          >
+            <!-- svelte-ignore a11y_autofocus -->
+            <input
+              type="text"
+              name="n"
+              value={p.name}
+              autofocus
+              onfocus={(e) => e.currentTarget.select()}
+              onblur={() => (renamingPerson = null)}
+              onkeydown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Escape") renamingPerson = null;
+              }}
+            />
+          </form>
+        {:else}
+          <button
+            class="item person"
+            draggable="true"
+            ondragstart={(e) => {
+              e.dataTransfer?.setData("application/x-lumenkorn-person", String(p.id));
+              if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+              draggingPerson = true;
+            }}
+            ondragend={() => {
+              groupDrop = undefined;
+              draggingPerson = false;
+            }}
+            class:active={lib.isScope({ type: "person", id: p.id })}
+            onclick={() => lib.setScope({ type: "person", id: p.id })}
+            ondblclick={() => (renamingPerson = p.id)}
+            oncontextmenu={(e) => {
+              e.preventDefault();
+              renamingPerson = p.id;
+            }}
+            title={t("Doppelklick oder Rechtsklick zum Umbenennen")}
+          >
+            {#if p.coverFace}<img class="avatar" src={faceUrl(p.coverFace)} alt="" />{:else}<span class="avatar"></span>{/if}
+            <span>{p.name}</span>
+            <span class="count">{p.imageCount}</span>
+          </button>
+        {/if}
+{/snippet}
 
 {#snippet toggle(key: "projects" | "people" | "folders", title: string, count: number)}
   {@const closed = !!lib.collapsed[key]}
@@ -203,50 +280,50 @@
           <Icon name="stack" size={14} />
         </button>
       </header>
-      {#each lib.people.filter((p) => p.name) as p (p.id)}
-        {#if lib.collapsed.people && !lib.isScope({ type: "person", id: p.id })}
-          <!-- eingeklappt: nur die gerade gewählte Person zeigen -->
-        {:else if renamingPerson === p.id}
-          <form
-            onsubmit={async (e) => {
-              e.preventDefault();
-              const v = (e.currentTarget.elements.namedItem("n") as HTMLInputElement).value;
-              renamingPerson = null;
-              await lib.renamePerson(p.id, v);
-            }}
-          >
-            <!-- svelte-ignore a11y_autofocus -->
-            <input
-              type="text"
-              name="n"
-              value={p.name}
-              autofocus
-              onfocus={(e) => e.currentTarget.select()}
-              onblur={() => (renamingPerson = null)}
-              onkeydown={(e) => {
-                e.stopPropagation();
-                if (e.key === "Escape") renamingPerson = null;
-              }}
-            />
-          </form>
-        {:else}
-          <button
-            class="item person"
-            class:active={lib.isScope({ type: "person", id: p.id })}
-            onclick={() => lib.setScope({ type: "person", id: p.id })}
-            ondblclick={() => (renamingPerson = p.id)}
-            oncontextmenu={(e) => {
-              e.preventDefault();
-              renamingPerson = p.id;
-            }}
-            title={t("Doppelklick oder Rechtsklick zum Umbenennen")}
-          >
-            {#if p.coverFace}<img class="avatar" src={faceUrl(p.coverFace)} alt="" />{:else}<span class="avatar"></span>{/if}
-            <span>{p.name}</span>
-            <span class="count">{p.imageCount}</span>
-          </button>
+      {#each lib.personGroups as g (g.id)}
+        {@const members = namedPeople.filter((p) => p.groupId === g.id)}
+        {#if members.length}
+          {@const closed = !!lib.collapsed[`sgroup:${g.id}`]}
+          {#if !lib.collapsed.people}
+            <button
+              class="item pgroup"
+              class:drop={groupDrop === g.id}
+              aria-expanded={!closed}
+              title={closed ? t("{title} aufklappen", { title: g.name }) : t("{title} einklappen", { title: g.name })}
+              onclick={() => lib.toggleSection(`sgroup:${g.id}`)}
+              ondragover={(e) => personDragOver(e, g.id)}
+              ondragleave={() => groupDrop === g.id && (groupDrop = undefined)}
+              ondrop={(e) => personDrop(e, g.id)}
+            >
+              <span class="chev" class:closed><Icon name="chevron" size={11} /></span>
+              <span class="gname">{g.name}</span>
+              <span class="count">{members.length}</span>
+            </button>
+          {/if}
+          {#each members as p (p.id)}
+            {#if (!closed && !lib.collapsed.people) || lib.isScope({ type: "person", id: p.id })}
+              <div class="in-group">{@render personItem(p)}</div>
+            {/if}
+          {/each}
         {/if}
       {/each}
+      {#if !lib.collapsed.people && groupedAny && (ungroupedPeople.length || draggingPerson)}
+        <div
+          class="ungrouped-drop"
+          class:drop={groupDrop === null}
+          role="group"
+          aria-label={t("Ohne Gruppe")}
+          ondragover={(e) => personDragOver(e, null)}
+          ondragleave={() => groupDrop === null && (groupDrop = undefined)}
+          ondrop={(e) => personDrop(e, null)}
+        >
+          {#each ungroupedPeople as p (p.id)}{@render personItem(p)}{:else}<p class="drop-hint">{t("Hierher ziehen: ohne Gruppe")}</p>{/each}
+        </div>
+      {:else}
+        {#each ungroupedPeople as p (p.id)}
+          {#if !lib.collapsed.people || lib.isScope({ type: "person", id: p.id })}{@render personItem(p)}{/if}
+        {/each}
+      {/if}
       {#if lib.collapsed.people}
         <!-- eingeklappt -->
       {:else if lib.peopleStatus?.ready}
@@ -458,6 +535,43 @@
   .item :global(svg) {
     color: var(--muted);
     flex: none;
+  }
+  .item.pgroup {
+    height: 26px;
+    gap: 5px;
+    color: var(--muted);
+    font-size: var(--step--1);
+    font-weight: 600;
+  }
+  .item.pgroup:hover {
+    color: var(--text);
+  }
+  .item.pgroup .chev {
+    flex: none;
+  }
+  .item.pgroup .gname {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .item.pgroup.drop,
+  .ungrouped-drop.drop {
+    outline: 1px dashed var(--accent);
+    outline-offset: -1px;
+  }
+  .ungrouped-drop {
+    border-radius: var(--radius-s);
+  }
+  .drop-hint {
+    margin: 0;
+    padding: 6px 8px;
+    color: var(--faint);
+    font-size: var(--step--1);
+  }
+  .in-group {
+    padding-left: 12px;
   }
   .count {
     color: var(--faint);
