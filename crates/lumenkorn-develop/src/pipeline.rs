@@ -141,21 +141,29 @@ fn prepare_source(
             );
         }
     }
-    let repair = |img: &mut ImageF32, corrected: bool| {
-        for r in p
-            .repairs
-            .iter()
-            .filter(|r| r.enabled && (lens.is_none() || r.lens == corrected))
-        {
-            if let Some(patch) = r.result.as_deref().and_then(|id| opts.repairs.get(id)) {
-                patch.apply(img);
-            }
-        }
-    };
-    repair(img, false);
+    apply_repairs(img, p, opts, lens.map(|_| false));
     if let Some(l) = lens {
         *img = l.apply(img);
-        repair(img, true);
+        apply_repairs(img, p, opts, Some(true));
+    }
+}
+
+/// Reparaturen einsetzen. `corrected`: nur die vor (`false`) bzw. nach
+/// (`true`) der Objektivkorrektur; `None` (ohne Korrektur) alle.
+fn apply_repairs(
+    img: &mut ImageF32,
+    p: &DevelopParams,
+    opts: &RenderOptions,
+    corrected: Option<bool>,
+) {
+    for r in p
+        .repairs
+        .iter()
+        .filter(|r| r.enabled && corrected.is_none_or(|c| r.lens == c))
+    {
+        if let Some(patch) = r.result.as_deref().and_then(|id| opts.repairs.get(id)) {
+            patch.apply(img);
+        }
     }
 }
 
@@ -233,9 +241,34 @@ fn repaired_source(src: &Source, p: &DevelopParams, opts: &RenderOptions) -> (Ar
     }
     // Ohne Sperre rechnen: `prepare_source` arbeitet parallel (rayon), und
     // parallele Arbeit unter einer Sperre kann sich verklemmen.
-    let mut out = src.clone();
-    prepare_source(&mut out.image, p, opts, lens_of(src, p));
-    let out = Arc::new(out);
+    let lens = lens_of(src, p);
+    let blend = p.denoise.is_some() && opts.denoised.is_some();
+    let before_lens = p
+        .repairs
+        .iter()
+        .any(|r| r.enabled && !r.lens && r.result.is_some());
+    let image = match lens {
+        // Nur Objektivkorrektur (und Reparaturen danach): Sie liefert ohnehin
+        // ein neues Bild – die Kopie der Quelle vorher wäre umsonst (bei 60 MP
+        // 720 MB und ein voller Kopiervorgang je Export)
+        Some(l) if !blend && !before_lens => {
+            let mut img = l.apply(&src.image);
+            apply_repairs(&mut img, p, opts, Some(true));
+            img
+        }
+        _ => {
+            let mut img = src.image.clone();
+            prepare_source(&mut img, p, opts, lens);
+            img
+        }
+    };
+    let out = Arc::new(Source {
+        kind: src.kind,
+        image,
+        full_width: src.full_width,
+        full_height: src.full_height,
+        lens: src.lens.clone(),
+    });
     let id = REPAIRED_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     if !opts.keep_prepared {
         return (out, id);
@@ -314,12 +347,18 @@ pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -
     // die GPU: Entzerren und Flicken einsetzen kostet sonst bei jedem Rendern
     // (Reglerzug) erneut, obwohl sich an der vorbereiteten Quelle nichts ändert.
     let repaired = needs_prepared(src, &p).then(|| repaired_source(src, &p, opts).0);
-    let mut img = match &repaired {
-        Some(r) => r.image.clone(),
+    let (mut img, repaired) = match repaired {
+        // Nicht zwischengespeichert (Export) und ohne Dunst, der sie noch
+        // braucht: die vorbereitete Fassung übernehmen statt kopieren
+        Some(r) if p.dehaze == 0.0 => {
+            let img = Arc::try_unwrap(r).map_or_else(|a| a.image.clone(), |s| s.image);
+            (img, None)
+        }
+        Some(r) => (r.image.clone(), Some(r)),
         None => {
             let mut img = src.image.clone();
             prepare_source(&mut img, &p, opts, None);
-            img
+            (img, None)
         }
     };
     let (w, h) = (img.width, img.height);

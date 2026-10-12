@@ -27,7 +27,7 @@
 
 <div class="loupe">
   {#if img}
-    {@const v = lib.thumbVersion[img.id] ?? 0}
+    {@const v = lib.thumbVersion(img.id)}
     {@const dims = libraryDims(img)}
     <div class="stage" role="presentation" oncontextmenu={(e) => lib.openMenu(e)}>
       {#key img.id}

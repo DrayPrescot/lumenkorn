@@ -9,7 +9,9 @@ use crate::error::{Error, Result};
 use image::imageops::FilterType;
 use image::{DynamicImage, GrayImage, Luma, RgbImage};
 use lumenkorn_develop::{i18n::tr_s, tr};
-use ort::value::Tensor;
+use ort::session::SessionInputValue;
+use ort::value::{Tensor, TensorRef};
+use rayon::prelude::*;
 use std::collections::VecDeque;
 use std::path::Path;
 
@@ -223,31 +225,40 @@ impl Sam {
     fn decode(&self, emb: &SamEmbedding, coords: Vec<f32>, labels: Vec<f32>) -> Result<GrayImage> {
         let n = labels.len();
 
-        let inputs = vec![
+        let owned = |t: Tensor<f32>| SessionInputValue::from(t.into_dyn());
+        let inputs: Vec<(&str, SessionInputValue)> = vec![
+            // Ohne Kopie: das Embedding (4 MB) wird bei jedem Klick gebraucht
             (
                 "image_embeddings",
-                Tensor::from_array(([1usize, 256, 64, 64], emb.data.clone()))?.into_dyn(),
+                TensorRef::from_array_view(([1usize, 256, 64, 64], emb.data.as_slice()))?
+                    .into_dyn()
+                    .into(),
             ),
             (
                 "point_coords",
-                Tensor::from_array(([1usize, n, 2], coords))?.into_dyn(),
+                owned(Tensor::from_array(([1usize, n, 2], coords))?),
             ),
             (
                 "point_labels",
-                Tensor::from_array(([1usize, n], labels))?.into_dyn(),
+                owned(Tensor::from_array(([1usize, n], labels))?),
             ),
             (
                 "mask_input",
-                Tensor::from_array(([1usize, 1, 256, 256], vec![0f32; 256 * 256]))?.into_dyn(),
+                owned(Tensor::from_array((
+                    [1usize, 1, 256, 256],
+                    vec![0f32; 256 * 256],
+                ))?),
             ),
             (
                 "has_mask_input",
-                Tensor::from_array(([1usize], vec![0f32]))?.into_dyn(),
+                owned(Tensor::from_array(([1usize], vec![0f32]))?),
             ),
             (
                 "orig_im_size",
-                Tensor::from_array(([2usize], vec![emb.height as f32, emb.width as f32]))?
-                    .into_dyn(),
+                owned(Tensor::from_array((
+                    [2usize],
+                    vec![emb.height as f32, emb.width as f32],
+                ))?),
             ),
         ];
         let mut dec = self.decoder.lock();
@@ -567,23 +578,32 @@ pub(crate) fn refine_edge(mask: &GrayImage, guide: &RgbImage) -> GrayImage {
         [0, 1, 2].map(|c| p[k * 3 + c] as f32 / 255.0)
     };
     let m = mask.as_raw();
-    // Gewichtete Fenstersummen der sicheren Farben
-    let sums = |sel: &dyn Fn(u8) -> bool| {
-        let wgt: Vec<f32> = m.iter().map(|v| sel(*v) as u8 as f32).collect();
-        let ch: Vec<Vec<f32>> = (0..3)
-            .map(|c| (0..w * h).map(|k| wgt[k] * px(k)[c]).collect())
-            .collect();
-        (
-            box_mean(&wgt, w, h, r),
-            ch.iter().map(|v| box_mean(v, w, h, r)).collect::<Vec<_>>(),
-        )
-    };
-    let (sky_n, sky_c) = sums(&|v| v >= SURE);
-    let (gnd_n, gnd_c) = sums(&|v| v <= NOT);
+    // Gewichtete Fenstersummen der sicheren Farben: je Seite Gewicht und drei
+    // gewichtete Kanäle – die acht Fenstermittel unabhängig, also parallel
+    let planes: Vec<Vec<f32>> = [SURE, NOT]
+        .par_iter()
+        .flat_map(|&t| {
+            let sel = |v: u8| if t == SURE { v >= SURE } else { v <= NOT };
+            let wgt: Vec<f32> = m.iter().map(|v| sel(*v) as u8 as f32).collect();
+            let ch: Vec<Vec<f32>> = (0..3)
+                .map(|c| {
+                    (0..w * h)
+                        .into_par_iter()
+                        .map(|k| wgt[k] * px(k)[c])
+                        .collect()
+                })
+                .collect();
+            std::iter::once(wgt).chain(ch).collect::<Vec<_>>()
+        })
+        .collect();
+    let means: Vec<Vec<f32>> = planes.par_iter().map(|v| box_mean(v, w, h, r)).collect();
+    drop(planes);
+    let (sky_n, sky_c) = (&means[0], &means[1..4]);
+    let (gnd_n, gnd_c) = (&means[4], &means[5..8]);
     let mut out = mask.clone();
-    for (k, o) in out.as_mut().iter_mut().enumerate() {
+    out.as_mut().par_iter_mut().enumerate().for_each(|(k, o)| {
         if *o >= SURE || *o <= NOT || sky_n[k] <= 0.0 {
-            continue;
+            return;
         }
         let c = px(k);
         let sky = [0, 1, 2].map(|i| sky_c[i][k] / sky_n[k]);
@@ -593,7 +613,7 @@ pub(crate) fn refine_edge(mask: &GrayImage, guide: &RgbImage) -> GrayImage {
             let len2: f32 = d.iter().map(|v| v * v).sum();
             if len2 < 0.003 {
                 // Himmel und Umgebung gleich gefärbt – das Modell weiß es besser
-                continue;
+                return;
             }
             (0..3).map(|i| (c[i] - gnd[i]) * d[i]).sum::<f32>() / len2
         } else {
@@ -603,7 +623,7 @@ pub(crate) fn refine_edge(mask: &GrayImage, guide: &RgbImage) -> GrayImage {
             1.0 - dist / 0.15
         };
         *o = (alpha.clamp(0.0, 1.0) * 255.0).round() as u8;
-    }
+    });
     out
 }
 
@@ -619,15 +639,17 @@ fn box_mean(v: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
         }
     }
     let mut out = vec![0f32; w * h];
-    for y in 0..h {
-        let (y0, y1) = (y.saturating_sub(r), (y + r + 1).min(h));
-        for x in 0..w {
-            let (x0, x1) = (x.saturating_sub(r), (x + r + 1).min(w));
-            let sum = s[y1 * (w + 1) + x1] - s[y0 * (w + 1) + x1] - s[y1 * (w + 1) + x0]
-                + s[y0 * (w + 1) + x0];
-            out[y * w + x] = (sum / ((y1 - y0) * (x1 - x0)) as f64) as f32;
-        }
-    }
+    out.par_chunks_mut(w.max(1))
+        .enumerate()
+        .for_each(|(y, row)| {
+            let (y0, y1) = (y.saturating_sub(r), (y + r + 1).min(h));
+            for (x, o) in row.iter_mut().enumerate() {
+                let (x0, x1) = (x.saturating_sub(r), (x + r + 1).min(w));
+                let sum = s[y1 * (w + 1) + x1] - s[y0 * (w + 1) + x1] - s[y1 * (w + 1) + x0]
+                    + s[y0 * (w + 1) + x0];
+                *o = (sum / ((y1 - y0) * (x1 - x0)) as f64) as f32;
+            }
+        });
     out
 }
 

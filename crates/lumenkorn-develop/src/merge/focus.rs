@@ -353,8 +353,16 @@ pub fn merge(
     };
     let ref_align = opts.align.then(|| align_data(&refimg));
     // Die Referenz füllt, was ein entzerrtes Bild nicht abdeckt – nur beim
-    // Ausrichten nötig (sonst deckt jedes Bild alles ab).
-    let reference = opts.align.then(|| refimg.clone());
+    // Ausrichten nötig (sonst deckt jedes Bild alles ab). Halbe Genauigkeit
+    // genügt für diese ohnehin als ungültig markierten Ränder und spart die
+    // Hälfte (bei 60 MP 360 statt 720 MB neben Pyramide und Bildern).
+    let reference: Option<Vec<[half::f16; 3]>> = opts.align.then(|| {
+        refimg
+            .data
+            .par_iter()
+            .map(|p| p.map(half::f16::from_f32))
+            .collect()
+    });
     let mut stack = Stack::new(refimg, levels);
 
     // --- Übrige Bilder: je eines laden, ausrichten, einarbeiten, freigeben ----------
@@ -410,7 +418,7 @@ pub fn merge(
                 let (sx, sy) = align::apply(&hm, x as f64, y as f64);
                 (*d, *c) = match align::sample(&img, sx, sy) {
                     Some(v) => (v, 1.0),
-                    None => (refimg.data[p], 0.0),
+                    None => (refimg[p].map(half::f16::to_f32), 0.0),
                 };
             });
         drop(img);

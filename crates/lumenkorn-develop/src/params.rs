@@ -668,6 +668,11 @@ impl DevelopParams {
     }
 
     pub fn is_default(&self) -> bool {
+        // Masken und Reparaturen bleiben beim Bereinigen erhalten: dann gleich
+        // „nein“, ohne alle Pinselstriche zu kopieren (Massen-Scans)
+        if !self.masks.is_empty() || !self.repairs.is_empty() {
+            return false;
+        }
         self.sanitized() == DevelopParams::default()
     }
 
@@ -747,7 +752,8 @@ impl DevelopParams {
 
     /// Liest Parameter aus JSON; unbekannte oder fehlende Felder sind kein Fehler.
     pub fn from_json(v: &serde_json::Value) -> Self {
-        let mut p = serde_json::from_value::<DevelopParams>(v.clone()).unwrap_or_default();
+        // Direkt aus der Referenz lesen statt das ganze JSON zu klonen
+        let mut p = DevelopParams::deserialize(v).unwrap_or_default();
         // Bearbeitungen von vor der Objektivkorrektur: Pinselstriche und
         // KI-Masken wurden auf dem unkorrigierten Bild gezeichnet und würden
         // zum Rand hin verrutschen – dort bleibt sie aus, sonst ist sie an.

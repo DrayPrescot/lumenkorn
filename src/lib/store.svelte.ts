@@ -27,8 +27,18 @@ class Library {
   mode = $state<"library" | "develop">("library");
   rowHeight = $state(200);
 
+  // Zähler je Foto (neues Thumbnail, neue Gesichter, neue Schlagworte) als
+  // einfache Map plus je ein gemeinsamer reaktiver Zähler: Ein `$state`-Objekt
+  // legte beim ersten Import für jedes von 100 000 Fotos eigene Signale an.
+  // Lesende Stellen laufen bei jeder Meldung neu, ändern aber nur dort etwas,
+  // wo sich der Wert ihres Fotos geändert hat.
+  #thumbV = new Map<number, number>();
+  #thumbEpoch = $state(0);
   /** Erhöht sich, wenn ein Thumbnail neu erzeugt wurde – erzwingt Neuladen. */
-  thumbVersion = $state<Record<number, number>>({});
+  thumbVersion(id: number): number {
+    void this.#thumbEpoch;
+    return this.#thumbV.get(id) ?? 0;
+  }
   scan = $state<ScanProgress | null>(null);
   message = $state<{ text: string; kind: "info" | "error" } | null>(null);
   ai = $state<AiStatus | null>(null);
@@ -36,14 +46,33 @@ class Library {
   /** Personengruppen (Familie, Freunde …), alphabetisch */
   personGroups = $state<PersonGroup[]>([]);
   peopleStatus = $state<PeopleStatus | null>(null);
+  #facesV = new Map<number, number>();
+  #facesEpoch = $state(0);
   /** Erhöht sich, wenn Gesichter eines Bildes neu erkannt wurden. */
-  facesVersion = $state<Record<number, number>>({});
+  facesVersion(id: number): number {
+    void this.#facesEpoch;
+    return this.#facesV.get(id) ?? 0;
+  }
   aiDownload = $state<AiDownloadEvent | null>(null);
+  #tagsV = new Map<number, number>();
+  #tagsEpoch = $state(0);
   /** Erhöht sich, wenn KI-Schlagworte eines Bildes neu sind. */
-  tagsVersion = $state<Record<number, number>>({});
+  tagsVersion(id: number): number {
+    void this.#tagsEpoch;
+    return this.#tagsV.get(id) ?? 0;
+  }
+
+  /** Zähler der Fotos `ids` erhöhen und die Lesenden einmal benachrichtigen. */
+  static #bump(map: Map<number, number>, ids: number[]) {
+    for (const id of ids) map.set(id, (map.get(id) ?? 0) + 1);
+  }
   /** Erhöht sich, wenn die Bildliste neu vom Katalog geladen wurde (z. B. nach
    *  einem Rescan) – Details des fokussierten Fotos können sich geändert haben. */
   listVersion = $state(0);
+  /** Erhöht sich, wenn sich Fotos oder ihre Reihenfolge ändern können – nicht
+   *  beim Bewerten oder Markieren. Raster und Filmstreifen berechnen ihre
+   *  Geometrie (O(n) über alle Fotos) nur dann neu. */
+  layoutVersion = $state(0);
 
   focused = $derived(this.focus >= 0 ? this.images[this.focus] : undefined);
 
@@ -104,17 +133,19 @@ class Library {
       if (changes > 0 || r.foldersChanged) await Promise.all([this.loadRoots(), this.loadProjects()]);
       // Nichts an den Fotos geändert (z. B. nur eine XMP-Datei oder ein leerer
       // Ordner): die Liste mit bis zu 50 000 Fotos nicht neu laden
-      if (changes > 0) await this.loadImages(true);
+      if (changes > 0) this.refreshSoon();
     });
-    listen("catalog-updated", () => this.loadImages(true));
+    listen("catalog-updated", () => this.refreshSoon());
     // Einzelne Schlüssel ändern statt das ganze Objekt zu kopieren (O(1) statt O(n))
     listen("thumbs-ready", ({ ids }) => {
-      for (const id of ids) this.thumbVersion[id] = (this.thumbVersion[id] ?? 0) + 1;
+      Library.#bump(this.#thumbV, ids);
+      this.#thumbEpoch++;
     });
     listen("job-error", ({ message }) => this.notify(message, "error"));
     // KI-Agent (MCP): Schlagworte geändert, Foto zeigen
     listen("tags-changed", ({ ids }) => {
-      for (const id of ids) this.tagsVersion[id] = (this.tagsVersion[id] ?? 0) + 1;
+      Library.#bump(this.#tagsV, ids);
+      this.#tagsEpoch++;
     });
     listen("mcp-show", ({ id, develop }) => this.showPhoto(id, develop));
     listen("merge-progress", (e) => {
@@ -127,14 +158,16 @@ class Library {
     let peopleTimer: ReturnType<typeof setTimeout> | undefined;
     listen("faces-progress", ({ done, total, faces, ids }) => {
       if (this.peopleStatus) this.peopleStatus = { ...this.peopleStatus, analyzed: done, total, faces };
-      for (const id of ids) this.facesVersion[id] = (this.facesVersion[id] ?? 0) + 1;
+      Library.#bump(this.#facesV, ids);
+      this.#facesEpoch++;
       // Personenliste gebündelt aktualisieren
       clearTimeout(peopleTimer);
       peopleTimer = setTimeout(() => this.refreshPeople(), 1500);
     });
     listen("ai-progress", ({ done, total, ids }) => {
       if (this.ai) this.ai = { ...this.ai, analyzed: done, total };
-      for (const id of ids) this.tagsVersion[id] = (this.tagsVersion[id] ?? 0) + 1;
+      Library.#bump(this.#tagsV, ids);
+      this.#tagsEpoch++;
     });
     listen("ai-download", async (e) => {
       this.aiDownload = e.finished ? null : e;
@@ -203,18 +236,29 @@ class Library {
     const token = ++this.#loadToken;
     this.loading = true;
     try {
+      // Erst laufende Bewertungen schreiben lassen – sonst liefert der Katalog
+      // noch den alten Stand und überschreibt die gerade gesetzte Bewertung
+      await this.#writes;
+      const startSeq = this.#patchSeq;
       const scope = $state.snapshot(this.scope) as Scope;
       const text = this.search.trim();
-      const images =
+      let images =
         this.semantic && text
           ? await api.semanticSearch(text, scope, this.minRating || null)
           : await api.queryImages({ scope, sort: this.sort, search: text || null, minRating: this.minRating || null });
       if (token !== this.#loadToken) return;
+      // Während der Abfrage Bewertetes/Markiertes erneut anwenden
+      const later = this.#patchLog.filter((p) => p.seq > startSeq);
+      this.#patchLog = later;
+      if (later.length) {
+        images = images.map((i) => later.reduce((acc, p) => (p.ids.has(i.id) ? { ...acc, ...p.change } : acc), i));
+      }
       // Fokus erst jetzt lesen: Während der Anfrage kann weitergeblättert worden sein
       const focusId = keepFocus ? this.focused?.id : undefined;
       this.images = images;
       this.rejectedCount = countRejected(images);
       this.listVersion++;
+      this.layoutVersion++;
       this.focus = focusId !== undefined ? this.images.findIndex((i) => i.id === focusId) : -1;
       if (!keepFocus) this.selection = new Set();
       else if (this.selection.size) {
@@ -238,6 +282,14 @@ class Library {
     } finally {
       if (token === this.#loadToken) this.loading = false;
     }
+  }
+
+  #refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Gebündeltes Nachladen mit erhaltenem Fokus (Meldungen aus dem
+   *  Hintergrund kommen oft schubweise – nicht jede lädt die ganze Liste). */
+  refreshSoon() {
+    clearTimeout(this.#refreshTimer);
+    this.#refreshTimer = setTimeout(() => this.loadImages(true), 250);
   }
 
   /** Verzögertes Neuladen, z. B. beim Tippen in der Suche. */
@@ -543,8 +595,14 @@ class Library {
   }
 
   /** Ändert die Bilder `ids` (Set statt `includes`: bei 50 000 Fotos O(n) statt O(n·m)). */
+  #patchSeq = 0;
+  /** Änderungen seit dem Start der letzten Listenabfrage (siehe `loadImages`) */
+  #patchLog: { seq: number; ids: Set<number>; change: Partial<ImageSummary> }[] = [];
+
   #patch(ids: number[], change: Partial<ImageSummary>) {
     const set = new Set(ids);
+    this.#patchLog.push({ seq: ++this.#patchSeq, ids: set, change });
+    if (this.#patchLog.length > 500) this.#patchLog.splice(0, this.#patchLog.length - 500);
     let delta = 0; // Abgelehnt-Zähler im selben Durchlauf nachführen
     this.images = this.images.map((i) => {
       if (!set.has(i.id)) return i;
@@ -654,6 +712,7 @@ class Library {
     const before = this.images.slice(0, Math.max(this.focus, 0)).filter((i) => gone.has(i.id)).length;
     const oldFocus = this.focus - before;
     this.images = this.images.filter((i) => !gone.has(i.id));
+    this.layoutVersion++;
     this.rejectedCount = countRejected(this.images);
     this.selection = new Set([...this.selection].filter((id) => !gone.has(id)));
     if (focusId !== undefined && !gone.has(focusId)) {

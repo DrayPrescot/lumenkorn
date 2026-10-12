@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { isTyping } from "../lib/keys";
   import { imageUrl } from "../lib/api";
   import { aspectOf, justify, type Row } from "../lib/layout";
@@ -14,11 +15,14 @@
   let height = $state(0);
   let scrollTop = $state(0);
 
-  // Gleiche Seitenverhältnisse → dasselbe Array, damit eine Bewertung oder
-  // Markierung nicht das ganze Layout (50 000 Bilder) neu berechnet.
+  // Nur bei neu geladener Liste neu berechnen (`layoutVersion`), nicht bei
+  // jeder Bewertung – die ersetzt `lib.images`, ändert aber keine Geometrie.
+  // Gleiche Seitenverhältnisse → dasselbe Array, damit auch ein Neuladen ohne
+  // Änderung nicht das ganze Layout (50 000 Bilder) neu berechnet.
   let lastAspects: number[] = [];
   const aspects = $derived.by(() => {
-    const a = lib.images.map((i) => aspectOf(i.width, i.height));
+    void lib.layoutVersion;
+    const a = untrack(() => lib.images.map((i) => aspectOf(i.width, i.height)));
     if (a.length === lastAspects.length && a.every((v, i) => v === lastAspects[i])) return lastAspects;
     lastAspects = a;
     return a;
@@ -139,7 +143,7 @@
           oncontextmenu={(e) => lib.openMenu(e, cell.index)}
           title={img.fileName}
         >
-          <img src={imageUrl("thumb", img.id, lib.thumbVersion[img.id] ?? 0)} alt="" decoding="async" draggable="false" />
+          <img src={imageUrl("thumb", img.id, lib.thumbVersion(img.id))} alt="" decoding="async" draggable="false" />
           <span class="meta">
             {#if img.flag === 1}<span class="flag" title={t("Markiert")}><Icon name="flag" size={12} /></span>{/if}
             {#if img.rating}<span class="rating">{"★".repeat(img.rating)}</span>{/if}

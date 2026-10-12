@@ -24,6 +24,7 @@ use image::imageops::FilterType;
 use image::{DynamicImage, GrayImage, Luma, Rgb, RgbImage};
 use lumenkorn_develop::{i18n::tr_s, tr};
 use ort::value::Tensor;
+use rayon::prelude::*;
 use std::path::Path;
 
 /// Dateinamen im Masken-Ordner
@@ -617,22 +618,32 @@ impl Canvas {
         }
         let xs = (x0.floor().max(0.0) as usize)..((x1.ceil() as usize + 1).min(self.w));
         let ys = (y0.floor().max(0.0) as usize)..((y1.ceil() as usize + 1).min(self.h));
-        const N: usize = 4;
-        for y in ys {
-            for x in xs.clone() {
-                let mut inside = 0;
-                for sy in 0..N {
-                    for sx in 0..N {
-                        let px = x as f32 + (sx as f32 + 0.5) / N as f32;
-                        let py = y as f32 + (sy as f32 + 0.5) / N as f32;
-                        inside += point_in(pts, px, py) as usize;
-                    }
-                }
-                let a = inside as f32 / (N * N) as f32;
-                let o = &mut self.v[y * self.w + x];
-                *o = if add { o.max(a) } else { *o * (1.0 - a) };
-            }
+        if xs.is_empty() || ys.is_empty() {
+            return;
         }
+        const N: usize = 4;
+        // Zeilen parallel: Gesichtsoval bei 2048 px sind ~800×1000 Pixel mit je
+        // 16 Abtastungen über alle Eckpunkte
+        let w = self.w;
+        self.v[ys.start * w..ys.end * w]
+            .par_chunks_mut(w)
+            .enumerate()
+            .for_each(|(dy, row)| {
+                let y = ys.start + dy;
+                for x in xs.clone() {
+                    let mut inside = 0;
+                    for sy in 0..N {
+                        for sx in 0..N {
+                            let px = x as f32 + (sx as f32 + 0.5) / N as f32;
+                            let py = y as f32 + (sy as f32 + 0.5) / N as f32;
+                            inside += point_in(pts, px, py) as usize;
+                        }
+                    }
+                    let a = inside as f32 / (N * N) as f32;
+                    let o = &mut row[x];
+                    *o = if add { o.max(a) } else { *o * (1.0 - a) };
+                }
+            });
     }
 
     fn circle(&mut self, c: [f32; 2], r: f32) {

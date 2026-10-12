@@ -37,6 +37,9 @@ const SEARCH_MARGIN: f32 = 0.08;
 
 pub struct AiState {
     loaded: Mutex<Option<Loaded>>,
+    /// Hält, wer CLIP gerade lädt: Worker, Suche und Einstellungen luden es
+    /// sonst gleichzeitig (doppelte Zeit und doppelter Speicher)
+    loading: Mutex<()>,
     /// Letzter Ladefehler, damit nicht jeder Stapel es erneut versucht.
     load_error: Mutex<Option<String>>,
     index: RwLock<Option<EmbeddingIndex>>,
@@ -255,6 +258,7 @@ impl AiState {
             guard_dir: ai_dir,
             crash_notice: Mutex::new(crash_notice),
             loaded: Mutex::new(None),
+            loading: Mutex::new(()),
             load_error: Mutex::new(None),
             index: RwLock::new(None),
             downloading: AtomicBool::new(false),
@@ -408,6 +412,11 @@ fn unload_models(state: &AppState) {
 fn ensure_loaded(state: &AppState) -> Result<Loaded, Error> {
     state.usage.touch(Slot::Background);
     let ai = &state.ai;
+    if let Some(l) = ai.loaded.lock().unwrap().clone() {
+        return Ok(l);
+    }
+    let _loading = ai.loading.lock().unwrap_or_else(|e| e.into_inner());
+    // Inzwischen von einem anderen Aufrufer geladen
     if let Some(l) = ai.loaded.lock().unwrap().clone() {
         return Ok(l);
     }

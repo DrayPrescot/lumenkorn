@@ -46,7 +46,7 @@
 
   const before = $derived(dev.showBefore || dev.holdBefore);
   const shown = $derived(before ? (dev.beforeUrl ?? dev.url) : dev.url);
-  const fallback = $derived(lib.focused ? imageUrl("preview", lib.focused.id, lib.thumbVersion[lib.focused.id] ?? 0) : null);
+  const fallback = $derived(lib.focused ? imageUrl("preview", lib.focused.id, lib.thumbVersion(lib.focused.id)) : null);
 
   const fullLong = $derived(Math.max(dev.fullSize[0], dev.fullSize[1]) || null);
   const srcLong = $derived(fullLong ? Math.min(dev.maxEdge, fullLong) : null);

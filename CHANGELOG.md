@@ -57,6 +57,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
   resolution is loading.
 - Folder watching only looks up the photos in the reported folders instead
   of the whole source folder on every change.
+- Export needs less memory: no extra full-size copy before lens correction
+  or of the prepared image; lens profiles with only vignetting are applied
+  without resampling. Only one export runs at a time.
+- HDR and panorama keep at most half of the free memory for cached frames on
+  Windows too (before: a fixed 3 GB); focus stacking keeps its reference in
+  half precision.
+- Person and animal masks, face parts and hair edges use all CPU cores;
+  Segment Anything no longer copies the photo analysis on every click.
+- Large libraries: rating or flagging no longer recalculates the layout of
+  every photo in the grid and filmstrip; reloads triggered in the background
+  are bundled, and a reload can no longer undo a rating made a moment ago.
 
 ## [1.0.1] – 2026-10-11
 

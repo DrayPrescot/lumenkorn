@@ -77,7 +77,7 @@
   </div>
   <div class="cells" style="grid-template-columns: repeat({cols}, minmax(0, 1fr))" bind:clientWidth={w} bind:clientHeight={h}>
     {#each items as { im, index } (im.id)}
-      {@const v = lib.thumbVersion[im.id] ?? 0}
+      {@const v = lib.thumbVersion(im.id)}
       {@const dims = libraryDims(im)}
       <div class="cell" class:focus={index === lib.focus}>
         <ZoomView

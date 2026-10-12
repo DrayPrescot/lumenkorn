@@ -69,6 +69,10 @@ pub struct DevelopCache {
     /// bleibt währenddessen frei für Abfragen und `release_large`.
     full_loading: Mutex<()>,
     full_denoised: Mutex<Option<FullDenoised>>,
+    /// Ein Export läuft. Zwei gleichzeitig verdoppelten den Speicherbedarf
+    /// (volle Auflösung), und das Aufräumen am Ende des ersten gäbe Puffer
+    /// des zweiten frei.
+    pub(crate) exporting: std::sync::atomic::AtomicBool,
 }
 
 /// Entrauschte Fassung in voller Auflösung samt zuletzt verkleinerter.
@@ -730,6 +734,15 @@ pub fn export_images(
             d.display()
         )));
     }
+    let Some(running) = crate::busy::claim_in(&app, |s| &s.develop.exporting) else {
+        return Err(Error::Invalid(
+            tr_s(
+                "Es läuft bereits ein Export – bitte warten, bis er fertig ist.",
+                "An export is already running – please wait until it has finished.",
+            )
+            .into(),
+        ));
+    };
     // Anzeige des Ziels: gewählter Ordner bzw. die tatsächlich benutzten
     let chosen = dir.clone();
     let shown = move |used: &std::collections::BTreeSet<PathBuf>| match (&chosen, used.len()) {
@@ -741,6 +754,7 @@ pub fn export_images(
     std::thread::Builder::new()
         .name("lumenkorn-export".into())
         .spawn(move || {
+            let _running = running;
             let state = app.state::<AppState>();
             let total = ids.len();
             let mut failed = Vec::new();

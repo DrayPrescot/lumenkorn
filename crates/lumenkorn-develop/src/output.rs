@@ -8,21 +8,30 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+// Direkt in den fertigen Puffer schreiben: `flat_map_iter().collect()` ist
+// nicht indexiert – rayon sammelte Teilstücke und fügte sie mit einer
+// weiteren Kopie zusammen (bei 45 MP 135 bzw. 270 MB).
 pub fn to_rgb8(img: &ImageF32) -> RgbImage {
-    let data: Vec<u8> = img
-        .data
-        .par_iter()
-        .flat_map_iter(|c| c.map(|v| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8))
-        .collect();
+    let mut data = vec![0u8; img.data.len() * 3];
+    data.par_chunks_mut(3)
+        .zip(img.data.par_iter())
+        .for_each(|(o, c)| {
+            for k in 0..3 {
+                o[k] = (c[k].clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+            }
+        });
     ImageBuffer::from_raw(img.width as u32, img.height as u32, data).expect("Puffergröße")
 }
 
 pub fn to_rgb16(img: &ImageF32) -> ImageBuffer<Rgb<u16>, Vec<u16>> {
-    let data: Vec<u16> = img
-        .data
-        .par_iter()
-        .flat_map_iter(|c| c.map(|v| (v.clamp(0.0, 1.0) * 65535.0 + 0.5) as u16))
-        .collect();
+    let mut data = vec![0u16; img.data.len() * 3];
+    data.par_chunks_mut(3)
+        .zip(img.data.par_iter())
+        .for_each(|(o, c)| {
+            for k in 0..3 {
+                o[k] = (c[k].clamp(0.0, 1.0) * 65535.0 + 0.5) as u16;
+            }
+        });
     ImageBuffer::from_raw(img.width as u32, img.height as u32, data).expect("Puffergröße")
 }
 

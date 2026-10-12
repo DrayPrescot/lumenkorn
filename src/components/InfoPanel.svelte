@@ -25,10 +25,13 @@
   // Nur von der ID abhängen: Bewerten/Markieren ersetzt das Objekt des
   // fokussierten Fotos, das darf keine neue Anfrage auslösen.
   const focusId = $derived(lib.focused?.id);
+  // Über `$derived`: Die Zähler melden sich bei jeder Analyse-Meldung (für alle
+  // Fotos); weiter geht es nur, wenn sich der Wert dieses Fotos ändert.
+  const facesV = $derived(focusId !== undefined ? lib.facesVersion(focusId) : 0);
+  const tagsV = $derived(focusId !== undefined ? lib.tagsVersion(focusId) : 0);
   $effect(() => {
     const id = focusId;
-    const v = id !== undefined ? lib.facesVersion[id] : 0;
-    void v;
+    void facesV;
     if (id === undefined) {
       faces = [];
       return;
@@ -169,9 +172,8 @@
   // anderem Foto, neuen KI-Schlagworten oder neu geladener Liste (Rescan).
   $effect(() => {
     const id = focusId;
-    const tags = id !== undefined ? lib.tagsVersion[id] : 0;
     const list = lib.listVersion;
-    void tags, list;
+    void tagsV, list;
     if (id === undefined) {
       detail = null;
       return;

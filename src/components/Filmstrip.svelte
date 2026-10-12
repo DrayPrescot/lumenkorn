@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { imageUrl } from "../lib/api";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
@@ -21,8 +22,10 @@
   // Der Streifen kennt alle Fotos, zeichnet aber nur die sichtbaren: Die
   // Breiten folgen aus den Seitenverhältnissen im Katalog, ihre laufende Summe
   // liefert jede Position ohne Messen (bei 80 000 Fotos ein Float64Array).
+  // Nur bei neu geladener Liste (`layoutVersion`), nicht bei jeder Bewertung
   const lefts = $derived.by(() => {
-    const images = lib.images;
+    void lib.layoutVersion;
+    const images = untrack(() => lib.images);
     const a = new Float64Array(images.length + 1);
     for (let i = 0; i < images.length; i++) {
       a[i + 1] = a[i] + Math.round(aspectOf(images[i].width, images[i].height) * thumbH) + GAP;
@@ -109,7 +112,7 @@
         aria-label={im.fileName}
         title={im.fileName}
       >
-        <img src={imageUrl("thumb", im.id, lib.thumbVersion[im.id] ?? 0)} alt="" draggable="false" />
+        <img src={imageUrl("thumb", im.id, lib.thumbVersion(im.id))} alt="" draggable="false" />
         {#if im.edited}<span class="badge"><Icon name="sliders" size={10} /></span>{/if}
       </button>
     {/each}

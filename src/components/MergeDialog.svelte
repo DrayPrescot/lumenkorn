@@ -98,7 +98,7 @@
 
     <div class="thumbs">
       {#each items.slice(0, 24) as im (im.id)}
-        <img src={imageUrl("thumb", im.id, lib.thumbVersion[im.id] ?? 0)} alt={im.fileName} title={im.fileName} loading="lazy" />
+        <img src={imageUrl("thumb", im.id, lib.thumbVersion(im.id))} alt={im.fileName} title={im.fileName} loading="lazy" />
       {/each}
       {#if items.length > 24}<span class="more">+{items.length - 24}</span>{/if}
     </div>

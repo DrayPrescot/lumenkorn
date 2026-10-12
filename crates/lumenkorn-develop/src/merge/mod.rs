@@ -19,9 +19,9 @@ pub type Progress<'a> = &'a (dyn Fn(&str, usize, usize) + Sync);
 pub type Loader<'a> = &'a (dyn Fn(usize) -> Result<ImageF32> + Sync);
 
 /// Obergrenze für zwischengespeicherte Vollbilder (HDR, Panorama): darüber wird
-/// neu geladen. 3 GB, auf Linux höchstens die Hälfte des gerade verfügbaren
-/// Speichers – auf kleinen Rechnern lieber neu dekodieren als auslagern.
-/// (Ohne zusätzliche Abhängigkeit; andere Systeme behalten die 3 GB.)
+/// neu geladen. 3 GB, unter Linux und Windows höchstens die Hälfte des gerade
+/// verfügbaren Speichers – auf kleinen Rechnern lieber neu dekodieren als
+/// auslagern. (Ohne zusätzliche Abhängigkeit; macOS behält die 3 GB.)
 fn keep_bytes() -> usize {
     const MAX: usize = 3 << 30;
     available_bytes().map_or(MAX, |a| (a / 2).clamp(256 << 20, MAX))
@@ -86,12 +86,49 @@ impl<'a> FrameCache<'a> {
     }
 }
 
-/// `MemAvailable` aus /proc/meminfo (nur Linux, sonst `None`).
+/// Verfügbarer Arbeitsspeicher: `MemAvailable` aus /proc/meminfo (Linux).
+#[cfg(not(windows))]
 fn available_bytes() -> Option<usize> {
     let s = std::fs::read_to_string("/proc/meminfo").ok()?;
     let line = s.lines().find(|l| l.starts_with("MemAvailable:"))?;
     let kb: usize = line.split_whitespace().nth(1)?.parse().ok()?;
     Some(kb * 1024)
+}
+
+/// Verfügbarer Arbeitsspeicher laut `GlobalMemoryStatusEx` (Windows).
+#[cfg(windows)]
+fn available_bytes() -> Option<usize> {
+    #[repr(C)]
+    struct MemoryStatusEx {
+        length: u32,
+        memory_load: u32,
+        total_phys: u64,
+        avail_phys: u64,
+        total_page_file: u64,
+        avail_page_file: u64,
+        total_virtual: u64,
+        avail_virtual: u64,
+        avail_extended_virtual: u64,
+    }
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GlobalMemoryStatusEx(buffer: *mut MemoryStatusEx) -> i32;
+    }
+    let mut m = MemoryStatusEx {
+        length: std::mem::size_of::<MemoryStatusEx>() as u32,
+        memory_load: 0,
+        total_phys: 0,
+        avail_phys: 0,
+        total_page_file: 0,
+        avail_page_file: 0,
+        total_virtual: 0,
+        avail_virtual: 0,
+        avail_extended_virtual: 0,
+    };
+    // SAFETY: Zeiger auf eine gültige, richtig ausgerichtete Struktur mit
+    // gesetzter Länge, wie die Windows-API es verlangt.
+    let ok = unsafe { GlobalMemoryStatusEx(&mut m) } != 0;
+    ok.then(|| usize::try_from(m.avail_phys).unwrap_or(usize::MAX))
 }
 
 pub(crate) fn check(cancel: &AtomicBool) -> Result<()> {
@@ -101,5 +138,19 @@ pub(crate) fn check(cancel: &AtomicBool) -> Result<()> {
         ))
     } else {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn available_memory_is_known() {
+        // Unter Linux und Windows muss die Abfrage funktionieren
+        if cfg!(any(windows, target_os = "linux")) {
+            let a = super::available_bytes().expect("Speicher abfragbar");
+            assert!(a > 64 << 20, "{a}");
+        }
+        let k = super::keep_bytes();
+        assert!((256 << 20..=3 << 30).contains(&k));
     }
 }

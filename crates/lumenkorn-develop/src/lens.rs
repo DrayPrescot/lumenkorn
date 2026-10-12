@@ -379,6 +379,29 @@ impl LensProfile {
         let inv = (LUT - 1) as f32 / r2_max;
         let inv_m2 = 1.0 / (m * m);
         let mut out = vec![[0f32; 3]; w * h];
+        // Nur Vignettierung (kein Faktor ≠ 1): Jedes Pixel bleibt, wo es ist –
+        // nur aufhellen statt dreimal bilinear abtasten
+        if self.factor.iter().flatten().all(|f| *f == 1.0) {
+            out.par_chunks_mut(w)
+                .zip(img.data.par_chunks(w))
+                .enumerate()
+                .for_each(|(y, (row, src))| {
+                    let dy = (y as f32 + 0.5 - cy) / scale;
+                    for (x, (o, s)) in row.iter_mut().zip(src).enumerate() {
+                        let dx = (x as f32 + 0.5 - cx) / scale;
+                        let t = ((dx * dx + dy * dy) * inv_m2 * inv).min((LUT - 1) as f32);
+                        let i = (t as usize).min(LUT - 2);
+                        let a = t - i as f32;
+                        let g = lut[i][3] + (lut[i + 1][3] - lut[i][3]) * a;
+                        *o = s.map(|v| v * g);
+                    }
+                });
+            return ImageF32 {
+                width: w,
+                height: h,
+                data: out,
+            };
+        }
         out.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
             let dy = (y as f32 + 0.5 - cy) / scale;
             for (x, o) in row.iter_mut().enumerate() {
@@ -661,6 +684,36 @@ mod tests {
             11, 0, 5, 32, 70, 119, 178, 244, 300, 390, 545, 800, 0, 0, 0, 0, 0,
         ];
         LensProfile::from_sony(&dist, &ca, &vig).unwrap()
+    }
+
+    #[test]
+    fn vignetting_only_matches_full_resampling() {
+        let n = 8;
+        let knots: Vec<f32> = (0..n).map(|i| i as f32 / (n - 1) as f32).collect();
+        let p = LensProfile {
+            center: (0.5, 0.5),
+            knots: knots.clone(),
+            factor: [vec![1.0; n], vec![1.0; n], vec![1.0; n]],
+            vig_knots: knots.clone(),
+            vig_gain: knots.iter().map(|r| 1.0 + 0.5 * r * r).collect(),
+            distortion: None,
+            chromatic: None,
+            vignetting: Some(LensSource::Lensfun),
+            lens_name: None,
+        };
+        let img = ImageF32::from_fn(40, 30, |x, y| [x as f32 * 0.01, y as f32 * 0.02, 0.3]);
+        let fast = p.apply(&img);
+        // Dieselbe Rechnung mit einem Faktor knapp über 1 nimmt den langsamen Weg
+        let mut slow = p.clone();
+        slow.factor[1][0] = 1.0 + 1e-7;
+        let slow = slow.apply(&img);
+        for (a, b) in fast.data.iter().zip(&slow.data) {
+            for c in 0..3 {
+                assert!((a[c] - b[c]).abs() < 1e-4, "{a:?} {b:?}");
+            }
+        }
+        // Mitte bleibt, Ecke wird heller
+        assert!(fast.get(0, 0)[2] > 0.3 * 1.3);
     }
 
     #[test]

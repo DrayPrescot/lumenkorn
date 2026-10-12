@@ -29,6 +29,7 @@ use crate::image_f32::ImageF32;
 use crate::params::DevelopParams;
 use crate::pipeline::{RenderOptions, render_with};
 use crate::source::Source;
+use rayon::prelude::*;
 
 /// Kantenlänge der Messbilder
 const EDGE: usize = 320;
@@ -87,10 +88,16 @@ struct Stats {
 impl Stats {
     fn of(img: &ImageF32) -> Self {
         let n = img.data.len().max(1) as f32;
-        let mut sorted: Vec<f32> = img.data.iter().map(|p| luma(*p)).collect();
-        sorted.sort_by(f32::total_cmp);
-        let mut sorted_max: Vec<f32> = img.data.iter().map(|p| p[0].max(p[1]).max(p[2])).collect();
-        sorted_max.sort_by(f32::total_cmp);
+        // Rund 100 Messungen je „Auto“: parallel und instabil sortieren –
+        // bei `total_cmp` ist die Reihenfolge gleicher Werte ohnehin egal
+        let mut sorted: Vec<f32> = img.data.par_iter().map(|p| luma(*p)).collect();
+        sorted.par_sort_unstable_by(f32::total_cmp);
+        let mut sorted_max: Vec<f32> = img
+            .data
+            .par_iter()
+            .map(|p| p[0].max(p[1]).max(p[2]))
+            .collect();
+        sorted_max.par_sort_unstable_by(f32::total_cmp);
         let clipped = img
             .data
             .iter()

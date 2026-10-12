@@ -53,7 +53,22 @@ impl MaskSource for NoMasks {
     }
 }
 
-type CacheEntry = (String, usize, usize, Arc<Vec<f32>>);
+type CacheEntry = (u64, usize, usize, Arc<Vec<f32>>);
+
+/// Hasht, was serde schreibt – Schlüssel ohne den JSON-Text als String (bei
+/// Pinselmasken mit Tausenden Punkten Hunderte KB je Rendern).
+struct HashWriter(std::collections::hash_map::DefaultHasher);
+
+impl std::io::Write for HashWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        use std::hash::Hasher;
+        self.0.write(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
 static CACHE: Mutex<Vec<CacheEntry>> = Mutex::new(Vec::new());
 
 /// Verwirft alle zwischengespeicherten Masken.
@@ -86,15 +101,21 @@ pub(crate) fn evaluate_cached(
         MaskShape::Raster { mask_id, .. } => store.get(mask_id).is_some(),
         _ => true,
     });
-    let mut key = serde_json::to_string(&layer.shapes).unwrap_or_default();
+    let mut hw = HashWriter(Default::default());
+    let _ = serde_json::to_writer(&mut hw, &layer.shapes);
     // Farbmasken hängen vom Bildinhalt ab: das Bild gehört zum Schlüssel
     if layer
         .shapes
         .iter()
         .any(|s| matches!(s, MaskShape::Color { .. }))
     {
-        key.push_str(&format!("@{:x}", image.map_or(0, fingerprint)));
+        use std::hash::Hash;
+        image.map_or(0, fingerprint).hash(&mut hw.0);
     }
+    let key = {
+        use std::hash::Hasher;
+        hw.0.finish()
+    };
     if complete {
         let mut c = CACHE.lock().unwrap();
         if let Some(pos) = c
