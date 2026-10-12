@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.3] – 2026-10-12
+
 ### Added
 - Import from a memory card (`Ctrl+Shift+I`): choose photos by day or one by one with previews,
   copy them to `Target\YYYY\YYYY.MM.DD[_Occasion]` and rename them to
