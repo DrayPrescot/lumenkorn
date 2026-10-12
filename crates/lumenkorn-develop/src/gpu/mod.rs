@@ -330,15 +330,48 @@ struct State {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) struct ImageKey(usize, usize, usize, u64, u64);
 
+/// Konstanten der RAW-Tonwertabbildung (sigmoid nach darktable, Umrechnung
+/// sRGB ↔ Rec.2020) für den Shader – Zeilen der Matrizen als vec3.
+fn raw_tone_consts() -> String {
+    let t = crate::pipeline::raw_tone_setup();
+    let s = &t.sigmoid;
+    let row = |name: &str, r: [f32; 3]| {
+        format!(
+            "const {name}: vec3<f32> = vec3<f32>({:?}, {:?}, {:?});
+",
+            r[0], r[1], r[2]
+        )
+    };
+    let mut out = String::new();
+    for (name, m) in [("TO2020", &t.to_rec2020), ("TOSRGB", &t.to_srgb)] {
+        for (i, r) in m.iter().enumerate() {
+            out += &row(&format!("{name}_{i}"), *r);
+        }
+    }
+    for (name, v) in [
+        ("SIG_WHITE", s.white_target),
+        ("SIG_PAPER_EXP", s.paper_exposure),
+        ("SIG_FOG", s.film_fog),
+        ("SIG_FILM_POWER", s.film_power),
+        ("SIG_PAPER_POWER", s.paper_power),
+        ("SIG_HUE", s.hue_preservation),
+    ] {
+        out += &format!(
+            "const {name}: f32 = {v:?};
+"
+        );
+    }
+    out
+}
+
 /// Shader-Quelltext mit den Konstanten aus pipeline.rs/color.rs als Kopf –
 /// so stehen die Zahlen nur einmal im Code. `{:?}` schreibt f32 immer mit
 /// Dezimalpunkt und exakt umkehrbar, der Shader rechnet also mit denselben Werten.
 fn shader_source() -> String {
     use crate::pipeline::{
         BLACKS_GAIN, CLARITY_GAIN, CONTRAST_MIX, DEHAZE_CHROMA, DEHAZE_GAIN, DEHAZE_MIN_T,
-        HAZE_ADD, OVERLAY_COLOR, OVERLAY_OPACITY, RAW_BASE_GAIN, RAW_BASE_POWER, RAW_BLACK,
-        RAW_WHITE, SHADOW_HIGHLIGHT_GAIN, SHARPEN_GAIN, SHARPEN_THRESHOLD, SOFT_CLIP_KNEE,
-        WHITES_GAIN,
+        HAZE_ADD, OVERLAY_COLOR, OVERLAY_OPACITY, SHADOW_HIGHLIGHT_GAIN, SHARPEN_GAIN,
+        SHARPEN_THRESHOLD, SKIN_EDGE, SOFT_CLIP_KNEE, WHITES_GAIN,
     };
     let f = |name: &str, v: f32| format!("const {name}: f32 = {v:?};\n");
     let list = |v: &[f32]| {
@@ -349,10 +382,8 @@ fn shader_source() -> String {
     };
     let c = crate::color::HSL_CENTERS;
     [
-        f("RAW_BASE_GAIN", RAW_BASE_GAIN),
-        f("RAW_BASE_POWER", RAW_BASE_POWER),
-        f("RAW_BLACK", RAW_BLACK),
-        f("RAW_WHITE", RAW_WHITE),
+        raw_tone_consts(),
+        f("SKIN_EDGE", SKIN_EDGE),
         f("SOFT_CLIP_KNEE", SOFT_CLIP_KNEE),
         f("SHADOW_HIGHLIGHT_GAIN", SHADOW_HIGHLIGHT_GAIN),
         f("WHITES_GAIN", WHITES_GAIN),

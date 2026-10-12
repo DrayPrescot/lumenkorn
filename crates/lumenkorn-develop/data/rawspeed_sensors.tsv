@@ -1,0 +1,2121 @@
+# Aus rawspeed data/cameras.xml (LGPL-2.1-or-later), erzeugt mit tools/rawspeed_white.py
+ARRI	ALEXA					0	4095
+AVT	F-080C	chdk				0	255
+AVT	F-145C	chdk				0	255
+AVT	F-201C	chdk				0	255
+AVT	F-510C	chdk-a				0	255
+AVT	F-510C	chdk-b				0	255
+AVT	F-510C	chdk-c				0	65535
+AVT	F-510C	chdk-d				0	65535
+AVT	F-810C	chdk				0	65535
+AgfaPhoto	DC-833m	chdk				0	65535
+Alcatel	5035D	chdk				0	65535
+Baumer	TXG14	chdk				0	65535
+Canon	Canon EOS 10D					130	4000
+Canon	Canon EOS 10D				1600 3200	255	4000
+Canon	Canon EOS 20D					126	4095
+Canon	Canon EOS 300D DIGITAL					126	4000
+Canon	Canon EOS 300D DIGITAL				1600	251	4000
+Canon	Canon EOS 300D DIGITAL				200	127	4000
+Canon	Canon EOS 300D DIGITAL				3200	250	4000
+Canon	Canon EOS 300D DIGITAL				400	128	4000
+Canon	Canon EOS 300D DIGITAL				800	129	4000
+Canon	Canon EOS 30D					127	3398
+Canon	Canon EOS 350D DIGITAL					255	4095
+Canon	Canon EOS 350D Digital					255	4095
+Canon	Canon EOS 400D DIGITAL					255	3726
+Canon	Canon EOS 40D					1021	13600
+Canon	Canon EOS 40D	sRaw1				0	16383
+Canon	Canon EOS 40D	sRaw2				0	16383
+Canon	Canon EOS 5D					127	3692
+Canon	Canon EOS D30					126	4095
+Canon	Canon EOS D60					127	4000
+Canon	Canon EOS DIGITAL REBEL					126	4000
+Canon	Canon EOS DIGITAL REBEL				1600	251	4000
+Canon	Canon EOS DIGITAL REBEL				200	127	4000
+Canon	Canon EOS DIGITAL REBEL				3200	250	4000
+Canon	Canon EOS DIGITAL REBEL				400	128	4000
+Canon	Canon EOS DIGITAL REBEL				800	129	4000
+Canon	Canon EOS DIGITAL REBEL XT					255	4095
+Canon	Canon EOS DIGITAL REBEL XTi					255	3726
+Canon	Canon EOS Kiss Digital					126	4000
+Canon	Canon EOS Kiss Digital				1600	251	4000
+Canon	Canon EOS Kiss Digital				200	127	4000
+Canon	Canon EOS Kiss Digital				3200	250	4000
+Canon	Canon EOS Kiss Digital				400	128	4000
+Canon	Canon EOS Kiss Digital				800	129	4000
+Canon	Canon EOS Kiss Digital N					255	4095
+Canon	Canon EOS Kiss Digital X					255	3726
+Canon	Canon EOS-1D					0	3588
+Canon	Canon EOS-1D Mark II					127	3700
+Canon	Canon EOS-1D Mark II N					127	3700
+Canon	Canon EOS-1D Mark III					1023	15100
+Canon	Canon EOS-1D Mark III	sRaw1				0	16383
+Canon	Canon EOS-1D Mark III	sRaw2				0	16383
+Canon	Canon EOS-1DS					0	3617
+Canon	Canon EOS-1DS				100	0	3615
+Canon	Canon EOS-1DS				1000	0	3623
+Canon	Canon EOS-1DS				125	0	3614
+Canon	Canon EOS-1DS				1250	0	3622
+Canon	Canon EOS-1DS				160	0	3611
+Canon	Canon EOS-1DS				250 320	0	3616
+Canon	Canon EOS-1DS				50	0	3500
+Canon	Canon EOS-1DS				500	0	3621
+Canon	Canon EOS-1DS				800	0	3625
+Canon	Canon EOS-1Ds Mark II					126	4060
+Canon	Canon EOS-1Ds Mark III	sRaw1				0	16383
+Canon	Canon EOS-1Ds Mark III	sRaw2				0	16383
+Canon	Canon PowerShot G1					31	1023
+Canon	Canon PowerShot G2					0	1023
+Canon	Canon PowerShot G3					0	4095
+Canon	Canon PowerShot G5					0	4095
+Canon	Canon PowerShot G6					128	4095
+Canon	Canon PowerShot G9					125	4095
+Canon	Canon PowerShot Pro1					129	4095
+Canon	Canon PowerShot S30					31	1023
+Canon	Canon PowerShot S40					0	1023
+Canon	Canon PowerShot S45					129	4095
+Canon	Canon PowerShot S50					129	4095
+Canon	Canon PowerShot S60					129	4095
+Canon	Canon PowerShot S70					129	4095
+Canon	EOS 10D					130	4000
+Canon	EOS 10D				1600 3200	255	4000
+Canon	EOS 20D					126	4095
+Canon	EOS 300D					126	4000
+Canon	EOS 300D				1600	251	4000
+Canon	EOS 300D				200	127	4000
+Canon	EOS 300D				3200	250	4000
+Canon	EOS 300D				400	128	4000
+Canon	EOS 300D				800	129	4000
+Canon	EOS 30D					127	3398
+Canon	EOS 350D					255	4095
+Canon	EOS 400D					255	3726
+Canon	EOS 40D					1021	13600
+Canon	EOS 40D	sRaw1				0	16383
+Canon	EOS 40D	sRaw2				0	16383
+Canon	EOS 5D					127	3692
+Canon	EOS D2000C					96	4095
+Canon	EOS D30					126	4095
+Canon	EOS D60					127	4000
+Canon	EOS Digital Rebel					126	4000
+Canon	EOS Digital Rebel				1600	251	4000
+Canon	EOS Digital Rebel				200	127	4000
+Canon	EOS Digital Rebel				3200	250	4000
+Canon	EOS Digital Rebel				400	128	4000
+Canon	EOS Digital Rebel				800	129	4000
+Canon	EOS Digital Rebel XT					255	4095
+Canon	EOS Digital Rebel XTi					255	3726
+Canon	EOS Kiss Digital					126	4000
+Canon	EOS Kiss Digital				1600	251	4000
+Canon	EOS Kiss Digital				200	127	4000
+Canon	EOS Kiss Digital				3200	250	4000
+Canon	EOS Kiss Digital				400	128	4000
+Canon	EOS Kiss Digital				800	129	4000
+Canon	EOS Kiss Digital N					255	4095
+Canon	EOS Kiss Digital X					255	3726
+Canon	EOS-1D					0	3588
+Canon	EOS-1D Mark II					127	3700
+Canon	EOS-1D Mark II N					127	3700
+Canon	EOS-1D Mark III					1023	15100
+Canon	EOS-1D Mark III	sRaw1				0	16383
+Canon	EOS-1D Mark III	sRaw2				0	16383
+Canon	EOS-1Ds					0	3617
+Canon	EOS-1Ds				100	0	3615
+Canon	EOS-1Ds				1000	0	3623
+Canon	EOS-1Ds				125	0	3614
+Canon	EOS-1Ds				1250	0	3622
+Canon	EOS-1Ds				160	0	3611
+Canon	EOS-1Ds				250 320	0	3616
+Canon	EOS-1Ds				50	0	3500
+Canon	EOS-1Ds				500	0	3621
+Canon	EOS-1Ds				800	0	3625
+Canon	EOS-1Ds Mark II					126	4060
+Canon	EOS-1Ds Mark III	sRaw1				0	16383
+Canon	EOS-1Ds Mark III	sRaw2				0	16383
+Canon	IXY 220F	chdk				127	4095
+Canon	PowerShot A460	chdk				0	1023
+Canon	PowerShot A470	chdk				0	1023
+Canon	PowerShot A530	chdk				0	1023
+Canon	PowerShot A610	chdk				0	1023
+Canon	PowerShot A620	chdk				0	1023
+Canon	PowerShot A630	chdk				0	1023
+Canon	PowerShot A640	chdk				0	1023
+Canon	PowerShot A650	chdk				0	1023
+Canon	PowerShot A720 IS	chdk				0	1023
+Canon	PowerShot G1					31	1023
+Canon	PowerShot G2					0	1023
+Canon	PowerShot G3					0	4095
+Canon	PowerShot G5					0	4095
+Canon	PowerShot G6					128	4095
+Canon	PowerShot G9					125	4095
+Canon	PowerShot Pro1					129	4095
+Canon	PowerShot S3 IS	chdk				0	1023
+Canon	PowerShot S30					31	1023
+Canon	PowerShot S40					0	1023
+Canon	PowerShot S45					129	4095
+Canon	PowerShot S50					129	4095
+Canon	PowerShot S60					129	4095
+Canon	PowerShot S70					129	4095
+Canon	PowerShot SD300	chdk				0	1023
+Canon	PowerShot SX110 IS	chdk				0	4095
+Canon	PowerShot SX120 IS	chdk				0	4095
+Canon	PowerShot SX220 HS	chdk				127	4095
+Casio	EX-P505	chdk				0	4095
+Casio	EX-P600	chdk				0	3968
+Casio	EX-P700	chdk				0	3968
+Casio	EX-S100	chdk				0	3968
+Casio	EX-S20	chdk				0	3968
+Casio	EX-Z1050	chdk				0	4095
+Casio	EX-Z50	chdk				0	3968
+Casio	EX-Z500	chdk				0	3968
+Casio	EX-Z55	chdk				0	3968
+Casio	EX-Z60	chdk				0	1023
+Casio	EX-Z75	chdk				0	4095
+Casio	EX-Z750	chdk				0	4095
+Casio	EX-Z8	chdk				0	4095
+Casio	EX-Z850	chdk				0	4095
+Casio	EX-ZR100	chdk				0	3968
+Casio	QV-2000UX	chdk				0	255
+Casio	QV-3*00EX	chdk				0	255
+Casio	QV-4000	chdk				0	65535
+Casio	QV-5700	chdk				0	1023
+Casio	QV-R41	chdk				0	3968
+Casio	QV-R51	chdk				0	3968
+Creative	PC-CAM 600	chdk				0	255
+Creo/Leaf	Leaf Aptus 22(LF3779     )/Hasselblad H1					0	16191
+EASTMAN KODAK COMPANY	KODAK EASYSHARE Z1015 IS DIGITAL CAMERA					0	4095
+EASTMAN KODAK COMPANY	KODAK EasyShare Z980 Digital Camera					0	4095
+EASTMAN KODAK COMPANY	KODAK EasyShare Z981 Digital Camera					0	4095
+EASTMAN KODAK COMPANY	KODAK EasyShare Z990 Digital Camera					0	4000
+EASTMAN KODAK COMPANY	KODAK P712 ZOOM DIGITAL CAMERA					0	4095
+EASTMAN KODAK COMPANY	KODAK P880 ZOOM DIGITAL CAMERA					0	4095
+Epson	R-D1					63	4095
+Epson	R-D1s					62	4095
+Epson	R-D1x					65	4095
+FUJIFILM	FinePix E550					0	15875
+FUJIFILM	FinePix E900					0	15872
+FUJIFILM	FinePix F550EXR					256	3900
+FUJIFILM	FinePix F600EXR					256	3900
+FUJIFILM	FinePix F700					0	16383
+FUJIFILM	FinePix F770EXR					256	3900
+FUJIFILM	FinePix F900EXR					256	3900
+FUJIFILM	FinePix HS10 HS11					50	3900
+FUJIFILM	FinePix HS20EXR					256	3900
+FUJIFILM	FinePix HS30EXR					258	3900
+FUJIFILM	FinePix HS33EXR					258	3900
+FUJIFILM	FinePix HS50EXR					256	3900
+FUJIFILM	FinePix S1					200	4095
+FUJIFILM	FinePix S100FS					512	16383
+FUJIFILM	FinePix S200EXR					519	16250
+FUJIFILM	FinePix S3Pro					0	15872
+FUJIFILM	FinePix S5000					0	15872
+FUJIFILM	FinePix S5200					0	15872
+FUJIFILM	FinePix S5500					0	15872
+FUJIFILM	FinePix S5600					0	15872
+FUJIFILM	FinePix S5Pro					0	15872
+FUJIFILM	FinePix S6000fd					0	15872
+FUJIFILM	FinePix S6500fd					0	15872
+FUJIFILM	FinePix S7000					0	15869
+FUJIFILM	FinePix S9000					0	15872
+FUJIFILM	FinePix S9500					0	15872
+FUJIFILM	FinePix S9600					0	15872
+FUJIFILM	FinePix S9600fd					0	15872
+FUJIFILM	FinePix SL1000					200	4095
+FUJIFILM	FinePix X100					254	4000
+FUJIFILM	FinePixS2Pro					128	4095
+FUJIFILM	GFX 100					0	0
+FUJIFILM	GFX 100	compressed				0	0
+FUJIFILM	GFX 50R					65	16383
+FUJIFILM	GFX 50R	compressed				65	16383
+FUJIFILM	GFX 50S					65	16383
+FUJIFILM	GFX 50S	compressed				65	16383
+FUJIFILM	GFX100 II					0	0
+FUJIFILM	GFX100 II	compressed				0	0
+FUJIFILM	GFX100RF					0	0
+FUJIFILM	GFX100RF	compressed				0	0
+FUJIFILM	GFX100S					0	0
+FUJIFILM	GFX100S	compressed				0	0
+FUJIFILM	GFX100S II					0	0
+FUJIFILM	GFX100S II	compressed				0	0
+FUJIFILM	GFX50S II					64	16383
+FUJIFILM	GFX50S II	compressed				64	16383
+FUJIFILM	IS-1					0	15872
+FUJIFILM	X-A1					256	4094
+FUJIFILM	X-A10					256	4094
+FUJIFILM	X-A2					256	4094
+FUJIFILM	X-A3					1024	16383
+FUJIFILM	X-A5					1024	16383
+FUJIFILM	X-A7					1024	16383
+FUJIFILM	X-E1					255	4094
+FUJIFILM	X-E2					1024	16383
+FUJIFILM	X-E2S					1024	16383
+FUJIFILM	X-E3					1023	16383
+FUJIFILM	X-E3	compressed				1023	16383
+FUJIFILM	X-E4					1022	16383
+FUJIFILM	X-E4	compressed				1022	16383
+FUJIFILM	X-E5					1023	16383
+FUJIFILM	X-E5	compressed				1023	16383
+FUJIFILM	X-H1					1024	16383
+FUJIFILM	X-H1	compressed				1024	16383
+FUJIFILM	X-H2					1020	16383
+FUJIFILM	X-H2	compressed				1020	16383
+FUJIFILM	X-H2S					1024	16383
+FUJIFILM	X-H2S	compressed				1024	16383
+FUJIFILM	X-M1					256	4094
+FUJIFILM	X-M5					1022	16383
+FUJIFILM	X-M5	compressed				1022	16383
+FUJIFILM	X-Pro1					256	4094
+FUJIFILM	X-Pro2					1024	16383
+FUJIFILM	X-Pro2	compressed				1024	16383
+FUJIFILM	X-Pro3					1022	16383
+FUJIFILM	X-Pro3	compressed				1022	16383
+FUJIFILM	X-S1					260	4000
+FUJIFILM	X-S10					1022	16383
+FUJIFILM	X-S10	compressed				1022	16383
+FUJIFILM	X-S20					1022	16383
+FUJIFILM	X-S20	compressed				1022	16383
+FUJIFILM	X-T1					1024	16383
+FUJIFILM	X-T10					1024	16383
+FUJIFILM	X-T100					1024	16383
+FUJIFILM	X-T2					1024	16383
+FUJIFILM	X-T2	compressed				1024	16383
+FUJIFILM	X-T20					1024	16383
+FUJIFILM	X-T20	compressed				1024	16383
+FUJIFILM	X-T200					1024	16383
+FUJIFILM	X-T3					1022	16383
+FUJIFILM	X-T3	compressed				1022	16383
+FUJIFILM	X-T30					1022	16383
+FUJIFILM	X-T30	compressed				1022	16383
+FUJIFILM	X-T30 II					1022	16383
+FUJIFILM	X-T30 II	compressed				1022	16383
+FUJIFILM	X-T30 III					1022	16383
+FUJIFILM	X-T30 III	compressed				1022	16383
+FUJIFILM	X-T4					1022	16383
+FUJIFILM	X-T4	compressed				1022	16383
+FUJIFILM	X-T5					1020	16383
+FUJIFILM	X-T5	compressed				1020	16383
+FUJIFILM	X-T50					1023	16383
+FUJIFILM	X-T50	compressed				1023	16383
+FUJIFILM	X10					256	4000
+FUJIFILM	X100F					1024	16383
+FUJIFILM	X100F	compressed				1024	16383
+FUJIFILM	X100S					1024	16383
+FUJIFILM	X100T					1024	16383
+FUJIFILM	X100V					1022	16383
+FUJIFILM	X100V	compressed				1022	16383
+FUJIFILM	X100VI					1023	16383
+FUJIFILM	X100VI	compressed				1023	16383
+FUJIFILM	X20					257	4094
+FUJIFILM	X30					257	4094
+FUJIFILM	X70					1024	16383
+FUJIFILM	XF1					257	4000
+FUJIFILM	XF10					1024	16383
+FUJIFILM	XQ1					257	4094
+FUJIFILM	XQ2					257	4094
+Foculus	531C	chdk				0	65535
+Fujifilm	FinePix E550					0	15875
+Fujifilm	FinePix E900					0	15872
+Fujifilm	FinePix F550EXR					256	3900
+Fujifilm	FinePix F600EXR					256	3900
+Fujifilm	FinePix F700					0	16383
+Fujifilm	FinePix F770EXR					256	3900
+Fujifilm	FinePix F900EXR					256	3900
+Fujifilm	FinePix HS10 HS11					50	3900
+Fujifilm	FinePix HS20EXR					256	3900
+Fujifilm	FinePix HS30EXR					258	3900
+Fujifilm	FinePix HS50EXR					256	3900
+Fujifilm	FinePix S1					200	4095
+Fujifilm	FinePix S100FS					512	16383
+Fujifilm	FinePix S200EXR					519	16250
+Fujifilm	FinePix S2Pro					128	4095
+Fujifilm	FinePix S3Pro					0	15872
+Fujifilm	FinePix S5000					0	15872
+Fujifilm	FinePix S5200					0	15872
+Fujifilm	FinePix S5500					0	15872
+Fujifilm	FinePix S5600					0	15872
+Fujifilm	FinePix S5Pro					0	15872
+Fujifilm	FinePix S6000fd					0	15872
+Fujifilm	FinePix S6500fd					0	15872
+Fujifilm	FinePix S7000					0	15869
+Fujifilm	FinePix S9500					0	15872
+Fujifilm	FinePix S9600					0	15872
+Fujifilm	FinePix SL1000					200	4095
+Fujifilm	FinePix X10					256	4000
+Fujifilm	FinePix X100					254	4000
+Fujifilm	GFX 100					0	0
+Fujifilm	GFX 100	compressed				0	0
+Fujifilm	GFX 50R					65	16383
+Fujifilm	GFX 50R	compressed				65	16383
+Fujifilm	GFX 50S					65	16383
+Fujifilm	GFX 50S	compressed				65	16383
+Fujifilm	GFX100 II					0	0
+Fujifilm	GFX100 II	compressed				0	0
+Fujifilm	GFX100RF					0	0
+Fujifilm	GFX100RF	compressed				0	0
+Fujifilm	GFX100S					0	0
+Fujifilm	GFX100S	compressed				0	0
+Fujifilm	GFX100S II					0	0
+Fujifilm	GFX100S II	compressed				0	0
+Fujifilm	GFX50S II					64	16383
+Fujifilm	GFX50S II	compressed				64	16383
+Fujifilm	IS-1					0	15872
+Fujifilm	X-A1					256	4094
+Fujifilm	X-A10					256	4094
+Fujifilm	X-A2					256	4094
+Fujifilm	X-A3					1024	16383
+Fujifilm	X-A5					1024	16383
+Fujifilm	X-A7					1024	16383
+Fujifilm	X-E1					255	4094
+Fujifilm	X-E2					1024	16383
+Fujifilm	X-E2S					1024	16383
+Fujifilm	X-E3					1023	16383
+Fujifilm	X-E3	compressed				1023	16383
+Fujifilm	X-E4					1022	16383
+Fujifilm	X-E4	compressed				1022	16383
+Fujifilm	X-E5					1023	16383
+Fujifilm	X-E5	compressed				1023	16383
+Fujifilm	X-H1					1024	16383
+Fujifilm	X-H1	compressed				1024	16383
+Fujifilm	X-H2					1020	16383
+Fujifilm	X-H2	compressed				1020	16383
+Fujifilm	X-H2S					1024	16383
+Fujifilm	X-H2S	compressed				1024	16383
+Fujifilm	X-M1					256	4094
+Fujifilm	X-M5					1022	16383
+Fujifilm	X-M5	compressed				1022	16383
+Fujifilm	X-Pro1					256	4094
+Fujifilm	X-Pro2					1024	16383
+Fujifilm	X-Pro2	compressed				1024	16383
+Fujifilm	X-Pro3					1022	16383
+Fujifilm	X-Pro3	compressed				1022	16383
+Fujifilm	X-S1					260	4000
+Fujifilm	X-S10					1022	16383
+Fujifilm	X-S10	compressed				1022	16383
+Fujifilm	X-S20					1022	16383
+Fujifilm	X-S20	compressed				1022	16383
+Fujifilm	X-T1					1024	16383
+Fujifilm	X-T10					1024	16383
+Fujifilm	X-T100					1024	16383
+Fujifilm	X-T2					1024	16383
+Fujifilm	X-T2	compressed				1024	16383
+Fujifilm	X-T20					1024	16383
+Fujifilm	X-T20	compressed				1024	16383
+Fujifilm	X-T200					1024	16383
+Fujifilm	X-T3					1022	16383
+Fujifilm	X-T3	compressed				1022	16383
+Fujifilm	X-T30					1022	16383
+Fujifilm	X-T30	compressed				1022	16383
+Fujifilm	X-T30 II					1022	16383
+Fujifilm	X-T30 II	compressed				1022	16383
+Fujifilm	X-T30 III					1022	16383
+Fujifilm	X-T30 III	compressed				1022	16383
+Fujifilm	X-T4					1022	16383
+Fujifilm	X-T4	compressed				1022	16383
+Fujifilm	X-T5					1020	16383
+Fujifilm	X-T5	compressed				1020	16383
+Fujifilm	X-T50					1023	16383
+Fujifilm	X-T50	compressed				1023	16383
+Fujifilm	X100F					1024	16383
+Fujifilm	X100F	compressed				1024	16383
+Fujifilm	X100S					1024	16383
+Fujifilm	X100T					1024	16383
+Fujifilm	X100V					1022	16383
+Fujifilm	X100V	compressed				1022	16383
+Fujifilm	X100VI					1023	16383
+Fujifilm	X100VI	compressed				1023	16383
+Fujifilm	X20					257	4094
+Fujifilm	X30					257	4094
+Fujifilm	X70					1024	16383
+Fujifilm	XF1					257	4000
+Fujifilm	XF10					1024	16383
+Fujifilm	XQ1					257	4094
+Fujifilm	XQ2					257	4094
+GITUP	GIT2	chdk-a				3200	65535
+GITUP	GIT2	chdk-b				3200	65535
+GITUP	GIT2P	chdk-a				4160	65535
+GITUP	GIT2P	chdk-b				4160	65535
+Hasselblad	CF132					0	62914
+Hasselblad	CFV					0	32767
+Hasselblad	CFV 100C					4267	65535
+Hasselblad	CFV 100C/907X					4267	65535
+Hasselblad	CFV 100C/Electronic Shutter					4267	65535
+Hasselblad	CFV II 50C					256	62914
+Hasselblad	CFV II 50C/907X					256	62914
+Hasselblad	CFV II 50C/Electronic Shutter					256	62914
+Hasselblad	CFV-50					256	65535
+Hasselblad	CFV-50c					256	62914
+Hasselblad	CFV-50c/200					256	62914
+Hasselblad	CFV-50c/500					256	62914
+Hasselblad	CFV-50c/ELD					256	62914
+Hasselblad	CFV-50c/ELX					256	62914
+Hasselblad	CFV-50c/Flash Sync					256	62914
+Hasselblad	CFV-50c/LensCtrl S					256	62914
+Hasselblad	CFV-50c/Pinhole					256	62914
+Hasselblad	CFV-50c/SWC					256	62914
+Hasselblad	CFV-50c/Schneider					256	62914
+Hasselblad	CFV-50c/Winder CW					256	62914
+Hasselblad	Flash Sync					0	62914
+Hasselblad	H3D					0	31456
+Hasselblad	H4D-40					256	65535
+Hasselblad	H4D-50					256	32767
+Hasselblad	H5D-40					256	62914
+Hasselblad	H5D-50c					256	62914
+Hasselblad	H6D-100c					256	65535
+Hasselblad	Hasselblad 500 mech.					0	32767
+Hasselblad	Hasselblad CFV 100C					4267	65535
+Hasselblad	Hasselblad CFV II 50C					256	62914
+Hasselblad	Hasselblad CFV-50					256	65535
+Hasselblad	Hasselblad CFV-50c					256	62914
+Hasselblad	Hasselblad H3D					0	31456
+Hasselblad	Hasselblad H4D-40					256	65535
+Hasselblad	Hasselblad H4D-50					256	32767
+Hasselblad	Hasselblad H5D-40					256	62914
+Hasselblad	Hasselblad H5D-50c					256	62914
+Hasselblad	Hasselblad H6D-100cMS					256	65535
+Hasselblad	Hasselblad X1D					1028	65535
+Hasselblad	Hasselblad X1D II 50C					256	62914
+Hasselblad	Hasselblad X1DM2-50c					256	62914
+Hasselblad	Hasselblad X2D 100C					4267	65535
+Hasselblad	Hasselblad X2D II 100C					4317	65535
+Hasselblad	X1D					1028	65535
+Hasselblad	X1D II 50C					256	62914
+Hasselblad	X2D 100C					4267	65535
+Hasselblad	X2D II 100C					4317	65535
+ImBack	ImB35mm	chdk				0	255
+KODAK	DCS460D         FILE VERSION 3					7	6664
+KODAK	EOSDCS1B        FILE VERSION 3					19	7638
+KODAK	EOSDCS3C        FILE VERSION 3					0	7855
+KONICA MINOLTA	ALPHA 5D					0	4095
+KONICA MINOLTA	ALPHA 7D					0	4095
+KONICA MINOLTA	ALPHA SWEET DIGITAL					0	4095
+KONICA MINOLTA	ALPHA-7 DIGITAL					0	4095
+KONICA MINOLTA	DYNAX 5D					0	4095
+KONICA MINOLTA	DYNAX 7D					0	4095
+KONICA MINOLTA	DiMAGE A200					0	3965
+KONICA MINOLTA	MAXXUM 5D					0	4095
+KONICA MINOLTA	MAXXUM 7D					0	4095
+Kodak	C330	chdk-a				0	255
+Kodak	C330	chdk-b				0	255
+Kodak	DC20	chdk-a				0	255
+Kodak	DC20	chdk-b				0	255
+Kodak	DCS Pro 14N					0	3700
+Kodak	DCS Pro 14n					0	3700
+Kodak	DCS Pro 14nx					0	3700
+Kodak	DCS Pro SLR/c					0	4095
+Kodak	DCS Pro SLR/n					0	4095
+Kodak	DCS200	chdk				0	255
+Kodak	DCS460D					7	6664
+Kodak	DCS520C					176	4095
+Kodak	DCS560C					208	4095
+Kodak	DCS760C					0	3500
+Kodak	EOS DCS 1					19	7638
+Kodak	EOS DCS 3					0	7855
+Kodak	EasyShare Z980					0	4095
+Kodak	EasyShare Z981					0	4095
+Kodak	EasyShare Z990					0	4000
+Kodak	KAI-0340	chdk				0	65535
+Kodak	P712					0	4095
+Kodak	P880					0	4095
+Kodak	Z1015 IS					0	4095
+Konica Minolta Camera, Inc.	DiMAGE A2					0	3965
+LEICA	C (Typ 112)					146	3956
+LEICA	C (Typ 112)	3:2				146	3956
+LEICA	C (Typ 112)	4:3				146	3956
+LEICA	D-LUX (Typ 109)					143	4095
+LEICA	D-LUX (Typ 109)	16:9				143	4095
+LEICA	D-LUX (Typ 109)	1:1				143	4095
+LEICA	D-LUX (Typ 109)	3:2				143	4095
+LEICA	D-LUX (Typ 109)	4:3				143	4095
+LEICA	D-LUX 3					0	3986
+LEICA	D-LUX 3	16:9				0	3986
+LEICA	D-LUX 4					15	3971
+LEICA	D-LUX 4	16:9				15	3971
+LEICA	D-LUX 4	3:2				15	3971
+LEICA	D-LUX 4	4:3				15	3971
+LEICA	D-LUX 5					150	3986
+LEICA	D-LUX 5	16:9				150	3986
+LEICA	D-LUX 5	1:1				150	3986
+LEICA	D-LUX 5	3:2				150	3986
+LEICA	D-LUX 5	4:3				150	3986
+LEICA	D-LUX 6					150	3971
+LEICA	D-LUX 6	16:9				150	3971
+LEICA	D-LUX 6	1:1				150	3971
+LEICA	D-LUX 6	3:2				150	3971
+LEICA	D-LUX 6	4:3				150	3971
+LEICA	DIGILUX 2					0	4095
+LEICA	DIGILUX 2	4:3				0	4095
+LEICA	DIGILUX 3					0	3986
+LEICA	DIGILUX 3	4:3				0	3986
+LEICA	V-LUX (Typ 114)					142	4095
+LEICA	V-LUX (Typ 114)	16:9				142	4095
+LEICA	V-LUX (Typ 114)	1:1				142	4095
+LEICA	V-LUX (Typ 114)	3:2				142	4095
+LEICA	V-LUX (Typ 114)	4:3				142	4095
+LEICA	V-LUX 1					0	3986
+LEICA	V-LUX 1	3:2				0	3986
+LEICA	V-LUX 1	4:3				0	3986
+LEICA	V-LUX 4					143	3956
+LEICA	V-LUX 4	16:9				143	3956
+LEICA	V-LUX 4	1:1				143	3956
+LEICA	V-LUX 4	3:2				143	3956
+LEICA	V-LUX 4	4:3				143	3956
+LEICA CAMERA AG	C-Lux					140	4095
+LEICA CAMERA AG	C-Lux	3:2				140	4095
+LEICA CAMERA AG	D-Lux 7					143	4095
+LEICA CAMERA AG	D-Lux 7	16:9				144	4095
+LEICA CAMERA AG	D-Lux 7	1:1				144	4095
+LEICA CAMERA AG	D-Lux 7	3:2				144	4095
+LEICA CAMERA AG	D-Lux 7	4:3				143	4095
+LEICA CAMERA AG	V-Lux 5					143	4095
+LEICA CAMERA AG	V-Lux 5	3:2				143	4095
+Leaf	AFi-II 7					0	15000
+Leaf	Aptus 22					0	16191
+Leaf	Aptus-II 10					0	15000
+Leaf	Aptus-II 10R					0	15000
+Leaf	Aptus-II 12					0	15000
+Leaf	Aptus-II 5					0	15000
+Leaf	Aptus-II 8					0	15000
+Leaf	Credo 40					0	16383
+Leaf	Credo 60					0	16383
+Leaf	Credo 80					0	16383
+Leaf	Leaf AFi-II 7(BT12701    )/Leaf AFi					0	15000
+Leaf	Leaf Aptus 22(LF10043    )/Mamiya 645 AFD					0	16191
+Leaf	Leaf Aptus-II 10(LI300019   )/Phase One 645DF					0	15000
+Leaf	Leaf Aptus-II 10R(           )/Large Format					0	15000
+Leaf	Leaf Aptus-II 12(LI301306   )/Phase One 645DF/645AF					0	15000
+Leaf	Leaf Aptus-II 5(LI300059   )/Mamiya 645 AFD					0	15000
+Leaf	Leaf Aptus-II 8(LI300247   )/Mamiya 645 AFD					0	15000
+Leica	C (Typ 112)					146	3956
+Leica	C (Typ 112)	3:2				146	3956
+Leica	C (Typ 112)	4:3				146	3956
+Leica	C-Lux					140	4095
+Leica	C-Lux	3:2				140	4095
+Leica	D-LUX (Typ 109)					143	4095
+Leica	D-LUX (Typ 109)	16:9				143	4095
+Leica	D-LUX (Typ 109)	1:1				143	4095
+Leica	D-LUX (Typ 109)	3:2				143	4095
+Leica	D-LUX (Typ 109)	4:3				143	4095
+Leica	D-LUX 3					0	3986
+Leica	D-LUX 3	16:9				0	3986
+Leica	D-LUX 4					15	3971
+Leica	D-LUX 4	16:9				15	3971
+Leica	D-LUX 4	3:2				15	3971
+Leica	D-LUX 4	4:3				15	3971
+Leica	D-LUX 5					150	3986
+Leica	D-LUX 5	16:9				150	3986
+Leica	D-LUX 5	1:1				150	3986
+Leica	D-LUX 5	3:2				150	3986
+Leica	D-LUX 5	4:3				150	3986
+Leica	D-LUX 6					150	3971
+Leica	D-LUX 6	16:9				150	3971
+Leica	D-LUX 6	1:1				150	3971
+Leica	D-LUX 6	3:2				150	3971
+Leica	D-LUX 6	4:3				150	3971
+Leica	D-Lux 7					143	4095
+Leica	D-Lux 7	16:9				144	4095
+Leica	D-Lux 7	1:1				144	4095
+Leica	D-Lux 7	3:2				144	4095
+Leica	D-Lux 7	4:3				143	4095
+Leica	Digilux 2					0	4095
+Leica	Digilux 2	4:3				0	4095
+Leica	Digilux 3					0	3986
+Leica	Digilux 3	4:3				0	3986
+Leica	V-LUX (Typ 114)					142	4095
+Leica	V-LUX (Typ 114)	16:9				142	4095
+Leica	V-LUX (Typ 114)	1:1				142	4095
+Leica	V-LUX (Typ 114)	3:2				142	4095
+Leica	V-LUX (Typ 114)	4:3				142	4095
+Leica	V-LUX 1					0	3986
+Leica	V-LUX 1	3:2				0	3986
+Leica	V-LUX 1	4:3				0	3986
+Leica	V-Lux 4					143	3956
+Leica	V-Lux 4	16:9				143	3956
+Leica	V-Lux 4	1:1				143	3956
+Leica	V-Lux 4	3:2				143	3956
+Leica	V-Lux 4	4:3				143	3956
+Leica	V-Lux 5					143	4095
+Leica	V-Lux 5	3:2				143	4095
+Mamiya	ZD					0	4000
+Mamiya-OP Co.,Ltd.	MAMIYA ZD					0	4000
+Micron	2010	chdk				0	65535
+Minolta	Alpha 5D					0	4095
+Minolta	Alpha 7D					0	4095
+Minolta	Alpha Sweet Digital					0	4095
+Minolta	Alpha-7 Digital					0	4095
+Minolta	DiMAGE 5					0	3965
+Minolta	DiMAGE 7					0	3965
+Minolta	DiMAGE 7Hi					0	3965
+Minolta	DiMAGE 7i					0	3965
+Minolta	DiMAGE A1					0	3965
+Minolta	DiMAGE A2					0	3965
+Minolta	DiMAGE A200					0	3965
+Minolta	Dynax 5D					0	4095
+Minolta	Dynax 7D					0	4095
+Minolta	Maxxum 5D					0	4095
+Minolta	Maxxum 7D					0	4095
+Minolta Co., Ltd.	DiMAGE 5					0	3965
+Minolta Co., Ltd.	DiMAGE 7					0	3965
+Minolta Co., Ltd.	DiMAGE 7Hi					0	3965
+Minolta Co., Ltd.	DiMAGE 7i					0	3965
+Minolta Co., Ltd.	DiMAGE A1					0	3965
+NIKON	COOLPIX B700	12bit-uncompressed				200	4000
+NIKON	COOLPIX P330	12bit-compressed				3200	65000
+NIKON	COOLPIX P340	12bit-compressed				200	3800
+NIKON	COOLPIX P340	12bit-uncompressed				200	3800
+NIKON	COOLPIX P6000	12bit-uncompressed				0	4095
+NIKON	COOLPIX P7000	12bit-uncompressed				0	4095
+NIKON	COOLPIX P7000	12bit-uncompressed	0	1		255	4095
+NIKON	COOLPIX P7000	12bit-uncompressed	400	3200		255	4095
+NIKON	COOLPIX P7100	12bit-uncompressed				0	3800
+NIKON	COOLPIX P7100	12bit-uncompressed	0	1		260	3800
+NIKON	COOLPIX P7100	12bit-uncompressed	400	0		250	3800
+NIKON	COOLPIX P7700	12bit-compressed				3200	65000
+NIKON	COOLPIX P7800	12bit-compressed				3200	65000
+NIKON	E5000	12bit-uncompressed				0	4095
+NIKON	E5400	12bit-uncompressed				0	4095
+NIKON	E5700	12bit-uncompressed				0	4095
+NIKON	E8400	12bit-uncompressed				0	4095
+NIKON	E8800	12bit-uncompressed				0	4095
+NIKON CORPORATION	COOLPIX A	14bit-compressed				0	15892
+NIKON CORPORATION	COOLPIX A1000	12bit-uncompressed				0	3890
+NIKON CORPORATION	COOLPIX P1000	12bit-uncompressed				200	4095
+NIKON CORPORATION	COOLPIX P1100	12bit-uncompressed				200	4095
+NIKON CORPORATION	COOLPIX P950	12bit-uncompressed				200	4095
+NIKON CORPORATION	NIKON 1 AW1	12bit-compressed				0	4095
+NIKON CORPORATION	NIKON 1 AW1	12bit-compressed			160	0	3300
+NIKON CORPORATION	NIKON 1 J1	12bit-compressed				0	3300
+NIKON CORPORATION	NIKON 1 J2	12bit-compressed				0	4095
+NIKON CORPORATION	NIKON 1 J3	12bit-compressed				0	4095
+NIKON CORPORATION	NIKON 1 J4	12bit-compressed				200	4000
+NIKON CORPORATION	NIKON 1 J5	12bit-compressed				200	3800
+NIKON CORPORATION	NIKON 1 S1	12bit-compressed				0	3300
+NIKON CORPORATION	NIKON 1 S2	12bit-compressed				200	4095
+NIKON CORPORATION	NIKON 1 V1	12bit-compressed				0	3300
+NIKON CORPORATION	NIKON 1 V2	12bit-compressed				0	4095
+NIKON CORPORATION	NIKON 1 V3	12bit-compressed				200	4000
+NIKON CORPORATION	NIKON D1	12bit-uncompressed				0	4095
+NIKON CORPORATION	NIKON D100	12bit-compressed				0	4095
+NIKON CORPORATION	NIKON D100	12bit-uncompressed				0	4095
+NIKON CORPORATION	NIKON D1H	12bit-compressed				0	4095
+NIKON CORPORATION	NIKON D1H	12bit-uncompressed				0	4095
+NIKON CORPORATION	NIKON D1X	12bit-compressed				0	4095
+NIKON CORPORATION	NIKON D1X	12bit-uncompressed				0	4095
+NIKON CORPORATION	NIKON D200	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D200	12bit-uncompressed				0	3880
+NIKON CORPORATION	NIKON D2H	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D2H	12bit-uncompressed				0	3880
+NIKON CORPORATION	NIKON D2Hs	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D2Hs	12bit-uncompressed				0	3880
+NIKON CORPORATION	NIKON D2X	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D2X	12bit-uncompressed				0	3880
+NIKON CORPORATION	NIKON D2Xs	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D2Xs	12bit-uncompressed				0	3880
+NIKON CORPORATION	NIKON D3	12bit-compressed				0	3972
+NIKON CORPORATION	NIKON D3	12bit-uncompressed				0	3972
+NIKON CORPORATION	NIKON D3	14bit-compressed				0	15892
+NIKON CORPORATION	NIKON D3	14bit-uncompressed				0	15892
+NIKON CORPORATION	NIKON D300	12bit-compressed				0	3808
+NIKON CORPORATION	NIKON D300	12bit-uncompressed				0	3808
+NIKON CORPORATION	NIKON D300	14bit-compressed				0	15236
+NIKON CORPORATION	NIKON D300	14bit-uncompressed				0	15236
+NIKON CORPORATION	NIKON D3000	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D300S	12bit-compressed				0	3808
+NIKON CORPORATION	NIKON D300S	12bit-uncompressed				0	3808
+NIKON CORPORATION	NIKON D300S	14bit-compressed				0	15236
+NIKON CORPORATION	NIKON D300S	14bit-uncompressed				0	15236
+NIKON CORPORATION	NIKON D3100	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D3200	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D3300	12bit-compressed				150	3880
+NIKON CORPORATION	NIKON D3400	12bit-compressed				150	3880
+NIKON CORPORATION	NIKON D3500	12bit-compressed				150	3972
+NIKON CORPORATION	NIKON D3S	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D3S	12bit-uncompressed				0	3880
+NIKON CORPORATION	NIKON D3S	14bit-compressed				0	15520
+NIKON CORPORATION	NIKON D3S	14bit-uncompressed				0	15520
+NIKON CORPORATION	NIKON D3X	12bit-compressed				0	3972
+NIKON CORPORATION	NIKON D3X	12bit-uncompressed				0	3972
+NIKON CORPORATION	NIKON D3X	14bit-compressed				0	15892
+NIKON CORPORATION	NIKON D3X	14bit-uncompressed				0	15892
+NIKON CORPORATION	NIKON D4	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D4	12bit-uncompressed				0	3880
+NIKON CORPORATION	NIKON D4	14bit-compressed				0	15520
+NIKON CORPORATION	NIKON D4	14bit-uncompressed				0	15520
+NIKON CORPORATION	NIKON D40	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D40X	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D4S	12bit-compressed				192	3880
+NIKON CORPORATION	NIKON D4S	12bit-uncompressed				192	3880
+NIKON CORPORATION	NIKON D4S	14bit-compressed				768	15520
+NIKON CORPORATION	NIKON D4S	14bit-uncompressed				768	15520
+NIKON CORPORATION	NIKON D4S	sNEF-uncompressed				0	65535
+NIKON CORPORATION	NIKON D5	12bit-compressed				100	3880
+NIKON CORPORATION	NIKON D5	12bit-uncompressed				100	3880
+NIKON CORPORATION	NIKON D5	14bit-compressed				400	15520
+NIKON CORPORATION	NIKON D5	14bit-uncompressed				400	15520
+NIKON CORPORATION	NIKON D50	12bit-compressed				0	4095
+NIKON CORPORATION	NIKON D500	12bit-compressed				100	3880
+NIKON CORPORATION	NIKON D500	12bit-uncompressed				100	3880
+NIKON CORPORATION	NIKON D500	14bit-compressed				400	15520
+NIKON CORPORATION	NIKON D500	14bit-uncompressed				400	15520
+NIKON CORPORATION	NIKON D5000	12bit-compressed				0	3767
+NIKON CORPORATION	NIKON D5100	14bit-compressed				0	15892
+NIKON CORPORATION	NIKON D5100	14bit-uncompressed				0	15892
+NIKON CORPORATION	NIKON D5200	14bit-compressed				0	15892
+NIKON CORPORATION	NIKON D5300	12bit-compressed				150	3972
+NIKON CORPORATION	NIKON D5300	14bit-compressed				600	15892
+NIKON CORPORATION	NIKON D5500	12bit-compressed				150	3972
+NIKON CORPORATION	NIKON D5500	14bit-compressed				600	15892
+NIKON CORPORATION	NIKON D5600	12bit-compressed				150	3972
+NIKON CORPORATION	NIKON D5600	14bit-compressed				600	15892
+NIKON CORPORATION	NIKON D6	12bit-compressed				252	3880
+NIKON CORPORATION	NIKON D6	12bit-uncompressed				252	3880
+NIKON CORPORATION	NIKON D6	14bit-compressed				1008	15520
+NIKON CORPORATION	NIKON D6	14bit-uncompressed				1008	15520
+NIKON CORPORATION	NIKON D60	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D600	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D600	14bit-compressed				0	15520
+NIKON CORPORATION	NIKON D610	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D610	14bit-compressed				0	15520
+NIKON CORPORATION	NIKON D70	12bit-compressed				0	4095
+NIKON CORPORATION	NIKON D700	12bit-compressed				0	3972
+NIKON CORPORATION	NIKON D700	12bit-uncompressed				0	3972
+NIKON CORPORATION	NIKON D700	14bit-compressed				0	15892
+NIKON CORPORATION	NIKON D700	14bit-uncompressed				0	15892
+NIKON CORPORATION	NIKON D7000	12bit-compressed				0	3972
+NIKON CORPORATION	NIKON D7000	14bit-compressed				0	15892
+NIKON CORPORATION	NIKON D70s	12bit-compressed				0	4095
+NIKON CORPORATION	NIKON D7100	12bit-compressed				0	3972
+NIKON CORPORATION	NIKON D7100	14bit-compressed				0	15892
+NIKON CORPORATION	NIKON D7200	12bit-compressed				150	3972
+NIKON CORPORATION	NIKON D7200	14bit-compressed				600	15892
+NIKON CORPORATION	NIKON D750	12bit-compressed				150	3880
+NIKON CORPORATION	NIKON D750	14bit-compressed				600	15520
+NIKON CORPORATION	NIKON D7500	12bit-compressed				100	3880
+NIKON CORPORATION	NIKON D7500	14bit-compressed				400	15520
+NIKON CORPORATION	NIKON D780	12bit-compressed				251	3880
+NIKON CORPORATION	NIKON D780	14bit-compressed				1008	15520
+NIKON CORPORATION	NIKON D80	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D800	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D800	12bit-uncompressed				0	3880
+NIKON CORPORATION	NIKON D800	14bit-compressed				0	15520
+NIKON CORPORATION	NIKON D800	14bit-uncompressed				0	15520
+NIKON CORPORATION	NIKON D800	7424x4924-14bit-uncompressed				0	15520
+NIKON CORPORATION	NIKON D800E	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON D800E	12bit-uncompressed				0	3880
+NIKON CORPORATION	NIKON D800E	14bit-compressed				0	15520
+NIKON CORPORATION	NIKON D800E	14bit-uncompressed				0	15520
+NIKON CORPORATION	NIKON D800E	7424x4924-14bit-uncompressed				0	15520
+NIKON CORPORATION	NIKON D810	12bit-compressed				150	3880
+NIKON CORPORATION	NIKON D810	12bit-uncompressed				150	3880
+NIKON CORPORATION	NIKON D810	14bit-compressed				600	15520
+NIKON CORPORATION	NIKON D810	14bit-uncompressed				600	15520
+NIKON CORPORATION	NIKON D810	sNEF-uncompressed				0	65535
+NIKON CORPORATION	NIKON D810A	12bit-compressed				150	3880
+NIKON CORPORATION	NIKON D810A	12bit-uncompressed				150	3880
+NIKON CORPORATION	NIKON D810A	14bit-compressed				600	15520
+NIKON CORPORATION	NIKON D810A	14bit-uncompressed				600	15520
+NIKON CORPORATION	NIKON D810A	sNEF-uncompressed				0	65535
+NIKON CORPORATION	NIKON D850	12bit-compressed				100	3880
+NIKON CORPORATION	NIKON D850	12bit-uncompressed				100	3880
+NIKON CORPORATION	NIKON D850	14bit-compressed				400	15520
+NIKON CORPORATION	NIKON D850	14bit-uncompressed				400	15520
+NIKON CORPORATION	NIKON D90	12bit-compressed				0	3767
+NIKON CORPORATION	NIKON Df	12bit-compressed				0	3880
+NIKON CORPORATION	NIKON Df	12bit-uncompressed				0	3880
+NIKON CORPORATION	NIKON Df	14bit-compressed				0	15520
+NIKON CORPORATION	NIKON Df	14bit-uncompressed				0	15520
+NIKON CORPORATION	NIKON Z 30	12bit-compressed				251	3972
+NIKON CORPORATION	NIKON Z 30	14bit-compressed				1008	15892
+NIKON CORPORATION	NIKON Z 5	12bit-compressed				251	3880
+NIKON CORPORATION	NIKON Z 5	14bit-compressed				1008	15520
+NIKON CORPORATION	NIKON Z 50	12bit-compressed				251	3880
+NIKON CORPORATION	NIKON Z 50	14bit-compressed				1008	15520
+NIKON CORPORATION	NIKON Z 6	12bit-compressed				251	3880
+NIKON CORPORATION	NIKON Z 6	12bit-uncompressed				251	3880
+NIKON CORPORATION	NIKON Z 6	14bit-compressed				1008	15520
+NIKON CORPORATION	NIKON Z 6	14bit-uncompressed				1008	15520
+NIKON CORPORATION	NIKON Z 6_2	12bit-compressed				251	3880
+NIKON CORPORATION	NIKON Z 6_2	12bit-uncompressed				251	3880
+NIKON CORPORATION	NIKON Z 6_2	14bit-compressed				1008	15520
+NIKON CORPORATION	NIKON Z 6_2	14bit-uncompressed				1008	15520
+NIKON CORPORATION	NIKON Z 7	12bit-compressed				252	3880
+NIKON CORPORATION	NIKON Z 7	12bit-uncompressed				252	3880
+NIKON CORPORATION	NIKON Z 7	14bit-compressed				1008	15520
+NIKON CORPORATION	NIKON Z 7	14bit-uncompressed				1008	15520
+NIKON CORPORATION	NIKON Z 7_2	12bit-compressed				251	3880
+NIKON CORPORATION	NIKON Z 7_2	12bit-uncompressed				251	3880
+NIKON CORPORATION	NIKON Z 7_2	14bit-compressed				1008	15520
+NIKON CORPORATION	NIKON Z 7_2	14bit-uncompressed				1008	15520
+NIKON CORPORATION	NIKON Z 8	14bit-compressed				1008	15892
+NIKON CORPORATION	NIKON Z 9	14bit-compressed				1008	15892
+NIKON CORPORATION	NIKON Z f	14bit-compressed				1008	15892
+NIKON CORPORATION	NIKON Z fc	12bit-compressed				251	3972
+NIKON CORPORATION	NIKON Z fc	12bit-uncompressed				251	3972
+NIKON CORPORATION	NIKON Z fc	14bit-compressed				1008	15892
+NIKON CORPORATION	NIKON Z fc	14bit-uncompressed				1008	15892
+NIKON CORPORATION	NIKON Z50_2	14bit-compressed				1008	15892
+NIKON CORPORATION	NIKON Z5_2	14bit-compressed				1008	15892
+NIKON CORPORATION	NIKON Z6_3	14bit-compressed				1008	15892
+NIKON CORPORATION	NIKON ZR	14bit-compressed				1008	15892
+Nikon	1 AW1	12bit-compressed				0	4095
+Nikon	1 AW1	12bit-compressed			160	0	3300
+Nikon	1 J1	12bit-compressed				0	3300
+Nikon	1 J2	12bit-compressed				0	4095
+Nikon	1 J3	12bit-compressed				0	4095
+Nikon	1 J4	12bit-compressed				200	4000
+Nikon	1 J5	12bit-compressed				200	3800
+Nikon	1 S1	12bit-compressed				0	3300
+Nikon	1 S2	12bit-compressed				200	4095
+Nikon	1 V1	12bit-compressed				0	3300
+Nikon	1 V2	12bit-compressed				0	4095
+Nikon	1 V3	12bit-compressed				200	4000
+Nikon	COOLPIX S6	chdk				0	3968
+Nikon	Coolpix A	14bit-compressed				0	15892
+Nikon	Coolpix A1000	12bit-uncompressed				0	3890
+Nikon	Coolpix B700	12bit-uncompressed				200	4000
+Nikon	Coolpix P1000	12bit-uncompressed				200	4095
+Nikon	Coolpix P1100	12bit-uncompressed				200	4095
+Nikon	Coolpix P330	12bit-compressed				3200	65000
+Nikon	Coolpix P340	12bit-compressed				200	3800
+Nikon	Coolpix P340	12bit-uncompressed				200	3800
+Nikon	Coolpix P6000	12bit-uncompressed				0	4095
+Nikon	Coolpix P7000	12bit-uncompressed				0	4095
+Nikon	Coolpix P7000	12bit-uncompressed	0	1		255	4095
+Nikon	Coolpix P7000	12bit-uncompressed	400	3200		255	4095
+Nikon	Coolpix P7100	12bit-uncompressed				0	3800
+Nikon	Coolpix P7100	12bit-uncompressed	0	1		260	3800
+Nikon	Coolpix P7100	12bit-uncompressed	400	0		250	3800
+Nikon	Coolpix P7700	12bit-compressed				3200	65000
+Nikon	Coolpix P7800	12bit-compressed				3200	65000
+Nikon	Coolpix P950	12bit-uncompressed				200	4095
+Nikon	D1	12bit-uncompressed				0	4095
+Nikon	D100	12bit-compressed				0	4095
+Nikon	D100	12bit-uncompressed				0	4095
+Nikon	D1H	12bit-compressed				0	4095
+Nikon	D1H	12bit-uncompressed				0	4095
+Nikon	D1X	12bit-compressed				0	4095
+Nikon	D1X	12bit-uncompressed				0	4095
+Nikon	D200	12bit-compressed				0	3880
+Nikon	D200	12bit-uncompressed				0	3880
+Nikon	D2H	12bit-compressed				0	3880
+Nikon	D2H	12bit-uncompressed				0	3880
+Nikon	D2Hs	12bit-compressed				0	3880
+Nikon	D2Hs	12bit-uncompressed				0	3880
+Nikon	D2X	12bit-compressed				0	3880
+Nikon	D2X	12bit-uncompressed				0	3880
+Nikon	D2Xs	12bit-compressed				0	3880
+Nikon	D2Xs	12bit-uncompressed				0	3880
+Nikon	D3	12bit-compressed				0	3972
+Nikon	D3	12bit-uncompressed				0	3972
+Nikon	D3	14bit-compressed				0	15892
+Nikon	D3	14bit-uncompressed				0	15892
+Nikon	D300	12bit-compressed				0	3808
+Nikon	D300	12bit-uncompressed				0	3808
+Nikon	D300	14bit-compressed				0	15236
+Nikon	D300	14bit-uncompressed				0	15236
+Nikon	D3000	12bit-compressed				0	3880
+Nikon	D300S	12bit-compressed				0	3808
+Nikon	D300S	12bit-uncompressed				0	3808
+Nikon	D300S	14bit-compressed				0	15236
+Nikon	D300S	14bit-uncompressed				0	15236
+Nikon	D3100	12bit-compressed				0	3880
+Nikon	D3200	12bit-compressed				0	3880
+Nikon	D3300	12bit-compressed				150	3880
+Nikon	D3400	12bit-compressed				150	3880
+Nikon	D3500	12bit-compressed				150	3972
+Nikon	D3S	12bit-compressed				0	3880
+Nikon	D3S	12bit-uncompressed				0	3880
+Nikon	D3S	14bit-compressed				0	15520
+Nikon	D3S	14bit-uncompressed				0	15520
+Nikon	D3X	12bit-compressed				0	3972
+Nikon	D3X	12bit-uncompressed				0	3972
+Nikon	D3X	14bit-compressed				0	15892
+Nikon	D3X	14bit-uncompressed				0	15892
+Nikon	D4	12bit-compressed				0	3880
+Nikon	D4	12bit-uncompressed				0	3880
+Nikon	D4	14bit-compressed				0	15520
+Nikon	D4	14bit-uncompressed				0	15520
+Nikon	D40	12bit-compressed				0	3880
+Nikon	D40X	12bit-compressed				0	3880
+Nikon	D4S	12bit-compressed				192	3880
+Nikon	D4S	12bit-uncompressed				192	3880
+Nikon	D4S	14bit-compressed				768	15520
+Nikon	D4S	14bit-uncompressed				768	15520
+Nikon	D4S	sNEF-uncompressed				0	65535
+Nikon	D5	12bit-compressed				100	3880
+Nikon	D5	12bit-uncompressed				100	3880
+Nikon	D5	14bit-compressed				400	15520
+Nikon	D5	14bit-uncompressed				400	15520
+Nikon	D50	12bit-compressed				0	4095
+Nikon	D500	12bit-compressed				100	3880
+Nikon	D500	12bit-uncompressed				100	3880
+Nikon	D500	14bit-compressed				400	15520
+Nikon	D500	14bit-uncompressed				400	15520
+Nikon	D5000	12bit-compressed				0	3767
+Nikon	D5100	14bit-compressed				0	15892
+Nikon	D5100	14bit-uncompressed				0	15892
+Nikon	D5200	14bit-compressed				0	15892
+Nikon	D5300	12bit-compressed				150	3972
+Nikon	D5300	14bit-compressed				600	15892
+Nikon	D5500	12bit-compressed				150	3972
+Nikon	D5500	14bit-compressed				600	15892
+Nikon	D5600	12bit-compressed				150	3972
+Nikon	D5600	14bit-compressed				600	15892
+Nikon	D6	12bit-compressed				252	3880
+Nikon	D6	12bit-uncompressed				252	3880
+Nikon	D6	14bit-compressed				1008	15520
+Nikon	D6	14bit-uncompressed				1008	15520
+Nikon	D60	12bit-compressed				0	3880
+Nikon	D600	12bit-compressed				0	3880
+Nikon	D600	14bit-compressed				0	15520
+Nikon	D610	12bit-compressed				0	3880
+Nikon	D610	14bit-compressed				0	15520
+Nikon	D70	12bit-compressed				0	4095
+Nikon	D700	12bit-compressed				0	3972
+Nikon	D700	12bit-uncompressed				0	3972
+Nikon	D700	14bit-compressed				0	15892
+Nikon	D700	14bit-uncompressed				0	15892
+Nikon	D7000	12bit-compressed				0	3972
+Nikon	D7000	14bit-compressed				0	15892
+Nikon	D70s	12bit-compressed				0	4095
+Nikon	D7100	12bit-compressed				0	3972
+Nikon	D7100	14bit-compressed				0	15892
+Nikon	D7200	12bit-compressed				150	3972
+Nikon	D7200	14bit-compressed				600	15892
+Nikon	D750	12bit-compressed				150	3880
+Nikon	D750	14bit-compressed				600	15520
+Nikon	D7500	12bit-compressed				100	3880
+Nikon	D7500	14bit-compressed				400	15520
+Nikon	D780	12bit-compressed				251	3880
+Nikon	D780	14bit-compressed				1008	15520
+Nikon	D80	12bit-compressed				0	3880
+Nikon	D800	12bit-compressed				0	3880
+Nikon	D800	12bit-uncompressed				0	3880
+Nikon	D800	14bit-compressed				0	15520
+Nikon	D800	14bit-uncompressed				0	15520
+Nikon	D800	7424x4924-14bit-uncompressed				0	15520
+Nikon	D800E	12bit-compressed				0	3880
+Nikon	D800E	12bit-uncompressed				0	3880
+Nikon	D800E	14bit-compressed				0	15520
+Nikon	D800E	14bit-uncompressed				0	15520
+Nikon	D800E	7424x4924-14bit-uncompressed				0	15520
+Nikon	D810	12bit-compressed				150	3880
+Nikon	D810	12bit-uncompressed				150	3880
+Nikon	D810	14bit-compressed				600	15520
+Nikon	D810	14bit-uncompressed				600	15520
+Nikon	D810	sNEF-uncompressed				0	65535
+Nikon	D810A	12bit-compressed				150	3880
+Nikon	D810A	12bit-uncompressed				150	3880
+Nikon	D810A	14bit-compressed				600	15520
+Nikon	D810A	14bit-uncompressed				600	15520
+Nikon	D810A	sNEF-uncompressed				0	65535
+Nikon	D850	12bit-compressed				100	3880
+Nikon	D850	12bit-uncompressed				100	3880
+Nikon	D850	14bit-compressed				400	15520
+Nikon	D850	14bit-uncompressed				400	15520
+Nikon	D90	12bit-compressed				0	3767
+Nikon	Df	12bit-compressed				0	3880
+Nikon	Df	12bit-uncompressed				0	3880
+Nikon	Df	14bit-compressed				0	15520
+Nikon	Df	14bit-uncompressed				0	15520
+Nikon	E2100	chdk				0	4095
+Nikon	E3700	chdk				0	4095
+Nikon	E4500	chdk				0	4095
+Nikon	E5000	12bit-uncompressed				0	4095
+Nikon	E5000	chdk				0	4095
+Nikon	E5400	12bit-uncompressed				0	4095
+Nikon	E5700	12bit-uncompressed				0	4095
+Nikon	E8400	12bit-uncompressed				0	4095
+Nikon	E8800	12bit-uncompressed				0	4095
+Nikon	E900	chdk				0	1008
+Nikon	E950	chdk				0	992
+Nikon	E990	chdk				0	4095
+Nikon	Z 30	12bit-compressed				251	3972
+Nikon	Z 30	14bit-compressed				1008	15892
+Nikon	Z 5	12bit-compressed				251	3880
+Nikon	Z 5	14bit-compressed				1008	15520
+Nikon	Z 50	12bit-compressed				251	3880
+Nikon	Z 50	14bit-compressed				1008	15520
+Nikon	Z 6	12bit-compressed				251	3880
+Nikon	Z 6	12bit-uncompressed				251	3880
+Nikon	Z 6	14bit-compressed				1008	15520
+Nikon	Z 6	14bit-uncompressed				1008	15520
+Nikon	Z 6_2	12bit-compressed				251	3880
+Nikon	Z 6_2	12bit-uncompressed				251	3880
+Nikon	Z 6_2	14bit-compressed				1008	15520
+Nikon	Z 6_2	14bit-uncompressed				1008	15520
+Nikon	Z 7	12bit-compressed				252	3880
+Nikon	Z 7	12bit-uncompressed				252	3880
+Nikon	Z 7	14bit-compressed				1008	15520
+Nikon	Z 7	14bit-uncompressed				1008	15520
+Nikon	Z 7_2	12bit-compressed				251	3880
+Nikon	Z 7_2	12bit-uncompressed				251	3880
+Nikon	Z 7_2	14bit-compressed				1008	15520
+Nikon	Z 7_2	14bit-uncompressed				1008	15520
+Nikon	Z 8	14bit-compressed				1008	15892
+Nikon	Z 9	14bit-compressed				1008	15892
+Nikon	Z f	14bit-compressed				1008	15892
+Nikon	Z fc	12bit-compressed				251	3972
+Nikon	Z fc	12bit-uncompressed				251	3972
+Nikon	Z fc	14bit-compressed				1008	15892
+Nikon	Z fc	14bit-uncompressed				1008	15892
+Nikon	Z50_2	14bit-compressed				1008	15892
+Nikon	Z5_2	14bit-compressed				1008	15892
+Nikon	Z6_3	14bit-compressed				1008	15892
+Nikon	ZR	14bit-compressed				1008	15892
+OLYMPUS CORPORATION	C5060WZ					0	4095
+OLYMPUS CORPORATION	C8080WZ					0	4095
+OLYMPUS CORPORATION	E-1					65	4095
+OLYMPUS CORPORATION	E-M10 Mark III					254	4000
+OLYMPUS CORPORATION	E-M10MarkII					254	4000
+OLYMPUS CORPORATION	E-M10MarkIIIS					254	4000
+OLYMPUS CORPORATION	E-M10MarkIV					254	4000
+OLYMPUS CORPORATION	E-M1MarkII					254	4000
+OLYMPUS CORPORATION	E-M1MarkIII					256	4000
+OLYMPUS CORPORATION	E-M1X					252	4000
+OLYMPUS CORPORATION	E-M5MarkIII					257	4000
+OLYMPUS CORPORATION	E-P7					255	4000
+OLYMPUS CORPORATION	E-PL10					253	4000
+OLYMPUS CORPORATION	E-PL8					254	4095
+OLYMPUS CORPORATION	E-PL9					248	4000
+OLYMPUS CORPORATION	PEN-F					254	4000
+OLYMPUS CORPORATION	TG-4					0	4000
+OLYMPUS CORPORATION	TG-5					256	4000
+OLYMPUS CORPORATION	TG-6					257	4000
+OLYMPUS IMAGING CORP.	C7070WZ					0	4095
+OLYMPUS IMAGING CORP.	E-3					65	4015
+OLYMPUS IMAGING CORP.	E-30					65	4015
+OLYMPUS IMAGING CORP.	E-300					63	4095
+OLYMPUS IMAGING CORP.	E-330					77	4095
+OLYMPUS IMAGING CORP.	E-400					96	4095
+OLYMPUS IMAGING CORP.	E-410					72	3500
+OLYMPUS IMAGING CORP.	E-420					68	4015
+OLYMPUS IMAGING CORP.	E-450					69	4015
+OLYMPUS IMAGING CORP.	E-5					80	4095
+OLYMPUS IMAGING CORP.	E-500					63	3967
+OLYMPUS IMAGING CORP.	E-510					72	3500
+OLYMPUS IMAGING CORP.	E-520					69	4015
+OLYMPUS IMAGING CORP.	E-600					64	4095
+OLYMPUS IMAGING CORP.	E-620					64	4095
+OLYMPUS IMAGING CORP.	E-M1					255	4095
+OLYMPUS IMAGING CORP.	E-M10					254	4000
+OLYMPUS IMAGING CORP.	E-M5					255	4095
+OLYMPUS IMAGING CORP.	E-M5MarkII					254	4000
+OLYMPUS IMAGING CORP.	E-M5MarkII		12800	25599		220	4000
+OLYMPUS IMAGING CORP.	E-M5MarkII		25600	25600		187	4000
+OLYMPUS IMAGING CORP.	E-M5MarkII		3200	6399		235	4000
+OLYMPUS IMAGING CORP.	E-M5MarkII		6400	12799		230	4000
+OLYMPUS IMAGING CORP.	E-M5MarkII		800	3199		249	4000
+OLYMPUS IMAGING CORP.	E-P1					55	4095
+OLYMPUS IMAGING CORP.	E-P2					55	4095
+OLYMPUS IMAGING CORP.	E-P3					0	4095
+OLYMPUS IMAGING CORP.	E-P5					250	4095
+OLYMPUS IMAGING CORP.	E-PL1					55	4095
+OLYMPUS IMAGING CORP.	E-PL2					45	4095
+OLYMPUS IMAGING CORP.	E-PL3					45	4095
+OLYMPUS IMAGING CORP.	E-PL5					0	4095
+OLYMPUS IMAGING CORP.	E-PL6					0	4095
+OLYMPUS IMAGING CORP.	E-PL7					0	4095
+OLYMPUS IMAGING CORP.	E-PM1					45	4095
+OLYMPUS IMAGING CORP.	E-PM2					250	4095
+OLYMPUS IMAGING CORP.	SH-2					200	4000
+OLYMPUS IMAGING CORP.	SP320					0	4095
+OLYMPUS IMAGING CORP.	SP350					0	4095
+OLYMPUS IMAGING CORP.	SP500UZ					0	4095
+OLYMPUS IMAGING CORP.	SP510UZ					0	4095
+OLYMPUS IMAGING CORP.	SP550UZ					0	4095
+OLYMPUS IMAGING CORP.	SP565UZ					0	4095
+OLYMPUS IMAGING CORP.	SP570UZ					0	4095
+OLYMPUS IMAGING CORP.	STYLUS1					200	3900
+OLYMPUS IMAGING CORP.	STYLUS1,1s					200	3900
+OLYMPUS IMAGING CORP.	XZ-1					55	3972
+OLYMPUS IMAGING CORP.	XZ-10					200	3900
+OLYMPUS IMAGING CORP.	XZ-2					200	4092
+OLYMPUS OPTICAL CO.,LTD	C5050Z					0	4095
+OLYMPUS OPTICAL CO.,LTD	E-10					32	1023
+OLYMPUS OPTICAL CO.,LTD	E-20,E-20N,E-20P					0	4092
+OM Digital Solutions	OM-1					254	4000
+OM Digital Solutions	OM-1MarkII					254	4095
+OM Digital Solutions	OM-3					254	4095
+OM Digital Solutions	OM-5					256	4000
+OM Digital Solutions	OM-5MarkII					254	4095
+OM Digital Solutions	PEN					254	4095
+OM Digital Solutions	TG-7					257	4000
+OM System	OM-1					254	4000
+OM System	OM-1 Mark II					254	4095
+OM System	OM-3					254	4095
+OM System	OM-5					256	4000
+OM System	OM-5 Mark II					254	4095
+OM System	PEN					254	4095
+OM System	TG-7					257	4000
+Olympus	C5050Z					0	4095
+Olympus	C5060WZ					0	4095
+Olympus	C7070WZ					0	4095
+Olympus	C770UZ	chdk				0	4095
+Olympus	C8080WZ					0	4095
+Olympus	E-1					65	4095
+Olympus	E-10					32	1023
+Olympus	E-20					0	4092
+Olympus	E-3					65	4015
+Olympus	E-30					65	4015
+Olympus	E-300					63	4095
+Olympus	E-330					77	4095
+Olympus	E-400					96	4095
+Olympus	E-410					72	3500
+Olympus	E-420					68	4015
+Olympus	E-450					69	4015
+Olympus	E-5					80	4095
+Olympus	E-500					63	3967
+Olympus	E-510					72	3500
+Olympus	E-520					69	4015
+Olympus	E-600					64	4095
+Olympus	E-620					64	4095
+Olympus	E-M1					255	4095
+Olympus	E-M10					254	4000
+Olympus	E-M10 Mark II					254	4000
+Olympus	E-M10 Mark III					254	4000
+Olympus	E-M10 Mark IIIs					254	4000
+Olympus	E-M10 Mark IV					254	4000
+Olympus	E-M1MarkII					254	4000
+Olympus	E-M1MarkIII					256	4000
+Olympus	E-M1X					252	4000
+Olympus	E-M5					255	4095
+Olympus	E-M5 Mark II					254	4000
+Olympus	E-M5 Mark II		12800	25599		220	4000
+Olympus	E-M5 Mark II		25600	25600		187	4000
+Olympus	E-M5 Mark II		3200	6399		235	4000
+Olympus	E-M5 Mark II		6400	12799		230	4000
+Olympus	E-M5 Mark II		800	3199		249	4000
+Olympus	E-M5 Mark III					257	4000
+Olympus	E-P1					55	4095
+Olympus	E-P2					55	4095
+Olympus	E-P3					0	4095
+Olympus	E-P5					250	4095
+Olympus	E-P7					255	4000
+Olympus	E-PL1					55	4095
+Olympus	E-PL10					253	4000
+Olympus	E-PL2					45	4095
+Olympus	E-PL3					45	4095
+Olympus	E-PL5					0	4095
+Olympus	E-PL6					0	4095
+Olympus	E-PL7					0	4095
+Olympus	E-PL8					254	4095
+Olympus	E-PL9					248	4000
+Olympus	E-PM1					45	4095
+Olympus	E-PM2					250	4095
+Olympus	PEN-F					254	4000
+Olympus	SH-2					200	4000
+Olympus	SP320					0	4095
+Olympus	SP350					0	4095
+Olympus	SP500UZ					0	4095
+Olympus	SP510UZ					0	4095
+Olympus	SP550UZ					0	4095
+Olympus	SP565UZ					0	4095
+Olympus	SP570UZ					0	4095
+Olympus	Stylus1					200	3900
+Olympus	Stylus1s					200	3900
+Olympus	TG-4					0	4000
+Olympus	TG-5					256	4000
+Olympus	TG-6					257	4000
+Olympus	XZ-1					55	3972
+Olympus	XZ-10					200	3900
+Olympus	XZ-2					200	4092
+PENTAX	PENTAX 645D					0	15767
+PENTAX	PENTAX K-5					512	16383
+PENTAX	PENTAX K-5 II					512	16383
+PENTAX	PENTAX K-5 II s					512	15863
+PENTAX	PENTAX K-7					0	4095
+PENTAX	PENTAX K-m					0	4095
+PENTAX	PENTAX K-r					64	4000
+PENTAX	PENTAX K-x					41	4095
+PENTAX	PENTAX K2000					0	4095
+PENTAX	PENTAX K200D					0	4095
+PENTAX	PENTAX K20D					0	4095
+PENTAX Corporation	PENTAX *ist D					128	4095
+PENTAX Corporation	PENTAX *ist DL					128	4095
+PENTAX Corporation	PENTAX *ist DL2					127	3950
+PENTAX Corporation	PENTAX *ist DS					128	3950
+PENTAX Corporation	PENTAX K100D					127	3950
+PENTAX Corporation	PENTAX K100D Super					127	4095
+PENTAX Corporation	PENTAX K10D					0	4095
+PENTAX Corporation	PENTAX K110D					127	4095
+PENTAX Corporation	PENTAX K200D					0	4095
+PENTAX Corporation	PENTAX K20D					0	4095
+Panasonic	DC-FZ10002					143	4095
+Panasonic	DC-FZ10002	3:2				143	4095
+Panasonic	DC-FZ80					143	4095
+Panasonic	DC-FZ80	4:3				143	4095
+Panasonic	DC-FZ80D					143	4095
+Panasonic	DC-FZ80D	4:3				143	4095
+Panasonic	DC-FZ82					143	4095
+Panasonic	DC-FZ82	4:3				143	4095
+Panasonic	DC-FZ82D					143	4095
+Panasonic	DC-FZ82D	4:3				143	4095
+Panasonic	DC-FZ83					143	4095
+Panasonic	DC-FZ83	4:3				143	4095
+Panasonic	DC-FZ85					143	4095
+Panasonic	DC-FZ85	4:3				143	4095
+Panasonic	DC-FZ85D					143	4095
+Panasonic	DC-FZ85D	4:3				143	4095
+Panasonic	DC-G100					144	4095
+Panasonic	DC-G100	4:3				144	4095
+Panasonic	DC-G100D					144	4095
+Panasonic	DC-G100D	4:3				144	4095
+Panasonic	DC-G110					144	4095
+Panasonic	DC-G110	4:3				144	4095
+Panasonic	DC-G9					148	4095
+Panasonic	DC-G9	4:3				148	4095
+Panasonic	DC-G90					144	4095
+Panasonic	DC-G90	4:3				144	4095
+Panasonic	DC-G91					144	4095
+Panasonic	DC-G91	4:3				144	4095
+Panasonic	DC-G95					144	4095
+Panasonic	DC-G95	4:3				144	4095
+Panasonic	DC-G95D					144	4095
+Panasonic	DC-G95D	4:3				144	4095
+Panasonic	DC-G97					144	4095
+Panasonic	DC-G97	4:3				144	4095
+Panasonic	DC-G99					144	4095
+Panasonic	DC-G99	4:3				144	4095
+Panasonic	DC-G99D					144	4095
+Panasonic	DC-G99D	4:3				144	4095
+Panasonic	DC-G9M2					2048	65535
+Panasonic	DC-G9M2	4:3				2048	65535
+Panasonic	DC-GF10					143	4095
+Panasonic	DC-GF10	4:3				143	4095
+Panasonic	DC-GF9					143	4095
+Panasonic	DC-GF9	4:3				143	4095
+Panasonic	DC-GF90					143	4095
+Panasonic	DC-GF90	4:3				143	4095
+Panasonic	DC-GH5					143	4095
+Panasonic	DC-GH5	4:3				143	4095
+Panasonic	DC-GH5M2					129	4088
+Panasonic	DC-GH5M2	4:3				129	4088
+Panasonic	DC-GH5S					510	8000
+Panasonic	DC-GH5S	16:9				510	8000
+Panasonic	DC-GH5S	1:1				510	8000
+Panasonic	DC-GH5S	3:2				510	8000
+Panasonic	DC-GH5S	4:3				510	8000
+Panasonic	DC-GH6					2048	65535
+Panasonic	DC-GH6	4:3				2048	65535
+Panasonic	DC-GH7					2048	65535
+Panasonic	DC-GH7	4:3				2048	65535
+Panasonic	DC-GX7MK3					143	4095
+Panasonic	DC-GX7MK3	4:3				143	4095
+Panasonic	DC-GX800					143	4095
+Panasonic	DC-GX800	4:3				143	4095
+Panasonic	DC-GX850					143	4095
+Panasonic	DC-GX850	4:3				143	4095
+Panasonic	DC-GX880					143	4095
+Panasonic	DC-GX880	4:3				143	4095
+Panasonic	DC-GX9					143	4095
+Panasonic	DC-GX9	4:3				143	4095
+Panasonic	DC-L10					2048	65535
+Panasonic	DC-L10	16:9				2048	65535
+Panasonic	DC-L10	1:1				2048	65535
+Panasonic	DC-L10	3:2				2048	65535
+Panasonic	DC-L10	4:3				2048	65535
+Panasonic	DC-LX100M2					143	4095
+Panasonic	DC-LX100M2	16:9				144	4095
+Panasonic	DC-LX100M2	1:1				144	4095
+Panasonic	DC-LX100M2	3:2				144	4095
+Panasonic	DC-LX100M2	4:3				143	4095
+Panasonic	DC-S1					511	16380
+Panasonic	DC-S1	3:2				511	16380
+Panasonic	DC-S1H					510	16380
+Panasonic	DC-S1H	3:2				510	16380
+Panasonic	DC-S1M2					512	16380
+Panasonic	DC-S1M2	3:2				512	16380
+Panasonic	DC-S1M2ES					512	16383
+Panasonic	DC-S1M2ES	3:2				512	16383
+Panasonic	DC-S1R					510	16380
+Panasonic	DC-S1R	3:2				510	16380
+Panasonic	DC-S1RM2					512	16380
+Panasonic	DC-S1RM2	3:2				512	16380
+Panasonic	DC-S5					509	16380
+Panasonic	DC-S5	3:2				509	16380
+Panasonic	DC-S5D					509	16380
+Panasonic	DC-S5D	3:2				509	16380
+Panasonic	DC-S5M2					512	16383
+Panasonic	DC-S5M2	3:2				512	16383
+Panasonic	DC-S5M2X					512	16383
+Panasonic	DC-S5M2X	3:2				512	16383
+Panasonic	DC-S9					128	4095
+Panasonic	DC-S9	3:2				128	4095
+Panasonic	DC-TZ200					142	4095
+Panasonic	DC-TZ200	3:2				142	4095
+Panasonic	DC-TZ200D					142	4095
+Panasonic	DC-TZ200D	3:2				142	4095
+Panasonic	DC-TZ202					142	4095
+Panasonic	DC-TZ202	3:2				142	4095
+Panasonic	DC-TZ202D					142	4095
+Panasonic	DC-TZ202D	3:2				142	4095
+Panasonic	DC-TZ220					142	4095
+Panasonic	DC-TZ220	3:2				142	4095
+Panasonic	DC-TZ220D					142	4095
+Panasonic	DC-TZ220D	3:2				142	4095
+Panasonic	DC-TZ90					139	4095
+Panasonic	DC-TZ90	4:3				139	4095
+Panasonic	DC-TZ91					139	4095
+Panasonic	DC-TZ91	4:3				139	4095
+Panasonic	DC-TZ92					139	4095
+Panasonic	DC-TZ92	4:3				139	4095
+Panasonic	DC-TZ93					139	4095
+Panasonic	DC-TZ93	4:3				139	4095
+Panasonic	DC-TZ95					142	4095
+Panasonic	DC-TZ95	4:3				142	4095
+Panasonic	DC-TZ95D					142	4095
+Panasonic	DC-TZ95D	4:3				142	4095
+Panasonic	DC-TZ96					142	4095
+Panasonic	DC-TZ96	4:3				142	4095
+Panasonic	DC-TZ96D					142	4095
+Panasonic	DC-TZ96D	4:3				142	4095
+Panasonic	DC-TZ99					142	4095
+Panasonic	DC-TZ99	4:3				142	4095
+Panasonic	DC-ZS200					142	4095
+Panasonic	DC-ZS200	3:2				142	4095
+Panasonic	DC-ZS200D					142	4095
+Panasonic	DC-ZS200D	3:2				142	4095
+Panasonic	DC-ZS220					142	4095
+Panasonic	DC-ZS220	3:2				142	4095
+Panasonic	DC-ZS220D					142	4095
+Panasonic	DC-ZS220D	3:2				142	4095
+Panasonic	DC-ZS300					142	4095
+Panasonic	DC-ZS300	3:2				142	4095
+Panasonic	DC-ZS70					139	4095
+Panasonic	DC-ZS70	4:3				139	4095
+Panasonic	DC-ZS80					142	4095
+Panasonic	DC-ZS80	4:3				142	4095
+Panasonic	DC-ZS80D					142	4095
+Panasonic	DC-ZS80D	4:3				142	4095
+Panasonic	DC-ZS99					142	4095
+Panasonic	DC-ZS99	4:3				142	4095
+Panasonic	DMC-CM1					142	4095
+Panasonic	DMC-CM1	3:2				142	4095
+Panasonic	DMC-FX150					15	3986
+Panasonic	DMC-FX150	16:9				15	3986
+Panasonic	DMC-FX150	3:2				15	3986
+Panasonic	DMC-FX150	4:3				15	3986
+Panasonic	DMC-FZ100					120	3986
+Panasonic	DMC-FZ100	16:9				120	3986
+Panasonic	DMC-FZ100	1:1				120	3986
+Panasonic	DMC-FZ100	3:2				120	3986
+Panasonic	DMC-FZ100	4:3				120	3986
+Panasonic	DMC-FZ1000					143	4095
+Panasonic	DMC-FZ1000	16:9				143	4095
+Panasonic	DMC-FZ1000	1:1				143	4095
+Panasonic	DMC-FZ1000	3:2				142	4095
+Panasonic	DMC-FZ1000	4:3				143	4095
+Panasonic	DMC-FZ150					145	3956
+Panasonic	DMC-FZ150	16:9				142	3971
+Panasonic	DMC-FZ150	1:1				142	3971
+Panasonic	DMC-FZ150	3:2				143	3971
+Panasonic	DMC-FZ150	4:3				145	3956
+Panasonic	DMC-FZ18					0	3986
+Panasonic	DMC-FZ18	16:9				0	3986
+Panasonic	DMC-FZ18	3:2				0	3986
+Panasonic	DMC-FZ18	4:3				0	3986
+Panasonic	DMC-FZ200					150	3956
+Panasonic	DMC-FZ200	16:9				150	3956
+Panasonic	DMC-FZ200	1:1				150	3956
+Panasonic	DMC-FZ200	3:2				150	3956
+Panasonic	DMC-FZ200	4:3				150	3956
+Panasonic	DMC-FZ2000					142	2095
+Panasonic	DMC-FZ2000	3:2				142	2095
+Panasonic	DMC-FZ2500					142	2095
+Panasonic	DMC-FZ2500	3:2				142	2095
+Panasonic	DMC-FZ28					15	3986
+Panasonic	DMC-FZ28	16:9				15	3986
+Panasonic	DMC-FZ28	3:2				15	3986
+Panasonic	DMC-FZ28	4:3				15	3986
+Panasonic	DMC-FZ30					0	3971
+Panasonic	DMC-FZ30	4:3				0	3971
+Panasonic	DMC-FZ300					143	4095
+Panasonic	DMC-FZ300	4:3				143	4095
+Panasonic	DMC-FZ330					142	4095
+Panasonic	DMC-FZ330	4:3				142	4095
+Panasonic	DMC-FZ35					150	3986
+Panasonic	DMC-FZ35	16:9				143	3986
+Panasonic	DMC-FZ35	3:2				143	3986
+Panasonic	DMC-FZ35	4:3				150	3986
+Panasonic	DMC-FZ38					150	3986
+Panasonic	DMC-FZ38	16:9				143	3986
+Panasonic	DMC-FZ38	3:2				143	3986
+Panasonic	DMC-FZ38	4:3				150	3986
+Panasonic	DMC-FZ40					150	3986
+Panasonic	DMC-FZ40	16:9				143	3986
+Panasonic	DMC-FZ40	1:1				143	3986
+Panasonic	DMC-FZ40	3:2				143	3986
+Panasonic	DMC-FZ40	4:3				150	3986
+Panasonic	DMC-FZ45					150	3986
+Panasonic	DMC-FZ45	16:9				143	3986
+Panasonic	DMC-FZ45	1:1				143	3986
+Panasonic	DMC-FZ45	3:2				143	3986
+Panasonic	DMC-FZ45	4:3				150	3986
+Panasonic	DMC-FZ50					0	3986
+Panasonic	DMC-FZ50	16:9				0	3986
+Panasonic	DMC-FZ50	3:2				0	3986
+Panasonic	DMC-FZ50	4:3				0	3986
+Panasonic	DMC-FZ70					120	3971
+Panasonic	DMC-FZ70	16:9				144	3956
+Panasonic	DMC-FZ70	1:1				144	3956
+Panasonic	DMC-FZ70	3:2				144	3956
+Panasonic	DMC-FZ70	4:3				120	3971
+Panasonic	DMC-FZ72					120	3971
+Panasonic	DMC-FZ72	16:9				144	3956
+Panasonic	DMC-FZ72	1:1				144	3956
+Panasonic	DMC-FZ72	3:2				144	3956
+Panasonic	DMC-FZ72	4:3				120	3971
+Panasonic	DMC-FZ8					0	3986
+Panasonic	DMC-FZ8	4:3				0	3986
+Panasonic	DMC-G1					15	3986
+Panasonic	DMC-G1	16:9				15	3986
+Panasonic	DMC-G1	3:2				15	3986
+Panasonic	DMC-G1	4:3				15	3986
+Panasonic	DMC-G10					0	3900
+Panasonic	DMC-G10	16:9				0	3900
+Panasonic	DMC-G10	1:1				0	3900
+Panasonic	DMC-G10	3:2				0	3900
+Panasonic	DMC-G10	4:3				0	3900
+Panasonic	DMC-G2					0	3900
+Panasonic	DMC-G2	16:9				0	3900
+Panasonic	DMC-G2	1:1				0	3900
+Panasonic	DMC-G2	3:2				0	3900
+Panasonic	DMC-G2	4:3				0	3900
+Panasonic	DMC-G3					143	3956
+Panasonic	DMC-G3	16:9				143	3956
+Panasonic	DMC-G3	1:1				143	3956
+Panasonic	DMC-G3	3:2				143	3956
+Panasonic	DMC-G3	4:3				143	3956
+Panasonic	DMC-G5					150	3956
+Panasonic	DMC-G5	16:9				150	3956
+Panasonic	DMC-G5	1:1				150	3956
+Panasonic	DMC-G5	3:2				150	3956
+Panasonic	DMC-G5	4:3				150	3956
+Panasonic	DMC-G6					142	3956
+Panasonic	DMC-G6	16:9				142	3956
+Panasonic	DMC-G6	1:1				142	3956
+Panasonic	DMC-G6	3:2				142	3956
+Panasonic	DMC-G6	4:3				142	3956
+Panasonic	DMC-G7					143	4095
+Panasonic	DMC-G7	16:9				143	4095
+Panasonic	DMC-G7	1:1				143	4095
+Panasonic	DMC-G7	3:2				143	4095
+Panasonic	DMC-G7	4:3				143	4095
+Panasonic	DMC-G70					143	4095
+Panasonic	DMC-G70	16:9				143	4095
+Panasonic	DMC-G70	1:1				143	4095
+Panasonic	DMC-G70	3:2				143	4095
+Panasonic	DMC-G70	4:3				143	4095
+Panasonic	DMC-G8					143	4095
+Panasonic	DMC-G8	4:3				143	4095
+Panasonic	DMC-G80					143	4095
+Panasonic	DMC-G80	4:3				143	4095
+Panasonic	DMC-G81					143	4095
+Panasonic	DMC-G81	4:3				143	4095
+Panasonic	DMC-G85					143	4095
+Panasonic	DMC-G85	4:3				143	4095
+Panasonic	DMC-GF1					15	3986
+Panasonic	DMC-GF1	16:9				15	3986
+Panasonic	DMC-GF1	1:1				15	3986
+Panasonic	DMC-GF1	3:2				15	3986
+Panasonic	DMC-GF1	4:3				15	3986
+Panasonic	DMC-GF2					150	3956
+Panasonic	DMC-GF2	16:9				150	3956
+Panasonic	DMC-GF2	1:1				150	3956
+Panasonic	DMC-GF2	3:2				150	3956
+Panasonic	DMC-GF2	4:3				150	3956
+Panasonic	DMC-GF3					150	3956
+Panasonic	DMC-GF3	16:9				150	3956
+Panasonic	DMC-GF3	1:1				150	3956
+Panasonic	DMC-GF3	3:2				150	3956
+Panasonic	DMC-GF3	4:3				150	3956
+Panasonic	DMC-GF5					150	3956
+Panasonic	DMC-GF5	16:9				150	3956
+Panasonic	DMC-GF5	1:1				150	3956
+Panasonic	DMC-GF5	3:2				150	3956
+Panasonic	DMC-GF5	4:3				150	3956
+Panasonic	DMC-GF6					150	3956
+Panasonic	DMC-GF6	16:9				150	3956
+Panasonic	DMC-GF6	1:1				150	3956
+Panasonic	DMC-GF6	3:2				150	3956
+Panasonic	DMC-GF6	4:3				150	3956
+Panasonic	DMC-GF7					143	4095
+Panasonic	DMC-GF7	16:9				143	4095
+Panasonic	DMC-GF7	1:1				143	4095
+Panasonic	DMC-GF7	3:2				143	4095
+Panasonic	DMC-GF7	4:3				143	4095
+Panasonic	DMC-GF8					143	4095
+Panasonic	DMC-GF8	16:9				143	4095
+Panasonic	DMC-GF8	1:1				143	4095
+Panasonic	DMC-GF8	3:2				143	4095
+Panasonic	DMC-GF8	4:3				143	4095
+Panasonic	DMC-GH1					0	3986
+Panasonic	DMC-GH1	16:9				0	3986
+Panasonic	DMC-GH1	3:2				0	3986
+Panasonic	DMC-GH1	4:3				0	3986
+Panasonic	DMC-GH2					15	3800
+Panasonic	DMC-GH2	16:9				15	3800
+Panasonic	DMC-GH2	1:1				15	3800
+Panasonic	DMC-GH2	3:2				15	3800
+Panasonic	DMC-GH2	4:3				15	3800
+Panasonic	DMC-GH3					155	3956
+Panasonic	DMC-GH3		6400			165	3941
+Panasonic	DMC-GH3	16:9				155	3956
+Panasonic	DMC-GH3	16:9	6400			165	3941
+Panasonic	DMC-GH3	1:1				155	3956
+Panasonic	DMC-GH3	1:1	6400			165	3941
+Panasonic	DMC-GH3	3:2				155	3956
+Panasonic	DMC-GH3	3:2	6400			165	3941
+Panasonic	DMC-GH3	4:3				155	3956
+Panasonic	DMC-GH3	4:3	6400			165	3941
+Panasonic	DMC-GH4					142	4095
+Panasonic	DMC-GH4	16:9				142	4095
+Panasonic	DMC-GH4	1:1				142	4095
+Panasonic	DMC-GH4	3:2				142	4095
+Panasonic	DMC-GH4	4:3				142	4095
+Panasonic	DMC-GM1					143	3971
+Panasonic	DMC-GM1	16:9				143	3971
+Panasonic	DMC-GM1	1:1				143	3971
+Panasonic	DMC-GM1	3:2				143	3971
+Panasonic	DMC-GM1	4:3				143	3971
+Panasonic	DMC-GM1S					143	3971
+Panasonic	DMC-GM1S	16:9				143	3971
+Panasonic	DMC-GM1S	1:1				143	3971
+Panasonic	DMC-GM1S	3:2				143	3971
+Panasonic	DMC-GM1S	4:3				143	3971
+Panasonic	DMC-GM5					143	4095
+Panasonic	DMC-GM5	16:9				143	4095
+Panasonic	DMC-GM5	1:1				143	4095
+Panasonic	DMC-GM5	3:2				143	4095
+Panasonic	DMC-GM5	4:3				143	4095
+Panasonic	DMC-GX1					150	3956
+Panasonic	DMC-GX1	16:9				150	3956
+Panasonic	DMC-GX1	1:1				150	3956
+Panasonic	DMC-GX1	3:2				150	3956
+Panasonic	DMC-GX1	4:3				150	3956
+Panasonic	DMC-GX7					150	3956
+Panasonic	DMC-GX7	16:9				150	3956
+Panasonic	DMC-GX7	1:1				150	3956
+Panasonic	DMC-GX7	3:2				150	3956
+Panasonic	DMC-GX7	4:3				150	3956
+Panasonic	DMC-GX7MK2					143	4095
+Panasonic	DMC-GX7MK2	4:3				143	4095
+Panasonic	DMC-GX8					143	4095
+Panasonic	DMC-GX8	4:3				143	4095
+Panasonic	DMC-GX80					143	4095
+Panasonic	DMC-GX80	4:3				143	4095
+Panasonic	DMC-GX85					143	4095
+Panasonic	DMC-GX85	4:3				143	4095
+Panasonic	DMC-L1					0	3986
+Panasonic	DMC-L1	4:3				0	3986
+Panasonic	DMC-L10					0	3986
+Panasonic	DMC-L10	4:3				0	3986
+Panasonic	DMC-LF1					143	3971
+Panasonic	DMC-LF1	16:9				143	3956
+Panasonic	DMC-LF1	1:1				142	3971
+Panasonic	DMC-LF1	3:2				143	3971
+Panasonic	DMC-LF1	4:3				143	3956
+Panasonic	DMC-LX1					0	3971
+Panasonic	DMC-LX1	16:9				0	3971
+Panasonic	DMC-LX10					143	4095
+Panasonic	DMC-LX10				100	142	3400
+Panasonic	DMC-LX10				125	142	4095
+Panasonic	DMC-LX10				1250 1600	145	4095
+Panasonic	DMC-LX10				12800	166	4095
+Panasonic	DMC-LX10				25600	167	4095
+Panasonic	DMC-LX10				3200	149	4095
+Panasonic	DMC-LX10				640 800	144	4095
+Panasonic	DMC-LX10				6400	154	4095
+Panasonic	DMC-LX10				80	142	2095
+Panasonic	DMC-LX10	3:2				143	4095
+Panasonic	DMC-LX10	3:2			100	142	3400
+Panasonic	DMC-LX10	3:2			125	142	4095
+Panasonic	DMC-LX10	3:2			1250 1600	145	4095
+Panasonic	DMC-LX10	3:2			12800	166	4095
+Panasonic	DMC-LX10	3:2			25600	167	4095
+Panasonic	DMC-LX10	3:2			3200	149	4095
+Panasonic	DMC-LX10	3:2			640 800	144	4095
+Panasonic	DMC-LX10	3:2			6400	154	4095
+Panasonic	DMC-LX10	3:2			80	142	2095
+Panasonic	DMC-LX100					143	4095
+Panasonic	DMC-LX100	16:9				143	4095
+Panasonic	DMC-LX100	1:1				143	4095
+Panasonic	DMC-LX100	3:2				143	4095
+Panasonic	DMC-LX100	4:3				143	4095
+Panasonic	DMC-LX15					143	4095
+Panasonic	DMC-LX15				100	142	3400
+Panasonic	DMC-LX15				125	142	4095
+Panasonic	DMC-LX15				1250 1600	145	4095
+Panasonic	DMC-LX15				12800	166	4095
+Panasonic	DMC-LX15				25600	167	4095
+Panasonic	DMC-LX15				3200	149	4095
+Panasonic	DMC-LX15				640 800	144	4095
+Panasonic	DMC-LX15				6400	154	4095
+Panasonic	DMC-LX15				80	142	2095
+Panasonic	DMC-LX15	3:2				143	4095
+Panasonic	DMC-LX15	3:2			100	142	3400
+Panasonic	DMC-LX15	3:2			125	142	4095
+Panasonic	DMC-LX15	3:2			1250 1600	145	4095
+Panasonic	DMC-LX15	3:2			12800	166	4095
+Panasonic	DMC-LX15	3:2			25600	167	4095
+Panasonic	DMC-LX15	3:2			3200	149	4095
+Panasonic	DMC-LX15	3:2			640 800	144	4095
+Panasonic	DMC-LX15	3:2			6400	154	4095
+Panasonic	DMC-LX15	3:2			80	142	2095
+Panasonic	DMC-LX2					0	3986
+Panasonic	DMC-LX2	16:9				0	3986
+Panasonic	DMC-LX3					15	3971
+Panasonic	DMC-LX3	16:9				15	3971
+Panasonic	DMC-LX3	1:1				15	3971
+Panasonic	DMC-LX3	3:2				15	3971
+Panasonic	DMC-LX3	4:3				15	3971
+Panasonic	DMC-LX5					150	3986
+Panasonic	DMC-LX5	16:9				150	3986
+Panasonic	DMC-LX5	1:1				150	3986
+Panasonic	DMC-LX5	3:2				150	3986
+Panasonic	DMC-LX5	4:3				150	3986
+Panasonic	DMC-LX7					150	3971
+Panasonic	DMC-LX7	16:9				150	3971
+Panasonic	DMC-LX7	1:1				150	3971
+Panasonic	DMC-LX7	3:2				150	3971
+Panasonic	DMC-LX7	4:3				150	3971
+Panasonic	DMC-LX9					143	4095
+Panasonic	DMC-LX9				100	142	3400
+Panasonic	DMC-LX9				125	142	4095
+Panasonic	DMC-LX9				1250 1600	145	4095
+Panasonic	DMC-LX9				12800	166	4095
+Panasonic	DMC-LX9				25600	167	4095
+Panasonic	DMC-LX9				3200	149	4095
+Panasonic	DMC-LX9				640 800	144	4095
+Panasonic	DMC-LX9				6400	154	4095
+Panasonic	DMC-LX9				80	142	2095
+Panasonic	DMC-LX9	3:2				143	4095
+Panasonic	DMC-LX9	3:2			100	142	3400
+Panasonic	DMC-LX9	3:2			125	142	4095
+Panasonic	DMC-LX9	3:2			1250 1600	145	4095
+Panasonic	DMC-LX9	3:2			12800	166	4095
+Panasonic	DMC-LX9	3:2			25600	167	4095
+Panasonic	DMC-LX9	3:2			3200	149	4095
+Panasonic	DMC-LX9	3:2			640 800	144	4095
+Panasonic	DMC-LX9	3:2			6400	154	4095
+Panasonic	DMC-LX9	3:2			80	142	2095
+Panasonic	DMC-TX1					142	4095
+Panasonic	DMC-TX1	3:2				142	4095
+Panasonic	DMC-TZ100					142	4095
+Panasonic	DMC-TZ100	3:2				142	4095
+Panasonic	DMC-TZ101					142	4095
+Panasonic	DMC-TZ101	3:2				142	4095
+Panasonic	DMC-TZ110					142	4095
+Panasonic	DMC-TZ110	3:2				142	4095
+Panasonic	DMC-TZ60					145	3971
+Panasonic	DMC-TZ60	16:9				145	3956
+Panasonic	DMC-TZ60	1:1				145	3956
+Panasonic	DMC-TZ60	3:2				145	3971
+Panasonic	DMC-TZ60	4:3				145	3956
+Panasonic	DMC-TZ61					145	3971
+Panasonic	DMC-TZ61	16:9				146	3971
+Panasonic	DMC-TZ61	1:1				146	3971
+Panasonic	DMC-TZ61	3:2				146	3971
+Panasonic	DMC-TZ61	4:3				146	3971
+Panasonic	DMC-TZ70					143	3971
+Panasonic	DMC-TZ70	16:9				143	3971
+Panasonic	DMC-TZ70	1:1				143	3971
+Panasonic	DMC-TZ70	3:2				142	3971
+Panasonic	DMC-TZ70	4:3				143	3971
+Panasonic	DMC-TZ71					143	3971
+Panasonic	DMC-TZ71	16:9				143	3971
+Panasonic	DMC-TZ71	1:1				143	3971
+Panasonic	DMC-TZ71	3:2				142	3971
+Panasonic	DMC-TZ71	4:3				143	3971
+Panasonic	DMC-TZ80					142	4095
+Panasonic	DMC-TZ80	4:3				142	4095
+Panasonic	DMC-TZ81					142	4095
+Panasonic	DMC-TZ81	4:3				142	4095
+Panasonic	DMC-TZ85					142	4095
+Panasonic	DMC-TZ85	4:3				142	4095
+Panasonic	DMC-ZS100					142	4095
+Panasonic	DMC-ZS100	3:2				142	4095
+Panasonic	DMC-ZS110					142	4095
+Panasonic	DMC-ZS110	3:2				142	4095
+Panasonic	DMC-ZS40					145	3971
+Panasonic	DMC-ZS40	16:9				146	3971
+Panasonic	DMC-ZS40	1:1				146	3971
+Panasonic	DMC-ZS40	3:2				146	3971
+Panasonic	DMC-ZS40	4:3				146	3971
+Panasonic	DMC-ZS50					143	3971
+Panasonic	DMC-ZS50	16:9				143	3971
+Panasonic	DMC-ZS50	1:1				143	3971
+Panasonic	DMC-ZS50	3:2				142	3971
+Panasonic	DMC-ZS50	4:3				143	3971
+Panasonic	DMC-ZS60					142	4095
+Panasonic	DMC-ZS60	4:3				142	4095
+Paralenz	Dive Camera	chdk				1024	16383
+Pentax	*ist D					128	4095
+Pentax	*ist DL					128	4095
+Pentax	*ist DL2					127	3950
+Pentax	*ist DS					128	3950
+Pentax	645D					0	15767
+Pentax	645Z					1	16316
+Pentax	K-1					64	16316
+Pentax	K-1 Mark II					64	16316
+Pentax	K-3					1	15868
+Pentax	K-3 II					1	15865
+Pentax	K-3 Mark III					64	16315
+Pentax	K-3 Mark III Monochrome					64	16315
+Pentax	K-5					512	16383
+Pentax	K-5 II					512	16383
+Pentax	K-5 II s					512	15863
+Pentax	K-7					0	4095
+Pentax	K-70					64	16319
+Pentax	K-S1					32	4062
+Pentax	K-S2					0	3839
+Pentax	K-m					0	4095
+Pentax	K-r					64	4000
+Pentax	K-x					41	4095
+Pentax	K100D					127	3950
+Pentax	K100D Super					127	4095
+Pentax	K10D					0	4095
+Pentax	K110D					127	4095
+Pentax	K2000					0	4095
+Pentax	K200D					0	4095
+Pentax	K20D					0	4095
+Pentax	KF					64	16319
+Pentax	KP					128	16254
+Pentax	Optio 750Z	chdk				0	4095
+Pentax	Optio S	chdk-a				0	255
+Pentax	Optio S	chdk-b				0	3968
+Phase One	IQ140					0	16383
+Phase One	IQ150					0	16383
+Phase One	IQ180					0	16383
+Phase One	IQ250					0	16383
+Phase One	P20+					0	16383
+Phase One	P25+					0	16383
+Phase One	P30					0	16383
+Phase One	P40+					0	16383
+Phase One	P45					0	16383
+Phase One	P65+					0	16383
+Phase One A/S	IQ140					0	16383
+Phase One A/S	IQ150					0	16383
+Phase One A/S	IQ180					0	16383
+Phase One A/S	IQ250					0	16383
+Phase One A/S	P20+					0	16383
+Phase One A/S	P25+					0	16383
+Phase One A/S	P30					0	16383
+Phase One A/S	P40+					0	16383
+Phase One A/S	P45					0	16383
+Phase One A/S	P45+					0	16383
+Phase One A/S	P65+					0	16383
+Pixelink	A782	chdk				0	65535
+RICOH IMAGING COMPANY, LTD.	PENTAX 645Z					1	16316
+RICOH IMAGING COMPANY, LTD.	PENTAX K-1					64	16316
+RICOH IMAGING COMPANY, LTD.	PENTAX K-1 Mark II					64	16316
+RICOH IMAGING COMPANY, LTD.	PENTAX K-3					1	15868
+RICOH IMAGING COMPANY, LTD.	PENTAX K-3 II					1	15865
+RICOH IMAGING COMPANY, LTD.	PENTAX K-3 Mark III					64	16315
+RICOH IMAGING COMPANY, LTD.	PENTAX K-3 Mark III Monochrome					64	16315
+RICOH IMAGING COMPANY, LTD.	PENTAX K-70					64	16319
+RICOH IMAGING COMPANY, LTD.	PENTAX K-S1					32	4062
+RICOH IMAGING COMPANY, LTD.	PENTAX K-S2					0	3839
+RICOH IMAGING COMPANY, LTD.	PENTAX KF					64	16319
+RICOH IMAGING COMPANY, LTD.	PENTAX KP					128	16254
+RoverShot	3320AF	chdk				0	65535
+SAMSUNG	EK-GN120					0	4095
+SAMSUNG	EX1					0	15600
+SAMSUNG	EX2F					0	4000
+SAMSUNG	NX mini					0	4000
+SAMSUNG	NX1					128	16100
+SAMSUNG	NX1		51200			1024	16100
+SAMSUNG	NX1		8000	25600		512	16100
+SAMSUNG	NX1	12bit				32	4000
+SAMSUNG	NX1	12bit	8000			128	4000
+SAMSUNG	NX10					0	4095
+SAMSUNG	NX100					0	4095
+SAMSUNG	NX1000					0	4095
+SAMSUNG	NX11					0	4095
+SAMSUNG	NX1100					0	4095
+SAMSUNG	NX20					0	4095
+SAMSUNG	NX200					0	4095
+SAMSUNG	NX2000					0	4095
+SAMSUNG	NX210					0	4095
+SAMSUNG	NX30					0	4095
+SAMSUNG	NX300					0	4095
+SAMSUNG	NX3000					0	4095
+SAMSUNG	NX300M					0	4095
+SAMSUNG	NX3300					0	4095
+SAMSUNG	NX5					0	4095
+SAMSUNG	NX500					128	16100
+SAMSUNG	NX500		51200			1024	16100
+SAMSUNG	NX500		8000	25600		512	16100
+SAMSUNG	NX500	12bit				32	4000
+SAMSUNG	NX500	12bit	8000			128	4000
+SAMSUNG	WB2000					0	4000
+SAMSUNG TECHWIN	GX-1L					127	3950
+SAMSUNG TECHWIN	GX-1S					127	3950
+SEIKO EPSON CORP.	R-D1					63	4095
+SEIKO EPSON CORP.	R-D1s					62	4095
+SEIKO EPSON CORP.	R-D1x					65	4095
+SONY	DSC-F828					495	16383
+SONY	DSC-HX95					800	16300
+SONY	DSC-HX99					800	16300
+SONY	DSC-R1					511	16383
+SONY	DSC-RX0					800	16620
+SONY	DSC-RX0M2					800	16300
+SONY	DSC-RX1					520	16628
+SONY	DSC-RX10					800	16300
+SONY	DSC-RX100					800	16620
+SONY	DSC-RX100M2					800	16300
+SONY	DSC-RX100M3					800	16300
+SONY	DSC-RX100M4					800	16300
+SONY	DSC-RX100M5					800	16300
+SONY	DSC-RX100M5A					800	16300
+SONY	DSC-RX100M6					800	16300
+SONY	DSC-RX100M7					800	16300
+SONY	DSC-RX100M7A					800	16300
+SONY	DSC-RX10M2					800	16300
+SONY	DSC-RX10M3					800	16300
+SONY	DSC-RX10M4					800	16380
+SONY	DSC-RX10M5					800	16380
+SONY	DSC-RX1R					512	16596
+SONY	DSC-RX1R				50	512	33192
+SONY	DSC-RX1RM2					512	16300
+SONY	DSC-RX1RM3					512	16383
+SONY	DSLR-A100					0	4095
+SONY	DSLR-A200					0	4095
+SONY	DSLR-A230					0	4095
+SONY	DSLR-A290					0	4095
+SONY	DSLR-A300					0	4095
+SONY	DSLR-A330					0	4095
+SONY	DSLR-A350					0	4095
+SONY	DSLR-A380					0	4095
+SONY	DSLR-A390					0	4095
+SONY	DSLR-A450					500	16000
+SONY	DSLR-A500					500	16600
+SONY	DSLR-A550					512	16372
+SONY	DSLR-A560					476	16596
+SONY	DSLR-A580					520	16596
+SONY	DSLR-A700					520	16383
+SONY	DSLR-A850					500	15000
+SONY	DSLR-A900					520	16383
+SONY	ILCA-68					512	16300
+SONY	ILCA-77M2					512	16300
+SONY	ILCA-99M2					512	16300
+SONY	ILCE-1					512	16383
+SONY	ILCE-1M2					512	16383
+SONY	ILCE-3000					512	16300
+SONY	ILCE-3500					512	16300
+SONY	ILCE-5000					512	16300
+SONY	ILCE-5100					512	16300
+SONY	ILCE-6000					512	16300
+SONY	ILCE-6100					512	16300
+SONY	ILCE-6100A					512	16300
+SONY	ILCE-6300					512	16300
+SONY	ILCE-6400					512	16383
+SONY	ILCE-6400A					512	16383
+SONY	ILCE-6500					512	16300
+SONY	ILCE-6600					512	16383
+SONY	ILCE-6700					512	16383
+SONY	ILCE-7					512	16300
+SONY	ILCE-7C					512	16383
+SONY	ILCE-7CM2					512	16383
+SONY	ILCE-7CR					512	16383
+SONY	ILCE-7M2					512	16300
+SONY	ILCE-7M3					512	16300
+SONY	ILCE-7M4					512	16383
+SONY	ILCE-7M5					512	16383
+SONY	ILCE-7R					512	16300
+SONY	ILCE-7RM2					512	16300
+SONY	ILCE-7RM3					512	16383
+SONY	ILCE-7RM3A					512	16383
+SONY	ILCE-7RM4					512	16383
+SONY	ILCE-7RM4A					512	16383
+SONY	ILCE-7RM5					512	16383
+SONY	ILCE-7RM6					512	16383
+SONY	ILCE-7S					512	16300
+SONY	ILCE-7SM2					512	16300
+SONY	ILCE-7SM3					512	16383
+SONY	ILCE-9					512	16383
+SONY	ILCE-9M2					512	16380
+SONY	ILCE-9M3					512	16383
+SONY	ILCE-QX1					512	16300
+SONY	ILME-FX2					512	16383
+SONY	ILME-FX3					512	16383
+SONY	ILME-FX30					512	16380
+SONY	ILME-FX3A					512	16383
+SONY	NEX-3					520	16360
+SONY	NEX-3N					520	16596
+SONY	NEX-5					520	16383
+SONY	NEX-5N					520	16596
+SONY	NEX-5R					520	16596
+SONY	NEX-5T					512	16300
+SONY	NEX-6					520	16596
+SONY	NEX-7					512	16300
+SONY	NEX-C3					520	16596
+SONY	NEX-F3					520	16360
+SONY	SLT-A33					520	16596
+SONY	SLT-A35					545	16596
+SONY	SLT-A37					520	16500
+SONY	SLT-A55					520	16596
+SONY	SLT-A55V					520	16596
+SONY	SLT-A57					512	16596
+SONY	SLT-A58					520	16596
+SONY	SLT-A65					520	16596
+SONY	SLT-A65V					520	16596
+SONY	SLT-A77					520	16596
+SONY	SLT-A77V					520	16596
+SONY	SLT-A99					520	16596
+SONY	SLT-A99V					520	16596
+SONY	UMC-R10C					512	16300
+SONY	ZV-1					800	16300
+SONY	ZV-1A					800	16300
+SONY	ZV-1M2					800	16300
+SONY	ZV-E1					512	16383
+SONY	ZV-E10					512	16383
+SONY	ZV-E10M2					512	16380
+ST Micro	STV680 VGA	chdk				0	255
+Samsung	EK-GN120					0	4095
+Samsung	EX1					0	15600
+Samsung	EX2F					0	4000
+Samsung	GX-1L					127	3950
+Samsung	GX-1S					127	3950
+Samsung	NX mini					0	4000
+Samsung	NX1					128	16100
+Samsung	NX1		51200			1024	16100
+Samsung	NX1		8000	25600		512	16100
+Samsung	NX1	12bit				32	4000
+Samsung	NX1	12bit	8000			128	4000
+Samsung	NX10					0	4095
+Samsung	NX100					0	4095
+Samsung	NX1000					0	4095
+Samsung	NX11					0	4095
+Samsung	NX1100					0	4095
+Samsung	NX20					0	4095
+Samsung	NX200					0	4095
+Samsung	NX2000					0	4095
+Samsung	NX210					0	4095
+Samsung	NX30					0	4095
+Samsung	NX300					0	4095
+Samsung	NX3000					0	4095
+Samsung	NX3300					0	4095
+Samsung	NX5					0	4095
+Samsung	NX500					128	16100
+Samsung	NX500		51200			1024	16100
+Samsung	NX500		8000	25600		512	16100
+Samsung	NX500	12bit				32	4000
+Samsung	NX500	12bit	8000			128	4000
+Samsung	S85	chdk-a				0	65535
+Samsung	S85	chdk-b				0	65535
+Samsung	WB2000					0	4000
+Sinar	Hy6	dng				0	0
+Sinar	eVolution 75					0	16383
+Sinar AG	Sinarback eVolution 75, Sinar p3 / f3					0	16383
+Sinar Photography AG	Sinar Hy6/ Sinarback eXact	dng				0	0
+Sjcam	SJ6 LEGEND	chdk-b				0	4095
+Sjcam	SJ6 LEGEND	chdk-c				0	4095
+Sjcam	Sjcam SJ6 LEGEND	chdk-b				0	4095
+Sjcam	Sjcam SJ6 LEGEND	chdk-c				0	4095
+Sony	DSC-F828					495	16383
+Sony	DSC-HX99					800	16300
+Sony	DSC-R1					511	16383
+Sony	DSC-RX0					800	16620
+Sony	DSC-RX0M2					800	16300
+Sony	DSC-RX1					520	16628
+Sony	DSC-RX10					800	16300
+Sony	DSC-RX100					800	16620
+Sony	DSC-RX100M2					800	16300
+Sony	DSC-RX100M3					800	16300
+Sony	DSC-RX100M4					800	16300
+Sony	DSC-RX100M5					800	16300
+Sony	DSC-RX100M5A					800	16300
+Sony	DSC-RX100M6					800	16300
+Sony	DSC-RX100M7					800	16300
+Sony	DSC-RX10M2					800	16300
+Sony	DSC-RX10M3					800	16300
+Sony	DSC-RX10M4					800	16380
+Sony	DSC-RX10M5					800	16380
+Sony	DSC-RX1R					512	16596
+Sony	DSC-RX1R				50	512	33192
+Sony	DSC-RX1RM2					512	16300
+Sony	DSC-RX1RM3					512	16383
+Sony	DSLR-A100					0	4095
+Sony	DSLR-A200					0	4095
+Sony	DSLR-A230					0	4095
+Sony	DSLR-A290					0	4095
+Sony	DSLR-A300					0	4095
+Sony	DSLR-A330					0	4095
+Sony	DSLR-A350					0	4095
+Sony	DSLR-A380					0	4095
+Sony	DSLR-A390					0	4095
+Sony	DSLR-A450					500	16000
+Sony	DSLR-A500					500	16600
+Sony	DSLR-A550					512	16372
+Sony	DSLR-A560					476	16596
+Sony	DSLR-A580					520	16596
+Sony	DSLR-A700					520	16383
+Sony	DSLR-A850					500	15000
+Sony	DSLR-A900					520	16383
+Sony	ILCA-68					512	16300
+Sony	ILCA-77M2					512	16300
+Sony	ILCA-99M2					512	16300
+Sony	ILCE-1					512	16383
+Sony	ILCE-1M2					512	16383
+Sony	ILCE-3000					512	16300
+Sony	ILCE-3500					512	16300
+Sony	ILCE-5000					512	16300
+Sony	ILCE-5100					512	16300
+Sony	ILCE-6000					512	16300
+Sony	ILCE-6100					512	16300
+Sony	ILCE-6300					512	16300
+Sony	ILCE-6400					512	16383
+Sony	ILCE-6500					512	16300
+Sony	ILCE-6600					512	16383
+Sony	ILCE-6700					512	16383
+Sony	ILCE-7					512	16300
+Sony	ILCE-7C					512	16383
+Sony	ILCE-7CM2					512	16383
+Sony	ILCE-7CR					512	16383
+Sony	ILCE-7M2					512	16300
+Sony	ILCE-7M3					512	16300
+Sony	ILCE-7M4					512	16383
+Sony	ILCE-7M5					512	16383
+Sony	ILCE-7R					512	16300
+Sony	ILCE-7RM2					512	16300
+Sony	ILCE-7RM3					512	16383
+Sony	ILCE-7RM4					512	16383
+Sony	ILCE-7RM5					512	16383
+Sony	ILCE-7RM6					512	16383
+Sony	ILCE-7S					512	16300
+Sony	ILCE-7SM2					512	16300
+Sony	ILCE-7SM3					512	16383
+Sony	ILCE-9					512	16383
+Sony	ILCE-9M2					512	16380
+Sony	ILCE-9M3					512	16383
+Sony	ILCE-QX1					512	16300
+Sony	ILME-FX2					512	16383
+Sony	ILME-FX3					512	16383
+Sony	ILME-FX30					512	16380
+Sony	NEX-3					520	16360
+Sony	NEX-3N					520	16596
+Sony	NEX-5					520	16383
+Sony	NEX-5N					520	16596
+Sony	NEX-5R					520	16596
+Sony	NEX-5T					512	16300
+Sony	NEX-6					520	16596
+Sony	NEX-7					512	16300
+Sony	NEX-C3					520	16596
+Sony	NEX-F3					520	16360
+Sony	SLT-A33					520	16596
+Sony	SLT-A35					545	16596
+Sony	SLT-A37					520	16500
+Sony	SLT-A55					520	16596
+Sony	SLT-A57					512	16596
+Sony	SLT-A58					520	16596
+Sony	SLT-A65					520	16596
+Sony	SLT-A77					520	16596
+Sony	SLT-A99					520	16596
+Sony	XCD-SX910CR	chdk-a				0	255
+Sony	XCD-SX910CR	chdk-b				0	65535
+Sony	ZV-1					800	16300
+Sony	ZV-1M2					800	16300
+Sony	ZV-E1					512	16383
+Sony	ZV-E10					512	16383
+Sony	ZV-E10M2					512	16380

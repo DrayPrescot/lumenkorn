@@ -32,9 +32,8 @@ use std::sync::{Arc, Mutex};
 // WGSL-Konstanten vorangestellt (`gpu::shader_source`) – so gibt es jede nur hier.
 
 /// Grundabstimmung von RAWs (wie das Standardprofil in Lightroom): Kontrast,
-/// Sättigung und Dynamik, wenn die Regler auf 0 stehen. Abgeglichen mit den
-/// eingebetteten Kamera-JPEGs von 14 Sony-ARWs, zusammen mit der Basiskurve:
-/// Farbigkeit ~98 %, Mitteltonkontrast ~99 % der Kamera (vorher 75 % bzw. 71 %).
+/// Sättigung und Dynamik, wenn die Regler auf 0 stehen – zusätzlich zur
+/// Tonwertabbildung von darktable (sigmoid), die für sich flau wirkt.
 pub(crate) const RAW_BASE_CONTRAST: f32 = 0.38;
 pub(crate) const RAW_BASE_SATURATION: f32 = 0.15;
 pub(crate) const RAW_BASE_VIBRANCE: f32 = 0.15;
@@ -69,20 +68,9 @@ pub(crate) fn base_look(p: &DevelopParams, raw: bool) -> (f32, f32, f32) {
     )
 }
 
-// Basiskurve der RAWs: `t(x) = x (1 + x/W²) / (1 + x)` mit
-// `x = ((v − SCHWARZ) · GAIN)^POTENZ`. Abgeglichen mit den eingebetteten
-// Kamera-JPEGs von 14 Sony-ARWs (Helligkeitsverteilung je Blendenstufe):
-// Mitten wie bei der Kamera, tiefe Schatten dunkler, Sensor-Weiß bei ~98 % –
-// eine Blendenstufe darüber bleibt Reserve für die Lichter-Rückholung.
-
-/// Vorverstärkung vor der Basiskurve
-pub(crate) const RAW_BASE_GAIN: f32 = 3.9;
-/// Steilheit der Basiskurve (Kamera-JPEGs sind in den Mitten steiler)
-pub(crate) const RAW_BASE_POWER: f32 = 1.35;
-/// Schwarzpunkt (Szenenwert, der schwarz wird) – tiefere Schatten
-pub(crate) const RAW_BLACK: f32 = 0.0006;
-/// Wert nach Vorverstärkung und Potenz, der auf Weiß abgebildet wird
-pub(crate) const RAW_WHITE: f32 = 8.0;
+/// Dynamik: Breite des Übergangs zur Schonung der Hauttöne (Abstand der
+/// Kanäle in Kodierungseinheiten)
+pub(crate) const SKIN_EDGE: f32 = 0.02;
 /// Beginn der weichen Schulter von [`soft_clip`].
 pub(crate) const SOFT_CLIP_KNEE: f32 = 0.8;
 /// Stärke von Lichter/Tiefen bei ±100: Exponent der Anhebung bzw. Absenkung.
@@ -419,7 +407,7 @@ pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -
             px[2] * wb[2] * gain,
         ];
         c = if raw {
-            base_curve(c)
+            raw_tone(c)
         } else {
             [c[0].min(1.0), c[1].min(1.0), c[2].min(1.0)]
         };
@@ -582,7 +570,7 @@ pub(crate) fn haze_level(src: &ImageF32, p: &DevelopParams, raw: bool, amount: f
                 px[2] * wb[2] * gain,
             ];
             let c = if raw {
-                base_curve(c)
+                raw_tone(c)
             } else {
                 c.map(|v| v.min(1.0))
             };
@@ -786,12 +774,9 @@ fn color_px(px: [f32; 3], sat: f32, vib: f32) -> [f32; 3] {
     let min = px[0].min(px[1]).min(px[2]);
     let chroma = max - min;
     // Dynamik wirkt stark auf blasse und schwach auf kräftige Farben.
-    // Hauttöne (R > G > B) werden zusätzlich geschont.
-    let skin = if px[0] > px[1] && px[1] > px[2] {
-        0.5
-    } else {
-        1.0
-    };
+    // Hauttöne (R > G > B) werden zusätzlich geschont – mit weichem Übergang,
+    // ein harter Schalter ergab an R = G bzw. G = B Kanten im Bild.
+    let skin = 1.0 - 0.5 * smoothstep(0.0, SKIN_EDGE, (px[0] - px[1]).min(px[1] - px[2]));
     let f = 1.0 + sat + vib * (1.0 - chroma).powi(2) * if vib > 0.0 { skin } else { 1.0 };
     let c = [
         y + (px[0] - y) * f,
@@ -1023,34 +1008,32 @@ pub(crate) fn white_balance(temperature: f32, tint: f32) -> [f32; 3] {
     [r / y, g / y, b / y]
 }
 
-/// Basiskurve für RAWs: hebt Mittelgrau an und rollt Lichter weich ab, statt sie
-/// hart abzuschneiden.
-///
-/// Die Kurve wirkt auf den hellsten Kanal und skaliert alle drei Kanäle gleich –
-/// so bleiben Farbton und Sättigung erhalten (eine Kurve pro Kanal würde helle
-/// Farben ausbleichen). Nur wo das Ergebnis Weiß erreicht, wird zur Neutralität
-/// hin entsättigt, damit ausgebrannte Lichter keine Farbstiche bekommen.
-fn base_curve(c: [f32; 3]) -> [f32; 3] {
-    let w2 = RAW_WHITE * RAW_WHITE;
-    let t = |v: f32| {
-        let x = ((v - RAW_BLACK).max(0.0) * RAW_BASE_GAIN).powf(RAW_BASE_POWER);
-        (x * (1.0 + x / w2) / (1.0 + x)).min(1.0)
-    };
-    let max = c[0].max(c[1]).max(c[2]);
-    if max <= 1e-6 {
-        return [0.0; 3];
-    }
-    let tm = t(max);
-    let k = tm / max;
-    let mut out = [c[0] * k, c[1] * k, c[2] * k];
-    let desat = smoothstep(0.82, 1.0, tm);
-    if desat > 0.0 {
-        let y = luma(out).max(tm * 0.9);
-        for v in &mut out {
-            *v = (*v + (y - *v) * desat).min(1.0);
+/// Tonwertabbildung für RAWs wie darktable: sigmoid in Rec.2020 (siehe
+/// [`crate::dt::sigmoid`]). Ein- und Ausgabe lineares sRGB; Werte außerhalb
+/// von sRGB beschneidet erst die Kodierung (wie darktables colorout).
+pub(crate) struct RawTone {
+    pub(crate) to_rec2020: crate::dt::color::M3f,
+    pub(crate) to_srgb: crate::dt::color::M3f,
+    pub(crate) sigmoid: crate::dt::sigmoid::Sigmoid,
+}
+
+pub(crate) fn raw_tone_setup() -> &'static RawTone {
+    static T: std::sync::OnceLock<RawTone> = std::sync::OnceLock::new();
+    T.get_or_init(|| {
+        let (to, back) = crate::dt::color::srgb_rec2020();
+        RawTone {
+            to_rec2020: crate::dt::color::to_f32(&to),
+            to_srgb: crate::dt::color::to_f32(&back),
+            sigmoid: crate::dt::sigmoid::Sigmoid::default_params(),
         }
-    }
-    out
+    })
+}
+
+#[inline]
+fn raw_tone(c: [f32; 3]) -> [f32; 3] {
+    use crate::dt::color::apply;
+    let t = raw_tone_setup();
+    apply(&t.to_srgb, t.sigmoid.apply(apply(&t.to_rec2020, c)))
 }
 
 /// Weiß und Schwarz (−1…1) auf den Tonwert `v` anwenden.
@@ -1553,29 +1536,35 @@ mod tests {
     }
 
     #[test]
-    fn raw_highlights_roll_off_and_stay_neutral() {
-        // Szenenwerte weit über 1 mit „abgeschnittenem“ grünem Kanal
+    fn raw_tone_is_darktable_sigmoid() {
+        // Szenenwerte weit über 1 mit hohem Rot: weich abgerollt, nie weiß
         let src = Source {
             kind: SourceKind::Raw,
             image: ImageF32 {
-                width: 2,
+                width: 3,
                 height: 1,
-                data: vec![[0.18, 0.18, 0.18], [3.0, 1.0, 2.6]],
+                data: vec![[0.1845; 3], [3.0, 1.0, 2.6], [50.0; 3]],
             },
-            full_width: 2,
+            full_width: 3,
             full_height: 1,
             lens: None,
         };
-        let out = render(&src, &DevelopParams::default());
-        // 0,18 des Sensor-Weiß (2,5 Blendenstufen darunter): Sonys Kamera-JPEGs
-        // zeigen dort ~0,66 (gemessen an 14 ARWs, siehe `RAW_BASE_GAIN`)
-        let mid = out.data[0][1];
-        assert!(mid > 0.60 && mid < 0.72, "Mittelgrau bei {mid}");
+        let lin = |v: f32| crate::color::srgb_to_linear(v);
+        // Ohne Grundabstimmung: Mittelgrau bleibt Mittelgrau (sigmoid)
+        let flat = DevelopParams {
+            contrast: -100.0 * RAW_BASE_CONTRAST / (1.0 + RAW_BASE_CONTRAST),
+            saturation: -100.0 * RAW_BASE_SATURATION / (1.0 + RAW_BASE_SATURATION),
+            vibrance: -100.0 * RAW_BASE_VIBRANCE / (1.0 + RAW_BASE_VIBRANCE),
+            ..Default::default()
+        };
+        let out = render(&src, &flat);
+        let mid = lin(out.data[0][1]);
+        assert!((mid - 0.1845).abs() < 0.01, "Mittelgrau bei {mid}");
         let hl = out.data[1];
-        assert!(
-            hl[0] - hl[1] < 0.08,
-            "Lichter sollten nahezu neutral sein: {hl:?}"
-        );
+        assert!(hl.iter().all(|v| *v < 1.0), "Lichter abgerollt: {hl:?}");
+        assert!(hl[0] > hl[2] && hl[2] > hl[1], "Farbton bleibt: {hl:?}");
+        let white = out.data[2];
+        assert!(white.iter().all(|v| *v > 0.98), "{white:?}");
     }
 
     /// Bisherige Rechnung einer Maskenebene: alle Stufen auf einer Kopie des

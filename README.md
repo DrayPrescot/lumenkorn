@@ -7,7 +7,7 @@
 **Photo library and RAW developer that runs entirely on your own computer.**
 
 [![CI](https://github.com/DrayPrescot/lumenkorn/actions/workflows/ci.yml/badge.svg)](https://github.com/DrayPrescot/lumenkorn/actions/workflows/ci.yml)
-[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](#license)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-lightgrey)
 
 [Features](#features) · [Getting started](#getting-started) · [How it works](#how-it-works) · [Tech stack](#tech-stack) · [Open-source credits](#open-source-projects-used-by-lumenkorn) · [Deutsch](docs/README.de.md)
@@ -209,10 +209,17 @@ saved, so edits take no extra disk space and can always be changed or undone.
 
 To show a photo, Lumenkorn decodes it once into a linear floating-point image:
 
-1. RAW files are read with [rawler](https://github.com/dnglab/dnglab). Lumenkorn then
-   demosaics them itself: RCD for Bayer sensors and Markesteijn for Fujifilm X-Trans.
-   It also applies capture sharpening at sensor resolution, adapted to the measured noise,
-   because every RAW is slightly soft out of the camera.
+1. RAW files are read with [rawler](https://github.com/dnglab/dnglab). From there on
+   Lumenkorn follows the default scene-referred workflow of
+   [darktable](https://github.com/darktable-org/darktable) 5.0, translated from darktable's C
+   code to Rust: sensor white and black levels from the
+   [rawspeed](https://github.com/darktable-org/rawspeed) camera database, white balance as
+   shot by the camera, highlight reconstruction ("inpaint opposed"), RCD demosaicing for Bayer
+   sensors (Markesteijn with one pass for Fujifilm X-Trans, through rawler), exposure of
+   +0.7 EV minus the camera's exposure compensation, the camera matrix to linear Rec.2020, and
+   color calibration with CAT16 from the camera's illuminant. Lumenkorn also applies capture
+   sharpening at sensor resolution, adapted to the measured noise, because every RAW is
+   slightly soft out of the camera.
 2. JPEG, PNG, TIFF and WebP are converted to linear light. Very large images (panoramas,
    astro stacks) are averaged down while converting instead of being expanded to a full-size
    float copy first.
@@ -228,7 +235,7 @@ The pipeline runs in a fixed order:
 |---|---|
 | Lens correction (RAW only) | linear, before everything else |
 | White balance, exposure | linear scene light |
-| Base tone curve (RAW only) | scene light → display |
+| Sigmoid tone mapping (RAW only) | scene light → display |
 | Dehaze | display-referred values |
 | Whites/blacks, highlights/shadows, contrast, clarity | brightness |
 | Vibrance, saturation, HSL, color grading | color (HSL in Oklch) |
@@ -314,7 +321,7 @@ RANSAC.
 | App shell | Tauri 2 (WebView2 on Windows, WebKitGTK on Linux) |
 | Interface | Svelte 5 with runes, TypeScript, Vite |
 | Database | SQLite (bundled through rusqlite), FTS5 full-text search |
-| RAW decoding | rawler (from dnglab) |
+| RAW decoding and development | rawler (from dnglab); RCD, inpaint opposed, color calibration and sigmoid translated from darktable; sensor levels from rawspeed |
 | Image files | image-rs, jpeg-encoder, exrs, kamadak-exif |
 | GPU image processing | wgpu with WGSL compute shaders |
 | CPU parallelism | Rayon |
@@ -407,6 +414,8 @@ Lumenkorn would not exist without the following projects. Thank you to everyone 
 | [Tauri](https://github.com/tauri-apps/tauri) and [tauri-plugin-dialog](https://github.com/tauri-apps/plugins-workspace) | app shell, window, file dialogs | MIT or Apache-2.0 |
 | [Svelte](https://github.com/sveltejs/svelte) | user interface | MIT |
 | [rawler](https://github.com/dnglab/dnglab) (dnglab) | reading RAW files | LGPL-2.1 |
+| [darktable](https://github.com/darktable-org/darktable) | RAW development: highlight reconstruction, demosaicing, color calibration, sigmoid (code translated to Rust) | GPL-3.0-or-later |
+| [rawspeed](https://github.com/darktable-org/rawspeed) camera data (`cameras.xml`, reduced to a table by `tools/rawspeed_white.py`) | sensor white and black levels | LGPL-2.1-or-later |
 | [wgpu](https://github.com/gfx-rs/wgpu) | GPU image processing | MIT or Apache-2.0 |
 | [ort](https://github.com/pykeio/ort) | Rust bindings for ONNX Runtime | MIT or Apache-2.0 |
 | [ONNX Runtime](https://github.com/microsoft/onnxruntime) | running the AI models (downloaded on demand) | MIT |
@@ -449,16 +458,18 @@ Face recognition deliberately does not use the common InsightFace models, becaus
 license only allows non-commercial use.
 
 ### Published methods implemented in Lumenkorn
-- RCD demosaicing (Luis Sanz Rodríguez), as used in RawTherapee and darktable.
-- Markesteijn demosaicing for X-Trans (Frank Markesteijn).
+- From darktable (code translated to Rust): RCD demosaicing (Luis Sanz Rodríguez), the
+  highlight reconstruction "inpaint opposed" (garagecoder and Iain from the G'MIC team, and
+  Hanno Schwalm), color calibration with CAT16, and the sigmoid tone mapper.
+- Markesteijn demosaicing for X-Trans (Frank Markesteijn), through rawler.
 - Oklab and Oklch color spaces (Björn Ottosson) for HSL, color ranges and color grading.
 - Dark channel prior (Kaiming He et al.) as the basis of dehaze.
 - Lens models: Lensfun/Hugin distortion (poly3, poly5, ptlens), TCA and vignetting (pa) models,
   the DNG opcodes WarpRectilinear and FixVignetteRadial (Adobe DNG specification), and the
   meaning of Sony's embedded correction tags as worked out by
   [darktable](https://github.com/darktable-org/darktable) and
-  [RawTherapee](https://github.com/Beep6581/RawTherapee). Lumenkorn implements all of them
-  itself; no code from these projects is included.
+  [RawTherapee](https://github.com/Beep6581/RawTherapee). Lumenkorn implements these lens
+  corrections itself; no code from these projects is used for them.
 - Harris corners, BRIEF descriptors, RANSAC and Hartley normalization for alignment.
 - Laplacian pyramids (Burt and Adelson) for focus stacking.
 
@@ -479,16 +490,15 @@ The [changelog](CHANGELOG.md) lists what is already included.
 
 ## License
 
-Lumenkorn is dual-licensed under either of
-
-- [MIT license](LICENSE-MIT)
-- [Apache License, Version 2.0](LICENSE-APACHE)
-
-at your option. Unless you explicitly state otherwise, any contribution you submit for
-inclusion in this project is dual-licensed in the same way, without any additional terms.
+From the version after 1.0.4 on, Lumenkorn is licensed under the
+[GNU General Public License, version 3 or later](LICENSE) (GPL-3.0-or-later), because it
+contains code translated from darktable (GPL-3.0-or-later). Releases up to and including 1.0.4
+were published under MIT OR Apache-2.0 and remain available under those terms.
 
 rawler is licensed under the LGPL-2.1, and release builds link it statically. To use a modified
 rawler, change the `rawler` dependency in `crates/lumenkorn-develop/Cargo.toml` and build from
-source as described above. The AI models are not part of Lumenkorn; each keeps the license
+source as described above. The sensor table
+(`crates/lumenkorn-develop/data/rawspeed_sensors.tsv`) comes from the rawspeed camera database
+(LGPL-2.1-or-later). The AI models are not part of Lumenkorn; each keeps the license
 listed above. The bundled Lensfun database (`crates/lumenkorn-develop/data/lensfun.json.gz`)
 is licensed under CC BY-SA 3.0 (`crates/lumenkorn-develop/data/LICENSE-lensfun-db.txt`).

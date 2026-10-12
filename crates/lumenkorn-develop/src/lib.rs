@@ -25,8 +25,8 @@
 pub mod auto;
 pub mod capture_sharpen;
 pub mod color;
-pub mod demosaic;
 pub mod denoised;
+pub(crate) mod dt;
 mod error;
 pub mod exr_io;
 pub mod geometry;

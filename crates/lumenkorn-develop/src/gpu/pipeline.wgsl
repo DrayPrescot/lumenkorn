@@ -2,7 +2,7 @@
 // pipeline.rs (CPU). Jede Änderung dort muss hier nachgezogen werden; der Test
 // `gpu_matches_cpu` vergleicht beide Wege Pixel für Pixel.
 //
-// Die festen Zahlen der Formeln (RAW_WHITE, HSL_CENTERS, SHARPEN_GAIN …) sind
+// Die festen Zahlen der Formeln (SIG_WHITE, HSL_CENTERS, SHARPEN_GAIN …) sind
 // hier nicht definiert: `gpu::shader_source` stellt sie aus pipeline.rs und
 // color.rs als WGSL-Konstanten voran.
 //
@@ -122,25 +122,77 @@ fn s_curve(v: f32, amount: f32) -> f32 {
     return v + (tgt - v) * min(abs(amount), 1.0) * CONTRAST_MIX;
 }
 
-fn base_t(v: f32) -> f32 {
-    let x = pow(max(v - RAW_BLACK, 0.0) * RAW_BASE_GAIN, RAW_BASE_POWER);
-    let w2 = RAW_WHITE * RAW_WHITE;
-    return min(x * (1.0 + x / w2) / (1.0 + x), 1.0);
+// Tonwertabbildung für RAWs: sigmoid nach darktable (pipeline.rs: raw_tone,
+// dt/sigmoid.rs) in Rec.2020, Ein- und Ausgabe lineares sRGB.
+fn sig_curve(v: f32) -> f32 {
+    let film = pow(SIG_FOG + max(v, 0.0), SIG_FILM_POWER);
+    let paper = SIG_WHITE * pow(film / (SIG_PAPER_EXP + film), SIG_PAPER_POWER);
+    if (paper != paper) {
+        return SIG_WHITE;
+    }
+    return paper;
 }
 
-fn base_curve(c: vec3<f32>) -> vec3<f32> {
-    let mx = max(c.x, max(c.y, c.z));
-    if (mx <= 1e-6) {
-        return vec3<f32>(0.0);
+fn raw_tone(c_in: vec3<f32>) -> vec3<f32> {
+    var p = vec3<f32>(dot(TO2020_0, c_in), dot(TO2020_1, c_in), dot(TO2020_2, c_in));
+    // Negative Werte entsättigen (_desaturate_negative_values)
+    let avg = max((p.x + p.y + p.z) / 3.0, 0.0);
+    let mn = min(p.x, min(p.y, p.z));
+    var f = 1.0;
+    if (mn < 0.0) {
+        f = -avg / (mn - avg);
     }
-    let tm = base_t(mx);
-    var o = c * (tm / mx);
-    let desat = sstep(0.82, 1.0, tm);
-    if (desat > 0.0) {
-        let y = max(luma(o), tm * 0.9);
-        o = min(o + (vec3<f32>(y) - o) * desat, vec3<f32>(1.0));
+    p = vec3<f32>(avg) + f * (p - vec3<f32>(avg));
+    let pc = vec3<f32>(sig_curve(p.x), sig_curve(p.y), sig_curve(p.z));
+    // Reihenfolge der Kanäle (_pixel_channel_order): min, mid, max
+    var o = vec3<u32>(2u, 1u, 0u);
+    if (p.x >= p.y) {
+        if (p.y > p.z) {
+            o = vec3<u32>(2u, 1u, 0u);
+        } else if (p.z > p.x) {
+            o = vec3<u32>(1u, 0u, 2u);
+        } else if (p.z > p.y) {
+            o = vec3<u32>(1u, 2u, 0u);
+        }
+    } else if (p.x >= p.z) {
+        o = vec3<u32>(2u, 0u, 1u);
+    } else if (p.z > p.y) {
+        o = vec3<u32>(0u, 1u, 2u);
+    } else {
+        o = vec3<u32>(0u, 2u, 1u);
     }
-    return o;
+    // Farbton und Energie erhalten (_preserve_hue_and_energy)
+    let h = SIG_HUE;
+    let chroma = p[o.z] - p[o.x];
+    var midscale = 0.0;
+    if (chroma != 0.0) {
+        midscale = (p[o.y] - p[o.x]) / chroma;
+    }
+    let full_hue = pc[o.x] + (pc[o.z] - pc[o.x]) * midscale;
+    let naive_mid = (1.0 - h) * pc[o.y] + h * full_hue;
+    let energy = pc.x + pc.y + pc.z;
+    let naive_energy = pc[o.x] + naive_mid + pc[o.z];
+    let mm = p[o.x] + p[o.y];
+    var blend = 0.0;
+    if (mm != 0.0) {
+        blend = 2.0 * p[o.x] / mm;
+    }
+    let etarget = blend * energy + (1.0 - blend) * naive_energy;
+    var r = vec3<f32>(0.0);
+    if (naive_mid <= pc[o.y]) {
+        let cm = ((1.0 - h) * pc[o.y] + h * (midscale * pc[o.z] + (1.0 - midscale) * (etarget - pc[o.z])))
+            / (1.0 + h * (1.0 - midscale));
+        r[o.x] = etarget - pc[o.z] - cm;
+        r[o.y] = cm;
+        r[o.z] = pc[o.z];
+    } else {
+        let cm = ((1.0 - h) * pc[o.y] + h * (pc[o.x] * (1.0 - midscale) + midscale * (etarget - pc[o.x])))
+            / (1.0 + h * midscale);
+        r[o.x] = pc[o.x];
+        r[o.y] = cm;
+        r[o.z] = etarget - pc[o.x] - cm;
+    }
+    return vec3<f32>(dot(TOSRGB_0, r), dot(TOSRGB_1, r), dot(TOSRGB_2, r));
 }
 
 fn soft_clip(v: f32) -> f32 {
@@ -188,7 +240,7 @@ fn prep(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     c = c * vec3<f32>(u.wb_r, u.wb_g, u.wb_b) * u.gain;
     if ((u.flags & F_RAW) != 0u) {
-        c = base_curve(c);
+        c = raw_tone(c);
     } else {
         c = min(c, vec3<f32>(1.0));
     }
@@ -367,10 +419,7 @@ fn color(@builtin(global_invocation_id) id: vec3<u32>) {
     let p = outa[i].xyz;
     let y = luma(p);
     let chroma = max(p.x, max(p.y, p.z)) - min(p.x, min(p.y, p.z));
-    var skin = 1.0;
-    if (p.x > p.y && p.y > p.z) {
-        skin = 0.5;
-    }
+    let skin = 1.0 - 0.5 * sstep(0.0, SKIN_EDGE, min(p.x - p.y, p.y - p.z));
     var vk = 1.0;
     if (u.vib > 0.0) {
         vk = skin;

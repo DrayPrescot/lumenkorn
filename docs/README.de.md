@@ -151,8 +151,9 @@ Weitere Reiter:
 
 Außerdem:
 
-- **RAW-Details:** Bayer-Sensoren werden mit RCD demosaikt (Standard in RawTherapee und darktable),
-  Fujifilm X-Trans mit Markesteijn. Danach folgt eine Eingangsschärfung in Sensorauflösung, wie
+- **RAW-Details:** Die RAW-Entwicklung folgt dem Standard-Ablauf von darktable 5.0 (szenenbezogen,
+  mit Sigmoid): Bayer-Sensoren werden mit RCD demosaikt, Fujifilm X-Trans mit Markesteijn
+  (ein Durchgang, wie bei darktable). Danach folgt eine Eingangsschärfung in Sensorauflösung, wie
   Lightroom sie standardmäßig anwendet: nur auf der Helligkeit, ohne Säume, mit einer Schwelle, die
   sich nach dem gemessenen Rauschen richtet.
 - **Vorher/Nachher:** „Original zeigen“ oben in der Leiste (Klick schaltet um, gedrückt halten zeigt
@@ -396,9 +397,14 @@ Trigrammen, deshalb finden auch Teilwörter etwas.
 ### Entwicklungspipeline
 
 Eine Bearbeitung ist ein kleines JSON-Dokument mit allen Reglerwerten, Masken und dem Zuschnitt. Zum
-Anzeigen wird das Foto einmal in ein lineares Gleitkommabild umgewandelt: RAWs liest rawler,
-demosaikt werden sie von Lumenkorn selbst (RCD bzw. Markesteijn), danach folgt die Eingangsschärfung.
-JPEG, PNG, TIFF und WebP werden in lineares Licht umgerechnet.
+Anzeigen wird das Foto einmal in ein lineares Gleitkommabild umgewandelt: RAWs liest rawler, danach
+folgt Lumenkorn dem Standard-Ablauf von [darktable](https://github.com/darktable-org/darktable) 5.0,
+aus dessen C-Code nach Rust übersetzt: Weiß- und Schwarzpegel des Sensors aus der Kameradatenbank von
+[rawspeed](https://github.com/darktable-org/rawspeed), Weißabgleich wie von der Kamera gesetzt,
+Lichter-Rekonstruktion („inpaint opposed“), Demosaicing (RCD bzw. Markesteijn mit einem Durchgang für
+X-Trans, über rawler), Belichtung +0,7 EV abzüglich der Belichtungskorrektur der Kamera, Kameramatrix
+nach linear Rec.2020 und Farbkalibrierung mit CAT16 aus dem Illuminanten der Kamera. Danach folgt die
+Eingangsschärfung. JPEG, PNG, TIFF und WebP werden in lineares Licht umgerechnet.
 
 Für die Live-Vorschau liegt dieses Bild mit 2048 Pixeln Kantenlänge im Speicher. Jede
 Regleränderung rechnet die Pipeline auf dieser Vorschau neu, auf der Grafikkarte in wenigen
@@ -410,7 +416,7 @@ Die Reihenfolge ist fest:
 | Stufe | Arbeitsraum |
 |---|---|
 | Weißabgleich, Belichtung | linear, szenenbezogen |
-| Basiskurve (nur RAW) | Szene → Anzeige |
+| Sigmoid-Tonwertzuordnung (nur RAW) | Szene → Anzeige |
 | Objektivkorrektur (nur RAW) | linear, vor allem anderen |
 | Dunst entfernen | anzeigebezogen |
 | Weiß/Schwarz, Lichter/Tiefen, Kontrast, Klarheit | Helligkeit |
@@ -481,7 +487,7 @@ zerlegt jedes Bild in eine Laplace-Pyramide und behält je Stufe das schärfste 
 | App-Gerüst | Tauri 2 (WebView2 unter Windows, WebKitGTK unter Linux) |
 | Oberfläche | Svelte 5 (Runes), Vite |
 | Datenbank | SQLite über rusqlite, FTS5-Volltextsuche |
-| RAW | rawler (aus dnglab), eigenes RCD- und Markesteijn-Demosaicing |
+| RAW | rawler (aus dnglab); RCD, Inpaint opposed, Farbkalibrierung und Sigmoid aus darktable übersetzt; Sensorpegel aus rawspeed |
 | Bilddateien | image-rs, jpeg-encoder, exrs, kamadak-exif |
 | Grafikkarte | wgpu mit WGSL-Compute-Shadern (DirectX 12, Vulkan, Metal) |
 | Parallelisierung | Rayon |
@@ -498,6 +504,8 @@ Lumenkorn baut auf der Arbeit vieler anderer auf. Danke an alle, die diese Proje
 [Tauri](https://github.com/tauri-apps/tauri) mit [tauri-plugin-dialog](https://github.com/tauri-apps/plugins-workspace) (MIT/Apache-2.0),
 [Svelte](https://github.com/sveltejs/svelte) (MIT),
 [rawler](https://github.com/dnglab/dnglab) (LGPL-2.1),
+[darktable](https://github.com/darktable-org/darktable) (GPL-3.0-or-later; RAW-Entwicklung: Lichter-Rekonstruktion, Demosaicing, Farbkalibrierung, Sigmoid, nach Rust übersetzt),
+die Kameradaten von [rawspeed](https://github.com/darktable-org/rawspeed) (LGPL-2.1-or-later; `cameras.xml`, mit `tools/rawspeed_white.py` zu einer Tabelle für Weiß- und Schwarzpegel verkleinert),
 [wgpu](https://github.com/gfx-rs/wgpu) (MIT/Apache-2.0),
 [ort](https://github.com/pykeio/ort) (MIT/Apache-2.0),
 [SQLite](https://sqlite.org) (gemeinfrei) über [rusqlite](https://github.com/rusqlite/rusqlite) (MIT),
@@ -537,8 +545,9 @@ die Schrift [Instrument Sans](https://github.com/Instrument/instrument-sans) üb
 | YuNet | Shiqi Yu u. a. | OpenCV Model Zoo | MIT |
 | SFace | Yaoyao Zhong u. a. | OpenCV Model Zoo | Apache-2.0 |
 
-**Veröffentlichte Verfahren, die Lumenkorn umsetzt:** die Objektivmodelle von Lensfun/Hugin, die DNG-Opcodes WarpRectilinear und FixVignetteRadial, die Bedeutung der Sony-Korrekturdaten nach den Vorarbeiten von [darktable](https://github.com/darktable-org/darktable) und [RawTherapee](https://github.com/Beep6581/RawTherapee) (ohne deren Code), RCD-Demosaicing (Luis Sanz Rodríguez),
-Markesteijn-Demosaicing für X-Trans (Frank Markesteijn), Oklab/Oklch (Björn Ottosson), Dark Channel
+**Veröffentlichte Verfahren, die Lumenkorn umsetzt:** die Objektivmodelle von Lensfun/Hugin, die DNG-Opcodes WarpRectilinear und FixVignetteRadial, die Bedeutung der Sony-Korrekturdaten nach den Vorarbeiten von [darktable](https://github.com/darktable-org/darktable) und [RawTherapee](https://github.com/Beep6581/RawTherapee) (dafür ohne deren Code), aus darktable nach Rust übersetzt: RCD-Demosaicing (Luis Sanz Rodríguez),
+die Lichter-Rekonstruktion „inpaint opposed“ (garagecoder und Iain vom G'MIC-Team sowie Hanno Schwalm), Farbkalibrierung mit CAT16 und der Sigmoid-Tonwertzuordner,
+Markesteijn-Demosaicing für X-Trans (Frank Markesteijn, über rawler), Oklab/Oklch (Björn Ottosson), Dark Channel
 Prior (Kaiming He u. a.) als Grundlage für „Dunst entfernen“, Harris-Ecken, BRIEF, RANSAC und
 Hartley-Normierung zum Ausrichten, Laplace-Pyramiden (Burt und Adelson) für Focus Stacking.
 
@@ -655,8 +664,12 @@ npm run tauri android dev
 
 ## Lizenz
 
-Lumenkorn steht wahlweise unter der MIT- oder der Apache-2.0-Lizenz (`LICENSE-MIT`,
-`LICENSE-APACHE`). Die mitgelieferte Lensfun-Datenbank steht unter CC BY-SA 3.0
+Ab der Version nach 1.0.4 steht Lumenkorn unter der [GNU General Public License, Version 3 oder
+neuer](../LICENSE) (GPL-3.0-or-later), weil es aus darktable übersetzten Code enthält
+(GPL-3.0-or-later). Die Versionen bis einschließlich 1.0.4 wurden unter MIT OR Apache-2.0
+veröffentlicht und bleiben unter diesen Bedingungen verfügbar. Die Sensortabelle
+(`crates/lumenkorn-develop/data/rawspeed_sensors.tsv`) stammt aus der Kameradatenbank von rawspeed
+(LGPL-2.1-or-later). Die mitgelieferte Lensfun-Datenbank steht unter CC BY-SA 3.0
 (`crates/lumenkorn-develop/data/LICENSE-lensfun-db.txt`). rawler steht unter der LGPL-2.1 und wird in den Installern statisch gelinkt; wer
 eine geänderte Fassung nutzen will, ändert die Abhängigkeit `rawler` in
 `crates/lumenkorn-develop/Cargo.toml` und baut selbst. Die KI-Modelle gehören nicht zu Lumenkorn und

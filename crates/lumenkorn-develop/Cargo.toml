@@ -3,7 +3,7 @@ name = "lumenkorn-develop"
 description = "Non-destruktive Bildentwicklung für Lumenkorn: RAW-Dekodierung und Bearbeitungspipeline"
 version.workspace = true
 edition.workspace = true
-# rawler steht unter LGPL-2.1; der Rest von Lumenkorn unter MIT/Apache-2.0.
+# Lumenkorn steht unter GPL-3.0-or-later (RAW-Entwicklung aus darktable), rawler unter LGPL-2.1.
 license.workspace = true
 authors.workspace = true
 repository.workspace = true

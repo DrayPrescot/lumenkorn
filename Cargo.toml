@@ -5,7 +5,7 @@ members = ["crates/lumenkorn-ai","crates/lumenkorn-core", "crates/lumenkorn-deve
 [workspace.package]
 version = "1.0.4"
 edition = "2024"
-license = "MIT OR Apache-2.0"
+license = "GPL-3.0-or-later"
 authors = ["DrayPrescot"]
 repository = "https://github.com/DrayPrescot/lumenkorn"
 homepage = "https://github.com/DrayPrescot/lumenkorn"
