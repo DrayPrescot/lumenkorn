@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.2] – 2026-10-12
+
 ### Fixed
 - Masks: “Person”, “Animal”, “Object” (click) and the sky refinement no
   longer come out squeezed and shifted towards the bottom left in portrait
