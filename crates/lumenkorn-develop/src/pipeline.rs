@@ -33,11 +33,11 @@ use std::sync::{Arc, Mutex};
 
 /// Grundabstimmung von RAWs (wie das Standardprofil in Lightroom): Kontrast,
 /// Sättigung und Dynamik, wenn die Regler auf 0 stehen. Abgeglichen mit den
-/// eingebetteten Kamera-JPEGs (Sony): Ohne sie wirkten RAWs ausgeblichen
-/// (Farbigkeit ~75 % der Kamera, mit ihr ~96 %).
+/// eingebetteten Kamera-JPEGs von 14 Sony-ARWs, zusammen mit der Basiskurve:
+/// Farbigkeit ~98 %, Mitteltonkontrast ~99 % der Kamera (vorher 75 % bzw. 71 %).
 pub(crate) const RAW_BASE_CONTRAST: f32 = 0.38;
-pub(crate) const RAW_BASE_SATURATION: f32 = 0.30;
-pub(crate) const RAW_BASE_VIBRANCE: f32 = 0.20;
+pub(crate) const RAW_BASE_SATURATION: f32 = 0.15;
+pub(crate) const RAW_BASE_VIBRANCE: f32 = 0.15;
 
 /// Reglerwert (−1…1) mit Grundwert: 0 ergibt `base`, die Enden ±1 bleiben
 /// erreichbar (Kontrast +100 wirkt voll, Sättigung −100 ist grau).
@@ -68,10 +68,21 @@ pub(crate) fn base_look(p: &DevelopParams, raw: bool) -> (f32, f32, f32) {
         with_base(v, RAW_BASE_VIBRANCE),
     )
 }
-/// Vorverstärkung vor der Basiskurve, damit Mittelgrau wie bei Kamera-JPEGs liegt.
-pub(crate) const RAW_BASE_GAIN: f32 = 1.45;
-/// Szenenwert, der nach Vorverstärkung auf Weiß abgebildet wird.
-pub(crate) const RAW_WHITE: f32 = 4.0;
+
+// Basiskurve der RAWs: `t(x) = x (1 + x/W²) / (1 + x)` mit
+// `x = ((v − SCHWARZ) · GAIN)^POTENZ`. Abgeglichen mit den eingebetteten
+// Kamera-JPEGs von 14 Sony-ARWs (Helligkeitsverteilung je Blendenstufe):
+// Mitten wie bei der Kamera, tiefe Schatten dunkler, Sensor-Weiß bei ~98 % –
+// eine Blendenstufe darüber bleibt Reserve für die Lichter-Rückholung.
+
+/// Vorverstärkung vor der Basiskurve
+pub(crate) const RAW_BASE_GAIN: f32 = 3.9;
+/// Steilheit der Basiskurve (Kamera-JPEGs sind in den Mitten steiler)
+pub(crate) const RAW_BASE_POWER: f32 = 1.35;
+/// Schwarzpunkt (Szenenwert, der schwarz wird) – tiefere Schatten
+pub(crate) const RAW_BLACK: f32 = 0.0006;
+/// Wert nach Vorverstärkung und Potenz, der auf Weiß abgebildet wird
+pub(crate) const RAW_WHITE: f32 = 8.0;
 /// Beginn der weichen Schulter von [`soft_clip`].
 pub(crate) const SOFT_CLIP_KNEE: f32 = 0.8;
 /// Stärke von Lichter/Tiefen bei ±100: Exponent der Anhebung bzw. Absenkung.
@@ -1022,7 +1033,7 @@ pub(crate) fn white_balance(temperature: f32, tint: f32) -> [f32; 3] {
 fn base_curve(c: [f32; 3]) -> [f32; 3] {
     let w2 = RAW_WHITE * RAW_WHITE;
     let t = |v: f32| {
-        let x = v * RAW_BASE_GAIN;
+        let x = ((v - RAW_BLACK).max(0.0) * RAW_BASE_GAIN).powf(RAW_BASE_POWER);
         (x * (1.0 + x / w2) / (1.0 + x)).min(1.0)
     };
     let max = c[0].max(c[1]).max(c[2]);
@@ -1556,8 +1567,10 @@ mod tests {
             lens: None,
         };
         let out = render(&src, &DevelopParams::default());
+        // 0,18 des Sensor-Weiß (2,5 Blendenstufen darunter): Sonys Kamera-JPEGs
+        // zeigen dort ~0,66 (gemessen an 14 ARWs, siehe `RAW_BASE_GAIN`)
         let mid = out.data[0][1];
-        assert!(mid > 0.40 && mid < 0.6, "Mittelgrau bei {mid}");
+        assert!(mid > 0.60 && mid < 0.72, "Mittelgrau bei {mid}");
         let hl = out.data[1];
         assert!(
             hl[0] - hl[1] < 0.08,

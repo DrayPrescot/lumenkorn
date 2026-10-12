@@ -20,10 +20,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
   edited RAW photos are created again once.
 
 ### Changed
-- RAW photos look less washed out by default: a stronger base contrast, saturation and vibrance,
-  matched against the camera's own JPEGs (colourfulness about 96 % of the camera instead of 75 %).
-  The sliders still start at 0; −100 and +100 keep their full effect (before, contrast above
-  about +80 did nothing for RAWs). Black-and-white edits keep their grey tones.
+- RAW photos look like the camera's own JPEGs by default instead of washed out: a new base tone
+  curve (brighter midtones, deeper shadows, white at the sensor's clipping point with a little
+  room left for highlight recovery) plus a stronger base contrast, saturation and vibrance, all
+  matched against the embedded JPEGs of 14 Sony ARW files (midtone contrast about 99 % and
+  colourfulness about 98 % of the camera, before 71 % and 75 %). The sliders still start at 0;
+  −100 and +100 keep their full effect (before, contrast above about +80 did nothing for RAWs).
+  Black-and-white edits keep their grey tones. Edited RAW photos look brighter than before.
 
 ## [1.0.2] – 2026-10-12
 

@@ -336,8 +336,9 @@ pub(crate) struct ImageKey(usize, usize, usize, u64, u64);
 fn shader_source() -> String {
     use crate::pipeline::{
         BLACKS_GAIN, CLARITY_GAIN, CONTRAST_MIX, DEHAZE_CHROMA, DEHAZE_GAIN, DEHAZE_MIN_T,
-        HAZE_ADD, OVERLAY_COLOR, OVERLAY_OPACITY, RAW_BASE_GAIN, RAW_WHITE, SHADOW_HIGHLIGHT_GAIN,
-        SHARPEN_GAIN, SHARPEN_THRESHOLD, SOFT_CLIP_KNEE, WHITES_GAIN,
+        HAZE_ADD, OVERLAY_COLOR, OVERLAY_OPACITY, RAW_BASE_GAIN, RAW_BASE_POWER, RAW_BLACK,
+        RAW_WHITE, SHADOW_HIGHLIGHT_GAIN, SHARPEN_GAIN, SHARPEN_THRESHOLD, SOFT_CLIP_KNEE,
+        WHITES_GAIN,
     };
     let f = |name: &str, v: f32| format!("const {name}: f32 = {v:?};\n");
     let list = |v: &[f32]| {
@@ -349,6 +350,8 @@ fn shader_source() -> String {
     let c = crate::color::HSL_CENTERS;
     [
         f("RAW_BASE_GAIN", RAW_BASE_GAIN),
+        f("RAW_BASE_POWER", RAW_BASE_POWER),
+        f("RAW_BLACK", RAW_BLACK),
         f("RAW_WHITE", RAW_WHITE),
         f("SOFT_CLIP_KNEE", SOFT_CLIP_KNEE),
         f("SHADOW_HIGHLIGHT_GAIN", SHADOW_HIGHLIGHT_GAIN),

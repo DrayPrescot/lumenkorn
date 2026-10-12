@@ -123,7 +123,7 @@ fn s_curve(v: f32, amount: f32) -> f32 {
 }
 
 fn base_t(v: f32) -> f32 {
-    let x = v * RAW_BASE_GAIN;
+    let x = pow(max(v - RAW_BLACK, 0.0) * RAW_BASE_GAIN, RAW_BASE_POWER);
     let w2 = RAW_WHITE * RAW_WHITE;
     return min(x * (1.0 + x / w2) / (1.0 + x), 1.0);
 }

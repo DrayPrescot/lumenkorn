@@ -262,6 +262,12 @@ const MIGRATIONS: &[&str] = &[
     UPDATE images SET thumb_state = 0
     WHERE kind = 'raw'
       AND id IN (SELECT image_id FROM edits WHERE is_current = 1);
+    "#,    // v18: Grundkurve der RAWs an Kamera-JPEGs angeglichen – die
+    // Vorschaubilder bearbeiteter RAWs neu erzeugen.
+    r#"
+    UPDATE images SET thumb_state = 0
+    WHERE kind = 'raw'
+      AND id IN (SELECT image_id FROM edits WHERE is_current = 1);
     "#,
 ];
 
