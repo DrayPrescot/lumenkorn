@@ -154,7 +154,7 @@ pub fn decode_raw_with(path: &Path, method: DemosaicMethod) -> Result<(ImageF32,
     // Erst prüfen, dann die eigene Pipeline das RawImage übernehmen lassen –
     // so braucht es keine Kopie für den Fall, dass doch rawler rechnen muss.
     let img = if own_pipeline_applies(&raw, method) {
-        own_pipeline_owned(raw, method)?
+        own_pipeline_owned(raw, method, true)?
     } else {
         rawler_pipeline(&raw)?
     };
@@ -249,13 +249,20 @@ fn own_pipeline(raw: &rawler::RawImage, method: DemosaicMethod) -> Result<Option
     if !own_pipeline_applies(raw, method) {
         return Ok(None);
     }
-    own_pipeline_owned(raw.clone(), method).map(Some)
+    // Ohne Lichter-Rekonstruktion: rawler kennt sie nicht, verglichen wird
+    // der Rest (Farbumrechnung, Zuschnitt, Demosaicing)
+    own_pipeline_owned(raw.clone(), method, false).map(Some)
 }
 
 /// Eigenes Demosaicing für RGB-Bayer (RCD) und X-Trans (Markesteijn, 3 Durchgänge;
 /// rawler nimmt dort nur bilinear). Farbumrechnung und Standard-Zuschnitt wie in
 /// rawler (`develop_intermediate`). Nur aufrufen, wenn [`own_pipeline_applies`].
-fn own_pipeline_owned(mut raw: rawler::RawImage, method: DemosaicMethod) -> Result<ImageF32> {
+/// `unclip`: gesättigte Kanäle rekonstruieren (siehe [`unclip`]).
+fn own_pipeline_owned(
+    mut raw: rawler::RawImage,
+    method: DemosaicMethod,
+    unclip: bool,
+) -> Result<ImageF32> {
     use rawler::imgop::sensor::{Demosaic, SensorType};
     use rawler::pixarray::{Color2D, PixF32};
     use rawler::rawimage::{RawImageData, RawPhotometricInterpretation};
@@ -327,7 +334,7 @@ fn own_pipeline_owned(mut raw: rawler::RawImage, method: DemosaicMethod) -> Resu
     };
 
     // Liefert bereits bereinigte Werte (`sanitize`) – kein eigener Durchgang
-    let rgb = calibrate(&raw, rgb, &wb);
+    let rgb = calibrate(&raw, rgb, &wb, unclip);
 
     // Standard-Zuschnitt, angepasst an den bereits abgeschnittenen aktiven Bereich
     let mut img = rgb;
@@ -351,6 +358,7 @@ fn calibrate(
     raw: &rawler::RawImage,
     mut img: rawler::pixarray::Color2D<f32, 3>,
     wb: &[f32; 4],
+    unclip_highlights: bool,
 ) -> rawler::pixarray::Color2D<f32, 3> {
     use rawler::imgop::matrix::{multiply, normalize, pseudo_inverse, transform_1d};
     use rawler::imgop::xyz::{Illuminant, SRGB_TO_XYZ_D65};
@@ -387,6 +395,9 @@ fn calibrate(
     let cam2rgb = pseudo_inverse(rgb2cam);
     // An Ort und Stelle: keine zweite Kopie des RGB-Bildes (24 MP: 290 MB)
     img.data.par_iter_mut().for_each(|p| {
+        if unclip_highlights {
+            *p = unclip(*p, wb);
+        }
         let (r, g, b) = (p[0] * wb[0], p[1] * wb[1], p[2] * wb[2]);
         let out = [
             cam2rgb[0][0] * r + cam2rgb[0][1] * g + cam2rgb[0][2] * b,
@@ -398,6 +409,42 @@ fn calibrate(
     img
 }
 
+/// Ab hier (Anteil des Weißpunkts nach `apply_scaling`) gilt ein Kanal als
+/// gesättigt; bis `CLIP_AT` weicher Übergang. Sony sättigt etwas über dem
+/// angegebenen Weißpunkt (14-Bit-Maximum, ~1,07) – alles ab 1,0 ist Sättigung.
+const CLIP_FROM: f32 = 0.985;
+const CLIP_AT: f32 = 1.0;
+
+/// Gesättigte Kanäle rekonstruieren (Kamera-RGB, vor dem Weißabgleich).
+///
+/// Ein Kanal am Sensor-Maximum kennt seinen wahren Wert nicht – er war
+/// mindestens so hell. Der Weißabgleich hebt Rot und Blau (bei Sony etwa ×2,4
+/// und ×1,6) über das abgeschnittene Grün: Ausgefressene weiße Flächen wurden
+/// magenta. Jeder gesättigte Kanal wird deshalb (weich) bis zum hellsten
+/// Kanal angehoben. Sind zwei oder mehr Kanäle gesättigt, ist die Stelle
+/// praktisch weiß (die Kamera zeichnet sie rein weiß) – dann wird sie ganz
+/// neutral. Wo nur der ohnehin hellste Kanal sättigt (blauer Himmel, Haut),
+/// bleibt der Farbton.
+#[inline]
+fn unclip(p: [f32; 3], wb: &[f32; 4]) -> [f32; 3] {
+    let w = p.map(|v| crate::color::smoothstep(CLIP_FROM, CLIP_AT, v));
+    if w.iter().all(|w| *w <= 0.0) {
+        return p;
+    }
+    let v = [p[0] * wb[0], p[1] * wb[1], p[2] * wb[2]];
+    let m = v[0].max(v[1]).max(v[2]);
+    // Zweitstärkste Sättigung: wie sicher die Stelle eigentlich weiß ist
+    let both = w[0].min(w[1]).max(w[0].min(w[2])).max(w[1].min(w[2]));
+    let mut out = p;
+    for c in 0..3 {
+        let k = w[c].max(both);
+        if k > 0.0 {
+            out[c] = (v[c] + (m - v[c]) * k) / wb[c];
+        }
+    }
+    out
+}
+
 #[inline]
 fn sanitize(p: [f32; 3]) -> [f32; 3] {
     let f = |v: f32| if v.is_finite() { v.max(0.0) } else { 0.0 };
@@ -407,6 +454,35 @@ fn sanitize(p: [f32; 3]) -> [f32; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clipped_highlights_turn_neutral_not_magenta() {
+        // Sony: Rot ×2,43, Blau ×1,56
+        let wb = [2.43, 1.0, 1.56, f32::NAN];
+        let white = |p: [f32; 3]| {
+            let q = unclip(p, &wb);
+            [q[0] * wb[0], q[1] * wb[1], q[2] * wb[2]]
+        };
+        // Alle drei Kanäle am Anschlag (weiße Wand): gleich hell statt magenta
+        let w = white([1.069, 1.069, 1.069]);
+        assert!(
+            (w[0] - w[1]).abs() < 1e-4 && (w[1] - w[2]).abs() < 1e-4,
+            "{w:?}"
+        );
+        // Nur Grün gesättigt, Rot und Blau nicht: Grün wird angehoben
+        let g = white([0.9, 1.0, 0.7]);
+        assert!(g[1] >= g[0] - 1e-4, "{g:?}");
+        // Grün und Blau gesättigt, Rot nicht (Wand im Schatten): neutral
+        let s = white([0.45, 1.05, 1.0]);
+        assert!(
+            (s[0] - s[1]).abs() < 1e-4 && (s[1] - s[2]).abs() < 1e-4,
+            "{s:?}"
+        );
+        // Unter dem Weißpunkt bleibt alles, wie es ist
+        assert_eq!(unclip([0.5, 0.97, 0.3], &wb), [0.5, 0.97, 0.3]);
+        // Blauer Himmel: Blau gesättigt und ohnehin am hellsten – unverändert
+        assert_eq!(unclip([0.2, 0.5, 1.0], &wb), [0.2, 0.5, 1.0]);
+    }
 
     /// Eigene Pipeline mit rawlers PPG ergibt exakt rawlers Ergebnis (Farb-
     /// umrechnung, Zuschnitt), RCD weicht nur im Detail ab. Braucht echte RAWs:

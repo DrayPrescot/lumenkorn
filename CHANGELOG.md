@@ -13,6 +13,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
   files stay together; photos already in the library are recognized. Copies are verified
   byte for byte, and the originals can be deleted from the card afterwards.
 
+### Fixed
+- RAW: blown-out highlights (a white wall in the sun) no longer turn pink or magenta. Channels
+  that hit the sensor's maximum are reconstructed instead of being lifted by the white balance
+  on their own; areas where several channels are clipped become neutral white. Thumbnails of
+  edited RAW photos are created again once.
+
 ## [1.0.2] – 2026-10-12
 
 ### Fixed
