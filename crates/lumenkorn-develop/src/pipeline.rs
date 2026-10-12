@@ -31,8 +31,43 @@ use std::sync::{Arc, Mutex};
 // Feste Zahlen der Formeln. Der GPU-Shader bekommt sie beim Laden als
 // WGSL-Konstanten vorangestellt (`gpu::shader_source`) – so gibt es jede nur hier.
 
-/// Grundkontrast, den RAWs ohne Bearbeitung bekommen (wie eine Kamera-JPEG-Kurve).
-pub(crate) const RAW_BASE_CONTRAST: f32 = 0.18;
+/// Grundabstimmung von RAWs (wie das Standardprofil in Lightroom): Kontrast,
+/// Sättigung und Dynamik, wenn die Regler auf 0 stehen. Abgeglichen mit den
+/// eingebetteten Kamera-JPEGs (Sony): Ohne sie wirkten RAWs ausgeblichen
+/// (Farbigkeit ~75 % der Kamera, mit ihr ~96 %).
+pub(crate) const RAW_BASE_CONTRAST: f32 = 0.38;
+pub(crate) const RAW_BASE_SATURATION: f32 = 0.30;
+pub(crate) const RAW_BASE_VIBRANCE: f32 = 0.20;
+
+/// Reglerwert (−1…1) mit Grundwert: 0 ergibt `base`, die Enden ±1 bleiben
+/// erreichbar (Kontrast +100 wirkt voll, Sättigung −100 ist grau).
+#[inline]
+pub(crate) fn with_base(v: f32, base: f32) -> f32 {
+    if v >= 0.0 {
+        base + v * (1.0 - base)
+    } else {
+        base + v * (1.0 + base)
+    }
+}
+
+/// Kontrast, Sättigung und Dynamik, wie sie gerechnet werden (−1…1): bei
+/// RAWs mit Grundabstimmung. Bei Schwarzweiß keine Farbanhebung – sie
+/// verschöbe die Graustufen vorhandener Bearbeitungen. Für CPU und GPU.
+pub(crate) fn base_look(p: &DevelopParams, raw: bool) -> (f32, f32, f32) {
+    let (c, s, v) = (p.contrast / 100.0, p.saturation / 100.0, p.vibrance / 100.0);
+    if !raw {
+        return (c, s, v);
+    }
+    let contrast = with_base(c, RAW_BASE_CONTRAST);
+    if p.monochrome {
+        return (contrast, s, v);
+    }
+    (
+        contrast,
+        with_base(s, RAW_BASE_SATURATION),
+        with_base(v, RAW_BASE_VIBRANCE),
+    )
+}
 /// Vorverstärkung vor der Basiskurve, damit Mittelgrau wie bei Kamera-JPEGs liegt.
 pub(crate) const RAW_BASE_GAIN: f32 = 1.45;
 /// Szenenwert, der nach Vorverstärkung auf Weiß abgebildet wird.
@@ -394,10 +429,11 @@ pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -
     }
 
     // --- Tonwerte und Farbe ------------------------------------------------
+    let (contrast, saturation, vibrance) = base_look(&p, raw);
     tone(
         &mut img,
         &Tone {
-            contrast: p.contrast / 100.0 + if raw { RAW_BASE_CONTRAST } else { 0.0 },
+            contrast,
             highlights: p.highlights / 100.0,
             shadows: p.shadows / 100.0,
             whites: p.whites / 100.0,
@@ -405,7 +441,7 @@ pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -
             clarity: p.clarity / 100.0,
         },
     );
-    color(&mut img, p.saturation / 100.0, p.vibrance / 100.0);
+    color(&mut img, saturation, vibrance);
     hsl(&mut img, &p.hsl);
     let grade = grade_setup(&p.color_grade);
     // Bei Schwarzweiß kommt das Color Grading erst nach der Umwandlung (Tonen)
@@ -1105,6 +1141,33 @@ fn sharpen(img: &ImageF32, amount: f32) -> ImageF32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn raw_base_look_keeps_slider_ends() {
+        let p = |c: f32, s: f32, v: f32, mono: bool| DevelopParams {
+            contrast: c,
+            saturation: s,
+            vibrance: v,
+            monochrome: mono,
+            ..Default::default()
+        };
+        // Regler auf 0: Grundabstimmung, nur bei RAWs
+        assert_eq!(
+            base_look(&p(0.0, 0.0, 0.0, false), true),
+            (RAW_BASE_CONTRAST, RAW_BASE_SATURATION, RAW_BASE_VIBRANCE)
+        );
+        assert_eq!(base_look(&p(0.0, 0.0, 0.0, false), false), (0.0, 0.0, 0.0));
+        // Enden bleiben erreichbar: +100 voller Kontrast, −100 grau
+        let (c, s, _) = base_look(&p(100.0, -100.0, 0.0, false), true);
+        assert!((c - 1.0).abs() < 1e-6 && (s + 1.0).abs() < 1e-6);
+        let (c, s, v) = base_look(&p(-100.0, 100.0, 100.0, false), true);
+        assert!((c + 1.0).abs() < 1e-6 && (s - 1.0).abs() < 1e-6 && (v - 1.0).abs() < 1e-6);
+        // Schwarzweiß: Kontrast ja, keine Farbanhebung
+        assert_eq!(
+            base_look(&p(0.0, 0.0, 0.0, true), true),
+            (RAW_BASE_CONTRAST, 0.0, 0.0)
+        );
+    }
     use crate::color::srgb_to_linear;
 
     fn raster(values: &[[f32; 3]], w: usize) -> Source {

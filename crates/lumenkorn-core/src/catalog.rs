@@ -256,6 +256,13 @@ const MIGRATIONS: &[&str] = &[
     WHERE kind = 'raw'
       AND id IN (SELECT image_id FROM edits WHERE is_current = 1);
     "#,
+    // v17: Kräftigere Grundabstimmung für RAWs (Kontrast, Sättigung,
+    // Dynamik) – die Vorschaubilder bearbeiteter RAWs neu erzeugen.
+    r#"
+    UPDATE images SET thumb_state = 0
+    WHERE kind = 'raw'
+      AND id IN (SELECT image_id FROM edits WHERE is_current = 1);
+    "#,
 ];
 
 /// v11: Der Suchtext eines Fotos wurde bisher bei jeder einzelnen

@@ -13,7 +13,7 @@ use crate::geometry;
 use crate::image_f32::ImageF32;
 use crate::masks;
 use crate::params::DevelopParams;
-use crate::pipeline::{RAW_BASE_CONTRAST, RenderOptions, white_balance};
+use crate::pipeline::{RenderOptions, base_look, white_balance};
 use crate::source::{Source, SourceKind};
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -1141,10 +1141,11 @@ impl Gpu {
             }
 
             // --- Tonwerte und Farbe
+            let (contrast, saturation, vibrance) = base_look(&p, raw);
             cx.tone(
                 &set.img,
                 &ToneVals {
-                    contrast: p.contrast / 100.0 + if raw { RAW_BASE_CONTRAST } else { 0.0 },
+                    contrast,
                     highlights: p.highlights / 100.0,
                     shadows: p.shadows / 100.0,
                     whites: p.whites / 100.0,
@@ -1152,7 +1153,7 @@ impl Gpu {
                     clarity: p.clarity / 100.0,
                 },
             );
-            cx.color(&set.img, p.saturation / 100.0, p.vibrance / 100.0);
+            cx.color(&set.img, saturation, vibrance);
             cx.hsl(&set.img, &p.hsl);
             // Bei Schwarzweiß kommt das Color Grading erst nach der Umwandlung
             if !p.monochrome {
