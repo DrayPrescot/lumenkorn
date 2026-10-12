@@ -796,6 +796,15 @@ impl Catalog {
         Ok(out)
     }
 
+    /// Gibt es ein Foto mit diesem Inhalt (Größe und schneller Hash) schon im
+    /// Katalog – egal wo? Für den Import („schon importiert“).
+    pub fn has_content(&self, quick_hash: &str, size: i64) -> Result<bool> {
+        Ok(self
+            .conn
+            .prepare_cached("SELECT 1 FROM images WHERE quick_hash = ?1 AND size = ?2 LIMIT 1")?
+            .exists(params![quick_hash, size])?)
+    }
+
     /// Bild mit genau diesem Pfad, falls schon im Katalog.
     pub(crate) fn image_id_by_path(tx: &rusqlite::Transaction, path: &str) -> Result<Option<i64>> {
         Ok(tx

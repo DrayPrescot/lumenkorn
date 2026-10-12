@@ -348,6 +348,9 @@
     <section>
       <header>
         {@render toggle("folders", t("Ordner"), lib.roots.length)}
+        <button class="icon-btn" aria-label={t("Fotos importieren")} title={t("Fotos importieren (Strg+Umschalt+I)")} onclick={() => (lib.importOpen = true)}>
+          <Icon name="import" size={14} />
+        </button>
         <button class="icon-btn" aria-label={t("Ordner hinzufügen")} title={t("Ordner hinzufügen")} onclick={addFolder}>
           <Icon name="plus" size={14} />
         </button>

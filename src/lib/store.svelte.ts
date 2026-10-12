@@ -1,7 +1,7 @@
 // Zentraler Oberflächenzustand (Svelte-5-Runes).
 
 import { isCanceled, lang, num, t, tc } from "./i18n";
-import { api, listen, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type DeleteReport, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress } from "./api";
+import { api, listen, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type DeleteReport, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress, type ImportProgress, type ImportDone } from "./api";
 
 class Library {
   roots = $state<Root[]>([]);
@@ -40,6 +40,11 @@ class Library {
     return this.#thumbV.get(id) ?? 0;
   }
   scan = $state<ScanProgress | null>(null);
+  /** Import-Dialog offen */
+  importOpen = $state(false);
+  /** Ein Import läuft (auch bei geschlossenem Dialog) */
+  importRunning = $state(false);
+  importProgress = $state<ImportProgress | null>(null);
   message = $state<{ text: string; kind: "info" | "error" } | null>(null);
   ai = $state<AiStatus | null>(null);
   people = $state<Person[]>([]);
@@ -148,6 +153,10 @@ class Library {
       this.#tagsEpoch++;
     });
     listen("mcp-show", ({ id, develop }) => this.showPhoto(id, develop));
+    listen("import-progress", (p) => {
+      if (this.importRunning) this.importProgress = p;
+    });
+    listen("import-done", (d) => this.#importDone(d));
     listen("merge-progress", (e) => {
       this.mergeProgress = e;
       if (e.finished) this.#mergeDone(e);
@@ -177,6 +186,26 @@ class Library {
         await Promise.all([this.refreshAi(), this.refreshPeople()]);
       }
     });
+  }
+
+  async #importDone(d: ImportDone) {
+    this.importRunning = false;
+    this.importProgress = null;
+    const r = d.report;
+    if (d.error || !r) {
+      this.notify(d.error ?? t("Import fehlgeschlagen"), "error");
+      return;
+    }
+    const parts = [
+      t(r.imported === 1 ? "{n} Foto importiert" : "{n} Fotos importiert", { n: r.imported }),
+      r.existing && t("{n} waren schon da", { n: r.existing }),
+      r.deleted && t("{n} Dateien von der Karte gelöscht", { n: r.deleted }),
+      r.failed.length && t("{n} Fehler (Details im Protokoll)", { n: r.failed.length }),
+      r.canceled && t("abgebrochen"),
+      d.outsideLibrary && t("Das Ziel liegt außerhalb deiner Quellordner – füge es unter „Ordner“ hinzu, um die Fotos zu sehen."),
+    ].filter(Boolean);
+    this.notify(parts.join(" · "), r.failed.length || d.outsideLibrary ? "error" : "info");
+    if (d.rootAdded) await Promise.all([this.loadRoots(), this.loadProjects()]);
   }
 
   async refreshPeople() {

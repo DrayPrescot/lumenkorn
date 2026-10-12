@@ -387,6 +387,36 @@ export const mock = {
         return out(null);
       case "merge_start":
         throw t("Zusammenfügen ist nur in der App verfügbar.");
+      case "import_defaults":
+        return out({ settings: { source: null, target: roots[0].path, deleteAfter: false }, cards: ["E:\\DCIM"] });
+      case "import_scan": {
+        // Drei Tage Aufnahmen, ein Teil schon importiert
+        await new Promise((r) => setTimeout(r, 300));
+        const days = ["2026-10-09", "2026-10-10", "2026-10-11"];
+        const items = Array.from({ length: 42 }, (_, i) => {
+          const day = days[Math.min(2, Math.floor(i / 14))];
+          const sec = 10 * 3600 + i * 97;
+          const time = [Math.floor(sec / 3600), Math.floor((sec % 3600) / 60), sec % 60].map((v) => String(v).padStart(2, "0")).join(":");
+          const nr = 7860 + i;
+          const raw = i % 5 !== 4;
+          return {
+            id: i,
+            name: `DSC0${nr}.${raw ? "ARW" : "JPG"}`,
+            extra: i % 7 === 0 ? [`DSC0${nr}.JPG`] : [],
+            kind: raw ? "raw" : "raster",
+            size: raw ? 34_000_000 : 9_000_000,
+            capturedAt: `${day}T${time}`,
+            dateFromFile: false,
+            already: i < 6,
+            newName: `${day.replaceAll("-", "")}_${time.replaceAll(":", "")}_${nr}.${raw ? "ARW" : "JPG"}`,
+          };
+        });
+        return out(items);
+      }
+      case "import_start":
+        throw t("Import ist nur in der App verfügbar.");
+      case "import_cancel":
+        return out(null);
       case "ai_set_settings":
       case "ai_retag_all":
       case "ai_cancel_download":
@@ -472,6 +502,13 @@ export const mock = {
     const out = svg.replace("<defs>", `<defs>${filter}`).replace(/<rect /, '<g filter="url(#d)"><rect ').replace("</svg>", "</g></svg>");
     await new Promise((r) => setTimeout(r, 40));
     return new Blob([out], { type: "image/svg+xml" });
+  },
+
+  /** Vorschau einer Aufnahme im Import-Dialog (Platzhalter mit Farbverlauf) */
+  async importPreview(id: number): Promise<Blob> {
+    const url = this.imageUrl("thumb", (id % 40) + 1);
+    await new Promise((r) => setTimeout(r, 20 + (id % 5) * 15));
+    return new Blob([decodeURIComponent(url.slice(url.indexOf(",") + 1))], { type: "image/svg+xml" });
   },
 
   imageUrl(_variant: string, id: number): string {

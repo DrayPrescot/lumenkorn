@@ -14,6 +14,7 @@
   import DeleteRejectedDialog from "./components/DeleteRejectedDialog.svelte";
   import ContextMenu from "./components/ContextMenu.svelte";
   import MergeDialog from "./components/MergeDialog.svelte";
+  import ImportDialog from "./components/ImportDialog.svelte";
   import UpdateDialog from "./components/UpdateDialog.svelte";
   import PresetDialog from "./components/PresetDialog.svelte";
   import { isTauri, type ImageSummary } from "./lib/api";
@@ -65,7 +66,13 @@
       toggleFullscreen();
       return;
     }
-    if (isTyping(e) || exportIds || deleteImages || lib.merge) return;
+    if (isTyping(e) || exportIds || deleteImages || lib.merge || lib.importOpen) return;
+    // Strg+Umschalt+I: Fotos importieren (wie in Lightroom)
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "i") {
+      e.preventDefault();
+      lib.importOpen = true;
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "e") {
       e.preventDefault();
       openExport();
@@ -171,6 +178,10 @@
   <MergeDialog kind={lib.merge.kind} ids={lib.merge.ids} onclose={() => (lib.merge = null)} />
 {/if}
 
+{#if lib.importOpen}
+  <ImportDialog onclose={() => (lib.importOpen = false)} />
+{/if}
+
 {#if dev.presetDialog}
   <PresetDialog />
 {/if}
@@ -184,6 +195,10 @@
 {#if dev.exportProgress && !dev.exportProgress.finished}
   <div class="toast" role="status">
     {t("Exportiere {done} von {total}", { done: dev.exportProgress.done + 1, total: dev.exportProgress.total })}{dev.exportProgress.current ? `: ${dev.exportProgress.current}` : ""}
+  </div>
+{:else if lib.importRunning && lib.importProgress && !lib.importOpen}
+  <div class="toast" role="status">
+    {t("Import: {done} von {total}", { done: lib.importProgress.done, total: lib.importProgress.total })}{lib.importProgress.current ? ` · ${lib.importProgress.current}` : ""}
   </div>
 {:else if lib.mergeProgress && !lib.mergeProgress.finished && !lib.merge}
   <div class="toast" role="status">

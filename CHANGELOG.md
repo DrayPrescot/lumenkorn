@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Import from a memory card (`Ctrl+Shift+I`): choose photos by day or one by one with previews,
+  copy them to `Target\YYYY\YYYY.MM.DD[_Occasion]` and rename them to
+  `YYYYMMDD_HHMMSS_Number` (capture time, camera image number). RAW/JPEG pairs and `.xmp`
+  files stay together; photos already in the library are recognized. Copies are verified
+  byte for byte, and the originals can be deleted from the card afterwards.
+
 ## [1.0.2] – 2026-10-12
 
 ### Fixed

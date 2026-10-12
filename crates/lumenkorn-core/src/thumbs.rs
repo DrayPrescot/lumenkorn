@@ -356,6 +356,11 @@ fn decode_unedited(
         ImageKind::Raster => lumenkorn_develop::raster::open(path)?,
         ImageKind::Raw => decode_embedded_preview(path, max)?,
     };
+    Ok(fit(img, orientation, max))
+}
+
+/// Auf `max` verkleinern und aufrichten.
+fn fit(img: DynamicImage, orientation: Option<i64>, max: u32) -> DynamicImage {
     let mut img = if img.width() > max || img.height() > max {
         img.thumbnail(max, max)
     } else {
@@ -364,7 +369,36 @@ fn decode_unedited(
     if let Some(o) = orientation.and_then(|o| Orientation::from_exif(o as u8)) {
         img.apply_orientation(o);
     }
-    Ok(img)
+    img
+}
+
+/// JPEG-Vorschau einer Datei, die (noch) nicht im Katalog ist – für den
+/// Import von einer Speicherkarte. Bei RAWs zuerst nur das erste MB: Bei
+/// Sony liegt die 1616-px-Vorschau in den ersten 200 KB, und die Karte ist
+/// langsam (der übliche Weg liest bis zu 16 MB je Datei).
+pub fn file_preview(
+    path: &Path,
+    kind: ImageKind,
+    orientation: Option<i64>,
+    max: u32,
+) -> Result<Vec<u8>> {
+    let from_head = (kind == ImageKind::Raw)
+        .then(|| {
+            use std::io::Read;
+            let mut head = Vec::new();
+            std::fs::File::open(path)
+                .ok()?
+                .take(1 << 20)
+                .read_to_end(&mut head)
+                .ok()?;
+            best_preview(&head, max, true)
+        })
+        .flatten();
+    let img = match from_head {
+        Some(img) => fit(img, orientation, max),
+        None => decode_unedited(path, kind, orientation, max)?,
+    };
+    encode_jpeg(&img, 80)
 }
 
 /// Bild für die Analyse (Gesichter): unbearbeitet, damit Positionen auch nach

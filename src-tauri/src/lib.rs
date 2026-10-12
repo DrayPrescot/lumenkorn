@@ -6,6 +6,7 @@ mod commands;
 mod cull;
 mod develop;
 mod guard;
+mod import;
 mod logfile;
 mod mcp;
 mod memory;
@@ -56,6 +57,7 @@ pub struct AppState {
     /// Wann KI-Modelle zuletzt gebraucht wurden (zum Entladen)
     pub usage: memory::Usage,
     pub merge: merge::MergeState,
+    pub import: import::ImportState,
     pub updater: updater::UpdaterState,
     pub mcp: mcp::McpState,
 }
@@ -177,6 +179,7 @@ pub fn run() {
                 denoised_dir,
                 usage: memory::Usage::default(),
                 merge: merge::MergeState::default(),
+                import: import::ImportState::default(),
                 updater: updater::UpdaterState::default(),
                 mcp: mcp::McpState::default(),
             });
@@ -192,6 +195,11 @@ pub fn run() {
             commands::remove_root,
             cull::rejected_summary,
             merge::merge_start,
+            import::import_defaults,
+            import::import_scan,
+            import::import_preview,
+            import::import_start,
+            import::import_cancel,
             merge::merge_cancel,
             cull::delete_rejected,
             memory::develop_release,

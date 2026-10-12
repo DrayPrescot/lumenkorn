@@ -31,7 +31,13 @@ the system language; **DE / EN** at the bottom left of the sidebar switches it.
 ## Features
 
 ### Library
-- Folders are read in place. Nothing is imported, copied or moved.
+- Folders are read in place. Nothing is copied or moved, unless you import from a card.
+- Import from a memory card (`Ctrl+Shift+I` or the arrow next to “Folders”): pick photos by day
+  or one by one in a preview grid, and Lumenkorn copies them to `Target\YYYY\YYYY.MM.DD[_Occasion]`
+  as `YYYYMMDD_HHMMSS_Number` (capture time from EXIF, number from the camera's file name, so
+  `DSC07869.ARW` becomes `…_7869.ARW`). RAW and JPEG pairs and `.xmp` files keep the same name.
+  Photos already in the library are recognized. Every copy is checked byte for byte; only then
+  can the originals be deleted from the card, if you ask for it.
 - A file watcher picks up new, changed, renamed and moved files. Moved files are recognized by
   a content hash, so ratings, keywords and edits stay with the photo.
 - Projects collect any number of folders, also across drives.
@@ -154,6 +160,7 @@ photo open in Develop they can be undone with `Ctrl+Z`.
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste settings |
 | `Ctrl+Shift+E` | Export selection |
+| `Ctrl+Shift+I` | Import photos from a memory card |
 | `Ctrl+H` / `Ctrl+M` / `Ctrl+Shift+F` | HDR / panorama / focus stack |
 | `F11` | Fullscreen |
 

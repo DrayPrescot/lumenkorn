@@ -39,6 +39,13 @@ vergibt sie in der neuen Sprache neu.
 
 - **Ordner statt Import.** Du fügst einen Ordner hinzu, Lumenkorn liest ihn ein. Nichts wird
   kopiert, verschoben oder verändert.
+- **Import von der Speicherkarte** (Strg+Umschalt+I oder der Pfeil neben „Ordner“): Fotos im
+  Vorschauraster nach Tagen oder einzeln auswählen. Lumenkorn kopiert sie nach
+  `Ziel\JJJJ\JJJJ.MM.TT[_Anlass]` und benennt sie `JJJJMMTT_HHMMSS_Nummer` – Aufnahmezeit aus
+  dem EXIF, Nummer aus dem Dateinamen der Kamera (`DSC07869.ARW` wird `…_7869.ARW`). RAW und
+  JPEG mit gleichem Namen sowie `.xmp` behalten denselben Namen. Schon importierte Fotos werden
+  erkannt. Jede Kopie wird Byte für Byte geprüft; erst danach lassen sich die Originale auf
+  Wunsch von der Karte löschen.
 - **Live-Abgleich.** Eine Dateiüberwachung meldet neue, geänderte und gelöschte Dateien. Lumenkorn
   sammelt die Meldungen 1,5 Sekunden lang und prüft dann nur die gemeldeten Pfade, nicht den ganzen
   Ordner. Bei 50 000 Fotos auf einem NAS macht das einen großen Unterschied. Vollständig
@@ -355,6 +362,7 @@ unbearbeiteten Originale.
 | O | Maske rot anzeigen |
 | R | Zuschneiden |
 | Strg+Umschalt+E | Auswahl exportieren |
+| Strg+Umschalt+I | Fotos von der Speicherkarte importieren |
 | Strg+H / Strg+M / Strg+Umschalt+F | HDR / Panorama / Focus Stacking |
 
 ## So funktioniert Lumenkorn

@@ -55,6 +55,54 @@ export interface ImageSummary {
   edited: boolean;
 }
 
+/** Eine Aufnahme auf der Speicherkarte (Hauptdatei plus RAW/JPEG-Partner und .xmp) */
+export interface ImportItem {
+  id: number;
+  name: string;
+  extra: string[];
+  kind: "raster" | "raw";
+  size: number;
+  /** ISO ohne Zeitzone, z. B. 2026-10-11T14:32:10 */
+  capturedAt: string;
+  /** Kein EXIF-Datum – Änderungszeit der Datei */
+  dateFromFile: boolean;
+  /** Liegt mit gleichem Inhalt schon in der Bibliothek */
+  already: boolean;
+  newName: string;
+}
+
+export interface ImportSettings {
+  source: string | null;
+  target: string | null;
+  deleteAfter: boolean;
+}
+
+export interface ImportProgress {
+  done: number;
+  total: number;
+  bytes: number;
+  bytesTotal: number;
+  current: string;
+}
+
+export interface ImportReport {
+  imported: number;
+  files: number;
+  existing: number;
+  deleted: number;
+  bytes: number;
+  failed: [string, string][];
+  dirs: string[];
+  canceled: boolean;
+}
+
+export interface ImportDone {
+  report: ImportReport | null;
+  error: string | null;
+  rootAdded: boolean;
+  outsideLibrary: boolean;
+}
+
 export interface RejectedSummary {
   count: number;
   bytes: number;
@@ -622,6 +670,16 @@ export const api = {
   setLanguage: (lang: "de" | "en") => call<void>("set_language", { lang }),
 
   listRoots: () => call<Root[]>("list_roots"),
+  importDefaults: () => call<{ settings: ImportSettings; cards: string[] }>("import_defaults"),
+  importScan: (source: string) => call<ImportItem[]>("import_scan", { source }),
+  async importPreview(id: number): Promise<Blob> {
+    if (!isTauri) return mock.importPreview(id);
+    const buf = await tauriInvoke<ArrayBuffer>("import_preview", { id });
+    return new Blob([buf], { type: "image/jpeg" });
+  },
+  importStart: (ids: number[], target: string, event: string, deleteAfter: boolean) =>
+    call<void>("import_start", { ids, target, event, deleteAfter }),
+  importCancel: () => call<void>("import_cancel"),
   addRoot: (path: string) => call<Root>("add_root", { path }),
   removeRoot: (id: number) => call<void>("remove_root", { id }),
   rescanRoot: (id: number) => call<void>("rescan_root", { id }),
@@ -802,6 +860,9 @@ export interface Events {
   "ai-download": AiDownloadEvent;
   "repair-progress": { imageId: number; done: number; total: number };
   "merge-progress": MergeProgress;
+  "import-scan-progress": { found: number };
+  "import-progress": ImportProgress;
+  "import-done": ImportDone;
   "update-progress": { done: number; total: number | null; installing: boolean };
   /** Ein KI-Agent hat Bearbeitungen geändert */
   "develop-external": { ids: number[] };
