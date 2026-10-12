@@ -3,14 +3,16 @@
 // Aufruf: npm run i18n
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = new URL("..", import.meta.url).pathname;
+// fileURLToPath statt .pathname: unter Windows sonst „/D:/…“ → „D:\D:\…“
+const root = fileURLToPath(new URL("..", import.meta.url));
 const files = [];
 (function walk(d) {
   for (const f of readdirSync(d)) {
     const p = join(d, f);
     if (statSync(p).isDirectory()) walk(p);
-    else if (/\.(svelte|ts)$/.test(f) && !p.includes("/i18n/")) files.push(p);
+    else if (/\.(svelte|ts)$/.test(f) && !/[\\/]i18n[\\/]/.test(p)) files.push(p);
   }
 })(join(root, "src"));
 

@@ -631,7 +631,15 @@ pub fn download_missing(
             total: None,
         });
         let pth = dir.join("drunet_color.pth");
-        let onnx = crate::denoise::build_drunet_onnx(&std::fs::read(&pth)?)?;
+        // Unbrauchbare (z. B. abgeschnittene) Datei löschen – sonst gälte sie
+        // als vorhanden und jeder weitere Versuch scheiterte gleich
+        let onnx = match crate::denoise::build_drunet_onnx(&std::fs::read(&pth)?) {
+            Ok(o) => o,
+            Err(e) => {
+                let _ = std::fs::remove_file(&pth);
+                return Err(e);
+            }
+        };
         let tmp = dir.join(format!("{DENOISE_MODEL}.part"));
         std::fs::write(&tmp, onnx)?;
         std::fs::rename(&tmp, dir.join(DENOISE_MODEL))?;

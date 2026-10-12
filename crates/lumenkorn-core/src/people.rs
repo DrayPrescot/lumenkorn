@@ -669,7 +669,7 @@ impl Catalog {
         let old = self.face_person(face_id)?;
         self.conn.execute(
             "UPDATE faces SET rejected_person = person_id, person_id = NULL, confirmed = 0
-             WHERE id = ?1",
+             WHERE id = ?1 AND person_id IS NOT NULL",
             [face_id],
         )?;
         crate::catalog::flush_search(&self.conn)?;

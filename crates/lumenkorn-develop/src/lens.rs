@@ -378,20 +378,6 @@ impl LensProfile {
             data: out,
         }
     }
-
-    /// Wohin ein Punkt des korrigierten Bildes im unkorrigierten liegt
-    /// (normierte Koordinaten, Grünkanal) – für Werkzeuge, die im
-    /// Originalraum arbeiten.
-    pub fn to_source(&self, (x, y): (f32, f32), w: usize, h: usize) -> (f32, f32) {
-        let (wf, hf) = (w as f32, h as f32);
-        let (cx, cy) = (self.center.0 * wf, self.center.1 * hf);
-        let m = max_radius(cx, cy, wf, hf);
-        let scale = self.fill_scale(wf, hf);
-        let (dx, dy) = ((x * wf - cx) / scale, (y * hf - cy) / scale);
-        let r = (dx * dx + dy * dy).sqrt() / m;
-        let f = spline(&self.knots, &self.factor[1], r);
-        ((cx + dx * f) / wf, (cy + dy * f) / hf)
-    }
 }
 
 /// Was für ein Foto korrigiert werden kann (für die Oberfläche).

@@ -116,7 +116,7 @@
   };
 </script>
 
-<svg bind:this={svg} class="crop" width={stageW} height={stageH} onpointermove={onmove} onpointerup={onup} role="application" aria-label={t("Zuschnitt")}>
+<svg bind:this={svg} class="crop" width={stageW} height={stageH} onpointermove={onmove} onpointerup={onup} onpointercancel={onup} role="application" aria-label={t("Zuschnitt")}>
   <!-- Außenbereich abdunkeln -->
   <path
     class="shade"

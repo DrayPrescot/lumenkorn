@@ -9,7 +9,13 @@
 //! gemeldet. So startet die App in jedem Fall wieder.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+
+/// Laufende Wächter je Markierungsdatei: Hintergrundanalyse und Masken laufen
+/// parallel – die Datei darf erst weg, wenn der letzte von ihnen fertig ist.
+static ACTIVE: Mutex<Option<HashMap<PathBuf, usize>>> = Mutex::new(None);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -62,6 +68,12 @@ impl Guard {
     /// Fehler), wird die Markierung beim Verlassen des Gültigkeitsbereichs gelöscht.
     pub fn begin(dir: &Path, stage: Stage, backend: Option<&str>, detail: &str) -> Guard {
         let path = dir.join(stage.file());
+        *ACTIVE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_or_insert_with(HashMap::new)
+            .entry(path.clone())
+            .or_default() += 1;
         let crash = Crash {
             stage,
             backend: backend.map(str::to_string),
@@ -82,7 +94,14 @@ impl Guard {
 
 impl Drop for Guard {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+        let mut active = ACTIVE.lock().unwrap_or_else(|e| e.into_inner());
+        let map = active.get_or_insert_with(HashMap::new);
+        let n = map.entry(self.path.clone()).or_insert(1);
+        *n = n.saturating_sub(1);
+        if *n == 0 {
+            map.remove(&self.path);
+            let _ = std::fs::remove_file(&self.path);
+        }
     }
 }
 
@@ -128,6 +147,19 @@ mod tests {
         assert_eq!(prev[0].stage, Stage::KiLaufzeit);
         assert_eq!(prev[0].backend.as_deref(), Some("directml"));
         assert!(take_previous(&dir).is_empty(), "nur einmal gemeldet");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parallel_guards_keep_the_marker_until_the_last_ends() {
+        let dir = std::env::temp_dir().join(format!("lw-guard-par-{}", std::process::id()));
+        let file = dir.join(Stage::KiAnalyse.file());
+        let a = Guard::begin(&dir, Stage::KiAnalyse, None, "CLIP");
+        let b = Guard::begin(&dir, Stage::KiAnalyse, None, "SAM");
+        drop(a);
+        assert!(file.is_file(), "zweite Analyse läuft noch");
+        drop(b);
+        assert!(!file.is_file());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

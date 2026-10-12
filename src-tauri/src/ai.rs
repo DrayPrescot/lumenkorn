@@ -51,7 +51,7 @@ pub struct AiState {
     parts_seg: Mutex<Option<Arc<parts::PartsSeg>>>,
     mesh: Mutex<Option<Arc<parts::FaceMesh>>>,
     /// SAM-Embedding des zuletzt geklickten Bildes – das Berechnen dauert Sekunden.
-    sam_embedding: Mutex<Option<(i64, Arc<SamEmbedding>)>>,
+    sam_embedding: Mutex<Option<(SamKey, Arc<SamEmbedding>)>>,
     denoiser: Mutex<Option<Arc<lumenkorn_ai::denoise::Denoiser>>>,
     /// Es wird gerade ein Bild entrauscht (hält DRUNet geladen)
     denoising: AtomicBool,
@@ -961,9 +961,13 @@ fn sam_model(state: &AppState) -> Result<Arc<Sam>, Error> {
     )
 }
 
+/// (Bild, Objektivkorrektur): Die Eingabe des Embeddings hängt von beidem ab
+type SamKey = (i64, bool);
+
 fn sam_embedding(state: &AppState, sam: &Sam, id: i64) -> Result<Arc<SamEmbedding>, Error> {
+    let key = (id, crate::develop::lens_setting(state, id));
     if let Some((cached, e)) = state.ai.sam_embedding.lock().unwrap().as_ref()
-        && *cached == id
+        && *cached == key
     {
         return Ok(e.clone());
     }
@@ -971,7 +975,7 @@ fn sam_embedding(state: &AppState, sam: &Sam, id: i64) -> Result<Arc<SamEmbeddin
     let _g = analysis_guard(state, "Segment Anything");
     let e = Arc::new(sam.embed(&segmentation_input(state, id)?).map_err(err)?);
     log::info!("SAM-Embedding für Bild {id} in {:.2?}", t.elapsed());
-    *state.ai.sam_embedding.lock().unwrap() = Some((id, e.clone()));
+    *state.ai.sam_embedding.lock().unwrap() = Some((key, e.clone()));
     Ok(e)
 }
 

@@ -176,6 +176,9 @@ class Develop {
   #pending = false;
   #saveTimer: ReturnType<typeof setTimeout> | undefined;
   #loadToken = 0;
+  /** Zuletzt angefordertes Bild – kann noch auf das Speichern warten, während
+   *  `imageId` schon wieder auf das vorige zeigt */
+  #target: number | null = null;
   /** Für welches Bild `params` geladen sind. Während ein neues Bild lädt,
    *  stehen dort noch die Werte des vorigen – nie speichern oder rendern. */
   #paramsFor: number | null = null;
@@ -265,7 +268,10 @@ class Develop {
 
   /** Öffnet ein Bild zur Bearbeitung. Vorherige Änderungen werden vorher gespeichert. */
   async open(id: number) {
-    if (this.imageId === id) return;
+    // Mit dem Ziel vergleichen, nicht mit `imageId`: Bei → und sofort ←
+    // wartet open(B) noch auf das Speichern; open(A) muss es überholen.
+    if (this.#target === id) return;
+    this.#target = id;
     if (this.cropMode) this.applyCrop();
     // Token vor dem Warten auf das Speichern holen: Wird inzwischen ein
     // weiteres Bild geöffnet, gewinnt dieses (nicht das zuletzt fertige).
@@ -322,6 +328,7 @@ class Develop {
     // Erst speichern, dann die großen Puffer im Backend freigeben
     const saved = this.flush();
     const token = ++this.#loadToken;
+    this.#target = null;
     this.imageId = null;
     this.#paramsFor = null;
     this.revoke();
@@ -642,7 +649,8 @@ class Develop {
     }
     if (isAiKind(kind)) {
       const shape = await this.#runAi(kind);
-      if (!shape) return;
+      // Inzwischen anderes Foto, Rückgängig o. Ä.: Ergebnis verwerfen
+      if (!shape || this.list !== list) return;
       layer.shapes.push(shape);
       this.tool = null;
     } else {
@@ -664,7 +672,7 @@ class Develop {
     if (!layer) return;
     if (isAiKind(kind)) {
       const shape = await this.#runAi(kind);
-      if (!shape) return;
+      if (!shape || !this.list.includes(layer)) return;
       layer.shapes.push({ ...shape, subtract });
       this.schedule();
       this.commit();
@@ -702,6 +710,7 @@ class Develop {
         : kind === "sky" ? await api.maskSky(id)
         : person ? await api.maskPerson(id, person)
         : await api.maskAnimal(id, animal!);
+      if (this.imageId !== id) return null;
       // Teile wie Augen oder Iris sind winzig – nur „gar nichts“ melden
       const empty = person || animal ? r.coverage <= 0 : r.coverage < 0.005;
       if (empty) {
@@ -770,8 +779,11 @@ class Develop {
     const prev = idx >= 0 ? (layer.shapes[idx] as Extract<MaskShape, { type: "raster" }>) : null;
     const points = [...(prev?.prompt ?? []), point];
     this.maskBusy = prev ? t("Auswahl wird verfeinert …") : t("Objekt wird erkannt …");
+    const id = this.imageId;
     try {
-      const r = await api.maskObject(this.imageId, points, prev?.maskId ?? null);
+      const r = await api.maskObject(id, points, prev?.maskId ?? null);
+      // Inzwischen anderes Foto oder Ebene entfernt: Ergebnis verwerfen
+      if (this.imageId !== id || !this.list.includes(layer)) return;
       const shape: MaskShape = { type: "raster", kind: "object", maskId: r.maskId, prompt: points, subtract: prev?.subtract ?? subtract };
       if (idx >= 0) layer.shapes[idx] = shape;
       else layer.shapes.push(shape);
@@ -1005,8 +1017,6 @@ class Develop {
   /** Stand vor der Vorschau eines Presets (Maus über dem Eintrag) */
   #hoverBase: DevelopParams | null = null;
   #hoverTimer: ReturnType<typeof setTimeout> | undefined;
-  /** Preset, dessen Wirkung gerade gezeigt wird */
-  previewing = $state<number | null>(null);
 
   async loadPresets(force = false) {
     if (this.#presetsLoaded && !force) return;
@@ -1098,7 +1108,6 @@ class Develop {
   #dropPreview() {
     clearTimeout(this.#hoverTimer);
     this.#hoverBase = null;
-    this.previewing = null;
   }
 
   /** Wirkung eines Presets im geöffneten Foto zeigen, ohne es anzuwenden
@@ -1111,7 +1120,6 @@ class Develop {
         this.#hoverBase = null;
         this.schedule();
       }
-      this.previewing = null;
       return;
     }
     if (!this.ready) return;
@@ -1119,7 +1127,6 @@ class Develop {
     this.#hoverTimer = setTimeout(() => {
       this.#hoverBase ??= clone($state.snapshot(this.params) as DevelopParams);
       this.params = transferParams(this.#hoverBase, p.params, { ...p.groups, basic: false });
-      this.previewing = p.id;
       this.schedule();
     }, 120);
   }

@@ -414,7 +414,7 @@ impl PartsSeg {
             };
             // Softmax (das Modell liefert Logits)
             let m = (0..6).map(l).fold(f32::MIN, f32::max);
-            let e: Vec<f32> = (0..6).map(|c| (l(c) - m).exp()).collect();
+            let e: [f32; 6] = std::array::from_fn(|c| (l(c) - m).exp());
             let sum: f32 = e.iter().sum();
             for c in 0..6 {
                 probs[c * n + i] = e[c] / sum;
@@ -749,7 +749,7 @@ pub fn person_mask(img: &DynamicImage, part: PersonPart, m: &PartModels) -> Resu
         PersonPart::Person => {
             for r in &persons {
                 let mask = match m.sam {
-                    Some((sam, emb)) => Some(sam.predict_box(emb, *r)?),
+                    Some((sam, emb)) => Some(sam.predict_box(emb, sam_rect(r))?),
                     None => None,
                 };
                 match mask {
@@ -1021,16 +1021,24 @@ pub fn animal_mask(
         AnimalKind::Reptile => pick(&dets, &idx[2], &[&idx[0], &idx[1], &human], 0.1, 0.25),
     };
     log::info!("Tiere ({kind:?}): {} gefunden", rects.len());
-    let (w, h) = sam_size(sam.1);
+    let (w, h) = sam.1.size();
     let mut canvas = Canvas::new(w, h);
     for r in &rects {
-        paste_full(&mut canvas, &sam.0.predict_box(sam.1, *r)?);
+        paste_full(&mut canvas, &sam.0.predict_box(sam.1, sam_rect(r))?);
     }
     Ok(canvas.into_gray())
 }
 
-fn sam_size(emb: &SamEmbedding) -> (u32, u32) {
-    emb.size()
+/// OWLv2-Rahmen sitzen oft knapp (Füße, Schwanz abgeschnitten); SAM schneidet
+/// an der Rahmenkante ab. Mit 5 % Rand je Seite bleibt die Kante frei.
+fn sam_rect(r: &[f32; 4]) -> [f32; 4] {
+    let (dw, dh) = ((r[2] - r[0]) * 0.05, (r[3] - r[1]) * 0.05);
+    [
+        (r[0] - dw).max(0.0),
+        (r[1] - dh).max(0.0),
+        (r[2] + dw).min(1.0),
+        (r[3] + dh).min(1.0),
+    ]
 }
 
 /// Text für Fehlermeldungen, falls Teile fehlen

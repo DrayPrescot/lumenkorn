@@ -6,6 +6,25 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Masks: “Person”, “Animal”, “Object” (click) and the sky refinement no
+  longer come out squeezed and shifted towards the bottom left in portrait
+  photos and any aspect ratio other than 3:2 landscape. The Segment Anything
+  export had the crop for 3:2 baked in; Lumenkorn now crops the mask itself.
+- Masks: “Person” and “Animal” leave a small margin around the detected box,
+  so feet and tails are no longer cut off at the box edge.
+- Masks: the cached Segment Anything analysis is redone after switching lens
+  correction on or off, so clicks match the shown geometry.
+- Library: a subfolder that cannot be read for a moment (e.g. on a NAS) no
+  longer marks all photos in it as missing.
+- People: rejecting a face twice no longer forgets the first “not this
+  person”.
+- Develop: switching photos back and forth quickly could open the wrong
+  photo; AI mask results arriving after a photo switch went to the wrong
+  layer.
+- Updates: a failed download can be retried without restarting the app.
+- AI agents (MCP): the HTTP server accepts only exact local origins.
+
 ## [1.0.1] – 2026-10-11
 
 ### Added

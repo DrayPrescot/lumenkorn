@@ -121,7 +121,17 @@ impl SamEmbedding {
 pub struct Sam {
     encoder: Model,
     decoder: Model,
+    /// Der Decoder liefert `low_res_masks` (256×256 über dem aufgefüllten
+    /// 1024er-Quadrat). Daraus wird die Maske selbst zugeschnitten: Der
+    /// offizielle ONNX-Export hat den Zuschnitt in `masks` beim Tracing mit
+    /// der Beispielgröße 1500×2250 festgeschrieben (683×1024, 3:2 quer) –
+    /// bei jedem anderen Seitenverhältnis, besonders im Hochformat, wäre die
+    /// Maske verzerrt und Richtung unten links verschoben.
+    low_res: bool,
 }
+
+/// Kante von `low_res_masks`
+const SAM_LOW: usize = 256;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Point {
@@ -133,9 +143,19 @@ pub struct Point {
 
 impl Sam {
     pub fn load(encoder: &Path, decoder: &Path) -> Result<Self> {
+        let mut decoder = open_session(decoder)?;
+        let low_res = decoder
+            .inspect()
+            .outputs()
+            .iter()
+            .any(|o| o.name() == "low_res_masks");
+        if !low_res {
+            log::warn!("SAM-Decoder ohne low_res_masks – Masken nur bei 3:2 quer passgenau");
+        }
         Ok(Self {
             encoder: open_session(encoder)?,
-            decoder: open_session(decoder)?,
+            decoder,
+            low_res,
         })
     }
 
@@ -232,14 +252,23 @@ impl Sam {
         ];
         let mut dec = self.decoder.lock();
         let outputs = dec.run(inputs)?;
-        let (shape, masks) = outputs["masks"].try_extract_tensor::<f32>()?;
+        let name = if self.low_res {
+            "low_res_masks"
+        } else {
+            "masks"
+        };
+        let (shape, masks) = outputs[name].try_extract_tensor::<f32>()?;
         let (_, iou) = outputs["iou_predictions"].try_extract_tensor::<f32>()?;
         let count = shape.get(1).copied().unwrap_or(1).max(1) as usize;
         let best = (0..count.min(iou.len()))
             .max_by(|a, b| iou[*a].total_cmp(&iou[*b]))
             .unwrap_or(0);
         let (w, h) = (emb.width, emb.height);
-        let plane = (w * h) as usize;
+        let plane = if self.low_res {
+            SAM_LOW * SAM_LOW
+        } else {
+            (w * h) as usize
+        };
         if masks.len() < (best + 1) * plane {
             return Err(Error::ModelFormat(tr!(
                 "unerwartete Maskenform {shape:?}",
@@ -248,11 +277,29 @@ impl Sam {
         }
         let m = &masks[best * plane..(best + 1) * plane];
         // Logits → weiche, aber schmale Kante um 0; Reste weit außerhalb auf 0
-        let mut out = GrayImage::from_fn(w, h, |x, y| {
-            let v = m[(y * w + x) as usize];
+        let alpha = |v: f32| {
             let a = 1.0 / (1.0 + (-v * 4.0).exp());
             Luma([if a < 0.03 { 0 } else { (a * 255.0) as u8 }])
-        });
+        };
+        let mut out = if self.low_res {
+            // Maskenpixel → 1024er-Eingabe (× scale) → 256er-Raster (÷ 4),
+            // bilinear in Pixelmitten wie F.interpolate im Modell
+            let k = emb.scale * SAM_LOW as f32 / 1024.0;
+            let last = (SAM_LOW - 1) as f32;
+            GrayImage::from_fn(w, h, |x, y| {
+                let fx = ((x as f32 + 0.5) * k - 0.5).clamp(0.0, last);
+                let fy = ((y as f32 + 0.5) * k - 0.5).clamp(0.0, last);
+                let (x0, y0) = (fx as usize, fy as usize);
+                let (x1, y1) = ((x0 + 1).min(SAM_LOW - 1), (y0 + 1).min(SAM_LOW - 1));
+                let (ax, ay) = (fx - x0 as f32, fy - y0 as f32);
+                let v = |x: usize, y: usize| m[y * SAM_LOW + x];
+                let top = v(x0, y0) + (v(x1, y0) - v(x0, y0)) * ax;
+                let bot = v(x0, y1) + (v(x1, y1) - v(x0, y1)) * ax;
+                alpha(top + (bot - top) * ay)
+            })
+        } else {
+            GrayImage::from_fn(w, h, |x, y| alpha(m[(y * w + x) as usize]))
+        };
         fix_border(&mut out);
         Ok(out)
     }

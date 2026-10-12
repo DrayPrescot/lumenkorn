@@ -223,6 +223,7 @@
   onpointerdown={ondown}
   onpointermove={onmove}
   onpointerup={onup}
+  onpointercancel={onup}
   onpointerleave={() => (cursor = null)}
   role="application"
   aria-label={t("Masken-Editor")}

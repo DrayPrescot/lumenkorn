@@ -266,10 +266,11 @@ fn own_pipeline_owned(mut raw: rawler::RawImage, method: DemosaicMethod) -> Resu
     };
     let bayer = config.sensor == SensorType::Bayer;
     let roi = raw.active_area.unwrap_or(pixels.rect());
-    let wb = if raw.wb_coeffs[0].is_nan() {
-        [1.0; 4]
-    } else {
+    // Fehlt ein Koeffizient (NaN, 0), würde der Kanal ausfallen
+    let wb = if raw.wb_coeffs[..3].iter().all(|c| c.is_finite() && *c > 0.0) {
         raw.wb_coeffs
+    } else {
+        [1.0; 4]
     };
 
     // Sensordaten nach dem Demosaicing gleich freigeben (Spitzenspeicher)

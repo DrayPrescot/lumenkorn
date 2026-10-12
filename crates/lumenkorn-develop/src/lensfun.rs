@@ -24,7 +24,6 @@ const FF_DIAGONAL: f64 = 43.266_615;
 
 #[derive(Deserialize)]
 struct Db {
-    version: String,
     mounts: std::collections::HashMap<String, Vec<String>>,
     cameras: Vec<Camera>,
     lenses: Vec<Lens>,
@@ -68,11 +67,6 @@ fn db() -> Option<&'static Db> {
         }
     })
     .as_ref()
-}
-
-/// Stand der mitgelieferten Datenbank
-pub fn version() -> Option<&'static str> {
-    db().map(|d| d.version.as_str())
 }
 
 /// Was ein Foto über Kamera und Objektiv verrät.

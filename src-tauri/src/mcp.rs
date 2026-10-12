@@ -197,6 +197,23 @@ pub fn mcp_new_token(app: AppHandle) -> Result<McpStatus, Error> {
 
 // --- HTTP ------------------------------------------------------------------------
 
+/// Origin einer lokalen Seite: genau 127.0.0.1 bzw. localhost, mit oder ohne
+/// Port – nicht etwa `http://localhost.example.com`.
+fn local_origin(origin: &str) -> bool {
+    if origin == "null" {
+        return true;
+    }
+    let Some(rest) = origin.strip_prefix("http://") else {
+        return false;
+    };
+    let host = match rest.split_once(':') {
+        Some((h, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => h,
+        Some(_) => return false,
+        None => rest,
+    };
+    host == "127.0.0.1" || host == "localhost"
+}
+
 fn handle_http(app: &AppHandle, token: &str, mut req: tiny_http::Request) {
     use tiny_http::{Header, Method, Response};
     let header = |name: &str| {
@@ -215,9 +232,7 @@ fn handle_http(app: &AppHandle, token: &str, mut req: tiny_http::Request) {
     };
     // Nur lokale Webseiten dürfen (Schutz vor DNS-Rebinding)
     if let Some(origin) = header("Origin")
-        && !(origin.starts_with("http://127.0.0.1")
-            || origin.starts_with("http://localhost")
-            || origin == "null")
+        && !local_origin(&origin)
     {
         return reply(req, 403, r#"{"error":"origin not allowed"}"#.into());
     }
@@ -1154,6 +1169,21 @@ fn forward(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_exact_local_origins() {
+        for ok in ["null", "http://localhost", "http://127.0.0.1:5173"] {
+            assert!(local_origin(ok), "{ok}");
+        }
+        for bad in [
+            "http://localhost.evil.com",
+            "http://127.0.0.1.evil.com:80",
+            "http://localhost:80@evil.com",
+            "https://evil.com",
+        ] {
+            assert!(!local_origin(bad), "{bad}");
+        }
+    }
 
     fn rpc(body: Value) -> Option<Value> {
         let echo = |name: &str, args: &Value| -> ToolResult {

@@ -437,12 +437,6 @@ export const DEFAULT_PARAMS: DevelopParams = {
   repairs: [],
 };
 
-/** Regler des Reiters „Basis“ (ohne KI-Rauschreduzierung). */
-export const BASIC_KEYS = [
-  "temperature", "tint", "exposure", "contrast", "highlights", "shadows",
-  "whites", "blacks", "clarity", "dehaze", "vibrance", "saturation", "sharpen",
-] as const;
-
 /**
  * Spiegelt `DevelopParams::transfer_from` (params.rs): überträgt die gewählten
  * Gruppen von `src` auf `target`. KI-Rauschreduzierung, KI-Reparaturen und

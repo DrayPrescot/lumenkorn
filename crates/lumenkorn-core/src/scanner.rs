@@ -153,6 +153,8 @@ pub fn scan_root(
             total: 0,
         })
     });
+    let mut known = known;
+    w.keep_readable(&mut known);
     let mut report = reconcile(catalog, root_id, w.files, known, progress)?;
     // Alle Ordner auf der Platte merken – auch leere oder solche mit nur
     // nicht unterstützten Dateien erscheinen so im Ordnerbaum
@@ -248,6 +250,8 @@ pub fn scan_paths(
                     .any(|a| reported.contains(a))
         })
         .collect();
+    let mut affected = affected;
+    w.keep_readable(&mut affected);
     let mut report = reconcile(catalog, root_id, found, affected, progress)?;
     let dirs: Vec<String> = w
         .dirs
@@ -270,7 +274,9 @@ pub fn scan_paths(
 /// und der Rest (z. B. eine gelöschte Datei) wieder angehängt.
 fn within_root(root: &Path, p: &Path) -> Option<PathBuf> {
     if p.starts_with(root) {
-        return Some(p.to_path_buf());
+        // Neu zusammensetzen: einheitliche Trennzeichen (unter Windows „\“
+        // statt gemischt mit „/“), sonst passt der Pfad nicht zum Katalog
+        return Some(p.components().collect());
     }
     let mut base = p;
     let mut rest = Vec::new();
@@ -322,6 +328,24 @@ struct Walked {
     unsupported: std::collections::BTreeMap<String, usize>,
     /// Nicht lesbare Einträge (z. B. fehlende Berechtigung)
     unreadable: usize,
+    /// Pfade, an denen das Lesen scheiterte. Bekannte Bilder darunter gelten
+    /// nicht als fehlend – ein kurz nicht antwortender NAS-Ordner soll nicht
+    /// Tausende Fotos ausblenden.
+    failed: Vec<PathBuf>,
+}
+
+impl Walked {
+    /// Bekannte Bilder unter nicht lesbaren Pfaden nicht abgleichen
+    fn keep_readable(&self, known: &mut Vec<KnownImage>) {
+        if !self.failed.is_empty() {
+            known.retain(|k| {
+                !self
+                    .failed
+                    .iter()
+                    .any(|f| Path::new(&k.path).starts_with(f))
+            });
+        }
+    }
 }
 
 /// Sammelt alle Bilddateien und Unterordner unter `dir` ein.
@@ -336,6 +360,13 @@ fn walk(dir: &Path, out: &mut Walked, progress: &dyn Fn(usize)) {
             Err(err) => {
                 log::warn!("Überspringe: {err}");
                 out.unreadable += 1;
+                // Nicht vorhanden ist kein Lesefehler (gelöschte Datei)
+                let gone = err
+                    .io_error()
+                    .is_some_and(|e| e.kind() == std::io::ErrorKind::NotFound);
+                if let (Some(p), false) = (err.path(), gone) {
+                    out.failed.push(p.to_path_buf());
+                }
                 continue;
             }
         };

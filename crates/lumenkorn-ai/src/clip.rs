@@ -148,14 +148,6 @@ impl Clip {
         let (shape, values) = outputs[self.text_out.as_str()].try_extract_tensor::<f32>()?;
         split_rows(shape, values, texts.len())
     }
-
-    /// Text-Embedding als Mittel mehrerer Formulierungen („Prompt-Ensemble“) –
-    /// stabiler als eine einzelne Formulierung.
-    pub fn embed_concept(&self, prompts: &[String]) -> Result<Vec<f32>> {
-        let refs: Vec<&str> = prompts.iter().map(String::as_str).collect();
-        let rows = self.embed_texts(&refs)?;
-        Ok(mean_normalized(&rows))
-    }
 }
 
 /// Normiertes Mittel mehrerer Embeddings (Prompt-Ensemble).

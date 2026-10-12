@@ -97,6 +97,9 @@
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key.toLowerCase();
+    // Personenansicht: Kein Foto ist zu sehen – Bewerten oder Ablehnen träfe
+    // unbemerkt das zuletzt gewählte
+    if (lib.mode === "library" && lib.view === "people" && k.length === 1 && "012345pxuecd".includes(k)) return;
     // Umschalt+X: ablehnen und weiter
     if (k === "x" && e.shiftKey) {
       e.preventDefault();

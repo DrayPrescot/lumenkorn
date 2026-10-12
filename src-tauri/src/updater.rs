@@ -104,6 +104,8 @@ pub async fn update_install(app: AppHandle) -> Result<(), Error> {
         let mut done = 0u64;
         let events = app.clone();
         let finished = app.clone();
+        // Für einen erneuten Versuch behalten, falls der Download scheitert
+        let retry = update.clone();
         update
             .download_and_install(
                 move |chunk, total| {
@@ -129,7 +131,10 @@ pub async fn update_install(app: AppHandle) -> Result<(), Error> {
                 },
             )
             .await
-            .map_err(|e| Error::Invalid(e.to_string()))?;
+            .map_err(|e| {
+                *app.state::<AppState>().updater.pending.lock().unwrap() = Some(retry);
+                Error::Invalid(e.to_string())
+            })?;
         // Laufende KI-Arbeit beenden wie beim Neustart aus dem KI-Dialog
         crate::ai::app_restart(app);
         Ok(())

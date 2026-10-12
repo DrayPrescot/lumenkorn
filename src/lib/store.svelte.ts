@@ -62,8 +62,14 @@ class Library {
   async init() {
     // Meldungen aus dem Hintergrund in der Sprache der Oberfläche
     api.setLanguage(lang).catch(() => {});
-    await Promise.all([this.loadRoots(), this.loadProjects()]);
-    await this.loadImages();
+    // Ein Fehler beim ersten Laden darf die Ereignisse unten nicht verhindern –
+    // sonst bliebe die Oberfläche ohne Rückmeldung von Scans und Vorschauen
+    try {
+      await Promise.all([this.loadRoots(), this.loadProjects()]);
+      await this.loadImages();
+    } catch (e) {
+      this.notify(String(e), "error");
+    }
 
     listen("scan-progress", (p) => (this.scan = p));
     listen("library-changed", async (r) => {
