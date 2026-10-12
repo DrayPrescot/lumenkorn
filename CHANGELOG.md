@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- RAW: sunlit skin no longer shows flat yellow-green patches when highlights or exposure are
+  pulled down. Partly clipped areas now estimate the clipped channel from the measured ones and
+  the colour of the nearly clipped surroundings, so skin stays skin-coloured; areas where all
+  three channels are clipped become neutral white without brightness steps. Thumbnails of
+  edited RAW photos are created again once.
+
 ## [1.0.3] – 2026-10-12
 
 ### Added

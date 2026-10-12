@@ -333,8 +333,12 @@ fn own_pipeline_owned(
         rgb
     };
 
+    let mut rgb = rgb;
+    if unclip {
+        reconstruct_highlights(&mut rgb.data, rgb.width, &wb);
+    }
     // Liefert bereits bereinigte Werte (`sanitize`) – kein eigener Durchgang
-    let rgb = calibrate(&raw, rgb, &wb, unclip);
+    let rgb = calibrate(&raw, rgb, &wb);
 
     // Standard-Zuschnitt, angepasst an den bereits abgeschnittenen aktiven Bereich
     let mut img = rgb;
@@ -358,7 +362,6 @@ fn calibrate(
     raw: &rawler::RawImage,
     mut img: rawler::pixarray::Color2D<f32, 3>,
     wb: &[f32; 4],
-    unclip_highlights: bool,
 ) -> rawler::pixarray::Color2D<f32, 3> {
     use rawler::imgop::matrix::{multiply, normalize, pseudo_inverse, transform_1d};
     use rawler::imgop::xyz::{Illuminant, SRGB_TO_XYZ_D65};
@@ -395,9 +398,6 @@ fn calibrate(
     let cam2rgb = pseudo_inverse(rgb2cam);
     // An Ort und Stelle: keine zweite Kopie des RGB-Bildes (24 MP: 290 MB)
     img.data.par_iter_mut().for_each(|p| {
-        if unclip_highlights {
-            *p = unclip(*p, wb);
-        }
         let (r, g, b) = (p[0] * wb[0], p[1] * wb[1], p[2] * wb[2]);
         let out = [
             cam2rgb[0][0] * r + cam2rgb[0][1] * g + cam2rgb[0][2] * b,
@@ -409,40 +409,195 @@ fn calibrate(
     img
 }
 
-/// Ab hier (Anteil des Weißpunkts nach `apply_scaling`) gilt ein Kanal als
-/// gesättigt; bis `CLIP_AT` weicher Übergang. Sony sättigt etwas über dem
-/// angegebenen Weißpunkt (14-Bit-Maximum, ~1,07) – alles ab 1,0 ist Sättigung.
-const CLIP_FROM: f32 = 0.985;
+/// Ab hier (Anteil des Weißpunkts nach `apply_scaling`, hellster Kanal) gilt
+/// ein Pixel als gesättigt; bis `CLIP_AT` weicher Übergang. Sony sättigt etwas
+/// über dem angegebenen Weißpunkt (14-Bit-Maximum, ~1,07) – alles ab 1,0 ist
+/// Sättigung.
+const CLIP_FROM: f32 = 0.94;
 const CLIP_AT: f32 = 1.0;
+/// Zellen über die längste Kante, in denen die Farbe der Umgebung gesammelt
+/// wird (Zellgröße also relativ zum Bild – Vorschau und Export gleich)
+const CLIP_CELLS: usize = 300;
+/// Nach so vielen Zellen Abstand zur nächsten nicht gesättigten Stelle ist die
+/// übertragene Farbe ganz neutral: Das Innere großer ausgefressener Flächen
+/// (weiße Wand) bleibt weiß, statt Farbe von weit her zu übernehmen.
+const CLIP_REACH: f32 = 10.0;
+/// Nur fast gesättigte Pixel (Anteil des Weißpunkts) tragen zur Farbe bei: Das
+/// ist meist der Rand desselben Objekts (Haut neben dem Sonnenfleck) – nicht
+/// ein dunkleres daneben (Dach, rosa Papier vor einer weißen Wand).
+const CLIP_SOURCE_MIN: f32 = 0.8;
 
-/// Gesättigte Kanäle rekonstruieren (Kamera-RGB, vor dem Weißabgleich).
-///
-/// Ein Kanal am Sensor-Maximum kennt seinen wahren Wert nicht – er war
-/// mindestens so hell. Der Weißabgleich hebt Rot und Blau (bei Sony etwa ×2,4
-/// und ×1,6) über das abgeschnittene Grün: Ausgefressene weiße Flächen wurden
-/// magenta. Jeder gesättigte Kanal wird deshalb (weich) bis zum hellsten
-/// Kanal angehoben. Sind zwei oder mehr Kanäle gesättigt, ist die Stelle
-/// praktisch weiß (die Kamera zeichnet sie rein weiß) – dann wird sie ganz
-/// neutral. Wo nur der ohnehin hellste Kanal sättigt (blauer Himmel, Haut),
-/// bleibt der Farbton.
+/// Helligkeit im Kamera-RGB (nach Weißabgleich)
 #[inline]
-fn unclip(p: [f32; 3], wb: &[f32; 4]) -> [f32; 3] {
-    let w = p.map(|v| crate::color::smoothstep(CLIP_FROM, CLIP_AT, v));
-    if w.iter().all(|w| *w <= 0.0) {
-        return p;
+fn cam_luma(v: [f32; 3]) -> f32 {
+    0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]
+}
+
+#[inline]
+fn clip_weight(p: &[f32; 3]) -> f32 {
+    crate::color::smoothstep(CLIP_FROM, CLIP_AT, p[0].max(p[1]).max(p[2]))
+}
+
+/// Gesättigte Lichter rekonstruieren (Kamera-RGB vor dem Weißabgleich).
+///
+/// Ein Kanal am Sensor-Maximum kennt seinen wahren Wert nicht. Der
+/// Weißabgleich hebt Rot und Blau (Sony etwa ×2,4 und ×1,6) über ein
+/// abgeschnittenes Grün – ausgefressene weiße Flächen wurden magenta.
+///
+/// - Teilweise gesättigt (Haut in der Sonne: Grün voll, Rot und Blau nicht):
+///   Der gesättigte Kanal wird aus den gemessenen anderen geschätzt, über das
+///   Farbverhältnis der fast gesättigten Umgebung („Farbübertragung“ wie in
+///   RawTherapee und darktable). Haut bleibt hautfarben.
+/// - Alle drei Kanäle gesättigt: Es gibt keine Farbinformation – neutral bei
+///   der Helligkeit des hellsten Kanals, wie die Kamera ausgefressene Flächen
+///   zeichnet.
+///   Eine weiße Wand bleibt weiß, statt Farbe vom Nachbarobjekt zu borgen.
+fn reconstruct_highlights(data: &mut [[f32; 3]], w: usize, wb: &[f32; 4]) {
+    if w == 0 || !data.par_iter().any(|p| clip_weight(p) > 0.0) {
+        return;
     }
-    let v = [p[0] * wb[0], p[1] * wb[1], p[2] * wb[2]];
-    let m = v[0].max(v[1]).max(v[2]);
-    // Zweitstärkste Sättigung: wie sicher die Stelle eigentlich weiß ist
-    let both = w[0].min(w[1]).max(w[0].min(w[2])).max(w[1].min(w[2]));
-    let mut out = p;
-    for c in 0..3 {
-        let k = w[c].max(both);
-        if k > 0.0 {
-            out[c] = (v[c] + (m - v[c]) * k) / wb[c];
+    let h = data.len() / w;
+    let cell = (w.max(h) / CLIP_CELLS).max(4);
+    let (gw, gh) = (w.div_ceil(cell), h.div_ceil(cell));
+    let wbv = |p: &[f32; 3]| [p[0] * wb[0], p[1] * wb[1], p[2] * wb[2]];
+    // Farbe (Verhältnis zur Helligkeit) der hellen, nicht gesättigten Pixel je
+    // Zelle, nach Helligkeit² gewichtet – die hellsten liegen am Rand der Lichter
+    let cells: Vec<[f32; 4]> = (0..gh)
+        .into_par_iter()
+        .flat_map_iter(|gy| {
+            let mut acc = vec![[0f32; 4]; gw];
+            for y in gy * cell..((gy + 1) * cell).min(h) {
+                for (x, p) in data[y * w..(y + 1) * w].iter().enumerate() {
+                    if clip_weight(p) > 0.0 || p[0].max(p[1]).max(p[2]) < CLIP_SOURCE_MIN {
+                        continue;
+                    }
+                    let v = wbv(p);
+                    let l = cam_luma(v);
+                    let a = &mut acc[x / cell];
+                    for c in 0..3 {
+                        a[c] += v[c] * l; // Gewicht l² · Verhältnis v/l
+                    }
+                    a[3] += l * l;
+                }
+            }
+            acc
+        })
+        .collect();
+    // (Farbe, Abstand in Zellen zur nächsten Zelle mit eigener Farbe)
+    let mut grid: Vec<Option<([f32; 3], f32)>> = cells
+        .iter()
+        .map(|a| (a[3] > 0.0).then(|| ([a[0] / a[3], a[1] / a[3], a[2] / a[3]], 0.0)))
+        .collect();
+    // Ganz gesättigte Zellen von außen nach innen mit dem Mittel der
+    // Nachbarn füllen
+    const NEIGHBORS: [(isize, isize); 8] = [
+        (-1, 0),
+        (1, 0),
+        (0, -1),
+        (0, 1),
+        (-1, -1),
+        (1, -1),
+        (-1, 1),
+        (1, 1),
+    ];
+    loop {
+        let snapshot = grid.clone();
+        let mut changed = false;
+        for gy in 0..gh {
+            for gx in 0..gw {
+                if snapshot[gy * gw + gx].is_some() {
+                    continue;
+                }
+                let mut sum = [0f32; 3];
+                let mut dist = f32::MAX;
+                let mut n = 0.0;
+                for (dx, dy) in NEIGHBORS {
+                    let (nx, ny) = (gx as isize + dx, gy as isize + dy);
+                    if nx < 0 || ny < 0 || nx >= gw as isize || ny >= gh as isize {
+                        continue;
+                    }
+                    if let Some((r, d)) = snapshot[ny as usize * gw + nx as usize] {
+                        for c in 0..3 {
+                            sum[c] += r[c];
+                        }
+                        dist = dist.min(d);
+                        n += 1.0;
+                    }
+                }
+                if n > 0.0 {
+                    grid[gy * gw + gx] = Some((sum.map(|v| v / n), dist + 1.0));
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
         }
     }
-    out
+    // Mit dem Abstand neutraler (Verhältnis 1 : 1 : 1); ohne jede Umgebung
+    // (ganzes Bild gesättigt) ganz neutral
+    let grid: Vec<[f32; 3]> = grid
+        .into_iter()
+        .map(|g| match g {
+            Some((r, d)) => {
+                let t = (d / CLIP_REACH).min(1.0);
+                r.map(|v| v + (1.0 - v) * t)
+            }
+            None => [1.0; 3],
+        })
+        .collect();
+    let at = |gx: usize, gy: usize| grid[gy.min(gh - 1) * gw + gx.min(gw - 1)];
+    data.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+        let fy = ((y as f32 + 0.5) / cell as f32 - 0.5).max(0.0);
+        let (y0, ty) = (fy as usize, fy.fract());
+        for (x, p) in row.iter_mut().enumerate() {
+            if clip_weight(p) <= 0.0 {
+                continue;
+            }
+            let fx = ((x as f32 + 0.5) / cell as f32 - 0.5).max(0.0);
+            let (x0, tx) = (fx as usize, fx.fract());
+            let r: [f32; 3] = std::array::from_fn(|c| {
+                let top = at(x0, y0)[c] + (at(x0 + 1, y0)[c] - at(x0, y0)[c]) * tx;
+                let bot = at(x0, y0 + 1)[c] + (at(x0 + 1, y0 + 1)[c] - at(x0, y0 + 1)[c]) * tx;
+                top + (bot - top) * ty
+            });
+            let v = wbv(p);
+            let wc = p.map(|x| crate::color::smoothstep(CLIP_FROM, CLIP_AT, x));
+            // Gesättigte Kanäle aus den nicht gesättigten schätzen – über das
+            // Farbverhältnis der Umgebung. Die nicht gesättigten sind echte
+            // Messwerte und bleiben; am Rand der Lichter fallen Schätzung und
+            // Messung zusammen (keine Sprünge).
+            let mut out = v;
+            let free: f32 = wc.iter().map(|w| 1.0 - w).sum();
+            if free > 1e-3 {
+                for c in 0..3 {
+                    if wc[c] <= 0.0 {
+                        continue;
+                    }
+                    let est = (0..3)
+                        .filter(|&j| j != c)
+                        .map(|j| (1.0 - wc[j]) * v[j] * r[c] / r[j].max(1e-6))
+                        .sum::<f32>()
+                        / (free - (1.0 - wc[c])).max(1e-3);
+                    // Gesättigt heißt: mindestens so hell wie gemessen
+                    out[c] = v[c] + (est.max(v[c]) - v[c]) * wc[c];
+                }
+            }
+            // Alle drei Kanäle gesättigt: keine Farbinformation – neutral (wie
+            // die Kamera ausgefressene Flächen zeigt), und mindestens so hell
+            // wie der hellste Kanal. Weiß sättigt nacheinander Grün, Blau, Rot;
+            // so schließt die Fläche ohne Sprung an die Zone an, in der nur
+            // Rot noch gemessen ist.
+            let all = wc[0].min(wc[1]).min(wc[2]);
+            if all > 0.0 {
+                let m = out[0].max(out[1]).max(out[2]);
+                out = out.map(|x| x + (m - x) * all);
+            }
+            for c in 0..3 {
+                p[c] = out[c] / wb[c];
+            }
+        }
+    });
 }
 
 #[inline]
@@ -456,32 +611,64 @@ mod tests {
     use super::*;
 
     #[test]
-    fn clipped_highlights_turn_neutral_not_magenta() {
+    fn clipped_highlights_take_the_color_of_their_surroundings() {
         // Sony: Rot ×2,43, Blau ×1,56
         let wb = [2.43, 1.0, 1.56, f32::NAN];
-        let white = |p: [f32; 3]| {
-            let q = unclip(p, &wb);
-            [q[0] * wb[0], q[1] * wb[1], q[2] * wb[2]]
-        };
-        // Alle drei Kanäle am Anschlag (weiße Wand): gleich hell statt magenta
-        let w = white([1.069, 1.069, 1.069]);
+        let (w, h) = (96usize, 96usize);
+        // Fleck von 24 px (6 Zellen) – wie ein Sonnenfleck auf der Wange
+        let in_spot = |x: usize, y: usize| (36..60).contains(&x) && (36..60).contains(&y);
+        // Haut (Kamera-RGB nach Weißabgleich etwa 1 : 0,72 : 0,55), in der
+        // Mitte ein Sonnenfleck mit gesättigtem Grün und Rot
+        let skin = [1.0f32, 0.72, 0.55];
+        let mut data: Vec<[f32; 3]> = (0..w * h)
+            .map(|i| {
+                let (x, y) = (i % w, i / w);
+                // Ringsum helle Haut knapp unter der Sättigung (Grün ~86 %),
+                // im Fleck nur Grün gesättigt (Rot ~66 %, Blau ~56 %)
+                let k = if in_spot(x, y) { 1.6 } else { 1.2 };
+                std::array::from_fn(|c| (skin[c] * k / wb[c]).min(1.05))
+            })
+            .collect();
+        let before = data.clone();
+        reconstruct_highlights(&mut data, w, &wb);
+        let v = |p: [f32; 3]| [p[0] * wb[0], p[1] * wb[1], p[2] * wb[2]];
+        let c = v(data[48 * w + 48]);
+        // Farbton der Haut ringsum (G/R 0,72, B/R 0,55) statt magenta (G/R
+        // 0,66 gemessen) oder gelb (G/R ~1); zur Mitte hin etwas neutraler
+        let (gr, br) = (c[1] / c[0], c[2] / c[0]);
+        assert!(gr > 0.70 && gr < 0.85 && (br - 0.55).abs() < 0.01, "{c:?}");
+        // Gemessene Kanäle (Rot, Blau) bleiben, Grün wird nur heller
+        let (m, b) = (data[48 * w + 48], before[48 * w + 48]);
+        assert!(m[0] == b[0] && m[2] == b[2] && m[1] >= b[1], "{m:?} {b:?}");
+        // Nicht gesättigte Pixel bleiben unverändert
+        assert_eq!(data[2 * w + 2], before[2 * w + 2]);
+
+        // Großer gesättigter Bereich mit farbigem Rand: innen neutral
+        let (bw, bh) = (400usize, 400usize);
+        let mut big: Vec<[f32; 3]> = (0..bw * bh)
+            .map(|i| {
+                if i % bw < 8 {
+                    [0.9 / wb[0], 0.3, 0.3 / wb[2]] // kräftig rot, hell
+                } else {
+                    [1.069; 3]
+                }
+            })
+            .collect();
+        reconstruct_highlights(&mut big, bw, &wb);
+        let c = v(big[200 * bw + 300]);
         assert!(
-            (w[0] - w[1]).abs() < 1e-4 && (w[1] - w[2]).abs() < 1e-4,
-            "{w:?}"
+            (c[0] - c[1]).abs() < 1e-3 && (c[1] - c[2]).abs() < 1e-3,
+            "{c:?}"
         );
-        // Nur Grün gesättigt, Rot und Blau nicht: Grün wird angehoben
-        let g = white([0.9, 1.0, 0.7]);
-        assert!(g[1] >= g[0] - 1e-4, "{g:?}");
-        // Grün und Blau gesättigt, Rot nicht (Wand im Schatten): neutral
-        let s = white([0.45, 1.05, 1.0]);
+
+        // Ganz gesättigt ohne farbige Umgebung (weiße Wand): neutral statt magenta
+        let mut wall = vec![[1.069f32; 3]; 32 * 32];
+        reconstruct_highlights(&mut wall, 32, &wb);
+        let c = v(wall[16 * 32 + 16]);
         assert!(
-            (s[0] - s[1]).abs() < 1e-4 && (s[1] - s[2]).abs() < 1e-4,
-            "{s:?}"
+            (c[0] - c[1]).abs() < 1e-3 && (c[1] - c[2]).abs() < 1e-3,
+            "{c:?}"
         );
-        // Unter dem Weißpunkt bleibt alles, wie es ist
-        assert_eq!(unclip([0.5, 0.97, 0.3], &wb), [0.5, 0.97, 0.3]);
-        // Blauer Himmel: Blau gesättigt und ohnehin am hellsten – unverändert
-        assert_eq!(unclip([0.2, 0.5, 1.0], &wb), [0.2, 0.5, 1.0]);
     }
 
     /// Eigene Pipeline mit rawlers PPG ergibt exakt rawlers Ergebnis (Farb-
