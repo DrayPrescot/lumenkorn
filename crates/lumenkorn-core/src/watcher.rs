@@ -5,10 +5,14 @@ use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{RecvTimeoutError, channel};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Ruhezeit nach der letzten Änderung, bevor gemeldet wird.
 const QUIET: Duration = Duration::from_millis(1500);
+/// Spätestens so lange nach der ersten Änderung wird gemeldet, auch wenn
+/// es nie ruhig wird (Tethering, Cloud-Sync, Logdatei im Ordner) – sonst
+/// erschienen neue Fotos nie und die Liste wüchse ohne Grenze.
+const MAX_WAIT: Duration = Duration::from_secs(15);
 
 /// Gebündelte Änderungen.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -39,6 +43,14 @@ impl FolderWatcher {
     /// Reine Lesezugriffe (Öffnen, Schließen ohne Schreiben) werden ignoriert,
     /// sonst würde jeder Scan und jedes Thumbnail einen neuen Scan auslösen.
     pub fn new(on_change: impl Fn(Changes) + Send + 'static) -> Result<Self> {
+        Self::with_timing(QUIET, MAX_WAIT, on_change)
+    }
+
+    fn with_timing(
+        quiet: Duration,
+        max_wait: Duration,
+        on_change: impl Fn(Changes) + Send + 'static,
+    ) -> Result<Self> {
         let (tx, rx) = channel::<Msg>();
 
         let watcher = notify::recommended_watcher(move |res: notify::Result<Event>| match res {
@@ -68,19 +80,33 @@ impl FolderWatcher {
             .spawn(move || {
                 let mut pending: HashSet<PathBuf> = HashSet::new();
                 let mut rescan = false;
+                // Zeitpunkt der ersten noch nicht gemeldeten Änderung
+                let mut since: Option<Instant> = None;
                 loop {
-                    match rx.recv_timeout(QUIET) {
-                        Ok(Msg::Paths(paths)) => pending.extend(paths),
-                        Ok(Msg::Rescan) => rescan = true,
-                        Err(RecvTimeoutError::Timeout) => {
-                            if !pending.is_empty() || rescan {
-                                on_change(Changes {
-                                    paths: pending.drain().collect(),
-                                    rescan: std::mem::take(&mut rescan),
-                                });
-                            }
+                    let wait =
+                        since.map_or(quiet, |t| quiet.min(max_wait.saturating_sub(t.elapsed())));
+                    let quiet_now = match rx.recv_timeout(wait) {
+                        Ok(Msg::Paths(paths)) => {
+                            pending.extend(paths);
+                            false
                         }
+                        Ok(Msg::Rescan) => {
+                            rescan = true;
+                            false
+                        }
+                        Err(RecvTimeoutError::Timeout) => true,
                         Err(RecvTimeoutError::Disconnected) => break,
+                    };
+                    if pending.is_empty() && !rescan {
+                        continue;
+                    }
+                    let first = *since.get_or_insert_with(Instant::now);
+                    if quiet_now || first.elapsed() >= max_wait {
+                        since = None;
+                        on_change(Changes {
+                            paths: pending.drain().collect(),
+                            rescan: std::mem::take(&mut rescan),
+                        });
                     }
                 }
             })?;
@@ -158,5 +184,25 @@ mod tests {
         let got = hits.lock().unwrap();
         assert_eq!(got.len(), 1);
         assert!(got[0].iter().any(|p| p.ends_with("neu.jpg")));
+    }
+
+    #[test]
+    fn reports_during_constant_writing() {
+        let d = tempfile::tempdir().unwrap();
+        let hits: Arc<Mutex<usize>> = Arc::default();
+        let h = hits.clone();
+        let quiet = Duration::from_millis(400);
+        let mut w = FolderWatcher::with_timing(quiet, Duration::from_millis(1000), move |_| {
+            *h.lock().unwrap() += 1
+        })
+        .unwrap();
+        w.watch(d.path()).unwrap();
+        // Alle 100 ms schreiben – nie 400 ms Ruhe
+        for i in 0..30 {
+            std::fs::write(d.path().join("log.txt"), format!("{i}")).unwrap();
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let during = *hits.lock().unwrap();
+        assert!(during >= 2, "nur {during} Meldungen während des Schreibens");
     }
 }

@@ -75,8 +75,15 @@ impl Source {
         } else if raw {
             let (img, raw_orientation) = decode_raw(path)?;
             let o = orientation.unwrap_or(raw_orientation);
-            lens =
-                crate::lens::LensProfile::read(path, o, img_size(&img, o)).map(std::sync::Arc::new);
+            let size = img_size(&img, o);
+            lens = crate::lens::LensProfile::read(path, o, size).map(std::sync::Arc::new);
+            full = Some(size);
+            // Erst verkleinern, dann aufrichten: Bei Hochformat drehte sonst
+            // jede Vorschau das volle Bild (bis 720 MB Kopie)
+            let img = match max_edge {
+                Some(m) => img.into_downscaled(m),
+                None => img,
+            };
             (SourceKind::Raw, apply_exif_orientation(img, o))
         } else {
             let img = crate::raster::open(path)?;

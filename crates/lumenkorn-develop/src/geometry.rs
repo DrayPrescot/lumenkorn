@@ -2,6 +2,7 @@
 
 use crate::image_f32::ImageF32;
 use crate::params::Crop;
+use rayon::prelude::*;
 
 /// Wendet eine EXIF-Orientierung (1–8) an, sodass das Bild aufrecht steht.
 pub fn apply_exif_orientation(img: ImageF32, orientation: u16) -> ImageF32 {
@@ -9,9 +10,13 @@ pub fn apply_exif_orientation(img: ImageF32, orientation: u16) -> ImageF32 {
         2 => flip_h(&img),
         3 => rotate_180(&img),
         4 => flip_v(&img),
-        5 => flip_h(&rotate_90_cw(&img)),
+        // Spiegeln und Drehen in einem Durchgang (statt zweier Vollbilder)
+        5 => swap_axes(&img, |x, y| (y, x)),
         6 => rotate_90_cw(&img),
-        7 => flip_h(&rotate_270_cw(&img)),
+        7 => {
+            let (w, h) = (img.width, img.height);
+            swap_axes(&img, |x, y| (w - 1 - y, h - 1 - x))
+        }
         8 => rotate_270_cw(&img),
         _ => img,
     }
@@ -27,14 +32,42 @@ pub fn rotate_quarters(img: ImageF32, quarters: u8) -> ImageF32 {
 }
 
 pub fn rotate_90_cw(img: &ImageF32) -> ImageF32 {
-    let (w, h) = (img.width, img.height);
+    let h = img.height;
     // Ziel (x, y) ← Quelle (y, h-1-x)
-    ImageF32::from_fn(h, w, |x, y| img.get(y, h - 1 - x))
+    swap_axes(img, |x, y| (y, h - 1 - x))
 }
 
 pub fn rotate_270_cw(img: &ImageF32) -> ImageF32 {
-    let (w, h) = (img.width, img.height);
-    ImageF32::from_fn(h, w, |x, y| img.get(w - 1 - y, x))
+    let w = img.width;
+    swap_axes(img, |x, y| (w - 1 - y, x))
+}
+
+/// Bild mit vertauschten Achsen (h × w); `src(x, y)` nennt den Quellpixel
+/// für den Zielpixel. In Kacheln: Eine Zielzeile liest eine Spalte der
+/// Quelle – zeilenweise wäre bei 45 MP fast jeder Zugriff ein Cache-Fehlgriff.
+fn swap_axes(img: &ImageF32, src: impl Fn(usize, usize) -> (usize, usize) + Sync) -> ImageF32 {
+    const T: usize = 64;
+    let (ow, oh) = (img.height, img.width);
+    let mut data = vec![[0f32; 3]; ow * oh];
+    data.par_chunks_mut((ow * T).max(1))
+        .enumerate()
+        .for_each(|(band, out)| {
+            let rows = out.len() / ow;
+            for x0 in (0..ow).step_by(T) {
+                for dy in 0..rows {
+                    let y = band * T + dy;
+                    for x in x0..(x0 + T).min(ow) {
+                        let (sx, sy) = src(x, y);
+                        out[dy * ow + x] = img.get(sx, sy);
+                    }
+                }
+            }
+        });
+    ImageF32 {
+        width: ow,
+        height: oh,
+        data,
+    }
 }
 
 pub fn rotate_180(img: &ImageF32) -> ImageF32 {
@@ -203,6 +236,34 @@ mod tests {
 
     fn numbered(w: usize, h: usize) -> ImageF32 {
         ImageF32::from_fn(w, h, |x, y| [(y * w + x) as f32, 0.0, 0.0])
+    }
+
+    #[test]
+    fn tiled_orientations_match_pixelwise_reference() {
+        // Größer als eine Kachel und nicht durch 64 teilbar
+        let img = numbered(150, 71);
+        let (w, h) = (img.width, img.height);
+        let reference = |o: u16| -> ImageF32 {
+            let at = |x: usize, y: usize| match o {
+                5 => img.get(y, x),
+                6 => img.get(y, h - 1 - x),
+                7 => img.get(w - 1 - y, h - 1 - x),
+                _ => img.get(w - 1 - y, x),
+            };
+            ImageF32::from_fn(h, w, at)
+        };
+        for o in 5..=8 {
+            let got = apply_exif_orientation(img.clone(), o);
+            assert_eq!((got.width, got.height), (h, w));
+            assert!(got.data == reference(o).data, "Orientierung {o}");
+        }
+        // Orientierung 5 = gespiegelt nach 90°, 7 = gespiegelt nach 270°
+        let five = flip_h(&rotate_90_cw(&img));
+        assert!(apply_exif_orientation(img.clone(), 5).data == five.data);
+        let seven = flip_h(&rotate_270_cw(&img));
+        assert!(apply_exif_orientation(img.clone(), 7).data == seven.data);
+        let empty = ImageF32::from_fn(0, 0, |_, _| [0.0; 3]);
+        assert_eq!(rotate_90_cw(&empty).data.len(), 0);
     }
 
     #[test]

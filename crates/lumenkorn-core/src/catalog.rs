@@ -743,17 +743,44 @@ impl Catalog {
         let mut st = self.conn.prepare(
             "SELECT id, path, size, mtime, quick_hash, missing FROM images WHERE root_id = ?1",
         )?;
-        let rows = st.query_map([root_id], |r| {
-            Ok(KnownImage {
-                id: r.get(0)?,
-                path: r.get(1)?,
-                size: r.get(2)?,
-                mtime: r.get(3)?,
-                quick_hash: r.get(4)?,
-                missing: r.get(5)?,
-            })
-        })?;
+        let rows = st.query_map([root_id], known_row)?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Bekannte Bilder unter den gemeldeten Pfaden – die Datei selbst oder
+    /// ein Ordner samt Unterordnern – und alle schon fehlenden des
+    /// Quellordners (für die Erkennung verschobener Dateien). Für die
+    /// Ordnerüberwachung: Bei 100 000 Fotos lud jede Meldung sonst alle.
+    pub(crate) fn known_images_under(
+        &self,
+        root_id: i64,
+        paths: &[String],
+    ) -> Result<Vec<KnownImage>> {
+        // Sehr viele Pfade: ein Durchgang über alle ist dann günstiger
+        if paths.len() > 2000 {
+            return self.known_images(root_id);
+        }
+        let mut out: std::collections::BTreeMap<i64, KnownImage> = Default::default();
+        let mut missing = self.conn.prepare_cached(
+            "SELECT id, path, size, mtime, quick_hash, missing FROM images
+             WHERE root_id = ?1 AND missing = 1",
+        )?;
+        for k in missing.query_map([root_id], known_row)? {
+            let k = k?;
+            out.insert(k.id, k);
+        }
+        let mut under = self.conn.prepare_cached(
+            "SELECT id, path, size, mtime, quick_hash, missing FROM images
+             WHERE root_id = ?1 AND (path = ?2 OR dir = ?2 OR (dir >= ?3 AND dir < ?4))",
+        )?;
+        for p in paths {
+            let (prefix, upper) = subtree_range(p);
+            for k in under.query_map(params![root_id, p, prefix, upper], known_row)? {
+                let k = k?;
+                out.insert(k.id, k);
+            }
+        }
+        Ok(out.into_values().collect())
     }
 
     /// Führt mehrere Schreibvorgänge in einer Transaktion aus. Der Suchindex
@@ -1692,6 +1719,17 @@ fn edit_from_row(r: &Row) -> rusqlite::Result<Edit> {
 /// Präfix „…/Ordner/“ liegen zwischen dem Präfix und dem Präfix mit um eins
 /// erhöhtem Trennzeichen. Laufwerkswurzeln („/“, „C:\“) enden schon auf den
 /// Trenner – `child_prefix` hängt dann keinen zweiten an.
+fn known_row(r: &Row) -> rusqlite::Result<KnownImage> {
+    Ok(KnownImage {
+        id: r.get(0)?,
+        path: r.get(1)?,
+        size: r.get(2)?,
+        mtime: r.get(3)?,
+        quick_hash: r.get(4)?,
+        missing: r.get(5)?,
+    })
+}
+
 fn dir_filter(p: &str, recursive: bool, args: &mut Vec<Value>) -> String {
     if !recursive {
         args.push(Value::Text(p.to_string()));

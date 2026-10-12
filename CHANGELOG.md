@@ -38,6 +38,25 @@ and the project uses [Semantic Versioning](https://semver.org/).
   instead of opening the same catalog twice.
 - A catalog from a newer Lumenkorn version is not opened (and not changed);
   errors opening the catalog are shown instead of quitting silently.
+- Develop: a photo changed in another program is reloaded instead of
+  showing the old content until it drops out of memory.
+- Lens correction: when a Sony lens reports colour fringing but no
+  distortion, the camera's fringe correction is kept together with the
+  Lensfun distortion profile instead of being replaced.
+- Folder watching: constant writing in a source folder (tethering, cloud
+  sync) no longer delays new photos forever; changes are picked up at least
+  every 15 seconds.
+- Develop: switching photos could briefly show the preview of the previous
+  photo's settings.
+
+### Changed
+- Portrait RAWs open faster and need less memory: they are scaled down
+  before being turned upright, and lens data is read from the file header
+  instead of the whole file.
+- Zooming in Develop no longer blocks other requests while the full
+  resolution is loading.
+- Folder watching only looks up the photos in the reported folders instead
+  of the whole source folder on every change.
 
 ## [1.0.1] – 2026-10-11
 

@@ -185,10 +185,7 @@ pub fn scan_paths(
     changed: &[PathBuf],
     progress: &(dyn Fn(ScanProgress) + Sync),
 ) -> Result<ScanReport> {
-    let (root, known) = {
-        let cat = catalog.locked();
-        (cat.root(root_id)?, cat.known_images(root_id)?)
-    };
+    let root = catalog.locked().root(root_id)?;
     let root_path = Path::new(&root.path);
     ensure_online(root_path)?;
     // Nur Pfade in diesem Quellordner, keine versteckten oder übersprungenen
@@ -232,6 +229,11 @@ pub fn scan_paths(
         }
     }
     let found = std::mem::take(&mut w.files);
+    let top_strings: Vec<String> = tops
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    let known = catalog.locked().known_images_under(root_id, &top_strings)?;
 
     // Betroffen sind die bekannten Bilder, die selbst oder deren Ordner (auf
     // irgendeiner Ebene) gemeldet wurden – per Nachschlagen statt jeden

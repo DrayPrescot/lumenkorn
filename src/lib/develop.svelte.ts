@@ -173,6 +173,10 @@ class Develop {
   #saving: Promise<unknown> = Promise.resolve();
   #lastOpen = -Infinity;
   #inFlight = false;
+  /** Nummer der neuesten Vorschau-Anfrage: Beim Fotowechsel ruft open()
+   *  renderNow() direkt auf, während die vorige noch läuft – deren Antwort
+   *  darf die neuere weder überschreiben noch `#inFlight` zurücksetzen. */
+  #renderSeq = 0;
   #pending = false;
   #saveTimer: ReturnType<typeof setTimeout> | undefined;
   #loadToken = 0;
@@ -459,6 +463,7 @@ class Develop {
     const id = this.imageId;
     if (id === null || !this.ready) return;
     this.#inFlight = true;
+    const seq = ++this.#renderSeq;
     try {
       const params = $state.snapshot(this.params) as DevelopParams;
       // Beim Zuschneiden das ganze Bild zeigen; der Rahmen wird darübergelegt.
@@ -467,17 +472,20 @@ class Develop {
       const overlay = this.editsRepairs ? null : sel;
       const overlayRepair = this.editsRepairs ? sel : null;
       const blob = await api.developRender(id, params, this.maxEdge, overlay, overlayRepair);
-      if (id !== this.imageId) return;
+      if (id !== this.imageId || seq !== this.#renderSeq) return;
       const old = this.url;
       this.url = URL.createObjectURL(blob);
       if (old) setTimeout(() => URL.revokeObjectURL(old), 1000);
     } catch (e) {
-      lib.notify(String(e), "error");
+      if (seq === this.#renderSeq) lib.notify(String(e), "error");
     } finally {
-      this.#inFlight = false;
-      if (this.#pending) {
-        this.#pending = false;
-        this.renderNow();
+      // Eine überholte Anfrage lässt die neuere weiterlaufen
+      if (seq === this.#renderSeq) {
+        this.#inFlight = false;
+        if (this.#pending) {
+          this.#pending = false;
+          this.renderNow();
+        }
       }
     }
   }

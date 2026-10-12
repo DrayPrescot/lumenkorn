@@ -205,8 +205,12 @@ impl LensProfile {
     /// es keine gibt. `orientation`: EXIF-Drehung, mit der das Bild
     /// aufgerichtet wird; `size`: Bildgröße nach dem Aufrichten.
     pub fn read(path: &Path, orientation: u16, size: (usize, usize)) -> Option<Self> {
-        let embedded = Self::read_embedded(path, orientation);
-        let shot = shot(path);
+        // Speicherabgebildet statt `fs::read`: Gelesen werden nur die Seiten
+        // mit den Tags – nicht 40–100 MB RAW bei jedem Laden. Eine Öffnung
+        // für Kameradaten und EXIF.
+        let file = rawler::rawsource::RawSource::new(path).ok()?;
+        let embedded = Self::read_embedded(file.buf(), orientation);
+        let shot = shot(&file);
         let (w, h) = if (5..=8).contains(&orientation) {
             (size.1, size.0)
         } else {
@@ -251,11 +255,30 @@ impl LensProfile {
         if p.distortion.is_none()
             && let Some(f) = l.factor
         {
+            // Farbsäume der Kamera merken, bevor die Faktoren ersetzt werden
+            let camera_ca = p.chromatic.map(|_| (p.knots.clone(), p.factor.clone()));
             p.center = orient_point(orientation, l.center);
             p.knots = l.knots.clone();
             p.factor = f;
             p.distortion = Some(LensSource::Lensfun);
-            p.chromatic = l.chromatic.then_some(LensSource::Lensfun);
+            match camera_ca {
+                // Kamera meldet Farbsäume, aber keine Verzeichnung: deren
+                // Verhältnis Rot/Grün bzw. Blau/Grün auf Lensfuns Verzeichnung
+                // setzen – Farbsäume bleiben bevorzugt die der Kamera
+                Some((k, cf)) => {
+                    for c in [0, 2] {
+                        p.factor[c] = p
+                            .knots
+                            .iter()
+                            .zip(&p.factor[1])
+                            .map(|(r, g)| {
+                                g * spline(&k, &cf[c], *r) / spline(&k, &cf[1], *r).max(1e-6)
+                            })
+                            .collect();
+                    }
+                }
+                None => p.chromatic = l.chromatic.then_some(LensSource::Lensfun),
+            }
             used = true;
         }
         if let Some(g) = l.vig_gain {
@@ -270,9 +293,8 @@ impl LensProfile {
         (p.distortion.is_some() || p.chromatic.is_some() || p.vignetting.is_some()).then_some(p)
     }
 
-    fn read_embedded(path: &Path, orientation: u16) -> Option<Self> {
-        let data = std::fs::read(path).ok()?;
-        let tiff = Tiff::new(&data)?;
+    fn read_embedded(data: &[u8], orientation: u16) -> Option<Self> {
+        let tiff = Tiff::new(data)?;
         let ifds = tiff.ifds();
         // Sony: in der Raw-SubIFD (DNG-Umwandlungen kopieren sie nach IFD0)
         for ifd in &ifds {
@@ -392,11 +414,10 @@ pub struct LensSummary {
 }
 
 /// Kamera, Objektiv, Brennweite und Blende aus den Metadaten (rawler).
-fn shot(path: &Path) -> Option<crate::lensfun::Shot> {
+fn shot(file: &rawler::rawsource::RawSource) -> Option<crate::lensfun::Shot> {
     use rawler::decoders::RawDecodeParams;
-    let file = rawler::rawsource::RawSource::new(path).ok()?;
-    let dec = rawler::get_decoder(&file).ok()?;
-    let md = dec.raw_metadata(&file, &RawDecodeParams::default()).ok()?;
+    let dec = rawler::get_decoder(file).ok()?;
+    let md = dec.raw_metadata(file, &RawDecodeParams::default()).ok()?;
     let r = |v: Option<rawler::formats::tiff::Rational>| {
         v.filter(|r| r.d != 0).map(|r| r.n as f64 / r.d as f64)
     };
@@ -640,6 +661,47 @@ mod tests {
             11, 0, 5, 32, 70, 119, 178, 244, 300, 390, 545, 800, 0, 0, 0, 0, 0,
         ];
         LensProfile::from_sony(&dist, &ca, &vig).unwrap()
+    }
+
+    #[test]
+    fn camera_ca_survives_lensfun_distortion() {
+        // Kamera: Farbsäume, aber keine Verzeichnung
+        let dist = [11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let ca = [
+            22, 640, 640, 640, 512, 512, 512, 384, 384, 384, 384, 256, 0, -128, -128, -128, 0, 0,
+            128, 256, 256, 128, -256, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        let vig = [11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let cam = LensProfile::from_sony(&dist, &ca, &vig).unwrap();
+        assert!(cam.distortion.is_none() && cam.chromatic.is_some());
+        let n = 64;
+        let knots: Vec<f32> = (0..n).map(|i| i as f32 / (n - 1) as f32).collect();
+        // Lensfun: leichte Tonne, ohne Farbsäume
+        let green: Vec<f32> = knots.iter().map(|r| 1.0 - 0.02 * r * r).collect();
+        let l = crate::lensfun::Profile {
+            name: "Test".into(),
+            center: (0.5, 0.5),
+            knots: knots.clone(),
+            factor: Some([green.clone(), green.clone(), green.clone()]),
+            chromatic: false,
+            vig_gain: None,
+        };
+        let ratio = |p: &LensProfile, c: usize, r: f32| {
+            spline(&p.knots, &p.factor[c], r) / spline(&p.knots, &p.factor[1], r)
+        };
+        let p = LensProfile::combine(Some(cam.clone()), Some(l), 1).unwrap();
+        assert_eq!(p.distortion, Some(LensSource::Lensfun));
+        assert_eq!(p.chromatic, Some(LensSource::Sony));
+        for r in [0.2f32, 0.5, 0.8] {
+            // Grün folgt Lensfun, Rot und Blau behalten das Verhältnis der Kamera
+            assert!((spline(&p.knots, &p.factor[1], r) - (1.0 - 0.02 * r * r)).abs() < 1e-3);
+            for c in [0, 2] {
+                assert!(
+                    (ratio(&p, c, r) - ratio(&cam, c, r)).abs() < 2e-4,
+                    "Kanal {c}, r {r}"
+                );
+            }
+        }
     }
 
     #[test]

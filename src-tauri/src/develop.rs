@@ -18,8 +18,35 @@ use tauri::{AppHandle, Emitter, Manager, State};
 pub const PROXY_EDGE: usize = 2048;
 const CACHE_ENTRIES: usize = 4;
 
+/// Stand der Quelldatei beim Laden. Wird sie von außen geändert (in einer
+/// anderen Software überarbeitet, RAW ersetzt), passt der Stempel nicht mehr
+/// und das Bild wird neu geladen – statt weiter den alten Inhalt zu zeigen.
+struct FileStamp {
+    path: PathBuf,
+    stamp: Option<(u64, std::time::SystemTime)>,
+}
+
+impl FileStamp {
+    fn read(path: &Path) -> Option<(u64, std::time::SystemTime)> {
+        let m = std::fs::metadata(path).ok()?;
+        Some((m.len(), m.modified().ok()?))
+    }
+
+    fn of(path: &Path) -> Self {
+        Self {
+            path: path.to_path_buf(),
+            stamp: Self::read(path),
+        }
+    }
+
+    fn changed(&self) -> bool {
+        Self::read(&self.path) != self.stamp
+    }
+}
+
 struct Entry {
     id: i64,
+    file: FileStamp,
     proxy: Arc<Source>,
     /// Zuletzt angefragte kleinere Fassung (Fenstergröße), spart das Verkleinern.
     scaled: Option<(usize, Arc<Source>)>,
@@ -38,6 +65,9 @@ pub struct DevelopCache {
     /// Volle Auflösung für die Detailansicht beim Zoomen (nur ein Bild):
     /// Quelle und verkleinerte Fassung für Zoomstufen unter 100 %.
     full: Mutex<Option<FullEntry>>,
+    /// Hält nur, wer gerade die volle Auflösung lädt (Sekunden). `full`
+    /// bleibt währenddessen frei für Abfragen und `release_large`.
+    full_loading: Mutex<()>,
     full_denoised: Mutex<Option<FullDenoised>>,
 }
 
@@ -57,6 +87,7 @@ fn zoom_edge(full_long: usize, scale: f32) -> usize {
 
 struct FullEntry {
     id: i64,
+    file: FileStamp,
     source: Arc<Source>,
     scaled: Option<(usize, Arc<Source>)>,
 }
@@ -66,6 +97,10 @@ impl DevelopCache {
         let mut entries = self.entries.lock().unwrap();
         let pos = entries.iter().position(|e| e.id == id)?;
         let mut e = entries.remove(pos);
+        if e.file.changed() {
+            log::info!("{} wurde geändert – neu laden", e.file.path.display());
+            return None;
+        }
         let out = if max_edge >= e.proxy.image.long_edge() {
             e.proxy.clone()
         } else {
@@ -82,13 +117,14 @@ impl DevelopCache {
         Some(out)
     }
 
-    fn insert(&self, id: i64, proxy: Arc<Source>) {
+    fn insert(&self, id: i64, file: FileStamp, proxy: Arc<Source>) {
         let mut entries = self.entries.lock().unwrap();
         entries.retain(|e| e.id != id);
         entries.insert(
             0,
             Entry {
                 id,
+                file,
                 proxy,
                 scaled: None,
             },
@@ -146,51 +182,77 @@ pub(crate) fn load_proxy(state: &AppState, id: i64, max_edge: usize) -> Result<A
         return Ok(s);
     }
     let job = state.catalog.locked().thumb_job(id)?;
+    // Stempel vor dem Laden: Ändert sich die Datei währenddessen, gilt der
+    // Eintrag gleich als veraltet
+    let file = FileStamp::of(Path::new(&job.path));
     let src = Source::load(
         Path::new(&job.path),
         job.kind == ImageKind::Raw,
         job.orientation.map(|o| o as u16),
         Some(PROXY_EDGE),
     )?;
-    state.develop.insert(id, Arc::new(src));
+    state.develop.insert(id, file, Arc::new(src));
     Ok(state.develop.get(id, max_edge).expect("gerade eingefügt"))
 }
 
 /// Quelle in voller Auflösung (bzw. verkleinert auf `max_edge`, wenn kleiner).
 fn load_full(state: &AppState, id: i64, max_edge: usize) -> Result<Arc<Source>, Error> {
-    let mut f = state.develop.full.lock().unwrap();
-    if f.as_ref().is_none_or(|e| e.id != id) {
-        *f = None; // alten Speicher vor dem Laden freigeben
-        let job = state.catalog.locked().thumb_job(id)?;
-        let t = std::time::Instant::now();
-        let src = Source::load(
-            Path::new(&job.path),
-            job.kind == ImageKind::Raw,
-            job.orientation.map(|o| o as u16),
-            None,
-        )?;
-        log::info!(
-            "Volle Auflösung für Detailansicht geladen in {:.2?}",
-            t.elapsed()
-        );
-        *f = Some(FullEntry {
-            id,
-            source: Arc::new(src),
-            scaled: None,
-        });
+    if let Some(s) = cached_full(state, id, max_edge) {
+        return Ok(s);
     }
-    let e = f.as_mut().expect("gerade geladen");
+    // Laden ohne `full` zu halten; gleichzeitige Anfragen warten hier und
+    // nehmen dann das Ergebnis des ersten
+    let _loading = state
+        .develop
+        .full_loading
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if let Some(s) = cached_full(state, id, max_edge) {
+        return Ok(s);
+    }
+    *state.develop.full.lock().unwrap() = None; // alten Speicher vor dem Laden freigeben
+    let job = state.catalog.locked().thumb_job(id)?;
+    let file = FileStamp::of(Path::new(&job.path));
+    let t = std::time::Instant::now();
+    let src = Source::load(
+        Path::new(&job.path),
+        job.kind == ImageKind::Raw,
+        job.orientation.map(|o| o as u16),
+        None,
+    )?;
+    log::info!(
+        "Volle Auflösung für Detailansicht geladen in {:.2?}",
+        t.elapsed()
+    );
+    *state.develop.full.lock().unwrap() = Some(FullEntry {
+        id,
+        file,
+        source: Arc::new(src),
+        scaled: None,
+    });
+    Ok(cached_full(state, id, max_edge).expect("gerade geladen"))
+}
+
+/// Volle Auflösung (bzw. auf `max_edge` verkleinert) aus dem Speicher, falls
+/// es dieses Foto in unveränderter Fassung ist.
+fn cached_full(state: &AppState, id: i64, max_edge: usize) -> Option<Arc<Source>> {
+    let mut f = state.develop.full.lock().unwrap();
+    let e = f.as_mut().filter(|e| e.id == id)?;
+    if e.file.changed() {
+        *f = None;
+        return None;
+    }
     if max_edge >= e.source.image.long_edge() {
-        return Ok(e.source.clone());
+        return Some(e.source.clone());
     }
     if let Some((m, s)) = &e.scaled
         && *m == max_edge
     {
-        return Ok(s.clone());
+        return Some(s.clone());
     }
     let s = Arc::new(e.source.downscaled(max_edge));
     e.scaled = Some((max_edge, s.clone()));
-    Ok(s)
+    Some(s)
 }
 
 fn load_denoised_full(
@@ -776,7 +838,23 @@ pub(crate) fn unique_path(dir: &Path, stem: &str, ext: &str) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::zoom_edge;
+    use super::{FileStamp, zoom_edge};
+
+    #[test]
+    fn file_stamp_notices_external_changes() {
+        let dir = std::env::temp_dir().join(format!("lw-stamp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("foto.jpg");
+        std::fs::write(&p, b"alt").unwrap();
+        let s = FileStamp::of(&p);
+        assert!(!s.changed());
+        std::fs::write(&p, b"neuer Inhalt").unwrap();
+        assert!(s.changed(), "andere Größe");
+        let s = FileStamp::of(&p);
+        std::fs::remove_file(&p).unwrap();
+        assert!(s.changed(), "Datei weg");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn zoom_edges_snap_to_steps() {
