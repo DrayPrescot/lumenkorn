@@ -6,6 +6,7 @@ use crate::ai::{analysis_guard, err, lazy_model};
 use lumenkorn_ai::inpaint::{self, Inpainter};
 use lumenkorn_ai::models;
 use lumenkorn_core::Error;
+use lumenkorn_core::LockExt;
 use lumenkorn_core::formats::ImageKind;
 use lumenkorn_core::maskstore::MaskFiles;
 use lumenkorn_develop::i18n::tr_s;
@@ -104,7 +105,7 @@ fn compute(
     lens: bool,
 ) -> Result<String, Error> {
     let model = inpainter(state)?;
-    let job = state.catalog.lock().unwrap().thumb_job(image_id)?;
+    let job = state.catalog.locked().thumb_job(image_id)?;
     let t = std::time::Instant::now();
     let mut src = Source::load(
         Path::new(&job.path),

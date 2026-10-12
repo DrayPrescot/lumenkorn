@@ -2,6 +2,7 @@
 
 use crate::AppState;
 use crate::worker::Job;
+use lumenkorn_core::LockExt;
 use lumenkorn_core::*;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -43,13 +44,13 @@ pub fn set_language(state: State<AppState>, lang: String) {
 
 #[tauri::command(async)]
 pub fn list_roots(state: State<AppState>) -> CmdResult<Vec<Root>> {
-    state.catalog.lock().unwrap().roots()
+    state.catalog.locked().roots()
 }
 
 #[tauri::command(async)]
 pub fn add_root(state: State<AppState>, path: String) -> CmdResult<Root> {
     let path = PathBuf::from(path);
-    let root = state.catalog.lock().unwrap().add_root(&path)?;
+    let root = state.catalog.locked().add_root(&path)?;
     if let Some(w) = state.watcher.lock().unwrap().as_mut()
         && let Err(e) = w.watch(Path::new(&root.path))
     {
@@ -62,7 +63,7 @@ pub fn add_root(state: State<AppState>, path: String) -> CmdResult<Root> {
 /// Entfernt den Ordner nur aus dem Katalog – Dateien bleiben unangetastet.
 #[tauri::command(async)]
 pub fn remove_root(state: State<AppState>, id: i64) -> CmdResult<()> {
-    let cat = state.catalog.lock().unwrap();
+    let cat = state.catalog.locked();
     let root = cat.root(id)?;
     cat.remove_root(id)?;
     drop(cat);
@@ -80,41 +81,41 @@ pub fn rescan_root(state: State<AppState>, id: i64) {
 
 #[tauri::command(async)]
 pub fn folder_tree(state: State<AppState>, root_id: i64) -> CmdResult<FolderNode> {
-    state.catalog.lock().unwrap().folder_tree(root_id)
+    state.catalog.locked().folder_tree(root_id)
 }
 
 // --- Bilder -----------------------------------------------------------------
 
 #[tauri::command(async)]
 pub fn query_images(state: State<AppState>, query: ImageQuery) -> CmdResult<Vec<ImageSummary>> {
-    state.catalog.lock().unwrap().query_images(&query)
+    state.catalog.locked().query_images(&query)
 }
 
 #[tauri::command(async)]
 pub fn image_detail(state: State<AppState>, id: i64) -> CmdResult<ImageDetail> {
-    state.catalog.lock().unwrap().image(id)
+    state.catalog.locked().image(id)
 }
 
 #[tauri::command(async)]
 pub fn set_rating(state: State<AppState>, ids: Vec<i64>, rating: i64) -> CmdResult<()> {
-    state.catalog.lock().unwrap().set_rating(&ids, rating)
+    state.catalog.locked().set_rating(&ids, rating)
 }
 
 #[tauri::command(async)]
 pub fn set_flag(state: State<AppState>, ids: Vec<i64>, flag: i64) -> CmdResult<()> {
-    state.catalog.lock().unwrap().set_flag(&ids, flag)
+    state.catalog.locked().set_flag(&ids, flag)
 }
 
 #[tauri::command(async)]
 pub fn add_tag(state: State<AppState>, image_id: i64, name: String) -> CmdResult<Vec<ImageTag>> {
-    let cat = state.catalog.lock().unwrap();
+    let cat = state.catalog.locked();
     cat.add_tag(image_id, &name, TagSource::Manual, None)?;
     cat.image_tags(image_id)
 }
 
 #[tauri::command(async)]
 pub fn remove_tag(state: State<AppState>, image_id: i64, name: String) -> CmdResult<Vec<ImageTag>> {
-    let cat = state.catalog.lock().unwrap();
+    let cat = state.catalog.locked();
     cat.remove_tag(image_id, &name)?;
     cat.image_tags(image_id)
 }
@@ -123,7 +124,7 @@ pub fn remove_tag(state: State<AppState>, image_id: i64, name: String) -> CmdRes
 
 #[tauri::command(async)]
 pub fn list_projects(state: State<AppState>) -> CmdResult<Vec<Project>> {
-    state.catalog.lock().unwrap().projects()
+    state.catalog.locked().projects()
 }
 
 #[tauri::command(async)]
@@ -132,11 +133,7 @@ pub fn create_project(
     name: String,
     description: String,
 ) -> CmdResult<Project> {
-    state
-        .catalog
-        .lock()
-        .unwrap()
-        .create_project(&name, &description)
+    state.catalog.locked().create_project(&name, &description)
 }
 
 #[tauri::command(async)]
@@ -148,14 +145,13 @@ pub fn update_project(
 ) -> CmdResult<Project> {
     state
         .catalog
-        .lock()
-        .unwrap()
+        .locked()
         .update_project(id, &name, &description)
 }
 
 #[tauri::command(async)]
 pub fn delete_project(state: State<AppState>, id: i64) -> CmdResult<()> {
-    state.catalog.lock().unwrap().delete_project(id)
+    state.catalog.locked().delete_project(id)
 }
 
 #[tauri::command(async)]
@@ -167,8 +163,7 @@ pub fn add_project_folder(
 ) -> CmdResult<Project> {
     state
         .catalog
-        .lock()
-        .unwrap()
+        .locked()
         .add_project_folder(project_id, Path::new(&path), recursive)
 }
 
@@ -180,7 +175,6 @@ pub fn remove_project_folder(
 ) -> CmdResult<Project> {
     state
         .catalog
-        .lock()
-        .unwrap()
+        .locked()
         .remove_project_folder(project_id, &path)
 }

@@ -542,6 +542,15 @@ impl Catalog {
         let version: i64 = self
             .conn
             .pragma_query_value(None, "user_version", |r| r.get(0))?;
+        // Von einer neueren Lumenkorn-Version angelegt: Diese Version kennt
+        // deren Spalten und Trigger nicht und würde den Katalog beschädigen
+        if version > MIGRATIONS.len() as i64 {
+            let known = MIGRATIONS.len();
+            return Err(Error::Invalid(tr!(
+                "Der Katalog stammt von einer neueren Lumenkorn-Version (Stand {version}, diese Version kennt bis {known}). Bitte Lumenkorn aktualisieren.",
+                "The catalog was created by a newer Lumenkorn version (schema {version}, this version knows up to {known}). Please update Lumenkorn."
+            )));
+        }
         for (i, sql) in MIGRATIONS.iter().enumerate().skip(version as usize) {
             let tx = self.conn.transaction()?;
             tx.execute_batch(sql)?;
@@ -758,6 +767,15 @@ impl Catalog {
         flush_search(&tx)?;
         tx.commit()?;
         Ok(out)
+    }
+
+    /// Bild mit genau diesem Pfad, falls schon im Katalog.
+    pub(crate) fn image_id_by_path(tx: &rusqlite::Transaction, path: &str) -> Result<Option<i64>> {
+        Ok(tx
+            .query_row("SELECT id FROM images WHERE path = ?1", [path], |r| {
+                r.get(0)
+            })
+            .optional()?)
     }
 
     pub(crate) fn insert_image(tx: &rusqlite::Transaction, img: &NewImage) -> Result<i64> {

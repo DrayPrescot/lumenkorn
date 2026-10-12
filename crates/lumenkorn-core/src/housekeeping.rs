@@ -11,6 +11,7 @@
 //! berechnete Maske kann noch auf das (verzögerte) Speichern warten oder im
 //! Rückgängig-Verlauf stecken.
 
+use crate::LockExt;
 use crate::catalog::Catalog;
 use crate::error::Result;
 use lumenkorn_develop::DevelopParams;
@@ -167,7 +168,7 @@ impl Catalog {
 pub fn fix_raw_dims(catalog: &std::sync::Mutex<Catalog>) -> Result<usize> {
     static TRIED: std::sync::Mutex<Option<std::collections::HashSet<i64>>> =
         std::sync::Mutex::new(None);
-    let rows = catalog.lock().unwrap().raw_dims_candidates()?;
+    let rows = catalog.locked().raw_dims_candidates()?;
     let mut tried = TRIED.lock().unwrap_or_else(|e| e.into_inner());
     let tried = tried.get_or_insert_with(Default::default);
     let mut found = Vec::new();
@@ -187,7 +188,7 @@ pub fn fix_raw_dims(catalog: &std::sync::Mutex<Catalog>) -> Result<usize> {
     if found.is_empty() {
         return Ok(0);
     }
-    let mut cat = catalog.lock().unwrap();
+    let mut cat = catalog.locked();
     cat.with_tx(|tx| {
         for (id, w, h) in &found {
             tx.execute(

@@ -22,3 +22,19 @@ pub mod watcher;
 pub use catalog::Catalog;
 pub use error::{Error, Result};
 pub use model::*;
+
+use std::sync::{Mutex, MutexGuard};
+
+/// Sperren ohne Abbruch bei einer „vergifteten“ Sperre. Stürzt ein Auftrag ab,
+/// während er den Katalog hält, rollt SQLite die angefangene Transaktion
+/// zurück – der Katalog bleibt brauchbar. Mit `lock().unwrap()` wäre er bis
+/// zum Neustart für jeden weiteren Befehl gesperrt.
+pub trait LockExt<T> {
+    fn locked(&self) -> MutexGuard<'_, T>;
+}
+
+impl<T> LockExt<T> for Mutex<T> {
+    fn locked(&self) -> MutexGuard<'_, T> {
+        self.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}

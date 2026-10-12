@@ -6,6 +6,7 @@
 use crate::AppState;
 use crate::worker::Job;
 use lumenkorn_core::Error;
+use lumenkorn_core::LockExt;
 use lumenkorn_core::formats::ImageKind;
 use lumenkorn_develop::i18n::tr_s;
 use lumenkorn_develop::merge::{focus, hdr, pano};
@@ -184,7 +185,7 @@ fn run(
     options: &MergeOptions,
 ) -> Result<(Option<i64>, String), Error> {
     let jobs = {
-        let cat = state.catalog.lock().unwrap();
+        let cat = state.catalog.locked();
         ids.iter()
             .map(|id| cat.thumb_job(*id))
             .collect::<Result<Vec<_>, _>>()?
@@ -261,7 +262,7 @@ fn run(
 
     // In den Katalog aufnehmen, Aufnahmedaten vom Referenzfoto übernehmen
     let reference = ids[reference];
-    let root_id = state.catalog.lock().unwrap().image_root(reference)?;
+    let root_id = state.catalog.locked().image_root(reference)?;
     // Die Ordnerüberwachung meldet die neue Datei ebenfalls – scannt sie
     // gleichzeitig, kann einer der beiden Scans scheitern. Entscheidend ist
     // nur, dass die Datei danach im Katalog steht.
@@ -274,8 +275,7 @@ fn run(
     let adopt = || {
         state
             .catalog
-            .lock()
-            .unwrap()
+            .locked()
             .adopt_capture_info(&out.to_string_lossy(), reference)
     };
     let mut id = adopt()?;

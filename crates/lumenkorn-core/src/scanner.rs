@@ -5,6 +5,7 @@
 //! wiedererkannt (Bearbeitungen bleiben erhalten) und verschwundene als
 //! „fehlend“ markiert statt gelöscht.
 
+use crate::LockExt;
 use crate::catalog::{Catalog, KnownImage, NewImage};
 use crate::error::{Error, Result};
 use crate::formats::{self, ImageKind};
@@ -140,7 +141,7 @@ pub fn scan_root(
     progress: &(dyn Fn(ScanProgress) + Sync),
 ) -> Result<ScanReport> {
     let (root, known) = {
-        let cat = catalog.lock().unwrap();
+        let cat = catalog.locked();
         (cat.root(root_id)?, cat.known_images(root_id)?)
     };
     ensure_online(Path::new(&root.path))?;
@@ -163,7 +164,7 @@ pub fn scan_root(
         .iter()
         .map(|d| d.to_string_lossy().into_owned())
         .collect();
-    report.folders_changed = catalog.lock().unwrap().set_folders(root_id, &dirs)?;
+    report.folders_changed = catalog.locked().set_folders(root_id, &dirs)?;
     report.unsupported = w.unsupported.into_iter().collect();
     report.unreadable = w.unreadable;
     Ok(report)
@@ -185,7 +186,7 @@ pub fn scan_paths(
     progress: &(dyn Fn(ScanProgress) + Sync),
 ) -> Result<ScanReport> {
     let (root, known) = {
-        let cat = catalog.lock().unwrap();
+        let cat = catalog.locked();
         (cat.root(root_id)?, cat.known_images(root_id)?)
     };
     let root_path = Path::new(&root.path);
@@ -258,10 +259,7 @@ pub fn scan_paths(
         .iter()
         .map(|d| d.to_string_lossy().into_owned())
         .collect();
-    report.folders_changed = catalog
-        .lock()
-        .unwrap()
-        .update_folders(root_id, &dirs, &gone)?;
+    report.folders_changed = catalog.locked().update_folders(root_id, &dirs, &gone)?;
     report.unsupported = w.unsupported.into_iter().collect();
     report.unreadable = w.unreadable;
     Ok(report)
@@ -452,7 +450,12 @@ fn reconcile(
                     return None;
                 }
             };
-            let meta = metadata::read(&f.path, f.kind);
+            // Ein Absturz im EXIF-/RAW-Leser darf nicht den ganzen Scan beenden
+            let meta =
+                std::panic::catch_unwind(|| metadata::read(&f.path, f.kind)).unwrap_or_else(|_| {
+                    log::warn!("{}: Metadaten nicht lesbar (Absturz)", f.path.display());
+                    Default::default()
+                });
             let n = done.fetch_add(1, Ordering::Relaxed) + 1;
             if n.is_multiple_of(50) || n == total {
                 report_progress(ScanPhase::Reading, n, total);
@@ -479,7 +482,7 @@ fn reconcile(
     }
     let mut written = 0;
     for (k, chunk) in read.chunks(1000).enumerate() {
-        let mut cat = catalog.lock().unwrap();
+        let mut cat = catalog.locked();
         cat.with_tx(|tx| {
             if k == 0 {
                 for id in &unchanged_but_missing {
@@ -491,6 +494,13 @@ fn reconcile(
                     Action::Changed(id) => {
                         Catalog::update_image_content(tx, *id, img)?;
                         report.updated += 1;
+                    }
+                    // Ein paralleler Scan (z. B. nach dem Zusammenfügen und
+                    // zugleich die Ordnerüberwachung) hat den Pfad schon
+                    // eingetragen: nur aktualisieren. Ein zweites Einfügen
+                    // scheiterte am eindeutigen Pfad und verwürfe die Portion.
+                    Action::New if let Some(id) = Catalog::image_id_by_path(tx, &img.path)? => {
+                        Catalog::update_image_content(tx, id, img)?;
                     }
                     Action::New => {
                         let moved_from = vanished
@@ -517,7 +527,7 @@ fn reconcile(
             report_progress(ScanPhase::Writing, written, read.len());
         }
     }
-    let mut cat = catalog.lock().unwrap();
+    let mut cat = catalog.locked();
     cat.with_tx(|tx| {
         if read.is_empty() {
             for id in &unchanged_but_missing {

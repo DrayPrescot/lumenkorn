@@ -11,6 +11,7 @@ use lumenkorn_ai::models::{self, Component, Status};
 use lumenkorn_ai::parts;
 use lumenkorn_ai::segment::{self, Sam, SamEmbedding, SkyModel, SubjectModel};
 use lumenkorn_ai::{Clip, EmbeddingIndex, Tagger, runtime, vocab};
+use lumenkorn_core::LockExt;
 use lumenkorn_core::maskstore::MaskFiles;
 use lumenkorn_core::thumbs::Variant;
 use lumenkorn_core::{Error, ImageQuery, ImageSummary, Scope};
@@ -464,7 +465,7 @@ fn with_index<T>(state: &AppState, f: impl FnOnce(&EmbeddingIndex) -> T) -> Resu
     let idx = match guard.take() {
         Some(idx) => idx,
         None => {
-            let rows = state.catalog.lock().unwrap().embeddings(MODEL_KEY)?;
+            let rows = state.catalog.locked().embeddings(MODEL_KEY)?;
             let mut idx = EmbeddingIndex::default();
             for (id, bytes) in rows {
                 idx.upsert(id, &from_bytes(&bytes));
@@ -493,7 +494,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
     {
         return Ok(false);
     }
-    let ids = state.catalog.lock().unwrap().pending_ai(BATCH)?;
+    let ids = state.catalog.locked().pending_ai(BATCH)?;
     if ids.is_empty() {
         return Ok(false);
     }
@@ -503,7 +504,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
     let mut images = Vec::new();
     let mut ok_ids = Vec::new();
     let jobs: Vec<_> = {
-        let cat = state.catalog.lock().unwrap();
+        let cat = state.catalog.locked();
         ids.iter().map(|id| cat.thumb_job(*id)).collect()
     };
     let decoded: Vec<Option<image::DynamicImage>> = {
@@ -523,7 +524,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
                 ok_ids.push(*id);
             }
             None => {
-                let _ = state.catalog.lock().unwrap().set_ai_failed(*id);
+                let _ = state.catalog.locked().set_ai_failed(*id);
             }
         }
     }
@@ -546,15 +547,14 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
             .collect();
         state
             .catalog
-            .lock()
-            .unwrap()
+            .locked()
             .save_ai_result(*id, MODEL_KEY, &to_bytes(emb), &tags)?;
         if let Some(idx) = state.ai.index.write().unwrap().as_mut() {
             idx.upsert(*id, emb);
         }
     }
 
-    let (done, total) = state.catalog.lock().unwrap().ai_counts()?;
+    let (done, total) = state.catalog.locked().ai_counts()?;
     let _ = app.emit(
         "ai-progress",
         AiProgress {
@@ -611,7 +611,7 @@ fn accel_status(state: &AppState) -> AccelStatus {
 
 #[tauri::command(async)]
 pub fn ai_status(state: State<AppState>) -> Result<AiStatus, Error> {
-    let (analyzed, total) = state.catalog.lock().unwrap().ai_counts()?;
+    let (analyzed, total) = state.catalog.locked().ai_counts()?;
     Ok(AiStatus {
         crash_notice: state.ai.crash_notice.lock().unwrap().clone(),
         accel: accel_status(&state),
@@ -829,7 +829,7 @@ pub fn ai_cancel_download(state: State<AppState>) {
 
 #[tauri::command(async)]
 pub fn ai_retag_all(state: State<AppState>) -> Result<(), Error> {
-    state.catalog.lock().unwrap().reset_ai()?;
+    state.catalog.locked().reset_ai()?;
     *state.ai.load_error.lock().unwrap() = None;
     state.worker.submit(Job::Ai);
     Ok(())
@@ -859,7 +859,7 @@ pub async fn semantic_search(
         let allowed: HashSet<i64> = {
             let mut sq = ImageQuery::new(scope.clone());
             sq.min_rating = min_rating;
-            let cat = state.catalog.lock().unwrap();
+            let cat = state.catalog.locked();
             cat.query_images(&sq)?.into_iter().map(|i| i.id).collect()
         };
         // Kosinus-Werte von CLIP liegen eng beieinander; relativ zum besten
@@ -879,8 +879,7 @@ pub async fn semantic_search(
         );
         state
             .catalog
-            .lock()
-            .unwrap()
+            .locked()
             .images_in_order(&ids, &scope, min_rating)
     })
     .await
@@ -1231,7 +1230,7 @@ pub fn denoise_start(app: AppHandle, id: i64, strength: Option<f32>) -> Result<(
             let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
                 || -> Result<String, Error> {
                     let d = denoiser(&state)?;
-                    let job = state.catalog.lock().unwrap().thumb_job(id)?;
+                    let job = state.catalog.locked().thumb_job(id)?;
                     let t = std::time::Instant::now();
                     let src = Source::load(
                         Path::new(&job.path),

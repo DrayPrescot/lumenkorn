@@ -13,6 +13,7 @@
 //! - `face/{id}`: Gesichtsvorschau der Personenerkennung.
 
 use crate::AppState;
+use lumenkorn_core::LockExt;
 use lumenkorn_core::thumbs::{self, Variant};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
@@ -123,7 +124,7 @@ pub fn release_full(idle: Duration) -> bool {
 }
 
 fn serve_full(state: &AppState, id: i64) -> Response<Vec<u8>> {
-    let job = match state.catalog.lock().unwrap().thumb_job(id) {
+    let job = match state.catalog.locked().thumb_job(id) {
         Ok(j) => j,
         Err(_) => return status(StatusCode::NOT_FOUND),
     };
@@ -198,14 +199,14 @@ fn serve(state: &AppState, path: &str) -> Response<Vec<u8>> {
         return jpeg(bytes);
     }
 
-    let job = match state.catalog.lock().unwrap().thumb_job(id) {
+    let job = match state.catalog.locked().thumb_job(id) {
         Ok(j) => j,
         Err(_) => return status(StatusCode::NOT_FOUND),
     };
     match state.cache.get_or_render(variant, &job) {
         Ok(bytes) => {
             if variant == Variant::Thumb {
-                let _ = state.catalog.lock().unwrap().set_thumb_state(id, true);
+                let _ = state.catalog.locked().set_thumb_state(id, true);
             }
             jpeg(bytes)
         }

@@ -703,3 +703,23 @@ fn export_folders_stay_out_of_the_library() {
             .exists()
     );
 }
+
+/// Ein Katalog einer neueren Version wird nicht geöffnet (und nicht verändert).
+#[test]
+fn refuses_catalog_from_newer_version() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("katalog.db");
+    drop(Catalog::open(&path).unwrap());
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    let v: i64 = conn
+        .pragma_query_value(None, "user_version", |r| r.get(0))
+        .unwrap();
+    conn.pragma_update(None, "user_version", v + 5).unwrap();
+    drop(conn);
+    assert!(Catalog::open(&path).is_err());
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    let after: i64 = conn
+        .pragma_query_value(None, "user_version", |r| r.get(0))
+        .unwrap();
+    assert_eq!(after, v + 5);
+}

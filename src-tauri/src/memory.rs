@@ -13,6 +13,7 @@
 //! - Verwaiste Dateien im Datenordner: kurz nach dem Start, dann täglich.
 
 use crate::AppState;
+use lumenkorn_core::LockExt;
 use lumenkorn_core::housekeeping::{self, Swept};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -142,7 +143,7 @@ pub fn sweep_data(state: &AppState) -> Result<(Swept, bool), lumenkorn_core::Err
     const EDIT_FILES: Duration = Duration::from_secs(24 * 3600);
     const DERIVED: Duration = Duration::from_secs(3600);
     let t = Instant::now();
-    let fixed = state.catalog.lock().unwrap().drop_foreign_refs()?;
+    let fixed = state.catalog.locked().drop_foreign_refs()?;
     if fixed > 0 {
         log::info!("{fixed} Bearbeitungen mit Verweisen auf fremde Fotos bereinigt");
         state.worker.submit(crate::worker::Job::Thumbs);
@@ -151,7 +152,7 @@ pub fn sweep_data(state: &AppState) -> Result<(Swept, bool), lumenkorn_core::Err
     if dims > 0 {
         log::info!("Abmessungen von {dims} RAWs korrigiert");
     }
-    let live = state.catalog.lock().unwrap().live()?;
+    let live = state.catalog.locked().live()?;
     let keep_file = |stem: &str| live.files.contains(stem);
     let mut swept = Swept::default();
     for dir in crate::dirs::EDIT_FILES {
@@ -161,7 +162,7 @@ pub fn sweep_data(state: &AppState) -> Result<(Swept, bool), lumenkorn_core::Err
         stem.parse::<i64>().is_ok_and(|id| live.faces.contains(&id))
     });
     swept += housekeeping::sweep_image_cache(state.cache.base(), &live.images, DERIVED);
-    state.catalog.lock().unwrap().optimize()?;
+    state.catalog.locked().optimize()?;
     if swept.files > 0 {
         log::info!(
             "Datenordner aufgeräumt: {} verwaiste Dateien, {:.1} MB, in {:.1?}",

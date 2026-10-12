@@ -17,6 +17,7 @@
 
 use crate::AppState;
 use lumenkorn_core::Error;
+use lumenkorn_core::LockExt;
 use lumenkorn_core::model::{ImageQuery, Scope, SortOrder};
 use lumenkorn_develop::DevelopParams;
 use serde::{Deserialize, Serialize};
@@ -634,7 +635,7 @@ async fn call(app: &AppHandle, name: &str, a: &Value) -> ToolResult {
                 .and_then(Value::as_u64)
                 .unwrap_or(1024)
                 .clamp(128, 2048) as u32;
-            let job = state.catalog.lock().unwrap().thumb_job(id).map_err(e)?;
+            let job = state.catalog.locked().thumb_job(id).map_err(e)?;
             let bytes = state
                 .cache
                 .get_or_render(lumenkorn_core::thumbs::Variant::Preview, &job)
@@ -849,7 +850,7 @@ async fn call(app: &AppHandle, name: &str, a: &Value) -> ToolResult {
         }
         "show_photo" => {
             let id = int(a, "id")?;
-            state.catalog.lock().unwrap().thumb_job(id).map_err(e)?;
+            state.catalog.locked().thumb_job(id).map_err(e)?;
             let develop = arg(a, "develop").and_then(Value::as_bool).unwrap_or(false);
             let _ = app.emit("mcp-show", json!({ "id": id, "develop": develop }));
             if let Some(w) = app.get_webview_window("main") {

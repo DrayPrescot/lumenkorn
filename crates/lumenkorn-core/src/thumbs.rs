@@ -6,6 +6,7 @@
 //! entstehen Thumbnail und Vorschau über die Entwicklungspipeline und zeigen
 //! damit die Bearbeitung.
 
+use crate::LockExt;
 use crate::catalog::{Catalog, ThumbJob};
 use crate::error::{Error, Result};
 use crate::formats::ImageKind;
@@ -626,18 +627,30 @@ pub fn generate_some(
 ) -> Result<(usize, bool)> {
     let mut processed = 0;
     while processed < limit {
-        let jobs = catalog.lock().unwrap().pending_thumbs(64)?;
+        let jobs = catalog.locked().pending_thumbs(64)?;
         if jobs.is_empty() {
             return Ok((processed, false));
         }
+        // Decoder laufen auf beliebigen Dateien: Ein Absturz darin wird zum
+        // Fehler dieses Fotos. Sonst ginge die ganze Portion verloren, das Foto
+        // bliebe ausstehend und bräche jeden weiteren Durchlauf erneut ab.
         let one = |job: &ThumbJob| -> Result<Vec<u8>> {
-            render_job(
-                job,
-                THUMB_SIZE,
-                cache.mask_source(),
-                cache.denoise_dir.as_deref(),
-                cache.repair_source(),
-            )
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                render_job(
+                    job,
+                    THUMB_SIZE,
+                    cache.mask_source(),
+                    cache.denoise_dir.as_deref(),
+                    cache.repair_source(),
+                )
+            }))
+            .unwrap_or_else(|_| {
+                let path = &job.path;
+                Err(Error::Invalid(lumenkorn_develop::tr!(
+                    "{path}: Absturz beim Dekodieren",
+                    "{path}: crashed while decoding"
+                )))
+            })
         };
         // Unbearbeitete Bilder (eingebettete Vorschau, klein) voll parallel.
         // Bearbeitete werden ganz entwickelt – ein RAW belegt dabei bis ~1,5 GB.
@@ -655,7 +668,7 @@ pub fn generate_some(
         // des Renderns bearbeitet (Entwickeln speichert eigene Thumbnails), ist
         // dieses Ergebnis veraltet und darf das neue nicht überschreiben – es
         // bleibt ausstehend und wird mit der neuen Bearbeitung erzeugt.
-        let cat = catalog.lock().unwrap();
+        let cat = catalog.locked();
         for (job, res) in results {
             processed += 1;
             let current = match cat.thumb_job(job.id) {

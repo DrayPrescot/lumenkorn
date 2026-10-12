@@ -220,6 +220,9 @@ pub struct RuntimeSpec {
     pub archive_entry: String,
     #[serde(default)]
     pub size: Option<u64>,
+    /// SHA-256 des Archivs – es enthält ausführbaren Code.
+    #[serde(default)]
+    pub sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -323,38 +326,45 @@ pub fn model_dir(data_dir: &Path) -> PathBuf {
 pub fn default_manifest() -> Manifest {
     let gh = format!("https://github.com/microsoft/onnxruntime/releases/download/v{ORT_VERSION}");
     let v = ORT_VERSION;
+    // Prüfsummen der GitHub-Releases (bei neuer ORT_VERSION mit erneuern)
     let runtime = match (std::env::consts::OS, std::env::consts::ARCH) {
         ("linux", "x86_64") => Some((
             format!("onnxruntime-linux-x64-{v}.tgz"),
             format!("lib/libonnxruntime.so.{v}"),
-            8_500_000,
+            9_125_960,
+            "a3e1b79d7bb1bf09696ce675f49e4064e6c81f6202b8225624fff0e93f8d6407",
         )),
         ("linux", "aarch64") => Some((
             format!("onnxruntime-linux-aarch64-{v}.tgz"),
             format!("lib/libonnxruntime.so.{v}"),
-            7_500_000,
+            8_116_278,
+            "e15ff8b5d85afe6c144d97c6fd432254bf76a219daaf17658087d6ecb3e8f0bb",
         )),
         ("windows", "x86_64") => Some((
             format!("onnxruntime-win-x64-{v}.zip"),
             "lib/onnxruntime.dll".to_string(),
-            8_000_000,
+            78_796_801,
+            "abef733dacbe2f571547a7150b479b5cb9cc0df22f96c24983a42cadb1b4f8bc",
         )),
         ("windows", "aarch64") => Some((
             format!("onnxruntime-win-arm64-{v}.zip"),
             "lib/onnxruntime.dll".to_string(),
-            8_000_000,
+            79_812_663,
+            "cbe4547463ece092b505c3581376ed5896d22b5429f39d5e645e425ecdd369ad",
         )),
         ("macos", "aarch64") => Some((
             format!("onnxruntime-osx-arm64-{v}.tgz"),
             format!("lib/libonnxruntime.{v}.dylib"),
-            9_000_000,
+            32_396_562,
+            "1268b359718099bde2cedb55787f182a130067bc4f31e8c88478c445b850d3d8",
         )),
         _ => None,
     }
-    .map(|(archive, entry, size)| RuntimeSpec {
+    .map(|(archive, entry, size, sha)| RuntimeSpec {
         url: format!("{gh}/{archive}"),
         archive_entry: entry,
         size: Some(size),
+        sha256: Some(sha.to_string()),
     });
 
     let f = |name: &str, path: &str, size: u64| FileSpec {
@@ -595,7 +605,11 @@ pub fn download_missing(
         let target_dir = ai.join("runtime");
         std::fs::create_dir_all(&target_dir)?;
         let target = target_dir.join(crate::runtime::library_file_name());
-        let res = extract_entry(&tmp, &rt.url, &rt.archive_entry, &target);
+        let res = match &rt.sha256 {
+            Some(sha) => accel::verify_sha256(&tmp, sha),
+            None => check_length(&tmp, rt.size),
+        }
+        .and_then(|()| extract_entry(&tmp, &rt.url, &rt.archive_entry, &target));
         let _ = std::fs::remove_file(&tmp);
         res?;
     }
@@ -618,6 +632,10 @@ pub fn download_missing(
             },
             cancel,
         )?;
+        if let Err(e) = check_length(&tmp, f.size) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
         std::fs::rename(&tmp, &target)?;
     }
 
@@ -646,6 +664,24 @@ pub fn download_missing(
         let _ = std::fs::remove_file(pth);
     }
     Ok(())
+}
+
+/// Schutz vor abgeschnittenen Downloads, falls der Server keine Länge
+/// mitschickt (dann prüft `fetch` nichts): Die Datei muss mindestens 90 % der
+/// bekannten Größe haben. Die Angaben weichen höchstens um ~1 % ab.
+fn check_length(path: &Path, expected: Option<u64>) -> Result<()> {
+    let Some(want) = expected else {
+        return Ok(());
+    };
+    let got = std::fs::metadata(path)?.len();
+    if got >= want / 10 * 9 {
+        return Ok(());
+    }
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    Err(Error::Download(tr!(
+        "{name}: unvollständig ({got} von etwa {want} Bytes)",
+        "{name}: incomplete ({got} of about {want} bytes)"
+    )))
 }
 
 fn install_gpu_runtime(

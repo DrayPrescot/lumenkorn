@@ -6,6 +6,7 @@ use crate::ai::{analysis_guard, err, lazy_model};
 use lumenkorn_ai::faces::{self, FaceDetector, FaceEmbedder};
 use lumenkorn_ai::models;
 use lumenkorn_core::Error;
+use lumenkorn_core::LockExt;
 use lumenkorn_core::people::{FaceInfo, NewFace, PeopleIndex, Person, PersonGroup};
 use lumenkorn_core::thumbs::decode_for_analysis;
 use lumenkorn_develop::i18n::tr_s;
@@ -80,7 +81,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
     {
         return Ok(false);
     }
-    let ids = state.catalog.lock().unwrap().pending_faces(BATCH)?;
+    let ids = state.catalog.locked().pending_faces(BATCH)?;
     if ids.is_empty() {
         return Ok(false);
     }
@@ -98,7 +99,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
     // Dekodieren (RAW-Vorschau, 1600 px) parallel für den ganzen Stapel – die
     // Erkennung selbst läuft danach Bild für Bild auf dem Modell.
     let jobs: Vec<_> = {
-        let cat = state.catalog.lock().unwrap();
+        let cat = state.catalog.locked();
         ids.iter().map(|id| (*id, cat.thumb_job(*id))).collect()
     };
     let decoded: Vec<(i64, Result<image::RgbImage, String>)> = {
@@ -118,7 +119,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
             Ok(i) => i,
             Err(e) => {
                 log::warn!("Gesichter {id}: {e}");
-                state.catalog.lock().unwrap().set_faces_failed(id)?;
+                state.catalog.locked().set_faces_failed(id)?;
                 continue;
             }
         };
@@ -138,7 +139,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
             Ok(f) => f,
             Err(e) => {
                 log::warn!("Gesichter {id}: {e}");
-                state.catalog.lock().unwrap().set_faces_failed(id)?;
+                state.catalog.locked().set_faces_failed(id)?;
                 continue;
             }
         };
@@ -151,7 +152,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
             })
             .collect();
         let face_ids = {
-            let mut cat = state.catalog.lock().unwrap();
+            let mut cat = state.catalog.locked();
             let mut idx = state.people.index.lock().unwrap();
             if idx.as_ref().is_none_or(|i| !cat.people_index_current(i)) {
                 *idx = Some(cat.people_index()?);
@@ -174,7 +175,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
         }
     }
 
-    let (done, total, faces) = state.catalog.lock().unwrap().face_counts()?;
+    let (done, total, faces) = state.catalog.locked().face_counts()?;
     let _ = app.emit(
         "faces-progress",
         FacesProgress {
@@ -194,11 +195,11 @@ pub fn face_thumb(state: &AppState, face_id: i64) -> Option<Vec<u8>> {
         return Some(b);
     }
     let (image_id, rect) = {
-        let cat = state.catalog.lock().unwrap();
+        let cat = state.catalog.locked();
         let f = cat.face(face_id).ok()?;
         (f.image_id, f.rect)
     };
-    let job = state.catalog.lock().unwrap().thumb_job(image_id).ok()?;
+    let job = state.catalog.locked().thumb_job(image_id).ok()?;
     let img = decode_for_analysis(&job, ANALYSIS_EDGE).ok()?.to_rgb8();
     let (w, h) = (img.width() as f32, img.height() as f32);
     let face = faces::Face {
@@ -234,7 +235,7 @@ pub struct PeopleStatus {
 #[tauri::command(async)]
 pub fn people_status(state: State<AppState>) -> Result<PeopleStatus, Error> {
     let files = models::status(&state.data_dir);
-    let (analyzed, total, faces) = state.catalog.lock().unwrap().face_counts()?;
+    let (analyzed, total, faces) = state.catalog.locked().face_counts()?;
     Ok(PeopleStatus {
         ready: files.faces_ready,
         download_size: files.faces_download_size,
@@ -248,12 +249,12 @@ pub fn people_status(state: State<AppState>) -> Result<PeopleStatus, Error> {
 
 #[tauri::command(async)]
 pub fn people_list(state: State<AppState>) -> Result<Vec<Person>, Error> {
-    state.catalog.lock().unwrap().list_people()
+    state.catalog.locked().list_people()
 }
 
 #[tauri::command(async)]
 pub fn person_groups(state: State<AppState>) -> Result<Vec<PersonGroup>, Error> {
-    state.catalog.lock().unwrap().person_groups()
+    state.catalog.locked().person_groups()
 }
 
 /// Neue Gruppe (oder die vorhandene gleichen Namens); mit `persons` gleich
@@ -264,7 +265,7 @@ pub fn person_group_create(
     name: String,
     persons: Vec<i64>,
 ) -> Result<i64, Error> {
-    let cat = state.catalog.lock().unwrap();
+    let cat = state.catalog.locked();
     let id = cat.create_person_group(&name)?;
     if !persons.is_empty() {
         cat.set_person_group(&persons, Some(id))?;
@@ -274,12 +275,12 @@ pub fn person_group_create(
 
 #[tauri::command(async)]
 pub fn person_group_rename(state: State<AppState>, id: i64, name: String) -> Result<i64, Error> {
-    state.catalog.lock().unwrap().rename_person_group(id, &name)
+    state.catalog.locked().rename_person_group(id, &name)
 }
 
 #[tauri::command(async)]
 pub fn person_group_delete(state: State<AppState>, id: i64) -> Result<(), Error> {
-    state.catalog.lock().unwrap().delete_person_group(id)
+    state.catalog.locked().delete_person_group(id)
 }
 
 #[tauri::command(async)]
@@ -288,21 +289,17 @@ pub fn person_set_group(
     persons: Vec<i64>,
     group: Option<i64>,
 ) -> Result<(), Error> {
-    state
-        .catalog
-        .lock()
-        .unwrap()
-        .set_person_group(&persons, group)
+    state.catalog.locked().set_person_group(&persons, group)
 }
 
 #[tauri::command(async)]
 pub fn person_faces(state: State<AppState>, id: i64) -> Result<Vec<FaceInfo>, Error> {
-    state.catalog.lock().unwrap().person_faces(id)
+    state.catalog.locked().person_faces(id)
 }
 
 #[tauri::command(async)]
 pub fn image_faces(state: State<AppState>, id: i64) -> Result<Vec<FaceInfo>, Error> {
-    state.catalog.lock().unwrap().image_faces(id)
+    state.catalog.locked().image_faces(id)
 }
 
 #[tauri::command(async)]
@@ -310,19 +307,19 @@ pub fn person_rename(state: State<AppState>, id: i64, name: String) -> Result<i6
     // Den Index der Analyse weiterreichen: Er wird nachgeführt statt bei jedem
     // Klick neu aufgebaut (bei Fehlern verworfen). Sperren in derselben
     // Reihenfolge wie `run_batch`: Katalog, dann Index.
-    let mut cat = state.catalog.lock().unwrap();
+    let mut cat = state.catalog.locked();
     cat.name_person(id, &name, &mut state.people.index.lock().unwrap())
 }
 
 #[tauri::command(async)]
 pub fn face_assign(state: State<AppState>, face_id: i64, name: String) -> Result<i64, Error> {
-    let mut cat = state.catalog.lock().unwrap();
+    let mut cat = state.catalog.locked();
     cat.assign_face(face_id, &name, &mut state.people.index.lock().unwrap())
 }
 
 #[tauri::command(async)]
 pub fn faces_of_images(state: State<AppState>, ids: Vec<i64>) -> Result<Vec<FaceInfo>, Error> {
-    state.catalog.lock().unwrap().faces_of_images(&ids)
+    state.catalog.locked().faces_of_images(&ids)
 }
 
 /// Mehrere Gesichter (z. B. aus allen ausgewählten Fotos) einer Person
@@ -333,7 +330,7 @@ pub fn faces_reassign(
     face_ids: Vec<i64>,
     name: Option<String>,
 ) -> Result<Option<i64>, Error> {
-    let mut cat = state.catalog.lock().unwrap();
+    let mut cat = state.catalog.locked();
     cat.reassign_faces(
         &face_ids,
         name.as_deref(),
@@ -344,35 +341,35 @@ pub fn faces_reassign(
 /// Mehrere Vorschläge auf einmal bestätigen.
 #[tauri::command(async)]
 pub fn faces_confirm(state: State<AppState>, face_ids: Vec<i64>) -> Result<usize, Error> {
-    let n = state.catalog.lock().unwrap().confirm_faces(&face_ids)?;
+    let n = state.catalog.locked().confirm_faces(&face_ids)?;
     state.people.invalidate();
     Ok(n)
 }
 
 #[tauri::command(async)]
 pub fn face_confirm(state: State<AppState>, face_id: i64) -> Result<(), Error> {
-    state.catalog.lock().unwrap().confirm_face(face_id)?;
+    state.catalog.locked().confirm_face(face_id)?;
     state.people.invalidate();
     Ok(())
 }
 
 #[tauri::command(async)]
 pub fn face_reject(state: State<AppState>, face_id: i64) -> Result<(), Error> {
-    state.catalog.lock().unwrap().reject_face(face_id)?;
+    state.catalog.locked().reject_face(face_id)?;
     state.people.invalidate();
     Ok(())
 }
 
 #[tauri::command(async)]
 pub fn face_hide(state: State<AppState>, face_id: i64) -> Result<(), Error> {
-    state.catalog.lock().unwrap().hide_face(face_id)?;
+    state.catalog.locked().hide_face(face_id)?;
     state.people.invalidate();
     Ok(())
 }
 
 #[tauri::command(async)]
 pub fn person_delete(state: State<AppState>, id: i64) -> Result<(), Error> {
-    state.catalog.lock().unwrap().delete_person(id)?;
+    state.catalog.locked().delete_person(id)?;
     state.people.invalidate();
     Ok(())
 }
@@ -381,7 +378,7 @@ pub fn person_delete(state: State<AppState>, id: i64) -> Result<(), Error> {
 /// Zuordnungen werden neu vorgeschlagen.
 #[tauri::command(async)]
 pub fn people_rescan(state: State<AppState>) -> Result<(), Error> {
-    state.catalog.lock().unwrap().reset_faces()?;
+    state.catalog.locked().reset_faces()?;
     state.people.invalidate();
     *state.people.load_error.lock().unwrap() = None;
     let _ = std::fs::remove_dir_all(thumb_dir(&state));

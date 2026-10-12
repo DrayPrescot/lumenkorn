@@ -18,6 +18,7 @@ mod worker;
 
 use lumenkorn_core::Catalog;
 use lumenkorn_core::Error;
+use lumenkorn_core::LockExt;
 use lumenkorn_core::maskstore::MaskFiles;
 use lumenkorn_core::thumbs::ThumbCache;
 use lumenkorn_core::watcher::FolderWatcher;
@@ -68,7 +69,19 @@ pub fn run_mcp_stdio() {
 pub fn run() {
     logfile::init();
 
-    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    let builder = tauri::Builder::default();
+    // Nur eine Instanz (muss als erstes Plugin kommen): Ein zweiter Start
+    // öffnete denselben Katalog parallel und scannte doppelt – stattdessen
+    // das vorhandene Fenster nach vorn holen
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| {
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.unminimize();
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+    }));
+    let builder = builder.plugin(tauri_plugin_dialog::init());
     // Updates von GitHub (nur Desktop)
     #[cfg(desktop)]
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
@@ -89,7 +102,19 @@ pub fn run() {
                 lumenkorn_develop::i18n::set_english(l.trim() == "en");
             }
             let catalog_path = data_dir.join("katalog.db");
-            let catalog = Arc::new(Mutex::new(Catalog::open(&catalog_path)?));
+            let catalog = match Catalog::open(&catalog_path) {
+                Ok(c) => Arc::new(Mutex::new(c)),
+                Err(e) => {
+                    // Sonst endete die App ohne sichtbaren Grund
+                    use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+                    app.dialog()
+                        .message(e.to_string())
+                        .title("Lumenkorn")
+                        .kind(MessageDialogKind::Error)
+                        .blocking_show();
+                    return Err(e.into());
+                }
+            };
             let masks = Arc::new(MaskFiles::new(data_dir.join(dirs::MASKS)));
             let repairs = Arc::new(lumenkorn_develop::repair::RepairFiles::new(
                 data_dir.join(dirs::REPAIRS),
@@ -110,7 +135,7 @@ pub fn run() {
                 data_dir.clone(),
                 cache.base().to_path_buf(),
             ]);
-            match catalog.lock().unwrap().retry_failed_thumbs() {
+            match catalog.locked().retry_failed_thumbs() {
                 Ok(n) if n > 0 => {
                     log::info!("{n} fehlgeschlagene Thumbnails werden erneut versucht")
                 }
@@ -122,7 +147,7 @@ pub fn run() {
 
             // Alle Quellordner beim Start abgleichen – Änderungen, während die App
             // geschlossen war, werden so erkannt.
-            let roots = catalog.lock().unwrap().roots()?;
+            let roots = catalog.locked().roots()?;
             let watcher = watcher.map(|mut w| {
                 for r in &roots {
                     if let Err(e) = w.watch(std::path::Path::new(&r.path)) {
@@ -263,10 +288,7 @@ fn start_watcher(
     data_dir: PathBuf,
 ) -> Option<FolderWatcher> {
     let res = FolderWatcher::new(move |changes| {
-        let roots = match catalog.lock() {
-            Ok(c) => c.roots().unwrap_or_default(),
-            Err(_) => return,
-        };
+        let roots = catalog.locked().roots().unwrap_or_default();
         // Ereignisse verloren: alle Quellordner vollständig abgleichen
         if changes.rescan {
             for r in &roots {

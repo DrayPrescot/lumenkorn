@@ -7,6 +7,7 @@
 
 use crate::AppState;
 use lumenkorn_core::Error;
+use lumenkorn_core::LockExt;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -43,7 +44,7 @@ pub fn trash_supported() -> bool {
 /// Wie viele der übergebenen Bilder würden tatsächlich gelöscht?
 #[tauri::command(async)]
 pub fn rejected_summary(state: State<AppState>, ids: Vec<i64>) -> Result<RejectedSummary, Error> {
-    let files = state.catalog.lock().unwrap().rejected_files(&ids)?;
+    let files = state.catalog.locked().rejected_files(&ids)?;
     Ok(RejectedSummary {
         count: files.len(),
         bytes: files.iter().map(|f| f.2).sum(),
@@ -79,7 +80,7 @@ fn delete_rejected_blocking(
         ));
     }
     // Liste unter Sperre holen, Dateien ohne Sperre löschen (Papierkorb kann dauern)
-    let files = state.catalog.lock().unwrap().rejected_files(&ids)?;
+    let files = state.catalog.locked().rejected_files(&ids)?;
     let mut deleted = Vec::new();
     let mut bytes = 0;
     let mut failed = Vec::new();
@@ -96,7 +97,7 @@ fn delete_rejected_blocking(
                 }
             }
             // Schon weg (z. B. von außen gelöscht): trotzdem aus dem Katalog nehmen
-            Err(e) if !p.exists() => {
+            Err(e) if already_gone(p) => {
                 log::info!("{path} war bereits gelöscht ({e})");
                 deleted.push(*id);
             }
@@ -109,7 +110,7 @@ fn delete_rejected_blocking(
             }
         }
     }
-    let faces = state.catalog.lock().unwrap().forget_images(&deleted)?;
+    let faces = state.catalog.locked().forget_images(&deleted)?;
     crate::ai::forget_in_index(state, Some(&deleted));
     cleanup(state, &deleted, &faces);
     log::info!(
@@ -125,6 +126,15 @@ fn delete_rejected_blocking(
         failed,
         to_trash,
     })
+}
+
+/// Ist die Datei sicher nicht mehr da? Nur wenn ihr Ordner erreichbar ist –
+/// fehlt eine Netzwerkfreigabe oder externe Platte, meldet `exists()` auch
+/// `false`; das Foto darf dann nicht samt Bearbeitungen verschwinden.
+fn already_gone(path: &Path) -> bool {
+    let dir_there = path.parent().is_some_and(|d| d.is_dir());
+    dir_there
+        && std::fs::symlink_metadata(path).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound)
 }
 
 fn remove(path: &Path, to_trash: bool) -> Result<(), String> {
@@ -191,7 +201,7 @@ fn cleanup(state: &AppState, ids: &[i64], faces: &[i64]) {
     // Einfügen auch Verweise auf fremde Entrauschungen übertragen).
     // Ohne verlässliche Liste lieber nichts löschen – das tägliche Aufräumen
     // erledigt die Reste später
-    let Ok(still_used) = state.catalog.lock().unwrap().live_files() else {
+    let Ok(still_used) = state.catalog.locked().live_files() else {
         log::warn!("Zusatzdateien gelöschter Fotos bleiben vorerst liegen");
         return;
     };
@@ -220,6 +230,18 @@ fn cleanup(state: &AppState, ids: &[i64], faces: &[i64]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_folder_is_not_already_gone() {
+        let dir = std::env::temp_dir().join(format!("lw-gone-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(already_gone(&dir.join("weg.jpg")), "Ordner da, Datei nicht");
+        std::fs::write(dir.join("da.jpg"), b"x").unwrap();
+        assert!(!already_gone(&dir.join("da.jpg")));
+        // Ordner nicht erreichbar (z. B. NAS getrennt)
+        assert!(!already_gone(&dir.join("fehlt").join("x.jpg")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn sidecars_respect_raw_jpeg_pairs() {

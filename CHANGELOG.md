@@ -24,6 +24,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
   layer.
 - Updates: a failed download can be retried without restarting the app.
 - AI agents (MCP): the HTTP server accepts only exact local origins.
+- Deleting rejected photos: a file on a disconnected drive or network share
+  no longer counts as “already deleted”, so the photo and its edits stay.
+- Thumbnails: a file that crashes the decoder is marked as failed instead
+  of stopping thumbnails for every photo after it.
+- A crash inside one task no longer leaves the catalog locked until the
+  app is restarted.
+- Library: two scans adding the same new file at once (e.g. after an HDR
+  merge while the folder is watched) no longer drop the whole batch.
+- AI downloads: truncated model files are rejected instead of being kept as
+  broken models; the ONNX Runtime archive is checked against its SHA-256.
+- Starting Lumenkorn a second time brings the open window to the front
+  instead of opening the same catalog twice.
+- A catalog from a newer Lumenkorn version is not opened (and not changed);
+  errors opening the catalog are shown instead of quitting silently.
 
 ## [1.0.1] – 2026-10-11
 

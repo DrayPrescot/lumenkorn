@@ -2,6 +2,7 @@
 
 use crate::worker::Job;
 use crate::{AppState, blocking};
+use lumenkorn_core::LockExt;
 use lumenkorn_core::formats::ImageKind;
 use lumenkorn_core::{Catalog, Edit, Error, Preset};
 use lumenkorn_develop::i18n::tr_s;
@@ -144,7 +145,7 @@ pub(crate) fn load_proxy(state: &AppState, id: i64, max_edge: usize) -> Result<A
     if let Some(s) = state.develop.get(id, max_edge) {
         return Ok(s);
     }
-    let job = state.catalog.lock().unwrap().thumb_job(id)?;
+    let job = state.catalog.locked().thumb_job(id)?;
     let src = Source::load(
         Path::new(&job.path),
         job.kind == ImageKind::Raw,
@@ -160,7 +161,7 @@ fn load_full(state: &AppState, id: i64, max_edge: usize) -> Result<Arc<Source>, 
     let mut f = state.develop.full.lock().unwrap();
     if f.as_ref().is_none_or(|e| e.id != id) {
         *f = None; // alten Speicher vor dem Laden freigeben
-        let job = state.catalog.lock().unwrap().thumb_job(id)?;
+        let job = state.catalog.locked().thumb_job(id)?;
         let t = std::time::Instant::now();
         let src = Source::load(
             Path::new(&job.path),
@@ -257,7 +258,7 @@ pub struct DevelopInfo {
 pub async fn develop_load(app: AppHandle, id: i64) -> Result<DevelopInfo, Error> {
     blocking(app, move |state| {
         let src = load_proxy(state, id, PROXY_EDGE)?;
-        let cat = state.catalog.lock().unwrap();
+        let cat = state.catalog.locked();
         Ok(DevelopInfo {
             params: cat.develop_params(id)?,
             full_width: src.full_width,
@@ -428,8 +429,7 @@ pub async fn develop_auto(
 pub(crate) fn lens_setting(state: &AppState, id: i64) -> bool {
     state
         .catalog
-        .lock()
-        .unwrap()
+        .locked()
         .develop_params(id)
         .map_or(true, |p| p.lens_correction)
 }
@@ -437,7 +437,7 @@ pub(crate) fn lens_setting(state: &AppState, id: i64) -> bool {
 /// Gespeicherte Einstellungen eines Fotos – zum Kopieren, ohne es zu laden.
 #[tauri::command(async)]
 pub fn develop_params(state: State<AppState>, id: i64) -> Result<DevelopParams, Error> {
-    state.catalog.lock().unwrap().develop_params(id)
+    state.catalog.locked().develop_params(id)
 }
 
 /// Speichert Parameter für ein oder mehrere Bilder (Einfügen auf Auswahl).
@@ -448,7 +448,7 @@ pub fn develop_save(
     ids: Vec<i64>,
     params: DevelopParams,
 ) -> Result<(), Error> {
-    state.catalog.lock().unwrap().save_develop(&ids, &params)?;
+    state.catalog.locked().save_develop(&ids, &params)?;
     // Das gerade bearbeitete Foto liegt als Proxy im Speicher: Vorschau und
     // Thumbnail daraus rendern statt das RAW erneut in voller Auflösung zu
     // entwickeln (das kostete bei jedem Speichern Sekunden und ~1,5 GB).
@@ -525,7 +525,7 @@ fn thumbs_from_proxy(
         output::encode_jpeg_rgb8(&preview, 84)?,
         output::encode_jpeg_rgb8(&thumb, 84)?,
     );
-    let cat = state.catalog.lock().unwrap();
+    let cat = state.catalog.locked();
     if cat.develop_params(id)? != params.sanitized() {
         return Ok(false);
     }
@@ -546,7 +546,7 @@ pub fn develop_transfer(
 ) -> Result<(), Error> {
     let source = source.sanitized();
     {
-        let mut cat = state.catalog.lock().unwrap();
+        let mut cat = state.catalog.locked();
         for id in &ids {
             let merged = cat.develop_params(*id)?.transfer_from(&source, groups);
             cat.save_develop(&[*id], &merged)?;
@@ -565,7 +565,7 @@ pub fn develop_transfer(
 
 #[tauri::command(async)]
 pub fn preset_list(state: State<AppState>) -> Result<Vec<Preset>, Error> {
-    state.catalog.lock().unwrap().presets()
+    state.catalog.locked().presets()
 }
 
 #[tauri::command(async)]
@@ -585,14 +585,14 @@ pub fn preset_create(
             .into(),
         ));
     }
-    let cat = state.catalog.lock().unwrap();
+    let cat = state.catalog.locked();
     cat.create_preset(name, &params, groups)?;
     cat.presets()
 }
 
 #[tauri::command(async)]
 pub fn preset_rename(state: State<AppState>, id: i64, name: String) -> Result<Vec<Preset>, Error> {
-    let cat = state.catalog.lock().unwrap();
+    let cat = state.catalog.locked();
     if !name.trim().is_empty() {
         cat.rename_preset(id, name.trim())?;
     }
@@ -601,14 +601,14 @@ pub fn preset_rename(state: State<AppState>, id: i64, name: String) -> Result<Ve
 
 #[tauri::command(async)]
 pub fn preset_delete(state: State<AppState>, id: i64) -> Result<Vec<Preset>, Error> {
-    let cat = state.catalog.lock().unwrap();
+    let cat = state.catalog.locked();
     cat.delete_preset(id)?;
     cat.presets()
 }
 
 #[tauri::command(async)]
 pub fn develop_snapshot(state: State<AppState>, id: i64, name: String) -> Result<Vec<Edit>, Error> {
-    let cat = state.catalog.lock().unwrap();
+    let cat = state.catalog.locked();
     let name = if name.trim().is_empty() {
         tr_s("Schnappschuss", "Snapshot").to_string()
     } else {
@@ -620,7 +620,7 @@ pub fn develop_snapshot(state: State<AppState>, id: i64, name: String) -> Result
 
 #[tauri::command(async)]
 pub fn develop_restore(state: State<AppState>, edit_id: i64) -> Result<DevelopParams, Error> {
-    let p = state.catalog.lock().unwrap().restore_snapshot(edit_id)?;
+    let p = state.catalog.locked().restore_snapshot(edit_id)?;
     state.worker.submit(Job::Thumbs);
     Ok(p)
 }
@@ -631,7 +631,7 @@ pub fn develop_delete_snapshot(
     id: i64,
     edit_id: i64,
 ) -> Result<Vec<Edit>, Error> {
-    let cat = state.catalog.lock().unwrap();
+    let cat = state.catalog.locked();
     cat.delete_snapshot(edit_id)?;
     snapshots(&cat, id)
 }
@@ -686,7 +686,7 @@ pub fn export_images(
             for (i, id) in ids.iter().enumerate() {
                 let res = (|| -> Result<String, Error> {
                     let (job, params) = {
-                        let cat = state.catalog.lock().unwrap();
+                        let cat = state.catalog.locked();
                         (cat.thumb_job(*id)?, cat.develop_params(*id)?)
                     };
                     let name = Path::new(&job.path)

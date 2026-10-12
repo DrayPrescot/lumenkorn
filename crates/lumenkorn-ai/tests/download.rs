@@ -74,6 +74,7 @@ fn downloads_runtime_and_model_with_progress() {
             url: format!("{base}/ort.tgz"),
             archive_entry: "lib/libonnxruntime.so.9.9".into(),
             size: None,
+            sha256: None,
         }),
         model: vec![
             FileSpec {
@@ -184,6 +185,44 @@ fn cancel_and_404_leave_no_partial_files() {
         .is_err()
     );
     assert!(!models::model_dir(data.path()).join("vision.onnx").exists());
+}
+
+/// Viel kleiner als angegeben (abgeschnitten, Server ohne Längenangabe):
+/// nicht als fertiges Modell übernehmen.
+#[test]
+fn truncated_download_is_rejected() {
+    let base = serve(vec![("/v.onnx", vec![7u8; 1000])]);
+    let data = tempfile::tempdir().unwrap();
+    let ai = models::ai_dir(data.path());
+    std::fs::create_dir_all(&ai).unwrap();
+    let manifest = Manifest {
+        runtime: None,
+        model: vec![FileSpec {
+            name: "vision.onnx".into(),
+            url: format!("{base}/v.onnx"),
+            size: Some(50_000),
+        }],
+        masks: vec![],
+        denoise: vec![],
+        gpu_runtimes: vec![],
+        faces: vec![],
+        repair: vec![],
+    };
+    std::fs::write(
+        ai.join("quellen.json"),
+        serde_json::to_string(&manifest).unwrap(),
+    )
+    .unwrap();
+    let res = models::download_missing(
+        data.path(),
+        Component::Clip,
+        &|_| {},
+        &AtomicBool::new(false),
+    );
+    assert!(res.is_err(), "abgeschnitten angenommen");
+    let dir = models::model_dir(data.path());
+    assert!(!dir.join("vision.onnx").exists());
+    assert!(!dir.join("vision.onnx.part").exists());
 }
 
 #[test]
