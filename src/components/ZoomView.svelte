@@ -45,8 +45,9 @@
     showBadge?: boolean;
     /** Klick ohne Verschieben */
     onselect?: () => void;
-    /** Überlagerungen, nur in der Einpassen-Ansicht */
-    children?: Snippet;
+    /** Überlagerungen (Masken, Zuschnitt …). Bekommen beim Zoomen die Lage
+     *  des Bildes in der Ansicht, eingepasst `null`. */
+    children?: Snippet<[Region | null]>;
   } = $props();
 
   let el: HTMLDivElement;
@@ -252,9 +253,7 @@
     {/if}
   {/if}
 
-  {#if zoom.fit}
-    {@render children?.()}
-  {/if}
+  {@render children?.(zoom.fit ? null : { x: left, y: top, w: dw, h: dh })}
 
   {#if showBadge && fitZoom > 0}
     <div class="badge" class:busy={!!hiLoading || (detPending && needMore)}>

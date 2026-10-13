@@ -97,17 +97,19 @@
       alt={lib.focused?.fileName ?? ""}
       showBadge={!dev.cropMode}
     >
-      {#if shown}
-        <!-- Maße der Vorschau für die Überlagerungen -->
-        <img class="measure" src={shown} alt="" bind:naturalWidth={imgW} bind:naturalHeight={imgH} />
-      {/if}
-      {#if dev.cropMode && !dev.loading}
-        <CropOverlay {stageW} {stageH} {imgW} {imgH} />
-      {:else if dev.hslPick && dev.tab === "basic" && !before && !dev.loading}
-        <HslPicker {stageW} {stageH} {imgW} {imgH} />
-      {:else if !before && !dev.loading}
-        <MaskOverlay {stageW} {stageH} {imgW} {imgH} />
-      {/if}
+      {#snippet children(view)}
+        {#if shown}
+          <!-- Maße der Vorschau für die Überlagerungen -->
+          <img class="measure" src={shown} alt="" bind:naturalWidth={imgW} bind:naturalHeight={imgH} />
+        {/if}
+        {#if dev.cropMode && !dev.loading}
+          <CropOverlay {stageW} {stageH} {imgW} {imgH} {view} />
+        {:else if dev.hslPick && dev.tab === "basic" && !before && !dev.loading}
+          <HslPicker {stageW} {stageH} {imgW} {imgH} {view} />
+        {:else if !before && !dev.loading}
+          <MaskOverlay {stageW} {stageH} {imgW} {imgH} {view} />
+        {/if}
+      {/snippet}
     </ZoomView>
 
     {#if dev.maskBusy}

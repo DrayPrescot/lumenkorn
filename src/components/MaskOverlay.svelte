@@ -8,10 +8,23 @@
   import { t } from "../lib/i18n";
   import { containRect, cropToFrame, frameSize, frameToCrop, frameToSource, sourceToFrame, straightenScale } from "../lib/frame";
 
-  let { stageW, stageH, imgW, imgH }: { stageW: number; stageH: number; imgW: number; imgH: number } = $props();
+  let {
+    stageW,
+    stageH,
+    imgW,
+    imgH,
+    view = null,
+  }: {
+    stageW: number;
+    stageH: number;
+    imgW: number;
+    imgH: number;
+    /** Lage des Bildes beim Zoomen (ZoomView), sonst eingepasst */
+    view?: { x: number; y: number; w: number; h: number } | null;
+  } = $props();
 
   // Angezeigtes Bild (object-fit: contain)
-  const rect = $derived(containRect(stageW, stageH, imgW, imgH));
+  const rect = $derived(view ?? containRect(stageW, stageH, imgW, imgH));
 
   const q = $derived(((dev.params.rotate % 4) + 4) % 4);
   const crop = $derived(dev.params.crop ?? { x: 0, y: 0, w: 1, h: 1 });
@@ -97,14 +110,19 @@
       drag = { kind: "paint", stroke: live, last: [px, py] };
       dev.schedule();
     } else if (dev.tool === "object") {
+      e.stopPropagation();
       dev.objectClick({ x: sx, y: sy, positive: !e.altKey });
       return;
     } else if (dev.tool === "color") {
+      e.stopPropagation();
       dev.colorClick(sx, sy, e.altKey);
       return;
     } else {
+      // Ohne Werkzeug: Ziehen verschiebt das gezoomte Bild (ZoomView)
       return;
     }
+    // Werkzeug aktiv: nicht zusätzlich das gezoomte Bild verschieben
+    e.stopPropagation();
     svg.setPointerCapture(e.pointerId);
     e.preventDefault();
   }
@@ -225,6 +243,7 @@
   onpointerup={onup}
   onpointercancel={onup}
   onpointerleave={() => (cursor = null)}
+  ondblclick={(e) => dev.tool && e.stopPropagation()}
   role="application"
   aria-label={t("Masken-Editor")}
 >

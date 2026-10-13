@@ -39,9 +39,15 @@ impl Write for Tee {
 
 /// Logger und Panik-Aufzeichnung einrichten (so früh wie möglich).
 pub fn init() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
-        .target(env_logger::Target::Pipe(Box::new(Tee)))
-        .init();
+    // Ohne Belang und bei jedem Start bzw. RAW wiederholt: Vulkan-Loader
+    // (Registry-Einträge für Layer) und rawlers TIFF-Leser (fehlerhafte
+    // Hersteller-Tags, die er selbst übergeht – mit Backtrace).
+    env_logger::Builder::from_env(
+        env_logger::Env::default()
+            .default_filter_or("info,wgpu_hal::vulkan::instance=error,rawler::formats::tiff=off"),
+    )
+    .target(env_logger::Target::Pipe(Box::new(Tee)))
+    .init();
 
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {

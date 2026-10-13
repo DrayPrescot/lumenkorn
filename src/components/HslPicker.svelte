@@ -9,10 +9,23 @@
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
 
-  let { stageW, stageH, imgW, imgH }: { stageW: number; stageH: number; imgW: number; imgH: number } = $props();
+  let {
+    stageW,
+    stageH,
+    imgW,
+    imgH,
+    view = null,
+  }: {
+    stageW: number;
+    stageH: number;
+    imgW: number;
+    imgH: number;
+    /** Lage des Bildes beim Zoomen (ZoomView), sonst eingepasst */
+    view?: { x: number; y: number; w: number; h: number } | null;
+  } = $props();
 
   // Angezeigtes Bild (object-fit: contain)
-  const rect = $derived(containRect(stageW, stageH, imgW, imgH));
+  const rect = $derived(view ?? containRect(stageW, stageH, imgW, imgH));
 
   let el: HTMLDivElement;
   let drag: { y: number; base: number[]; weights: number[] } | null = null;
@@ -32,6 +45,8 @@
     if (e.button !== 0 || !dev.url) return;
     const { nx, ny, px, py } = norm(e);
     if (nx < 0 || ny < 0 || nx > 1 || ny > 1) return;
+    // Nicht zusätzlich das gezoomte Bild verschieben (ZoomView)
+    e.stopPropagation();
     el.setPointerCapture(e.pointerId);
     pressed = true;
     const startY = e.clientY;

@@ -332,31 +332,43 @@ fn decode_unedited(
     // Lineares EXR (Ergebnis von HDR/Panorama/Focus Stacking): wie ein RAW
     // mit Standardeinstellungen entwickeln
     if lumenkorn_develop::exr_io::is_exr(path) {
-        let src = Source::load(
-            path,
-            false,
-            orientation.map(|o| o as u16),
-            Some(max as usize),
-        )?;
-        let rgb = lumenkorn_develop::render_auto_rgb8(
-            &src,
-            &DevelopParams::default(),
-            &RenderOptions {
-                masks: &NoMasks,
-                overlay: None,
-                denoised: None,
-                region: None,
-                repairs: &NoRepairs,
-                keep_prepared: false,
-            },
-        );
-        return Ok(DynamicImage::ImageRgb8(rgb));
+        return develop_default(path, false, orientation, max);
     }
     let img = match kind {
         ImageKind::Raster => lumenkorn_develop::raster::open(path)?,
-        ImageKind::Raw => decode_embedded_preview(path, max)?,
+        ImageKind::Raw => match decode_embedded_preview(path, max) {
+            Ok(img) => img,
+            // Ohne eingebettete Vorschau (z. B. DNGs aus Entrauschungs-
+            // programmen): mit Standardeinstellungen entwickeln, statt bei
+            // jedem Start erneut zu scheitern
+            Err(Error::NoPreview(_)) => return develop_default(path, true, orientation, max),
+            Err(e) => return Err(e),
+        },
     };
     Ok(fit(img, orientation, max))
+}
+
+/// Mit Standardeinstellungen entwickeln (RAW ohne Vorschau, EXR).
+fn develop_default(
+    path: &Path,
+    raw: bool,
+    orientation: Option<i64>,
+    max: u32,
+) -> Result<DynamicImage> {
+    let src = Source::load(path, raw, orientation.map(|o| o as u16), Some(max as usize))?;
+    let rgb = lumenkorn_develop::render_auto_rgb8(
+        &src,
+        &DevelopParams::default(),
+        &RenderOptions {
+            masks: &NoMasks,
+            overlay: None,
+            denoised: None,
+            region: None,
+            repairs: &NoRepairs,
+            keep_prepared: false,
+        },
+    );
+    Ok(DynamicImage::ImageRgb8(rgb))
 }
 
 /// Auf `max` verkleinern und aufrichten.

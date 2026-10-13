@@ -34,6 +34,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Vibrance protected skin tones with a hard switch (R > G > B), which could create edges where
   two channels are equal; the transition is now smooth.
 - Thumbnails of edited RAW photos are created again once (catalog migration v20).
+- Masks and repairs: brush, object click, gradients and the HSL picker now also work in the
+  zoomed view. Until now the tools were only shown in the fitted view; when zoomed in, clicks
+  and strokes moved the image instead.
+- RAW files without an embedded preview get a thumbnail developed with default settings instead
+  of failing at every start.
+- Log: no more Vulkan loader messages and rawler TIFF warnings with backtraces at every start.
 
 ## [1.0.4] – 2026-10-12
 

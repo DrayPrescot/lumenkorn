@@ -6,9 +6,22 @@
   import { containRect, frameSize } from "../lib/frame";
   import { t } from "../lib/i18n";
 
-  let { stageW, stageH, imgW, imgH }: { stageW: number; stageH: number; imgW: number; imgH: number } = $props();
+  let {
+    stageW,
+    stageH,
+    imgW,
+    imgH,
+    view = null,
+  }: {
+    stageW: number;
+    stageH: number;
+    imgW: number;
+    imgH: number;
+    /** Lage des Bildes beim Zoomen (ZoomView), sonst eingepasst */
+    view?: { x: number; y: number; w: number; h: number } | null;
+  } = $props();
 
-  const rect = $derived(containRect(stageW, stageH, imgW, imgH));
+  const rect = $derived(view ?? containRect(stageW, stageH, imgW, imgH));
 
   const c = $derived(dev.params.crop ?? { x: 0, y: 0, w: 1, h: 1 });
   const frame = $derived(frameSize(dev.params, [dev.fullSize[0] || 1, dev.fullSize[1] || 1]));
