@@ -678,7 +678,7 @@ npm run tauri android dev
 
 ## Lizenz
 
-Ab der Version nach 1.0.4 steht Lumenkorn unter der [GNU General Public License, Version 3 oder
+Ab Version 1.0.5 steht Lumenkorn unter der [GNU General Public License, Version 3 oder
 neuer](../LICENSE) (GPL-3.0-or-later), weil es aus darktable übersetzten Code enthält
 (GPL-3.0-or-later). Die Versionen bis einschließlich 1.0.4 wurden unter MIT OR Apache-2.0
 veröffentlicht und bleiben unter diesen Bedingungen verfügbar. Die Sensortabelle

@@ -502,7 +502,7 @@ The [changelog](CHANGELOG.md) lists what is already included.
 
 ## License
 
-From the version after 1.0.4 on, Lumenkorn is licensed under the
+From version 1.0.5 on, Lumenkorn is licensed under the
 [GNU General Public License, version 3 or later](LICENSE) (GPL-3.0-or-later), because it
 contains code translated from darktable (GPL-3.0-or-later). Releases up to and including 1.0.4
 were published under MIT OR Apache-2.0 and remain available under those terms.

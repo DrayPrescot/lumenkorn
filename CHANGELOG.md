@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.5] – 2026-10-13
+
 ### Changed
 - RAW development now follows darktable 5.0's default scene-referred workflow with the sigmoid
   tone mapper, translated from darktable's C code to Rust (`crates/lumenkorn-develop/src/dt/`):
