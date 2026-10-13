@@ -581,11 +581,10 @@ impl Catalog {
         // Von einer neueren Lumenkorn-Version angelegt: Diese Version kennt
         // deren Spalten und Trigger nicht und würde den Katalog beschädigen
         if version > MIGRATIONS.len() as i64 {
-            let known = MIGRATIONS.len();
-            return Err(Error::Invalid(tr!(
-                "Der Katalog stammt von einer neueren Lumenkorn-Version (Stand {version}, diese Version kennt bis {known}). Bitte Lumenkorn aktualisieren.",
-                "The catalog was created by a newer Lumenkorn version (schema {version}, this version knows up to {known}). Please update Lumenkorn."
-            )));
+            return Err(Error::CatalogTooNew {
+                version,
+                known: MIGRATIONS.len(),
+            });
         }
         for (i, sql) in MIGRATIONS.iter().enumerate().skip(version as usize) {
             let tx = self.conn.transaction()?;
@@ -2241,6 +2240,34 @@ mod migration_tests {
         // Bearbeitete RAWs (v9, v13) und – seit den neuen Tonwertreglern (v15) –
         // alle bearbeiteten Fotos; unbearbeitete bleiben
         assert_eq!(ids.map(state), [0, 1, 0]);
+    }
+
+    /// Katalog einer neueren Version: eigener Fehler (die App bietet dann das
+    /// Update an), und der Katalog bleibt unverändert.
+    #[test]
+    fn newer_catalog_is_reported_and_left_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = tmp.path().join("k.db");
+        let newer = MIGRATIONS.len() as i64 + 1;
+        Connection::open(&db)
+            .unwrap()
+            .pragma_update(None, "user_version", newer)
+            .unwrap();
+        match Catalog::open(&db) {
+            Err(Error::CatalogTooNew { version, known }) => {
+                assert_eq!((version, known), (newer, MIGRATIONS.len()));
+            }
+            Err(e) => panic!("falscher Fehler: {e}"),
+            Ok(_) => panic!("neuerer Katalog wurde geöffnet"),
+        }
+        let conn = Connection::open(&db).unwrap();
+        let v: i64 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        let tables: i64 = conn
+            .query_row("SELECT count(*) FROM sqlite_master", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!((v, tables), (newer, 0));
     }
 
     /// v11: Ein Katalog von v10 (alte Trigger) behält seinen Suchindex, die

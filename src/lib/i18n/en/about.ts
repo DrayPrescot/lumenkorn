@@ -1,4 +1,4 @@
-// English texts: about dialog and open-source credits
+// English texts: about dialog, open-source credits, catalog from a newer version
 export default {
   "Über Lumenkorn": "About Lumenkorn",
   "Version {v}": "Version {v}",
@@ -49,4 +49,12 @@ export default {
   "Reparatur (Störendes entfernen)": "Repair (removing distractions)",
   "Gesichter finden": "Finding faces",
   "Gesichter wiedererkennen": "Recognizing faces",
+  "Lumenkorn muss aktualisiert werden": "Lumenkorn needs an update",
+  "Dein Katalog bleibt unverändert. Nach dem Update startet Lumenkorn neu und öffnet ihn wie gewohnt.": "Your catalog stays unchanged. After the update Lumenkorn restarts and opens it as usual.",
+  "Suche nach Updates …": "Checking for updates…",
+  "Lumenkorn {version} ist verfügbar – installiert ist {current}.": "Lumenkorn {version} is available – {current} is installed.",
+  "Beenden": "Quit",
+  "Es wurde kein Update gefunden (keine Verbindung zu GitHub?). Die aktuelle Version gibt es auch auf der Release-Seite.": "No update was found (no connection to GitHub?). The current version is also on the releases page.",
+  "Erneut suchen": "Check again",
+  "Release-Seite öffnen": "Open releases page",
 };

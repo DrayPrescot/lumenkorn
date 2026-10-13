@@ -16,15 +16,28 @@ pub struct AppInfo {
     version: &'static str,
     platform: &'static str,
     data_dir: String,
+    /// Gesetzt, wenn der Katalog von einer neueren Version stammt (Meldung)
+    catalog_too_new: Option<String>,
 }
 
 #[tauri::command]
-pub fn app_info(state: State<AppState>) -> AppInfo {
+pub fn app_info(app: tauri::AppHandle) -> AppInfo {
+    use tauri::Manager;
     AppInfo {
         version: env!("CARGO_PKG_VERSION"),
         platform: std::env::consts::OS,
-        data_dir: state.data_dir.display().to_string(),
+        data_dir: app
+            .try_state::<AppState>()
+            .map(|s| s.data_dir.display().to_string())
+            .unwrap_or_default(),
+        catalog_too_new: app.try_state::<crate::CatalogTooNew>().map(|c| c.0.clone()),
     }
+}
+
+/// Beendet die App (Hinweis „Katalog von neuerer Version“).
+#[tauri::command]
+pub fn app_exit(app: tauri::AppHandle) {
+    app.exit(0);
 }
 
 /// Öffnet eine Webadresse im Standardbrowser (Dialog „Über Lumenkorn“:

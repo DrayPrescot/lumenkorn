@@ -16,8 +16,9 @@
   import MergeDialog from "./components/MergeDialog.svelte";
   import ImportDialog from "./components/ImportDialog.svelte";
   import UpdateDialog from "./components/UpdateDialog.svelte";
+  import CatalogTooNew from "./components/CatalogTooNew.svelte";
   import PresetDialog from "./components/PresetDialog.svelte";
-  import { isTauri, type ImageSummary } from "./lib/api";
+  import { api, isTauri, type ImageSummary } from "./lib/api";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { dev } from "./lib/develop.svelte";
   import { lib } from "./lib/store.svelte";
@@ -45,8 +46,13 @@
     if (lib.mode !== "develop") dev.close();
   });
 
-  onMount(() => {
-    lib.init();
+  /** Katalog von einer neueren Version: nur das Update anbieten */
+  let tooNew = $state<string | null>(null);
+
+  onMount(async () => {
+    const info = await api.appInfo().catch(() => null);
+    if (info?.catalogTooNew) tooNew = info.catalogTooNew;
+    else lib.init();
   });
 
   // Tastenkürzel wie in gängigen Fotoverwaltungen
@@ -186,7 +192,11 @@
   <PresetDialog />
 {/if}
 
-<UpdateDialog />
+{#if tooNew}
+  <CatalogTooNew message={tooNew} />
+{:else}
+  <UpdateDialog />
+{/if}
 
 {#if deleteImages}
   <DeleteRejectedDialog images={deleteImages} onclose={() => (deleteImages = null)} />

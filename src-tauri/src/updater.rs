@@ -67,7 +67,7 @@ pub async fn update_check(app: AppHandle) -> Result<Option<UpdateInfo>, Error> {
         if let Some(i) = &info {
             log::info!("Update verfügbar: {} → {}", i.current, i.version);
         }
-        *app.state::<AppState>().updater.pending.lock().unwrap() = update;
+        *app.state::<UpdaterState>().pending.lock().unwrap() = update;
         Ok(info)
     }
     #[cfg(not(desktop))]
@@ -86,8 +86,7 @@ pub async fn update_install(app: AppHandle) -> Result<(), Error> {
     {
         use tauri::{Emitter, Manager};
         let update = app
-            .state::<AppState>()
-            .updater
+            .state::<UpdaterState>()
             .pending
             .lock()
             .unwrap()
@@ -132,11 +131,16 @@ pub async fn update_install(app: AppHandle) -> Result<(), Error> {
             )
             .await
             .map_err(|e| {
-                *app.state::<AppState>().updater.pending.lock().unwrap() = Some(retry);
+                *app.state::<UpdaterState>().pending.lock().unwrap() = Some(retry);
                 Error::Invalid(e.to_string())
             })?;
-        // Laufende KI-Arbeit beenden wie beim Neustart aus dem KI-Dialog
-        crate::ai::app_restart(app);
+        // Laufende KI-Arbeit beenden wie beim Neustart aus dem KI-Dialog;
+        // ohne Katalog (neuere Version) gibt es keine
+        if app.try_state::<AppState>().is_some() {
+            crate::ai::app_restart(app);
+        } else {
+            app.restart();
+        }
         Ok(())
     }
     #[cfg(not(desktop))]

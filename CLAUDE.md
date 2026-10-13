@@ -93,6 +93,11 @@ Echte Bearbeitung, KI und Dateien gibt es nur in der App
 (`npm run tauri dev`, in VS Code: Aufgabe „Lumenkorn: Entwicklungsversion
 starten“).
 
+**Den Dev-Build nie mit dem Katalog des Nutzers starten**, wenn er neue
+Migrationen enthält: Der Katalog wird dabei hochgestuft, und die installierte
+Version startet danach nicht mehr. Für eigene Tests `LUMENKORN_DATA_DIR` auf
+einen Ordner im Scratchpad setzen (eigener Katalog, Cache darin).
+
 ## Release
 
 0. **Vor jedem Release alle Prüfungen aus „Prüfen vor jedem Commit“ laufen

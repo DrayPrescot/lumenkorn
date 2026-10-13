@@ -586,6 +586,7 @@ npm install
 npm run tauri dev        # App mit Hot-Reload starten
 npm run tauri build      # Installer bauen
 npm run dev              # nur die Oberfläche im Browser, mit Beispieldaten
+LUMENKORN_DATA_DIR=/tmp/lk npm run tauri dev   # mit eigenem Katalog und Cache (echten Katalog nicht anfassen)
 
 cargo test --workspace                                               # alle Tests
 cargo run -p lumenkorn-core --example scan -- ~/Bilder               # Scan ohne GUI

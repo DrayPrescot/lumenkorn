@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- If the catalog was created by a newer Lumenkorn version, the app no longer quits with an
+  error. It opens a screen that checks for the update right away and installs it; without a
+  connection it links to the releases page. The catalog is not touched.
+
+### Added
+- `LUMENKORN_DATA_DIR` lets the app use its own catalog and cache, for trying out development
+  builds without upgrading the real catalog.
+
 ## [1.0.5] – 2026-10-13
 
 ### Changed

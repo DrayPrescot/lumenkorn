@@ -206,7 +206,17 @@ export const mock = {
       case "set_language":
         return out(null);
       case "app_info":
-        return out({ version: "0.1.0", platform: "browser", dataDir: "(Mock)" });
+        // ?neuer im Adressfeld: Hinweis „Katalog von neuerer Version“ ansehen
+        return out({
+          version: "0.1.0",
+          platform: "browser",
+          dataDir: "(Mock)",
+          catalogTooNew: location.search.includes("neuer")
+            ? "Der Katalog stammt von einer neueren Lumenkorn-Version (Stand 20, diese Version kennt bis 19). Bitte Lumenkorn aktualisieren."
+            : null,
+        });
+      case "app_exit":
+        return out(null);
       case "open_url":
         window.open(String(a.url), "_blank", "noopener");
         return out(null);

@@ -58,8 +58,19 @@ pub struct AppState {
     pub usage: memory::Usage,
     pub merge: merge::MergeState,
     pub import: import::ImportState,
-    pub updater: updater::UpdaterState,
     pub mcp: mcp::McpState,
+}
+
+/// Der Katalog stammt von einer neueren Version: Die App startet ohne
+/// Katalog (kein `AppState`) und bietet nur das Update an.
+pub struct CatalogTooNew(pub String);
+
+/// Datenordner: `LUMENKORN_DATA_DIR` für Tests und Dev-Builds, die den
+/// echten Katalog nicht anfassen sollen, sonst der übliche App-Ordner.
+fn data_dir_override() -> Option<PathBuf> {
+    std::env::var_os("LUMENKORN_DATA_DIR")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
 }
 
 /// `lumenkorn --mcp`: stdio-Brücke für KI-Agenten (siehe `mcp`)
@@ -90,12 +101,19 @@ pub fn run() {
     builder
         .register_asynchronous_uri_scheme_protocol("lw", protocol::handle)
         .setup(|app| {
-            let data_dir = app.path().app_data_dir()?;
+            app.manage(updater::UpdaterState::default());
+            let custom = data_dir_override();
+            let data_dir = match &custom {
+                Some(d) => d.clone(),
+                None => app.path().app_data_dir()?,
+            };
             // Bis Version 0.1 hieß das Projekt „Lichtwerk“ (Kennung de.lichtwerk.app):
             // Katalog, Masken und Vorschaubilder von dort übernehmen.
-            adopt_previous_dir(&data_dir);
-            if let Ok(c) = app.path().app_cache_dir() {
-                adopt_previous_dir(&c);
+            if custom.is_none() {
+                adopt_previous_dir(&data_dir);
+                if let Ok(c) = app.path().app_cache_dir() {
+                    adopt_previous_dir(&c);
+                }
             }
             std::fs::create_dir_all(&data_dir)?;
             logfile::open(&data_dir);
@@ -106,6 +124,12 @@ pub fn run() {
             let catalog_path = data_dir.join("katalog.db");
             let catalog = match Catalog::open(&catalog_path) {
                 Ok(c) => Arc::new(Mutex::new(c)),
+                // Neuere Version: nicht beenden, sondern das Update anbieten
+                Err(e @ lumenkorn_core::Error::CatalogTooNew { .. }) => {
+                    log::warn!("{e}");
+                    app.manage(CatalogTooNew(e.to_string()));
+                    return Ok(());
+                }
                 Err(e) => {
                     // Sonst endete die App ohne sichtbaren Grund
                     use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
@@ -122,11 +146,13 @@ pub fn run() {
                 data_dir.join(dirs::REPAIRS),
             ));
             let denoised_dir = data_dir.join(dirs::DENOISED);
-            let cache = ThumbCache::new(
-                app.path()
+            let cache = ThumbCache::new(match &custom {
+                Some(d) => d.join("cache"),
+                None => app
+                    .path()
                     .app_cache_dir()
                     .unwrap_or_else(|_| data_dir.join("cache")),
-            )
+            })
             .with_masks(masks.clone())
             .with_repairs(repairs.clone())
             .with_denoise_dir(denoised_dir.clone());
@@ -180,7 +206,6 @@ pub fn run() {
                 usage: memory::Usage::default(),
                 merge: merge::MergeState::default(),
                 import: import::ImportState::default(),
-                updater: updater::UpdaterState::default(),
                 mcp: mcp::McpState::default(),
             });
             mcp::start_if_enabled(app.handle());
@@ -190,6 +215,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
             commands::open_url,
+            commands::app_exit,
             commands::set_language,
             commands::list_roots,
             commands::add_root,

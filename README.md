@@ -359,6 +359,10 @@ cargo test --workspace     # all tests
 cargo run --release -p lumenkorn-develop --example bench    # CPU vs. GPU benchmark
 ```
 
+`LUMENKORN_DATA_DIR=<folder>` makes the app use its own catalog and cache in that folder. Use it
+when trying out a development build, so your real catalog is not upgraded to a schema that the
+installed version cannot open yet.
+
 GPU tests on machines without a GPU need Mesa's software Vulkan driver (lavapipe) and
 `LUMENKORN_GPU_SOFTWARE=1`. Some tests use real model files or photos and only run when the
 matching `LUMENKORN_TEST_*` variables are set; the

@@ -657,6 +657,8 @@ export interface AppInfo {
   version: string;
   platform: string;
   dataDir: string;
+  /** Katalog von einer neueren Version: Meldung, sonst null */
+  catalogTooNew: string | null;
 }
 
 // --- Aufrufe ------------------------------------------------------------------
@@ -668,6 +670,7 @@ function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
 export const api = {
   appInfo: () => call<AppInfo>("app_info"),
   openUrl: (url: string) => call<void>("open_url", { url }),
+  appExit: () => call<void>("app_exit"),
   setLanguage: (lang: "de" | "en") => call<void>("set_language", { lang }),
 
   listRoots: () => call<Root[]>("list_roots"),

@@ -21,6 +21,14 @@ pub enum Error {
     Invalid(String),
     #[error("{p}: {0}", p = tr_s("Keine Vorschau im RAW gefunden", "No preview found in RAW"))]
     NoPreview(String),
+    /// Katalog von einer neueren Lumenkorn-Version (Schema `version`, diese
+    /// Version kennt bis `known`) – die App bietet dann das Update an.
+    #[error("{}", if lumenkorn_develop::i18n::is_english() {
+        format!("The catalog was created by a newer Lumenkorn version (schema {version}, this version knows up to {known}). Please update Lumenkorn.")
+    } else {
+        format!("Der Katalog stammt von einer neueren Lumenkorn-Version (Stand {version}, diese Version kennt bis {known}). Bitte Lumenkorn aktualisieren.")
+    })]
+    CatalogTooNew { version: i64, known: usize },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
