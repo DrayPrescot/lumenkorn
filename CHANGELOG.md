@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.6] – 2026-10-13
+
 ### Changed
 - If the catalog was created by a newer Lumenkorn version, the app no longer quits with an
   error. It opens a screen that checks for the update right away and installs it; without a
