@@ -11,6 +11,12 @@ Lumenkorn ist in Rust geschrieben, die Oberfläche in Svelte, zusammengehalten v
 unter Windows und Linux; für Android ist der Code vorbereitet. Bildbearbeitung und KI nutzen die
 Grafikkarte (AMD, NVIDIA, Intel) über DirectX 12 bzw. Vulkan.
 
+**Mit KI entwickelt:** Ein großer Teil des Codes von Lumenkorn ist mit einem KI-Assistenten
+entstanden. Was das Programm können soll und ob eine Änderung gut genug ist, entscheidet ein
+Mensch, und jede Version wird vor dem Erscheinen an echten Fotos ausprobiert. Fehler können
+trotzdem drinstecken. Sichere deshalb deine Fotos und den Katalog, bevor du Lumenkorn auf deine
+ganze Sammlung loslässt.
+
 **Installer:** Den aktuellen Stand von `main` gibt es immer als Windows-MSI (deutsch und englisch)
 unter [Releases → nightly](https://github.com/DrayPrescot/lumenkorn/releases/tag/nightly). Er wird
 nach jedem Push neu gebaut, sobald alle Prüfungen grün sind, und lässt sich über den alten
@@ -499,9 +505,11 @@ zerlegt jedes Bild in eine Laplace-Pyramide und behält je Stufe das schärfste 
 ## Genutzte Open-Source-Projekte
 
 Lumenkorn baut auf der Arbeit vieler anderer auf. Danke an alle, die diese Projekte pflegen.
+Dieselbe Liste steht auch in der App: unten links in der Seitenleiste auf ⓘ (**Über Lumenkorn**)
+klicken.
 
 **In der App enthalten:**
-[Tauri](https://github.com/tauri-apps/tauri) mit [tauri-plugin-dialog](https://github.com/tauri-apps/plugins-workspace) (MIT/Apache-2.0),
+[Tauri](https://github.com/tauri-apps/tauri) mit den Plugins [dialog, updater und single-instance](https://github.com/tauri-apps/plugins-workspace) (MIT/Apache-2.0),
 [Svelte](https://github.com/sveltejs/svelte) (MIT),
 [rawler](https://github.com/dnglab/dnglab) (LGPL-2.1),
 [darktable](https://github.com/darktable-org/darktable) (GPL-3.0-or-later; RAW-Entwicklung: Lichter-Rekonstruktion, Demosaicing, Farbkalibrierung, Sigmoid, nach Rust übersetzt),
@@ -519,11 +527,12 @@ die Kameradaten von [rawspeed](https://github.com/darktable-org/rawspeed) (LGPL-
 [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) (CC0-1.0/Apache-2.0),
 [trash](https://github.com/Byron/trash-rs) (MIT),
 [ureq](https://github.com/algesten/ureq) (MIT/Apache-2.0),
+[tiny_http](https://github.com/tiny-http/tiny-http) für die Schnittstelle für KI-Agenten (MIT/Apache-2.0),
 [serde](https://github.com/serde-rs/serde) und [serde_json](https://github.com/serde-rs/json) (MIT/Apache-2.0),
 [sha2](https://github.com/RustCrypto/hashes) (MIT/Apache-2.0),
 [flate2](https://github.com/rust-lang/flate2-rs), [tar](https://github.com/composefs/tar-rs) und [zip](https://github.com/zip-rs/zip2) (MIT/Apache-2.0 bzw. MIT),
 [half](https://github.com/VoidStarKat/half-rs), [bytemuck](https://github.com/Lokathor/bytemuck) und [pollster](https://github.com/zesterer/pollster) (MIT/Apache-2.0),
-[regex](https://github.com/rust-lang/regex), [log](https://github.com/rust-lang/log), [env_logger](https://github.com/rust-cli/env_logger), [thiserror](https://github.com/dtolnay/thiserror) (MIT/Apache-2.0),
+[regex](https://github.com/rust-lang/regex), [log](https://github.com/rust-lang/log), [env_logger](https://github.com/rust-cli/env_logger), [thiserror](https://github.com/dtolnay/thiserror), [dirs](https://github.com/dirs-dev/dirs-rs) und [base64](https://github.com/marshallpierce/rust-base64) (MIT/Apache-2.0),
 [libloading](https://github.com/nagisa/rust_libloading) (ISC),
 die [Lensfun](https://github.com/lensfun/lensfun)-Datenbank für die Objektivkorrektur (CC BY-SA 3.0, als JSON mitgeliefert, erzeugt mit `tools/lensfun_db.py`),
 die Schrift [Instrument Sans](https://github.com/Instrument/instrument-sans) über [Fontsource](https://fontsource.org) (OFL-1.1).
@@ -533,6 +542,7 @@ die Schrift [Instrument Sans](https://github.com/Instrument/instrument-sans) üb
 | Was | Von | Bezugsquelle | Lizenz |
 |---|---|---|---|
 | ONNX Runtime | [Microsoft](https://github.com/microsoft/onnxruntime) | GitHub-Releases, PyPI (WebGPU) | MIT |
+| Dawn, DirectX Shader Compiler (in der WebGPU-Fassung von ONNX Runtime enthalten) | [Google](https://dawn.googlesource.com/dawn), [Microsoft](https://github.com/microsoft/DirectXShaderCompiler) | mit ONNX Runtime | BSD-3-Clause, NCSA (`dxil.dll`: Microsoft-Lizenz) |
 | CLIP ViT-B/32 | OpenAI, ONNX-Fassung von [Xenova](https://huggingface.co/Xenova/clip-vit-base-patch32) | Hugging Face | MIT |
 | IS-Net / DIS | [Xuebin Qin u. a.](https://github.com/xuebinqin/DIS) | Releases von [rembg](https://github.com/danielgatis/rembg) | Apache-2.0 |
 | Segment Anything ViT-B | [Meta AI](https://github.com/facebookresearch/segment-anything) | Releases von rembg | Apache-2.0 |
@@ -544,6 +554,10 @@ die Schrift [Instrument Sans](https://github.com/Instrument/instrument-sans) üb
 | LaMa | [Samsung AI](https://github.com/advimman/lama) | [OpenCV Model Zoo](https://github.com/opencv/opencv_zoo) | Apache-2.0 |
 | YuNet | Shiqi Yu u. a. | OpenCV Model Zoo | MIT |
 | SFace | Yaoyao Zhong u. a. | OpenCV Model Zoo | Apache-2.0 |
+
+**Nicht quelloffen, aber nötig:** Unter Windows zeigt Lumenkorn seine Oberfläche mit Microsoft
+WebView2, das zu Windows gehört. Die GPU-Fassung von ONNX Runtime braucht das Microsoft Visual C++
+Redistributable; fehlt es, weist Lumenkorn darauf hin. Beides liefert Lumenkorn nicht mit.
 
 **Veröffentlichte Verfahren, die Lumenkorn umsetzt:** die Objektivmodelle von Lensfun/Hugin, die DNG-Opcodes WarpRectilinear und FixVignetteRadial, die Bedeutung der Sony-Korrekturdaten nach den Vorarbeiten von [darktable](https://github.com/darktable-org/darktable) und [RawTherapee](https://github.com/Beep6581/RawTherapee) (dafür ohne deren Code), aus darktable nach Rust übersetzt: RCD-Demosaicing (Luis Sanz Rodríguez),
 die Lichter-Rekonstruktion „inpaint opposed“ (garagecoder und Iain vom G'MIC-Team sowie Hanno Schwalm), Farbkalibrierung mit CAT16 und der Sigmoid-Tonwertzuordner,

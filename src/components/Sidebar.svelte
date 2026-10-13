@@ -7,9 +7,11 @@
   import Icon from "./Icon.svelte";
   import PathDialog from "./PathDialog.svelte";
   import AiDialog from "./AiDialog.svelte";
+  import AboutDialog from "./AboutDialog.svelte";
 
   let platform = $state("");
   let aiOpen = $state(false);
+  let aboutOpen = $state(false);
   // Nach einem Absturz beim letzten Start: Dialog mit Erklärung öffnen
   let crashShown = false;
   $effect(() => {
@@ -385,6 +387,9 @@
           <span>{t("KI: alle Fotos analysiert")}</span>
         {/if}
       </button>
+      <button class="icon-btn about" aria-label={t("Über Lumenkorn")} title={t("Über Lumenkorn")} onclick={() => (aboutOpen = true)}>
+        <Icon name="info" size={14} />
+      </button>
       <!-- Sprache der Oberfläche (Wechsel lädt neu) -->
       <div class="lang" role="group" aria-label="Sprache / Language">
         <button class:on={lang === "de"} aria-pressed={lang === "de"} title="Deutsch" onclick={() => lang !== "de" && setLang("de")}>DE</button>
@@ -437,6 +442,9 @@
 
 {#if aiOpen}
   <AiDialog onclose={() => (aiOpen = false)} />
+{/if}
+{#if aboutOpen}
+  <AboutDialog onclose={() => (aboutOpen = false)} />
 {/if}
 
 {#if pathDialog}
@@ -619,6 +627,13 @@
   .foot-row .ai {
     flex: 1;
     min-width: 0;
+  }
+  .about {
+    flex: none;
+    color: var(--faint);
+  }
+  .about:hover {
+    color: var(--text);
   }
   .lang {
     display: flex;

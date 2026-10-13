@@ -207,6 +207,9 @@ export const mock = {
         return out(null);
       case "app_info":
         return out({ version: "0.1.0", platform: "browser", dataDir: "(Mock)" });
+      case "open_url":
+        window.open(String(a.url), "_blank", "noopener");
+        return out(null);
       case "list_roots":
         return out(roots.map((r) => ({ ...r, imageCount: images.filter((i) => i.rootId === r.id).length })));
       case "add_root":

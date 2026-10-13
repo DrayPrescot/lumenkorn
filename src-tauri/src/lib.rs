@@ -189,6 +189,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            commands::open_url,
             commands::set_language,
             commands::list_roots,
             commands::add_root,

@@ -27,6 +27,29 @@ pub fn app_info(state: State<AppState>) -> AppInfo {
     }
 }
 
+/// Öffnet eine Webadresse im Standardbrowser (Dialog „Über Lumenkorn“:
+/// Quelltext, Lizenzen). Nur https-Adressen ohne Leer- und Steuerzeichen.
+#[tauri::command]
+pub fn open_url(url: String) -> CmdResult<()> {
+    let ok = url.starts_with("https://")
+        && url.len() < 1024
+        && !url
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || c == '"');
+    if !ok {
+        return Err(Error::Invalid(url));
+    }
+    #[cfg(windows)]
+    std::process::Command::new("rundll32")
+        .args(["url.dll,FileProtocolHandler", &url])
+        .spawn()?;
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open").arg(&url).spawn()?;
+    #[cfg(not(any(windows, target_os = "macos")))]
+    std::process::Command::new("xdg-open").arg(&url).spawn()?;
+    Ok(())
+}
+
 /// Sprache für Meldungen aus dem Hintergrund (Fehler, Hinweise): „de“ oder „en“.
 /// Wird gemerkt, damit schon Meldungen beim nächsten Start (Absturzhinweis,
 /// Grafikkarte) in dieser Sprache entstehen.

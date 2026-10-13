@@ -24,9 +24,14 @@ There is no account, no cloud and no subscription. The AI features (keywords, se
 content, masks, noise reduction, object removal, face recognition) use open models that are
 downloaded once and then run offline on your CPU or GPU.
 
-Lumenkorn is at version 1.0.1. It is mainly used on Windows and is also built and tested
+Lumenkorn has reached version 1.0. It is mainly used on Windows and is also built and tested
 on Linux. The interface is in German and English and follows
 the system language; **DE / EN** at the bottom left of the sidebar switches it.
+
+**Built with AI:** A large part of Lumenkorn's code was written with an AI assistant. A person
+decides what the program should do and whether a change is good enough, and every release is
+tried on real photos before it goes out. Bugs can still slip through, so back up your photos and
+the catalog before you let Lumenkorn loose on your whole collection.
 
 ## Features
 
@@ -406,12 +411,13 @@ release tagged `v<version>`.
 ## Open-source projects used by Lumenkorn
 
 Lumenkorn would not exist without the following projects. Thank you to everyone who works on them.
+The same list is shown in the app: click ⓘ (**About Lumenkorn**) at the bottom left of the sidebar.
 
 ### Libraries built into the app
 
 | Project | Used for | License |
 |---|---|---|
-| [Tauri](https://github.com/tauri-apps/tauri) and [tauri-plugin-dialog](https://github.com/tauri-apps/plugins-workspace) | app shell, window, file dialogs | MIT or Apache-2.0 |
+| [Tauri](https://github.com/tauri-apps/tauri) with the [dialog, updater and single-instance plugins](https://github.com/tauri-apps/plugins-workspace) | app shell, window, file dialogs, updates | MIT or Apache-2.0 |
 | [Svelte](https://github.com/sveltejs/svelte) | user interface | MIT |
 | [rawler](https://github.com/dnglab/dnglab) (dnglab) | reading RAW files | LGPL-2.1 |
 | [darktable](https://github.com/darktable-org/darktable) | RAW development: highlight reconstruction, demosaicing, color calibration, sigmoid (code translated to Rust) | GPL-3.0-or-later |
@@ -419,6 +425,7 @@ Lumenkorn would not exist without the following projects. Thank you to everyone 
 | [wgpu](https://github.com/gfx-rs/wgpu) | GPU image processing | MIT or Apache-2.0 |
 | [ort](https://github.com/pykeio/ort) | Rust bindings for ONNX Runtime | MIT or Apache-2.0 |
 | [ONNX Runtime](https://github.com/microsoft/onnxruntime) | running the AI models (downloaded on demand) | MIT |
+| [Dawn](https://dawn.googlesource.com/dawn) and the [DirectX Shader Compiler](https://github.com/microsoft/DirectXShaderCompiler) | part of the WebGPU build of ONNX Runtime | BSD-3-Clause, NCSA (`dxil.dll`: Microsoft license) |
 | [SQLite](https://sqlite.org) via [rusqlite](https://github.com/rusqlite/rusqlite) | catalog and search index | public domain / MIT |
 | [image](https://github.com/image-rs/image) | reading and writing JPEG, PNG, TIFF, WebP | MIT or Apache-2.0 |
 | [jpeg-encoder](https://github.com/vstroebel/jpeg-encoder) | fast JPEG encoding | MIT or Apache-2.0, IJG |
@@ -430,13 +437,18 @@ Lumenkorn would not exist without the following projects. Thank you to everyone 
 | [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) | content hashes for moved files | CC0-1.0 or Apache-2.0 |
 | [trash](https://github.com/Byron/trash-rs) | moving files to the system trash | MIT |
 | [ureq](https://github.com/algesten/ureq) | model downloads | MIT or Apache-2.0 |
+| [tiny_http](https://github.com/tiny-http/tiny-http) | interface for AI agents (MCP) | MIT or Apache-2.0 |
 | [serde](https://github.com/serde-rs/serde), [serde_json](https://github.com/serde-rs/json) | settings, edits, IPC | MIT or Apache-2.0 |
 | [RustCrypto sha2](https://github.com/RustCrypto/hashes) | download checksums | MIT or Apache-2.0 |
 | [flate2](https://github.com/rust-lang/flate2-rs), [tar](https://github.com/composefs/tar-rs), [zip](https://github.com/zip-rs/zip2) | unpacking runtime downloads | MIT or Apache-2.0 / MIT |
 | [half](https://github.com/VoidStarKat/half-rs), [bytemuck](https://github.com/Lokathor/bytemuck), [pollster](https://github.com/zesterer/pollster) | 16-bit floats, GPU buffers | MIT or Apache-2.0 |
-| [regex](https://github.com/rust-lang/regex), [log](https://github.com/rust-lang/log), [env_logger](https://github.com/rust-cli/env_logger), [thiserror](https://github.com/dtolnay/thiserror), [libloading](https://github.com/nagisa/rust_libloading) | text processing, logging, errors, loading DLLs | MIT or Apache-2.0 / ISC |
+| [regex](https://github.com/rust-lang/regex), [log](https://github.com/rust-lang/log), [env_logger](https://github.com/rust-cli/env_logger), [thiserror](https://github.com/dtolnay/thiserror), [libloading](https://github.com/nagisa/rust_libloading), [dirs](https://github.com/dirs-dev/dirs-rs), [base64](https://github.com/marshallpierce/rust-base64) | text processing, logging, errors, loading DLLs, folders, encoding | MIT or Apache-2.0 / ISC |
 | [Lensfun](https://github.com/lensfun/lensfun) database (bundled, converted to JSON by `tools/lensfun_db.py`) | lens profiles for lens correction | CC BY-SA 3.0 |
 | [Instrument Sans](https://github.com/Instrument/instrument-sans) via [Fontsource](https://fontsource.org) | interface font | OFL-1.1 |
+
+Not open source, but needed: on Windows the interface runs in Microsoft WebView2, which is part
+of Windows, and the GPU build of ONNX Runtime needs the Microsoft Visual C++ Redistributable
+(Lumenkorn tells you if it is missing). Neither is shipped with Lumenkorn.
 
 ### AI models (downloaded on demand, not shipped with the app)
 

@@ -667,6 +667,7 @@ function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
 
 export const api = {
   appInfo: () => call<AppInfo>("app_info"),
+  openUrl: (url: string) => call<void>("open_url", { url }),
   setLanguage: (lang: "de" | "en") => call<void>("set_language", { lang }),
 
   listRoots: () => call<Root[]>("list_roots"),
