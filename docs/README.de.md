@@ -503,7 +503,8 @@ zerlegt jedes Bild in eine Laplace-Pyramide und behält je Stufe das schärfste 
   Spiegelserver. Kartenkacheln kommen von `tile.openstreetmap.org`, Ortssuche und Ortsnamen von
   `nominatim.openstreetmap.org`. Die Anfragen laufen über die App mit einem eindeutigen User-Agent,
   an Nominatim höchstens eine pro Sekunde, und Kacheln werden 7 Tage im Cache-Ordner
-  zwischengespeichert. Die Koordinaten deiner Fotos gehen an Nominatim, damit es Ortsnamen liefert.
+  zwischengespeichert. Die Koordinaten deiner Fotos gehen an Nominatim, damit es Ortsnamen liefert –
+  gebündelt: Eine Anfrage gilt für alle Fotos im selben Ort.
   Alles andere bleibt lokal.
 - **Aufräumen:** 90 Sekunden nach dem Start und danach täglich löscht Lumenkorn verwaiste Dateien im
   Datenordner (alte Entrauschungen, gelöschte Masken und Reparaturen, Vorschauen entfernter Fotos).

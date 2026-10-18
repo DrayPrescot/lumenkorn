@@ -338,7 +338,8 @@ RANSAC.
   from `tile.openstreetmap.org` and place search and place names from
   `nominatim.openstreetmap.org`. The requests go through the app with an identifying user agent,
   at most one Nominatim request per second, and tiles are cached on disk for 7 days. The
-  coordinates of your photos are sent to Nominatim to look up place names. Everything else
+  coordinates of your photos are sent to Nominatim to look up place names, bundled: one request
+  covers all photos inside the same town or village. Everything else
   stays local.
 - A log file (`lumenkorn.log`) in the data folder records errors and what the AI did.
   Before risky native steps (loading a GPU runtime, opening a model) Lumenkorn leaves a marker

@@ -16,8 +16,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
   the background. Locations set by hand are stored only in the catalog, the files are not changed,
   and a rescan does not overwrite them (catalog migration 21).
 - Every location gets a place name (place, region, country), looked up in the background
-  through OpenStreetMap's Nominatim service (at most one request per second, remembered per
-  area of about 1 km). The info panel shows the location with a link to the map.
+  through OpenStreetMap's Nominatim service (at most one request per second). Requests are
+  bundled: one answer covers every waiting photo inside the outline of the place it names, so 50
+  photos from the same town cost one request, and photos across a town border still get their
+  own name. Names are remembered per area of about 1 km. The info panel shows the location with a
+  link to the map.
 - Map tiles are fetched from OpenStreetMap and cached on disk for 7 days. Leaflet and
   Leaflet.markercluster are used for the map and listed in the credits.
 
