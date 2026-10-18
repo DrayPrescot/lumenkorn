@@ -159,7 +159,7 @@ export default {
   "Bildinhalt beschreiben": "Describe image content",
   "Suchen": "Search",
   "Sucht nach dem, was auf den Fotos zu sehen ist, z. B. „Hund am Strand“": "Searches for what the photos show, e.g. “dog on the beach”",
-  "Sucht in Dateiname, Kamera, Objektiv und Schlagworten": "Searches file name, camera, lens and keywords",
+  "Sucht in Dateiname, Ort, Kamera, Objektiv und Schlagworten": "Searches file name, location, camera, lens and keywords",
   "Zur Textsuche wechseln": "Switch to text search",
   "Nach Bildinhalt suchen (KI)": "Search by image content (AI)",
   "Mindestbewertung": "Minimum rating",

@@ -22,7 +22,10 @@ class Library {
   focus = $state(-1);
   /** Mehrfachauswahl (IDs). */
   selection = $state<Set<number>>(new Set());
-  view = $state<"grid" | "loupe" | "compare" | "people">("grid");
+  view = $state<"grid" | "loupe" | "compare" | "people" | "map">("grid");
+  /** Zählt Änderungen an Aufnahmeorten (Infobereich lädt neu) */
+  geoVersion = $state(0);
+  #geoTimer: ReturnType<typeof setTimeout> | undefined;
   /** Bibliothek (Raster/Einzelansicht) oder Entwickeln. */
   mode = $state<"library" | "develop">("library");
   rowHeight = $state(200);
@@ -106,6 +109,15 @@ class Library {
     }
 
     listen("scan-progress", (p) => (this.scan = p));
+    // GPS nachgetragen bzw. Ortsnamen ermittelt (Hintergrund): Liste gesammelt
+    // neu laden – während des Nachtragens kommen die Meldungen in Stapeln
+    listen("geo-changed", () => {
+      clearTimeout(this.#geoTimer);
+      this.#geoTimer = setTimeout(() => {
+        this.geoVersion++;
+        void this.loadImages(true);
+      }, 3000);
+    });
     listen("library-changed", async (r) => {
       this.scan = null;
       const changes = r.added + r.updated + r.moved + r.missing;
@@ -880,6 +892,26 @@ class Library {
   openPeople() {
     this.mode = "library";
     this.view = "people";
+  }
+
+  openMap() {
+    this.mode = "library";
+    this.view = "map";
+  }
+
+  /** Aufnahmeort für Fotos setzen; ohne `place` ermittelt ihn das Backend. */
+  async setLocation(ids: number[], lat: number, lon: number, place: string | null = null) {
+    if (!ids.length) return;
+    this.#patch(ids, { lat, lon });
+    await this.#write(() => api.geoSetLocation(ids, lat, lon, place)).catch((e) => this.#writeFailed(e));
+    this.geoVersion++;
+  }
+
+  async clearLocation(ids: number[]) {
+    if (!ids.length) return;
+    this.#patch(ids, { lat: undefined, lon: undefined });
+    await this.#write(() => api.geoClearLocation(ids)).catch((e) => this.#writeFailed(e));
+    this.geoVersion++;
   }
 
   /** In der Personenübersicht ist die Gesichter-Prüfung einer Person offen

@@ -19,6 +19,8 @@ pub struct Metadata {
     pub exposure: Option<String>,
     pub aperture: Option<f64>,
     pub focal_length: Option<f64>,
+    /// Aufnahmeort aus den GPS-Daten (Breite, Länge in Grad, WGS 84)
+    pub gps: Option<(f64, f64)>,
 }
 
 const HASH_CHUNK: u64 = 64 * 1024;
@@ -279,7 +281,54 @@ fn exif_from<R: BufRead + Seek>(reader: &mut R) -> Option<Metadata> {
         exposure,
         aperture: rational(Tag::FNumber),
         focal_length: rational(Tag::FocalLength),
+        gps: gps(&exif),
     })
+}
+
+/// GPS-Position aus EXIF: Grad, Minuten, Sekunden und Himmelsrichtung.
+/// Nullpunkt (0, 0) und unmögliche Werte gelten als „kein Ort“ – manche
+/// Kameras schreiben ohne Empfang Nullen.
+fn gps(exif: &exif::Exif) -> Option<(f64, f64)> {
+    use exif::{In, Tag, Value};
+    let dms = |tag: Tag| -> Option<f64> {
+        match &exif.get_field(tag, In::PRIMARY)?.value {
+            Value::Rational(v) if v.len() >= 3 && v.iter().all(|r| r.denom != 0) => {
+                Some(v[0].to_f64() + v[1].to_f64() / 60.0 + v[2].to_f64() / 3600.0)
+            }
+            Value::Rational(v) if !v.is_empty() && v[0].denom != 0 => Some(v[0].to_f64()),
+            _ => None,
+        }
+    };
+    let reference = |tag: Tag| -> Option<u8> {
+        match &exif.get_field(tag, In::PRIMARY)?.value {
+            Value::Ascii(v) => v.first()?.first().map(u8::to_ascii_uppercase),
+            _ => None,
+        }
+    };
+    let mut lat = dms(Tag::GPSLatitude)?;
+    let mut lon = dms(Tag::GPSLongitude)?;
+    if reference(Tag::GPSLatitudeRef) == Some(b'S') {
+        lat = -lat;
+    }
+    if reference(Tag::GPSLongitudeRef) == Some(b'W') {
+        lon = -lon;
+    }
+    let valid = lat.is_finite()
+        && lon.is_finite()
+        && lat.abs() <= 90.0
+        && lon.abs() <= 180.0
+        && (lat.abs() > 1e-6 || lon.abs() > 1e-6);
+    valid.then_some((lat, lon))
+}
+
+/// Nur den Aufnahmeort lesen (Nachtragen für Fotos, die vor dem Lesen von
+/// GPS-Daten in den Katalog kamen).
+pub fn read_gps(path: &Path) -> Option<(f64, f64)> {
+    let file = File::open(path).ok()?;
+    let exif = exif::Reader::new()
+        .read_from_container(&mut BufReader::new(file))
+        .ok()?;
+    gps(&exif)
 }
 
 /// `2024:06:01 14:03:22` → `2024-06-01T14:03:22`

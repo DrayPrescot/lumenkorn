@@ -42,6 +42,15 @@ const demoPresets = (): Preset[] => [
 ];
 const images: Img[] = [];
 
+// Beispielorte für Karte und Ortssuche
+const mockPlaces = [
+  { name: "München, Bayern, Deutschland", display: "München, Bayern, Deutschland", lat: 48.1372, lon: 11.5755, bbox: [48.06, 48.25, 11.36, 11.72] as [number, number, number, number] },
+  { name: "Luzern, Schweiz", display: "Luzern, Luzern, Schweiz", lat: 47.0502, lon: 8.3093, bbox: null },
+  { name: "Reykjavík, Island", display: "Reykjavík, Hauptstadtregion, Island", lat: 64.1466, lon: -21.9426, bbox: null },
+  { name: "Kyoto, Japan", display: "Kyoto, Präfektur Kyoto, Japan", lat: 35.0116, lon: 135.7681, bbox: null },
+  { name: "San José, Costa Rica", display: "San José, Provinz San José, Costa Rica", lat: 9.9281, lon: -84.0907, bbox: null },
+];
+
 // Beispiel-Gesichter: die ersten zwölf Fotos je ein Gesicht – „Anna“ (bestätigt oder vorgeschlagen) oder ohne Zuordnung
 const mockPersons: { id: number; name: string; group?: number | null }[] = [
   { id: 1, name: "Anna", group: 1 },
@@ -106,6 +115,14 @@ for (const [rootId, dir, n] of dirs) {
       flag: 0,
       tags,
       snapshots: [],
+      // Etwa jedes dritte Foto mit Ort, leicht gestreut um einen der Beispielorte
+      location:
+        id % 3 === 0
+          ? (() => {
+              const pl = mockPlaces[id % mockPlaces.length];
+              return { lat: pl.lat + (rnd() - 0.5) * 0.08, lon: pl.lon + (rnd() - 0.5) * 0.12, place: pl.name, manual: id % 2 === 0 };
+            })()
+          : null,
     });
   }
 }
@@ -146,7 +163,7 @@ function query(q: ImageQuery): ImageSummary[] {
       inScope(i, q) &&
       i.rating >= (q.minRating ?? 0) &&
       words.every((w) =>
-        [i.fileName, i.camera ?? "", i.lens ?? "", ...i.tags.map((tag) => tag.name)].some((s) => s.toLowerCase().includes(w)),
+        [i.fileName, i.camera ?? "", i.lens ?? "", i.location?.place ?? "", ...i.tags.map((tag) => tag.name)].some((s) => s.toLowerCase().includes(w)),
       ),
   );
   const by = q.sort ?? "capturedAsc";
@@ -169,6 +186,7 @@ function query(q: ImageQuery): ImageSummary[] {
     thumbReady: true,
     missing: false,
     edited: !!i.edit,
+    ...(i.location ? { lat: i.location.lat, lon: i.location.lon } : {}),
   }));
 }
 
@@ -231,6 +249,20 @@ export const mock = {
         return out(tree(roots.find((r) => r.id === a.rootId)!));
       case "query_images":
         return out(query(a.query));
+      case "geo_search": {
+        await new Promise((r) => setTimeout(r, 300));
+        const q = String(a.query).toLowerCase();
+        return out(mockPlaces.filter((pl) => pl.display.toLowerCase().includes(q)));
+      }
+      case "geo_set_location":
+        for (const i of images.filter((i) => a.ids.includes(i.id))) {
+          const near = mockPlaces.find((pl) => Math.abs(pl.lat - a.lat) < 1 && Math.abs(pl.lon - a.lon) < 1);
+          i.location = { lat: a.lat, lon: a.lon, place: a.place ?? near?.name ?? null, manual: true };
+        }
+        return out(null);
+      case "geo_clear_location":
+        for (const i of images.filter((i) => a.ids.includes(i.id))) i.location = null;
+        return out(null);
       case "image_detail": {
         const { rootId, hue, edit, snapshots, ...d } = images.find((i) => i.id === a.id)!;
         return out(d);

@@ -11,6 +11,8 @@
 //! - `full/{id}`: volle Auflösung (Lupe, Vergleich), eigener Pool und eigener
 //!   Speicher-Cache, siehe `serve_full`.
 //! - `face/{id}`: Gesichtsvorschau der Personenerkennung.
+//! - `tile/{z}/{x}/{y}`: Kartenkachel von OpenStreetMap (siehe `geo::tile`),
+//!   eigener Pool mit zwei Plätzen (Vorgabe von OSM, blockiert keine Bilder).
 
 use crate::AppState;
 use lumenkorn_core::LockExt;
@@ -32,8 +34,14 @@ pub fn handle<R: tauri::Runtime>(
     // Threads je Anfrage (Scrollen durch 50 000 Fotos erzeugte Tausende), die
     // neueste Anfrage zuerst: Das sind die Bilder, die gerade sichtbar sind.
     // Volle Auflösung (bis ~1 GB je Bild) in einem eigenen Pool mit zwei Plätzen.
-    let heavy = path.trim_start_matches('/').starts_with("full/");
-    let pool = if heavy { &FULL_POOL } else { &POOL };
+    let route = path.trim_start_matches('/');
+    let pool = if route.starts_with("full/") {
+        &FULL_POOL
+    } else if route.starts_with("tile/") {
+        &TILE_POOL
+    } else {
+        &POOL
+    };
     pool.submit(Box::new(move || {
         let state = app.state::<AppState>();
         responder.respond(serve(&state, &path));
@@ -101,6 +109,7 @@ static POOL: Pool = Pool::new(|| {
         .clamp(2, 8)
 });
 static FULL_POOL: Pool = Pool::new(|| 2);
+static TILE_POOL: Pool = Pool::new(|| 2);
 
 /// Zuletzt gelieferte Bilder in voller Auflösung: (ID, Bearbeitung, JPEG).
 /// Beim Vergleichen wird zwischen wenigen Bildern hin- und hergezoomt.
@@ -177,6 +186,22 @@ fn serve(state: &AppState, path: &str) -> Response<Vec<u8>> {
         {
             Some(b) => jpeg(b),
             None => status(StatusCode::NOT_FOUND),
+        };
+    }
+    if first == Some("tile") {
+        let mut n = || -> Option<u32> { parts.next()?.trim_end_matches(".png").parse().ok() };
+        let (z, x, y) = (n(), n(), n());
+        return match (z, x, y) {
+            (Some(z), Some(x), Some(y)) => match crate::geo::tile(state, z, x, y) {
+                Some(b) => Response::builder()
+                    .header(header::CONTENT_TYPE, "image/png")
+                    .header(header::CACHE_CONTROL, "public, max-age=86400")
+                    .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                    .body(b)
+                    .unwrap(),
+                None => status(StatusCode::NOT_FOUND),
+            },
+            _ => status(StatusCode::BAD_REQUEST),
         };
     }
     if first == Some("full") {

@@ -6,6 +6,26 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Map view (third tab next to Library and Develop, shortcut `M`): the photos of the current view
+  appear as clustered markers on an OpenStreetMap world map. Clicking a marker or cluster
+  selects those photos in the filmstrip. A location can be set by searching for a place, by
+  dragging photos from the filmstrip onto the map, or from the map's context menu, and removed
+  again. The filmstrip marks photos that have a location.
+- GPS data from EXIF is read when scanning; photos already in the catalog are filled in once in
+  the background. Locations set by hand are stored only in the catalog, the files are not changed,
+  and a rescan does not overwrite them (catalog migration 21).
+- Every location gets a place name (place, region, country), looked up in the background
+  through OpenStreetMap's Nominatim service (at most one request per second, remembered per
+  area of about 1 km). The info panel shows the location with a link to the map.
+- Map tiles are fetched from OpenStreetMap and cached on disk for 7 days. Leaflet and
+  Leaflet.markercluster are used for the map and listed in the credits.
+
+### Changed
+- The library search also covers place names, so “Ubud” finds the photos taken there.
+- The map and place names need an internet connection and contact OpenStreetMap; coordinates
+  are sent to Nominatim to look up names. Everything else stays local.
+
 ## [1.0.6] – 2026-10-13
 
 ### Changed

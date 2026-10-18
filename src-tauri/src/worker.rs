@@ -90,6 +90,8 @@ impl Worker {
                                     log::info!("Scan: {report:?}");
                                     let _ = app.emit("library-changed", report);
                                     me.submit(Job::Thumbs);
+                                    // Ortsnamen für neue Fotos mit GPS
+                                    crate::geo::kick(&app);
                                 }
                                 Err(e) => {
                                     log::warn!("Scan {root_id} fehlgeschlagen: {e}");

@@ -65,6 +65,11 @@ pub struct ImageSummary {
     pub missing: bool,
     /// Hat eine aktuelle Bearbeitung.
     pub edited: bool,
+    /// Aufnahmeort (für die Karte), fehlt meist
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lat: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lon: Option<f64>,
 }
 
 /// Vollständige Bildinfo für die Detailansicht.
@@ -89,6 +94,29 @@ pub struct ImageDetail {
     pub rating: i64,
     pub flag: i64,
     pub tags: Vec<ImageTag>,
+    /// Aufnahmeort, falls bekannt
+    pub location: Option<Location>,
+}
+
+/// Aufnahmeort eines Fotos
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Location {
+    pub lat: f64,
+    pub lon: f64,
+    /// Ortsname („München, Bayern, Deutschland“), falls schon ermittelt
+    pub place: Option<String>,
+    /// Vom Nutzer gesetzt (sonst aus den GPS-Daten der Kamera)
+    pub manual: bool,
+}
+
+/// Foto auf der Karte
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GeoPoint {
+    pub id: i64,
+    pub lat: f64,
+    pub lon: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

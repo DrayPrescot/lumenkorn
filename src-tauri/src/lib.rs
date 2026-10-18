@@ -5,6 +5,7 @@ mod busy;
 mod commands;
 mod cull;
 mod develop;
+mod geo;
 mod guard;
 mod import;
 mod logfile;
@@ -210,12 +211,17 @@ pub fn run() {
             });
             mcp::start_if_enabled(app.handle());
             memory::start_janitor(app.handle().clone());
+            // GPS aus EXIF nachtragen, fehlende Ortsnamen ermitteln
+            geo::kick(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
             commands::open_url,
             commands::app_exit,
+            geo::geo_search,
+            geo::geo_set_location,
+            geo::geo_clear_location,
             commands::set_language,
             commands::list_roots,
             commands::add_root,

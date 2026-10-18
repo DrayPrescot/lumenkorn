@@ -9,6 +9,7 @@
 pub mod catalog;
 pub mod error;
 pub mod formats;
+pub mod geo;
 pub mod housekeeping;
 pub mod import;
 pub mod maskstore;

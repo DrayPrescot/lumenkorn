@@ -131,6 +131,7 @@
     // Vergleich auch aus dem Entwickeln (Auswahl im Filmstreifen)
     else if (k === "c") lib.compare();
     else if (k === "d") lib.enterDevelop();
+    else if (k === "m") lib.openMap();
     else return;
     e.preventDefault();
   }
@@ -156,6 +157,11 @@
       <DevelopView />
     {:else if lib.view === "people" && lib.mode === "library"}
       <PeopleView />
+    {:else if lib.view === "map" && lib.mode === "library"}
+      <!-- Karte (mit Leaflet) erst beim Öffnen laden -->
+      {#await import("./components/MapView.svelte") then m}
+        <m.default />
+      {/await}
     {:else if lib.view === "compare" && lib.compareItems.length >= 2}
       <Compare />
     {:else if lib.view === "loupe" && lib.focused}

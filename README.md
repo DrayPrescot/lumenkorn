@@ -22,7 +22,8 @@ catalog, and you rate, sort, develop and export from there. The originals are ne
 
 There is no account, no cloud and no subscription. The AI features (keywords, search by image
 content, masks, noise reduction, object removal, face recognition) use open models that are
-downloaded once and then run offline on your CPU or GPU.
+downloaded once and then run offline on your CPU or GPU. Only the map view needs the internet
+(see [Map](#map)).
 
 Lumenkorn has reached version 1.0. It is mainly used on Windows and is also built and tested
 on Linux. The interface is in German and English and follows
@@ -47,7 +48,7 @@ the catalog before you let Lumenkorn loose on your whole collection.
   a content hash, so ratings, keywords and edits stay with the photo.
 - Projects collect any number of folders, also across drives.
 - Ratings (`0`–`5`), pick and reject flags (`P` / `X`), keywords, and a search over file name,
-  folder, camera, lens, keywords and people.
+  folder, camera, lens, keywords, people and place names.
 - Culling: `Shift+X` rejects and moves on. Rejected photos can be sent to the system trash in
   one step, together with their sidecar files and Lumenkorn's own data for them.
 - Compare up to 12 photos side by side with linked zoom, with a filmstrip below to swap photos
@@ -98,6 +99,25 @@ Faces are found in the background, grouped by similarity, and suggested for a na
 have named a few. Suggestions can be confirmed or rejected one by one or many at once. Named
 people can be sorted into your own collapsible groups, such as family and friends; the rest are
 listed under *Sonstige*, and faces not named yet under *Unbenannt*, so the overview stays short.
+
+### Map
+The **Map** tab (`M`, next to Library and Develop) shows the photos of the current view (folder,
+project, person, search, filters) as clustered markers on an OpenStreetMap world map. Click a
+marker or cluster to select those photos in the filmstrip below (`Ctrl` adds to the selection);
+clusters zoom in.
+
+- GPS data from the camera or phone (EXIF) is read when photos are scanned. For photos already
+  in the catalog it is filled in once in the background.
+- To set a location, select photos in the filmstrip and then search for a place above the map
+  (e.g. “München”), press `Enter`, pick a result and click “Use for N photos”; or drag the photos
+  onto the map; or right-click the map and choose “Move N selected photos here”. “Remove
+  location” clears it. Photos with a location show a small pin in the filmstrip.
+- Every location gets a name such as “München, Bayern, Deutschland”. The library search covers
+  it, so “Ubud” finds the photos taken there. The info panel shows the name (or the coordinates
+  until the name is known) with a link to the map.
+- Locations you set are stored only in the catalog. The files are not changed, and a rescan does
+  not overwrite a location set by hand.
+- The map and the place names need the internet; see [Your data](#your-data).
 
 ## Getting started
 
@@ -150,6 +170,7 @@ photo open in Develop they can be undone with `Ctrl+Z`.
 | Arrow keys | Move between photos |
 | `Enter` / `E` | Show large (several selected: compare) |
 | `D` / `G` or `Esc` | Develop / back to the grid |
+| `M` | Map |
 | `0`–`5` | Rating |
 | `P` / `X` / `U` | Pick / reject / clear flag |
 | `Shift+X` | Reject and go to the next photo |
@@ -312,8 +333,13 @@ RANSAC.
 - Thumbnails are in the system cache folder.
 - Lumenkorn writes to your photo folders only when you ask it to: deleting rejected photos,
   saving merge results, or exporting.
-- The only network access is downloading the AI runtime and models when you click the
-  button for it. Files with a published checksum are verified with SHA-256.
+- Network access: downloading the AI runtime and models when you click the button for it
+  (files with a published checksum are verified with SHA-256), and the map view. Map tiles come
+  from `tile.openstreetmap.org` and place search and place names from
+  `nominatim.openstreetmap.org`. The requests go through the app with an identifying user agent,
+  at most one Nominatim request per second, and tiles are cached on disk for 7 days. The
+  coordinates of your photos are sent to Nominatim to look up place names. Everything else
+  stays local.
 - A log file (`lumenkorn.log`) in the data folder records errors and what the AI did.
   Before risky native steps (loading a GPU runtime, opening a model) Lumenkorn leaves a marker
   file. If the app crashes there, the next start switches the cause off and explains why.
@@ -449,6 +475,12 @@ The same list is shown in the app: click ⓘ (**About Lumenkorn**) at the bottom
 | [regex](https://github.com/rust-lang/regex), [log](https://github.com/rust-lang/log), [env_logger](https://github.com/rust-cli/env_logger), [thiserror](https://github.com/dtolnay/thiserror), [libloading](https://github.com/nagisa/rust_libloading), [dirs](https://github.com/dirs-dev/dirs-rs), [base64](https://github.com/marshallpierce/rust-base64) | text processing, logging, errors, loading DLLs, folders, encoding | MIT or Apache-2.0 / ISC |
 | [Lensfun](https://github.com/lensfun/lensfun) database (bundled, converted to JSON by `tools/lensfun_db.py`) | lens profiles for lens correction | CC BY-SA 3.0 |
 | [Instrument Sans](https://github.com/Instrument/instrument-sans) via [Fontsource](https://fontsource.org) | interface font | OFL-1.1 |
+| [Leaflet](https://github.com/Leaflet/Leaflet) | map display | BSD-2-Clause |
+| [Leaflet.markercluster](https://github.com/Leaflet/Leaflet.markercluster) | clustered markers on the map | MIT |
+
+Online service: the map uses [OpenStreetMap](https://www.openstreetmap.org/copyright). Map data
+© OpenStreetMap contributors (ODbL), standard tiles CC BY-SA 2.0, place search through Nominatim.
+The attribution is shown on the map.
 
 Not open source, but needed: on Windows the interface runs in Microsoft WebView2, which is part
 of Windows, and the GPU build of ONNX Runtime needs the Microsoft Visual C++ Redistributable

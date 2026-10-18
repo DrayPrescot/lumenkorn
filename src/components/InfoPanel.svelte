@@ -173,7 +173,7 @@
   $effect(() => {
     const id = focusId;
     const list = lib.listVersion;
-    void tagsV, list;
+    void tagsV, list, lib.geoVersion;
     if (id === undefined) {
       detail = null;
       return;
@@ -329,6 +329,19 @@
           <dt>{t("Objektiv")}</dt>
           <dd>{d.lens}</dd>
         {/if}
+        <dt>{t("Ort")}</dt>
+        <dd class="place">
+          {#if d.location}
+            <span title={`${d.location.lat.toFixed(5)}, ${d.location.lon.toFixed(5)} · ${d.location.manual ? t("von dir gesetzt") : t("GPS der Kamera")}`}>
+              {d.location.place ?? `${d.location.lat.toFixed(4)}, ${d.location.lon.toFixed(4)}`}
+            </span>
+          {:else}
+            <span class="muted">{t("unbekannt")}</span>
+          {/if}
+          {#if lib.view !== "map"}
+            <button class="link" onclick={() => lib.openMap()}>{d.location ? t("Karte") : t("Ort setzen")}</button>
+          {/if}
+        </dd>
       </dl>
       {#if exp.length}
         <div class="exposure" style:grid-template-columns="repeat({exp.length}, 1fr)">
@@ -485,6 +498,22 @@
   dd {
     margin: 0;
     user-select: text;
+  }
+  .place {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    align-items: baseline;
+  }
+  .place .muted {
+    color: var(--muted);
+  }
+  .place .link {
+    color: var(--accent);
+    font-size: var(--step--1);
+  }
+  .place .link:hover {
+    text-decoration: underline;
   }
   .exposure {
     display: grid;

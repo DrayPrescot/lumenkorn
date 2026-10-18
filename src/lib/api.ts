@@ -53,6 +53,9 @@ export interface ImageSummary {
   thumbReady: boolean;
   missing: boolean;
   edited: boolean;
+  /** Aufnahmeort (fehlt, wenn unbekannt) */
+  lat?: number;
+  lon?: number;
 }
 
 /** Eine Aufnahme auf der Speicherkarte (Hauptdatei plus RAW/JPEG-Partner und .xmp) */
@@ -139,6 +142,27 @@ export interface ImageDetail {
   aperture: number | null;
   focalLength: number | null;
   tags: ImageTag[];
+  location: Location | null;
+}
+
+/** Aufnahmeort eines Fotos */
+export interface Location {
+  lat: number;
+  lon: number;
+  /** Ortsname, sobald ermittelt */
+  place: string | null;
+  /** Vom Nutzer gesetzt (sonst GPS der Kamera) */
+  manual: boolean;
+}
+
+/** Treffer der Ortssuche (OpenStreetMap) */
+export interface PlaceHit {
+  name: string;
+  display: string;
+  lat: number;
+  lon: number;
+  /** [Süd, Nord, West, Ost] */
+  bbox: [number, number, number, number] | null;
 }
 
 export type Scope =
@@ -671,6 +695,11 @@ export const api = {
   appInfo: () => call<AppInfo>("app_info"),
   openUrl: (url: string) => call<void>("open_url", { url }),
   appExit: () => call<void>("app_exit"),
+
+  geoSearch: (query: string) => call<PlaceHit[]>("geo_search", { query }),
+  geoSetLocation: (ids: number[], lat: number, lon: number, place: string | null = null) =>
+    call<void>("geo_set_location", { ids, lat, lon, place }),
+  geoClearLocation: (ids: number[]) => call<void>("geo_clear_location", { ids }),
   setLanguage: (lang: "de" | "en") => call<void>("set_language", { lang }),
 
   listRoots: () => call<Root[]>("list_roots"),
@@ -856,6 +885,8 @@ export interface Events {
   "library-changed": ScanReport;
   /** Wartung hat Katalogeinträge korrigiert – Liste neu laden */
   "catalog-updated": null;
+  /** Aufnahmeorte im Hintergrund ergänzt (GPS aus EXIF, Ortsnamen) */
+  "geo-changed": null;
   "thumbs-ready": { ids: number[] };
   "job-error": { message: string };
   "export-progress": ExportProgress;
@@ -910,6 +941,14 @@ export function imageUrl(variant: "thumb" | "preview" | "full", id: number, vers
   // Starts zeigte die WebView nach einem Neustart ein zwischengespeichertes
   // Bild aus einer früheren Sitzung (vor der letzten Bearbeitung).
   return `${protocolBase}${variant}/${id}?v=${SESSION}.${version}`;
+}
+
+/** URL-Vorlage der Kartenkacheln für Leaflet (`{z}/{x}/{y}`). Die App lädt sie
+ *  über das Backend (Kennung, Zwischenspeicher); die Browser-Vorschau direkt. */
+export function tileUrlTemplate(): string {
+  if (!isTauri) return "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  protocolBase ??= convertFileSrc("", "lw");
+  return `${protocolBase}tile/{z}/{x}/{y}.png`;
 }
 
 // --- Ordnerauswahl ------------------------------------------------------------

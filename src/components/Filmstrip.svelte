@@ -74,6 +74,15 @@
     else lib.select(index, e.shiftKey ? "range" : e.ctrlKey || e.metaKey ? "toggle" : "single");
   }
 
+  /** Fotos auf die Karte ziehen: die Auswahl, falls das Foto dazugehört */
+  function ondragstart(e: DragEvent, index: number) {
+    const im = lib.images[index];
+    if (compare || !im || !e.dataTransfer) return;
+    if (!lib.selection.has(im.id)) lib.select(index);
+    e.dataTransfer.setData("application/x-lumenkorn-photos", JSON.stringify(lib.targets()));
+    e.dataTransfer.effectAllowed = "copy";
+  }
+
   function oncontextmenu(e: MouseEvent, index: number) {
     // Im Vergleich würde das Menü ein fremdes Foto allein auswählen und den
     // Vergleich beenden – dort nur für verglichene Fotos
@@ -109,11 +118,14 @@
         style="left: {lefts[index]}px; width: {lefts[index + 1] - lefts[index] - GAP}px"
         onclick={(e) => onclick(e, index)}
         oncontextmenu={(e) => oncontextmenu(e, index)}
+        draggable={!compare}
+        ondragstart={(e) => ondragstart(e, index)}
         aria-label={im.fileName}
         title={im.fileName}
       >
         <img src={imageUrl("thumb", im.id, lib.thumbVersion(im.id))} alt="" draggable="false" />
         {#if im.edited}<span class="badge"><Icon name="sliders" size={10} /></span>{/if}
+        {#if im.lat !== undefined && lib.view === "map"}<span class="badge geo" title={t("Hat einen Aufnahmeort")}><Icon name="pin" size={10} /></span>{/if}
       </button>
     {/each}
   </div>
@@ -171,5 +183,9 @@
     border-radius: 3px;
     background: rgb(0 0 0 / 0.55);
     color: #fff;
+  }
+  .badge.geo {
+    right: auto;
+    left: 3px;
   }
 </style>

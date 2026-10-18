@@ -26,11 +26,14 @@
   <button class="icon-btn sidebar-toggle" aria-label={t("Seitenleiste")} onclick={ontogglesidebar}><Icon name="menu" /></button>
 
   <div class="modes" role="tablist" aria-label={t("Modus")}>
-    <button role="tab" aria-selected={lib.mode === "library"} class:on={lib.mode === "library"} onclick={() => { lib.mode = "library"; lib.view = "grid"; }} title={t("Bibliothek (G)")}>
+    <button role="tab" aria-selected={lib.mode === "library" && lib.view !== "map"} class:on={lib.mode === "library" && lib.view !== "map"} onclick={() => { lib.mode = "library"; lib.view = "grid"; }} title={t("Bibliothek (G)")}>
       {t("Bibliothek")}
     </button>
     <button role="tab" aria-selected={lib.mode === "develop"} class:on={lib.mode === "develop"} onclick={() => lib.enterDevelop()} disabled={!lib.images.length} title={t("Entwickeln (D)")}>
       {t("Entwickeln")}
+    </button>
+    <button role="tab" aria-selected={lib.mode === "library" && lib.view === "map"} class:on={lib.mode === "library" && lib.view === "map"} onclick={() => lib.openMap()} title={t("Karte: Aufnahmeorte ansehen und setzen (M)")}>
+      {t("Karte")}
     </button>
   </div>
 
@@ -115,7 +118,7 @@
       placeholder={lib.semantic ? t("Bildinhalt beschreiben") : t("Suchen")}
       title={lib.semantic
         ? t("Sucht nach dem, was auf den Fotos zu sehen ist, z. B. „Hund am Strand“")
-        : t("Sucht in Dateiname, Kamera, Objektiv und Schlagworten")}
+        : t("Sucht in Dateiname, Ort, Kamera, Objektiv und Schlagworten")}
       bind:value={lib.search}
       oninput={() => lib.reloadSoon()}
       onkeydown={(e) => e.stopPropagation()}

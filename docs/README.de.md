@@ -5,7 +5,8 @@
 Lumenkorn ist eine Fotoverwaltung mit RAW-Entwicklung, die komplett auf dem eigenen Rechner läuft.
 Gedacht ist es als Ersatz für Lightroom Classic: Fotos und Bearbeitungen bleiben auf der eigenen
 Platte, es gibt kein Konto, keine Cloud und kein Abo. Die KI-Funktionen nutzen offene Modelle,
-die einmal heruntergeladen werden und danach offline auf Prozessor oder Grafikkarte rechnen.
+die einmal heruntergeladen werden und danach offline auf Prozessor oder Grafikkarte rechnen. Nur
+die Kartenansicht braucht das Internet (siehe [Karte](#karte)).
 
 Lumenkorn ist in Rust geschrieben, die Oberfläche in Svelte, zusammengehalten von Tauri 2. Es läuft
 unter Windows und Linux; für Android ist der Code vorbereitet. Bildbearbeitung und KI nutzen die
@@ -29,7 +30,7 @@ installiert und startet neu; **Später** fragt beim nächsten Start wieder. Kata
 bleiben erhalten. Updates kommen aus den Versions-Releases, nicht aus *nightly*.
 
 **Inhalt:** [Bibliothek](#bibliothek) · [Entwickeln](#entwickeln-non-destruktiv) ·
-[Masken](#masken-lokale-anpassungen) · [KI-Funktionen](#ki-funktionen) · [KI-Agenten](#ki-agenten-mcp) ·
+[Karte](#karte) · [Masken](#masken-lokale-anpassungen) · [KI-Funktionen](#ki-funktionen) · [KI-Agenten](#ki-agenten-mcp) ·
 [Zusammenfügen](#bilder-zusammenfügen) · [Tastenkürzel](#tastenkürzel) ·
 [So funktioniert Lumenkorn](#so-funktioniert-lumenkorn) · [Technik](#technik) ·
 [Open-Source-Projekte](#genutzte-open-source-projekte) · [Entwickeln am Code](#entwickeln-am-code)
@@ -70,7 +71,7 @@ vergibt sie in der neuen Sprache neu.
   Bearbeitung.
 - **Raster** im Blocksatz mit echten Seitenverhältnissen, Einzelansicht mit Filmstreifen. Der
   Filmstreifen reicht über alle Fotos der Ansicht; das Mausrad scrollt ihn seitwärts.
-- **Suche** über Dateiname, Ordner, Kamera, Objektiv, Schlagworte und Personen, oder nach Bildinhalt
+- **Suche** über Dateiname, Ordner, Kamera, Objektiv, Schlagworte, Personen und Ortsnamen, oder nach Bildinhalt
   (KI). Teilwörter genügen („sonnen“ findet „Sonnenuntergang“), Groß- und Kleinschreibung und
   Akzente spielen keine Rolle. Dazu Filter nach Mindestbewertung und Sortierung.
 - **Seitenleiste:** „Projekte“, „Personen“ und „Ordner“ lassen sich per Klick auf die Überschrift
@@ -97,6 +98,28 @@ vergibt sie in der neuen Sprache neu.
   XMP-Begleitdateien, Katalogeintrag, Bearbeitungen, Masken, Entrauschungen, Reparaturen,
   Vorschauen und Gesichter. Dateien, die sich nicht löschen lassen, bleiben im Katalog und werden
   gemeldet.
+
+## Karte
+
+Der Reiter **Karte** (Taste M, neben Bibliothek und Entwickeln) zeigt die Fotos der aktuellen
+Ansicht (Ordner, Projekt, Person, Suche, Filter) als gruppierte Markierungen auf einer
+OpenStreetMap-Weltkarte. Ein Klick auf eine Markierung oder Gruppe wählt diese Fotos im
+Filmstreifen darunter aus (Strg fügt zur Auswahl hinzu); Gruppen zoomen hinein.
+
+- **GPS-Daten** von Kamera oder Handy (EXIF) liest Lumenkorn beim Einlesen. Für Fotos, die schon im
+  Katalog sind, werden sie einmalig im Hintergrund nachgetragen.
+- **Ort setzen:** Fotos im Filmstreifen auswählen, dann über der Karte nach einem Ort suchen
+  (z. B. „München“), Enter drücken, ein Ergebnis wählen und „Für N Fotos übernehmen“ anklicken; oder
+  die Fotos auf die Karte ziehen; oder Rechtsklick auf die Karte → „N ausgewählte Fotos
+  hierher“. „Ort entfernen“ löscht ihn wieder. Fotos mit Ort zeigen im Filmstreifen eine kleine
+  Stecknadel.
+- **Ortsnamen:** Jeder Ort bekommt einen Namen wie „München, Bayern, Deutschland“ (Ort, Region,
+  Land). Die Bibliothekssuche findet ihn, „Ubud“ liefert also die Fotos von dort. Der Infobereich
+  zeigt den Namen (bis er bekannt ist: die Koordinaten) mit einem Link zur Karte.
+- **Gespeichert** werden selbst gesetzte Orte nur im Katalog. Die Dateien bleiben unverändert, und
+  ein erneutes Einlesen überschreibt keinen von Hand gesetzten Ort.
+- **Internet:** Karte und Ortsnamen brauchen eine Verbindung, siehe
+  [Daten und Arbeitsspeicher](#daten-und-arbeitsspeicher).
 
 ## Entwickeln (non-destruktiv)
 
@@ -346,6 +369,7 @@ unbearbeiteten Originale.
 | Pfeiltasten | Navigieren |
 | Enter / Leertaste / E | Groß anzeigen (mehrere ausgewählt: Vergleich) |
 | D | Entwickeln |
+| M | Karte |
 | Esc / G | Zurück zum Raster |
 | 0–5 | Bewertung |
 | P / X / U | Markieren / Ablehnen / Aufheben |
@@ -473,9 +497,14 @@ zerlegt jedes Bild in eine Laplace-Pyramide und behält je Stufe das schärfste 
   ersten Start übernommen.
 - **Fotoordner** werden nur beschrieben, wenn du es auslöst: abgelehnte Fotos löschen,
   Zusammenfügen, Export.
-- **Netzwerk** braucht Lumenkorn nur für die KI-Downloads. Downloads nutzen den Zertifikatsspeicher
-  des Betriebssystems und funktionieren damit auch hinter Firmen-Proxys. `ki/quellen.json` im
-  Datenordner kann die Download-Adressen überschreiben, z. B. für einen Spiegelserver.
+- **Netzwerk** braucht Lumenkorn für die KI-Downloads und für die Karte. Downloads nutzen den
+  Zertifikatsspeicher des Betriebssystems und funktionieren damit auch hinter Firmen-Proxys.
+  `ki/quellen.json` im Datenordner kann die Download-Adressen überschreiben, z. B. für einen
+  Spiegelserver. Kartenkacheln kommen von `tile.openstreetmap.org`, Ortssuche und Ortsnamen von
+  `nominatim.openstreetmap.org`. Die Anfragen laufen über die App mit einem eindeutigen User-Agent,
+  an Nominatim höchstens eine pro Sekunde, und Kacheln werden 7 Tage im Cache-Ordner
+  zwischengespeichert. Die Koordinaten deiner Fotos gehen an Nominatim, damit es Ortsnamen liefert.
+  Alles andere bleibt lokal.
 - **Aufräumen:** 90 Sekunden nach dem Start und danach täglich löscht Lumenkorn verwaiste Dateien im
   Datenordner (alte Entrauschungen, gelöschte Masken und Reparaturen, Vorschauen entfernter Fotos).
   Was eine Bearbeitung oder ein Schnappschuss noch braucht, bleibt.
@@ -535,7 +564,13 @@ die Kameradaten von [rawspeed](https://github.com/darktable-org/rawspeed) (LGPL-
 [regex](https://github.com/rust-lang/regex), [log](https://github.com/rust-lang/log), [env_logger](https://github.com/rust-cli/env_logger), [thiserror](https://github.com/dtolnay/thiserror), [dirs](https://github.com/dirs-dev/dirs-rs) und [base64](https://github.com/marshallpierce/rust-base64) (MIT/Apache-2.0),
 [libloading](https://github.com/nagisa/rust_libloading) (ISC),
 die [Lensfun](https://github.com/lensfun/lensfun)-Datenbank für die Objektivkorrektur (CC BY-SA 3.0, als JSON mitgeliefert, erzeugt mit `tools/lensfun_db.py`),
-die Schrift [Instrument Sans](https://github.com/Instrument/instrument-sans) über [Fontsource](https://fontsource.org) (OFL-1.1).
+die Schrift [Instrument Sans](https://github.com/Instrument/instrument-sans) über [Fontsource](https://fontsource.org) (OFL-1.1),
+[Leaflet](https://github.com/Leaflet/Leaflet) für die Kartenanzeige (BSD-2-Clause),
+[Leaflet.markercluster](https://github.com/Leaflet/Leaflet.markercluster) für die gruppierten Markierungen (MIT).
+
+**Online-Dienst:** Die Karte nutzt [OpenStreetMap](https://www.openstreetmap.org/copyright).
+Kartendaten © OpenStreetMap-Mitwirkende (ODbL), Standardkacheln CC BY-SA 2.0, Ortssuche über
+Nominatim. Der Hinweis „© OpenStreetMap contributors“ steht auf der Karte.
 
 **Zur Laufzeit geladen (nicht mitgeliefert):**
 

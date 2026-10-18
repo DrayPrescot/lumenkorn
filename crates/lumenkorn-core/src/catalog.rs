@@ -285,7 +285,52 @@ const MIGRATIONS: &[&str] = &[
     WHERE kind = 'raw'
       AND id IN (SELECT image_id FROM edits WHERE is_current = 1);
     "#,
+    // v21: Aufnahmeort (siehe `GEO`)
+    GEO,
 ];
+
+/// v21: Aufnahmeort je Foto – Koordinaten (aus EXIF oder vom Nutzer gesetzt)
+/// und Ortsname für die Suche. `geo_state = 0`: GPS aus EXIF noch nicht
+/// gelesen (Fotos aus der Zeit davor, wird im Hintergrund nachgetragen).
+/// `place`: Ortsname, `''` = keiner gefunden (nicht erneut fragen), NULL =
+/// noch nicht ermittelt. `geo_names` merkt sich Ortsnamen je Koordinate
+/// (gerundet), damit nicht jedes Foto eine Anfrage an OpenStreetMap kostet.
+const GEO: &str = r#"
+    ALTER TABLE images ADD COLUMN gps_lat REAL;
+    ALTER TABLE images ADD COLUMN gps_lon REAL;
+    ALTER TABLE images ADD COLUMN gps_source TEXT;   -- 'exif' | 'manual'
+    ALTER TABLE images ADD COLUMN place TEXT;
+    ALTER TABLE images ADD COLUMN geo_state INTEGER NOT NULL DEFAULT 0;
+    CREATE INDEX images_geo_pending ON images(id) WHERE geo_state = 0;
+    CREATE INDEX images_place_pending ON images(id) WHERE gps_lat IS NOT NULL AND place IS NULL;
+    CREATE INDEX images_geo ON images(gps_lat, gps_lon) WHERE gps_lat IS NOT NULL;
+    CREATE TABLE geo_names (key TEXT PRIMARY KEY, place TEXT NOT NULL);
+
+    DROP VIEW search_source;
+    CREATE VIEW search_source(id, body) AS
+    SELECT i.id,
+           i.file_name
+           || ' ' || COALESCE((SELECT substr(i.dir, length(r.path)
+                                   + CASE WHEN substr(r.path, -1) IN ('/', '\') THEN 1 ELSE 2 END)
+                               FROM roots r WHERE r.id = i.root_id), '')
+           || ' ' || COALESCE(i.camera, '') || ' ' || COALESCE(i.lens, '')
+           || ' ' || COALESCE((SELECT group_concat(t.name, ' ') FROM image_tags it
+                               JOIN tags t ON t.id = it.tag_id WHERE it.image_id = i.id), '')
+           || ' ' || COALESCE((SELECT group_concat(p.name, ' ') FROM faces f
+                               JOIN persons p ON p.id = f.person_id
+                               WHERE f.image_id = i.id AND f.hidden = 0 AND p.name IS NOT NULL), '')
+           -- Ohne Ort unverändert (der Index bestehender Fotos bleibt gültig)
+           || COALESCE(' ' || NULLIF(i.place, ''), '')
+    FROM images i;
+
+    DROP TRIGGER search_img_upd;
+    CREATE TRIGGER search_img_upd AFTER UPDATE OF file_name, dir, camera, lens, place ON images
+    WHEN OLD.file_name IS NOT NEW.file_name OR OLD.dir IS NOT NEW.dir
+      OR OLD.camera IS NOT NEW.camera OR OLD.lens IS NOT NEW.lens
+      OR OLD.place IS NOT NEW.place BEGIN
+        INSERT OR IGNORE INTO search_dirty (id) VALUES (NEW.id);
+    END;
+"#;
 
 /// v11: Der Suchtext eines Fotos wurde bisher bei jeder einzelnen
 /// Schlagwort-/Gesichtszeile neu gebaut – beim Speichern eines KI-Ergebnisses
@@ -854,14 +899,17 @@ impl Catalog {
         tx.execute(
             "INSERT INTO images (id, root_id, path, dir, file_name, ext, kind, size, mtime, quick_hash,
                                  width, height, orientation, captured_at, camera, lens, iso,
-                                 exposure, aperture, focal_length, added_at)
+                                 exposure, aperture, focal_length, added_at,
+                                 gps_lat, gps_lon, gps_source, geo_state)
              VALUES (MAX(COALESCE((SELECT MAX(id) FROM images), 0),
                          COALESCE((SELECT v FROM image_id_floor), 0)) + 1,
-                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20,
+                     ?21, ?22, CASE WHEN ?21 IS NULL THEN NULL ELSE 'exif' END, 1)",
             params![
                 img.root_id, img.path, img.dir, img.file_name, img.ext, img.kind.as_str(), img.size,
                 img.mtime, img.quick_hash, m.width, m.height, m.orientation, m.captured_at, m.camera,
-                m.lens, m.iso, m.exposure, m.aperture, m.focal_length, now()
+                m.lens, m.iso, m.exposure, m.aperture, m.focal_length, now(),
+                m.gps.map(|g| g.0), m.gps.map(|g| g.1)
             ],
         )?;
         Ok(tx.last_insert_rowid())
@@ -878,7 +926,14 @@ impl Catalog {
             "UPDATE images SET size = ?2, mtime = ?3, quick_hash = ?4, width = ?5, height = ?6,
                     orientation = ?7, captured_at = ?8, camera = ?9, lens = ?10, iso = ?11,
                     exposure = ?12, aperture = ?13, focal_length = ?14,
-                    missing = 0, thumb_state = 0, ai_state = 0, face_state = 0
+                    missing = 0, thumb_state = 0, ai_state = 0, face_state = 0, geo_state = 1,
+                    -- Vom Nutzer gesetzte Orte bleiben, sonst gilt das neue EXIF
+                    place = CASE WHEN gps_source = 'manual' OR (gps_lat IS ?15 AND gps_lon IS ?16)
+                                 THEN place ELSE NULL END,
+                    gps_lat = CASE WHEN gps_source = 'manual' THEN gps_lat ELSE ?15 END,
+                    gps_lon = CASE WHEN gps_source = 'manual' THEN gps_lon ELSE ?16 END,
+                    gps_source = CASE WHEN gps_source = 'manual' THEN gps_source
+                                      WHEN ?15 IS NULL THEN NULL ELSE 'exif' END
              WHERE id = ?1",
             params![
                 id,
@@ -894,7 +949,9 @@ impl Catalog {
                 m.iso,
                 m.exposure,
                 m.aperture,
-                m.focal_length
+                m.focal_length,
+                m.gps.map(|g| g.0),
+                m.gps.map(|g| g.1)
             ],
         )?;
         Ok(())
@@ -942,7 +999,8 @@ impl Catalog {
         let mut sql = format!(
             "SELECT i.id, i.path, i.file_name, i.kind, i.width, i.height, i.captured_at,
                     i.rating, i.flag, i.thumb_state, i.missing,
-                    EXISTS (SELECT 1 FROM edits e WHERE e.image_id = i.id AND e.is_current = 1)
+                    EXISTS (SELECT 1 FROM edits e WHERE e.image_id = i.id AND e.is_current = 1),
+                    i.gps_lat, i.gps_lon
              FROM images i WHERE {where_sql} ORDER BY {order}"
         );
         if let Some(limit) = q.limit {
@@ -964,7 +1022,7 @@ impl Catalog {
         )?)
     }
 
-    fn where_clause(&self, q: &ImageQuery) -> Result<(String, Vec<Value>)> {
+    pub(crate) fn where_clause(&self, q: &ImageQuery) -> Result<(String, Vec<Value>)> {
         let mut parts = vec!["i.missing = 0".to_string()];
         let mut args: Vec<Value> = Vec::new();
 
@@ -1078,12 +1136,14 @@ impl Catalog {
                         rating: r.get(15)?,
                         flag: r.get(16)?,
                         tags: vec![],
+                        location: None,
                     })
                 },
             )
             .optional()?
             .ok_or_else(|| Error::NotFound(tr!("Bild {id}", "Photo {id}")))?;
         d.tags = self.image_tags(id)?;
+        d.location = self.location(id)?;
         Ok(d)
     }
 
@@ -1742,6 +1802,8 @@ fn summary_from_row(r: &Row) -> rusqlite::Result<ImageSummary> {
         thumb_ready: r.get::<_, i64>(9)? == 1,
         missing: r.get(10)?,
         edited: r.get(11)?,
+        lat: r.get(12)?,
+        lon: r.get(13)?,
     })
 }
 
@@ -2171,6 +2233,31 @@ mod search_tests {
 mod migration_tests {
     use super::*;
 
+    /// Stand vor v21 nachstellen: Ortsspalten weg, Suchansicht und Trigger
+    /// wie vorher (Teil von `UNDO_V11`, das weiter zurückgeht).
+    const UNDO_V21: &str = "DROP INDEX images_geo_pending; DROP INDEX images_place_pending;
+        DROP INDEX images_geo; DROP TABLE geo_names;
+        DROP TRIGGER search_img_upd; DROP VIEW search_source;
+        ALTER TABLE images DROP COLUMN gps_lat; ALTER TABLE images DROP COLUMN gps_lon;
+        ALTER TABLE images DROP COLUMN gps_source; ALTER TABLE images DROP COLUMN place;
+        ALTER TABLE images DROP COLUMN geo_state;
+        CREATE VIEW search_source(id, body) AS
+        SELECT i.id,
+               i.file_name
+               || ' ' || COALESCE((SELECT substr(i.dir, length(r.path)
+                                       + CASE WHEN substr(r.path, -1) IN ('/', '\\') THEN 1 ELSE 2 END)
+                                   FROM roots r WHERE r.id = i.root_id), '')
+               || ' ' || COALESCE(i.camera, '') || ' ' || COALESCE(i.lens, '')
+               || ' ' || COALESCE((SELECT group_concat(t.name, ' ') FROM image_tags it
+                                   JOIN tags t ON t.id = it.tag_id WHERE it.image_id = i.id), '')
+               || ' ' || COALESCE((SELECT group_concat(p.name, ' ') FROM faces f
+                                   JOIN persons p ON p.id = f.person_id
+                                   WHERE f.image_id = i.id AND f.hidden = 0 AND p.name IS NOT NULL), '')
+        FROM images i;
+        CREATE TRIGGER search_img_upd AFTER UPDATE OF file_name, dir, camera, lens ON images BEGIN
+            INSERT OR IGNORE INTO search_dirty (id) VALUES (NEW.id);
+        END;";
+
     /// Stand vor v11 nachstellen (die Trigger ersetzt v11 ohnehin).
     const UNDO_V11: &str = "ALTER TABLE persons DROP COLUMN group_id; DROP TABLE person_groups;
         DROP TABLE IF EXISTS presets;
@@ -2222,7 +2309,7 @@ mod migration_tests {
             cat.conn
                 .execute_batch(&format!(
                     // Stand vor v9 (und damit auch vor v10, v11) nachstellen
-                    "UPDATE images SET thumb_state = 1; {UNDO_V11}
+                    "UPDATE images SET thumb_state = 1; {UNDO_V21} {UNDO_V11}
                      DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
                      PRAGMA user_version = 8;"
                 ))
@@ -2352,7 +2439,7 @@ mod migration_tests {
             // Zustand vor v10 nachstellen: höchste ID bereits im Bestand
             cat.conn
                 .execute_batch(&format!(
-                    "{UNDO_V11} DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
+                    "{UNDO_V21} {UNDO_V11} DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
                      PRAGMA user_version = 9;"
                 ))
                 .unwrap();

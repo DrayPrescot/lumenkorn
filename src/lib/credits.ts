@@ -22,6 +22,8 @@ export const LIBRARIES: Credit[] = [
   { name: t("Lensfun-Datenbank"), url: "https://github.com/lensfun/lensfun", use: t("Objektivprofile für die Objektivkorrektur"), license: "CC BY-SA 3.0" },
   { name: "Tauri", url: "https://github.com/tauri-apps/tauri", use: t("App-Gerüst, Fenster, Dateidialoge, Updates (mit den Plugins dialog, updater, single-instance)"), license: "MIT / Apache-2.0" },
   { name: "Svelte", url: "https://github.com/sveltejs/svelte", use: t("Oberfläche"), license: "MIT" },
+  { name: "Leaflet, Leaflet.markercluster", url: "https://github.com/Leaflet/Leaflet", use: t("Karte und gebündelte Fotomarker"), license: "BSD-2-Clause, MIT" },
+  { name: "OpenStreetMap", url: "https://www.openstreetmap.org/copyright", use: t("Kartenkacheln und Ortssuche (Nominatim), online abgerufen"), license: t("Daten: ODbL, Kacheln: CC BY-SA 2.0") },
   { name: "wgpu", url: "https://github.com/gfx-rs/wgpu", use: t("Bildbearbeitung auf der Grafikkarte"), license: "MIT / Apache-2.0" },
   { name: "ONNX Runtime", url: "https://github.com/microsoft/onnxruntime", use: t("KI-Modelle ausführen (wird bei Bedarf geladen)"), license: "MIT" },
   { name: "Dawn, DirectX Shader Compiler", url: "https://dawn.googlesource.com/dawn", use: t("Teil von ONNX Runtime für WebGPU"), license: t("BSD-3-Clause, NCSA (dxil.dll: Microsoft-Lizenz)") },
