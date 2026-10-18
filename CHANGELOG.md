@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.7] – 2026-10-18
+
 ### Added
 - Map view (third tab next to Library and Develop, shortcut `M`): the photos of the current view
   appear as clustered markers on an OpenStreetMap world map. Clicking a marker or cluster
