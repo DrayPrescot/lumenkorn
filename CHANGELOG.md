@@ -6,6 +6,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Map: right-click → "Move N selected photos here" did nothing. The menu sat inside the map,
+  where Leaflet stops clicks before they reach the interface; it now sits next to it.
+
 ## [1.0.7] – 2026-10-18
 
 ### Added

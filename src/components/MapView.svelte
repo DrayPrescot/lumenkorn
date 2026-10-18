@@ -314,17 +314,21 @@
     </div>
   {/if}
 
-  <div
-    class="map"
-    class:drop={dropHover}
-    bind:this={el}
-    role="application"
-    aria-label={t("Karte")}
-    {ondragover}
-    ondragleave={() => (dropHover = false)}
-    {ondrop}
-    onclickcapture={onclickCapture}
-  >
+  <!-- Menü und Hinweis neben, nicht in der Leaflet-Karte: Leaflet hält Klicks
+       in seinem Element auf, Sveltes Klick-Handler (am Dokument) erreichten
+       sie dort nie -->
+  <div class="stage">
+    <div
+      class="map"
+      class:drop={dropHover}
+      bind:this={el}
+      role="application"
+      aria-label={t("Karte")}
+      {ondragover}
+      ondragleave={() => (dropHover = false)}
+      {ondrop}
+      onclickcapture={onclickCapture}
+    ></div>
     {#if menu}
       <div class="menu" style="left: {menu.x}px; top: {menu.y}px" role="menu">
         <button role="menuitem" disabled={!count} onclick={placeHere}>
@@ -451,10 +455,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .map {
+  .stage {
     position: relative;
     flex: 1;
     min-height: 0;
+  }
+  .map {
+    position: absolute;
+    inset: 0;
     background: #aad3df;
   }
   .map.drop {
@@ -463,7 +471,7 @@
   }
   .menu {
     position: absolute;
-    z-index: 1000;
+    z-index: 1100;
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: var(--radius-s);
