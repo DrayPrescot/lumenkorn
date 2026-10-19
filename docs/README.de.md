@@ -53,6 +53,11 @@ vergibt sie in der neuen Sprache neu.
   JPEG mit gleichem Namen sowie `.xmp` behalten denselben Namen. Schon importierte Fotos werden
   erkannt. Jede Kopie wird Byte für Byte geprüft; erst danach lassen sich die Originale auf
   Wunsch von der Karte löschen.
+- **Kamerauhr korrigieren:** Ging die Uhr einer Kamera falsch, etwa auf Reisen noch auf der Zeit
+  daheim, verschiebt „Korrigieren …“ neben „Uhrzeit“ im Import-Dialog die Aufnahmezeit je Kamera
+  vor dem Kopieren. Ordner, Dateinamen und die Zeitangaben in den Kopien (EXIF, XMP) bekommen
+  die richtige Zeit; die Dateien auf der Karte bleiben unverändert. „Schätzen“ ermittelt die
+  Abweichung aus Fotos mit Ort, die schon in der Bibliothek sind, etwa denen vom Handy.
 - **Live-Abgleich.** Eine Dateiüberwachung meldet neue, geänderte und gelöschte Dateien. Lumenkorn
   sammelt die Meldungen 1,5 Sekunden lang und prüft dann nur die gemeldeten Pfade, nicht den ganzen
   Ordner. Bei 50 000 Fotos auf einem NAS macht das einen großen Unterschied. Vollständig

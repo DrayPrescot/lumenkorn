@@ -475,6 +475,7 @@ export const mock = {
             size: raw ? 34_000_000 : 9_000_000,
             capturedAt: `${day}T${time}`,
             dateFromFile: false,
+            camera: raw ? "SONY ILCE-7M4" : "Apple iPhone 15",
             already: i < 6,
             newName: `${day.replaceAll("-", "")}_${time.replaceAll(":", "")}_${nr}.${raw ? "ARW" : "JPG"}`,
           };
@@ -483,6 +484,9 @@ export const mock = {
       }
       case "import_start":
         throw t("Import ist nur in der App verfügbar.");
+      case "import_estimate_shift":
+        await new Promise((r) => setTimeout(r, 300));
+        return out(a.camera === "SONY ILCE-7M4" ? { offsetS: 7 * 3600 + 4 * 60, matched: 31, photos: 34 } : null);
       case "import_cancel":
         return out(null);
       case "ai_set_settings":

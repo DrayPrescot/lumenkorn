@@ -20,6 +20,7 @@ pub mod paths;
 pub mod people;
 pub mod scanner;
 pub mod thumbs;
+pub mod timeshift;
 pub mod watcher;
 
 pub use catalog::Catalog;

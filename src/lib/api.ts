@@ -69,6 +69,8 @@ export interface ImportItem {
   capturedAt: string;
   /** Kein EXIF-Datum – Änderungszeit der Datei */
   dateFromFile: boolean;
+  /** Kamera laut EXIF */
+  camera: string | null;
   /** Liegt mit gleichem Inhalt schon in der Bibliothek */
   already: boolean;
   newName: string;
@@ -96,7 +98,16 @@ export interface ImportReport {
   bytes: number;
   failed: [string, string][];
   dirs: string[];
+  /** Zeit sollte verschoben werden, aber die Datei enthielt keine Zeitangabe */
+  unshifted: number;
   canceled: boolean;
+}
+
+/** Geschätzte Abweichung einer Kamerauhr (Sekunden, die addiert werden) */
+export interface ShiftEstimate {
+  offsetS: number;
+  matched: number;
+  photos: number;
 }
 
 export interface ImportDone {
@@ -750,8 +761,10 @@ export const api = {
     const buf = await tauriInvoke<ArrayBuffer>("import_preview", { id });
     return new Blob([buf], { type: "image/jpeg" });
   },
-  importStart: (ids: number[], target: string, event: string, deleteAfter: boolean) =>
-    call<void>("import_start", { ids, target, event, deleteAfter }),
+  /** `shifts`: Abweichung der Uhr je Kamera (`""` ohne Kamera) in Sekunden */
+  importStart: (ids: number[], target: string, event: string, deleteAfter: boolean, shifts: Record<string, number>) =>
+    call<void>("import_start", { ids, target, event, deleteAfter, shifts }),
+  importEstimateShift: (camera: string | null) => call<ShiftEstimate | null>("import_estimate_shift", { camera }),
   importCancel: () => call<void>("import_cancel"),
   addRoot: (path: string) => call<Root>("add_root", { path }),
   removeRoot: (id: number) => call<void>("remove_root", { id }),

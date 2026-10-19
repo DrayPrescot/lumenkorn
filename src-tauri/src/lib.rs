@@ -234,6 +234,7 @@ pub fn run() {
             import::import_scan,
             import::import_preview,
             import::import_start,
+            import::import_estimate_shift,
             import::import_cancel,
             merge::merge_cancel,
             cull::delete_rejected,

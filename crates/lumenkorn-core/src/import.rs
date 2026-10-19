@@ -10,12 +10,19 @@
 //! Jede Kopie wird vor dem Umbenennen Byte für Byte gegen das Original
 //! geprüft (BLAKE3 beim Kopieren, danach erneut von der Zieldatei). Erst dann
 //! darf das Original auf Wunsch gelöscht werden.
+//!
+//! Ging die Kamerauhr falsch (z. B. noch auf der Zeitzone daheim), wird die
+//! Aufnahmezeit je Aufnahme verschoben: in Ordner und Namen und in den
+//! Zeitangaben der Kopien (siehe [`crate::timeshift`]). Die Originale bleiben
+//! unverändert; geprüft wird die Kopie gegen das verschobene Original.
 
 use crate::LockExt;
 use crate::catalog::Catalog;
 use crate::error::{Error, Result};
 use crate::formats::{self, ImageKind};
+use crate::geotime::parse_time;
 use crate::metadata;
+use crate::timeshift::{DateShifter, format_time, shift_iso};
 use rayon::prelude::*;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -42,6 +49,8 @@ pub struct Candidate {
     /// Aufnahmezeit fehlte im EXIF – ersatzweise Änderungszeit der Datei
     pub date_from_file: bool,
     pub orientation: Option<i64>,
+    /// Kamera laut EXIF („SONY ILCE-7M3“)
+    pub camera: Option<String>,
     /// Liegt schon (mit gleichem Inhalt) im Katalog
     pub already: bool,
 }
@@ -64,6 +73,7 @@ pub struct ImportItem {
     pub size: u64,
     pub captured_at: String,
     pub date_from_file: bool,
+    pub camera: Option<String>,
     pub already: bool,
     /// Neuer Name der Hauptdatei (ohne Ordner)
     pub new_name: String,
@@ -84,6 +94,7 @@ impl Candidate {
             size: self.size,
             captured_at: self.captured_at.clone(),
             date_from_file: self.date_from_file,
+            camera: self.camera.clone(),
             already: self.already,
             new_name: renamed(
                 &self.files[0],
@@ -194,7 +205,7 @@ fn candidate(mut files: Vec<PathBuf>) -> Option<Candidate> {
         .filter_map(|f| std::fs::metadata(f).ok())
         .map(|m| m.len())
         .sum();
-    let (captured, orientation) = metadata::read_capture(&files[0]);
+    let (captured, orientation, camera) = metadata::read_capture(&files[0]);
     let (captured_at, date_from_file) = match captured {
         Some(c) => (c, false),
         None => (mtime_iso(&files[0])?, true),
@@ -208,6 +219,7 @@ fn candidate(mut files: Vec<PathBuf>) -> Option<Candidate> {
         captured_at,
         date_from_file,
         orientation,
+        camera,
         already: false,
     })
 }
@@ -222,23 +234,7 @@ fn mtime_iso(p: &Path) -> Option<String> {
         .duration_since(std::time::UNIX_EPOCH)
         .ok()?
         .as_secs() as i64;
-    let (days, rem) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
-    // Tage seit 1970 → Kalenderdatum (Howard Hinnant, „civil_from_days“)
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = yoe + era * 400 + i64::from(m <= 2);
-    Some(format!(
-        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}",
-        rem / 3600,
-        rem % 3600 / 60,
-        rem % 60
-    ))
+    Some(format_time(secs))
 }
 
 /// Bildnummer aus dem Namensstamm: die Ziffern am Ende ohne führende Nullen
@@ -353,12 +349,28 @@ pub struct ImportReport {
     pub failed: Vec<(String, String)>,
     /// Ordner, in die importiert wurde
     pub dirs: Vec<PathBuf>,
+    /// Aufnahmen, deren Zeit verschoben werden sollte, in deren Datei aber
+    /// keine Zeitangabe zu finden war (nur Name und Ordner verschoben)
+    pub unshifted: usize,
     pub canceled: bool,
 }
 
-/// Kopiert die Aufnahmen. `counters`: Zähler je Aufnahme (siehe [`counters`]).
+/// Aufnahmezeit nach dem Verschieben um `shift_s` (Sekunden). Ohne
+/// EXIF-Datum (Änderungszeit der Datei) wird nichts verschoben.
+pub fn shifted_time(c: &Candidate, shift_s: i64) -> String {
+    if shift_s == 0 || c.date_from_file {
+        return c.captured_at.clone();
+    }
+    shift_iso(&c.captured_at, shift_s).unwrap_or_else(|| c.captured_at.clone())
+}
+
+/// Verschiebung der Zeitangaben in den Dateien: (um, Aufnahmezeit)
+type Shift = Option<(i64, i64)>;
+
+/// Kopiert die Aufnahmen: je Aufnahme mit Zähler (siehe [`counters`]) und
+/// Verschiebung der Aufnahmezeit in Sekunden (0: keine).
 pub fn run(
-    cands: &[(&Candidate, String)],
+    cands: &[(&Candidate, String, i64)],
     target: &Path,
     event: &str,
     delete_after: bool,
@@ -368,11 +380,11 @@ pub fn run(
     let mut report = ImportReport::default();
     let mut p = ImportProgress {
         total: cands.len(),
-        bytes_total: cands.iter().map(|(c, _)| c.size).sum(),
+        bytes_total: cands.iter().map(|(c, ..)| c.size).sum(),
         ..Default::default()
     };
     let mut dirs = std::collections::BTreeSet::new();
-    for (c, counter) in cands {
+    for (c, counter, shift_s) in cands {
         if cancel.load(Ordering::Relaxed) {
             report.canceled = true;
             break;
@@ -384,13 +396,20 @@ pub fn run(
             .to_string_lossy()
             .into_owned();
         progress(&p);
-        let dir = target_dir(target, &c.captured_at, event);
-        match import_one(c, &dir, counter, cancel, &mut |n| {
+        let captured = shifted_time(c, *shift_s);
+        let shift = (captured != c.captured_at)
+            .then(|| Some((*shift_s, parse_time(&c.captured_at)?)))
+            .flatten();
+        let dir = target_dir(target, &captured, event);
+        match import_one(c, &dir, counter, &captured, shift, cancel, &mut |n| {
             p.bytes += n;
             progress(&p);
         }) {
-            Ok(Outcome::Copied(n)) => {
+            Ok(Outcome::Copied(n, replaced)) => {
                 report.imported += 1;
+                if shift.is_some() && !replaced {
+                    report.unshifted += 1;
+                }
                 report.files += c.files.len();
                 report.bytes += n;
                 dirs.insert(dir);
@@ -422,21 +441,24 @@ pub fn run(
 }
 
 enum Outcome {
-    /// Kopiert (Bytes)
-    Copied(u64),
+    /// Kopiert (Bytes; in der Hauptdatei wurde eine Zeitangabe verschoben)
+    Copied(u64, bool),
     /// Lag mit gleichem Inhalt schon am Ziel
     Existing,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn import_one(
     c: &Candidate,
     dir: &Path,
     counter: &str,
+    captured: &str,
+    shift: Shift,
     cancel: &AtomicBool,
     on_bytes: &mut dyn FnMut(u64),
 ) -> Result<Outcome> {
     std::fs::create_dir_all(dir)?;
-    let base = new_stem(&c.captured_at, counter);
+    let base = new_stem(captured, counter);
     // Freien Namen suchen: gleicher Name mit gleichem Inhalt → schon da;
     // mit anderem Inhalt (andere Kamera, gleiche Sekunde und Nummer) → `-2` …
     let mut stem = base.clone();
@@ -450,7 +472,7 @@ fn import_one(
             .files
             .iter()
             .zip(&dests)
-            .map(|(src, dst)| dst.exists().then(|| same_content(src, dst)))
+            .map(|(src, dst)| dst.exists().then(|| same_content(src, dst, shift)))
             .collect();
         if states.iter().all(|s| *s == Some(true)) {
             return Ok(Outcome::Existing);
@@ -461,57 +483,86 @@ fn import_one(
         stem = format!("{base}-{n}");
     }
     let mut total = 0;
-    for f in &c.files {
+    let mut replaced = false;
+    for (i, f) in c.files.iter().enumerate() {
         let dst = dir.join(renamed(f, &c.stem, &stem));
-        if dst.exists() && same_content(f, &dst) {
+        if dst.exists() && same_content(f, &dst, shift) {
+            replaced |= i == 0;
             continue; // Teil der Gruppe schon da (abgebrochener Import)
         }
-        total += copy_verified(f, &dst, cancel, on_bytes)?;
+        let (n, r) = copy_verified(f, &dst, shift, cancel, on_bytes)?;
+        total += n;
+        replaced |= i == 0 && r > 0;
     }
-    Ok(Outcome::Copied(total))
+    Ok(Outcome::Copied(total, replaced))
 }
 
-/// Gleicher Inhalt: gleiche Größe und gleicher BLAKE3 der ganzen Datei.
-fn same_content(a: &Path, b: &Path) -> bool {
+/// Gleicher Inhalt: gleiche Größe und gleicher BLAKE3 der ganzen Datei
+/// (bei `shift` der des verschobenen Originals).
+fn same_content(a: &Path, b: &Path, shift: Shift) -> bool {
     let size = |p: &Path| std::fs::metadata(p).map(|m| m.len()).ok();
     size(a).is_some()
         && size(a) == size(b)
-        && hash_file(a)
+        && hash_shifted(a, shift)
             .ok()
             .is_some_and(|h| hash_file(b).ok() == Some(h))
 }
 
 fn hash_file(p: &Path) -> std::io::Result<blake3::Hash> {
+    hash_shifted(p, None)
+}
+
+/// BLAKE3 der Datei, bei `shift` mit verschobenen Zeitangaben
+fn hash_shifted(p: &Path, shift: Shift) -> std::io::Result<blake3::Hash> {
     let mut h = blake3::Hasher::new();
     let mut f = File::open(p)?;
     let mut buf = vec![0u8; 1 << 20];
+    let mut shifter = shift.map(|(by, around)| DateShifter::new(by, around));
+    let mut out = Vec::new();
     loop {
         let n = f.read(&mut buf)?;
+        match &mut shifter {
+            Some(s) => {
+                out.clear();
+                if n == 0 {
+                    s.finish(&mut out);
+                } else {
+                    s.feed(&buf[..n], &mut out);
+                }
+                h.update(&out);
+            }
+            None => {
+                h.update(&buf[..n]);
+            }
+        }
         if n == 0 {
             return Ok(h.finalize());
         }
-        h.update(&buf[..n]);
     }
 }
 
 /// Kopiert über eine `.part`-Datei, prüft sie gegen den Hash des gelesenen
-/// Originals und benennt sie erst dann um. Übernimmt die Änderungszeit.
+/// (bei `shift` des verschobenen) Originals und benennt sie erst dann um.
+/// Übernimmt die Änderungszeit. Ergebnis: (Bytes, verschobene Zeitangaben).
 fn copy_verified(
     src: &Path,
     dst: &Path,
+    shift: Shift,
     cancel: &AtomicBool,
     on_bytes: &mut dyn FnMut(u64),
-) -> Result<u64> {
+) -> Result<(u64, usize)> {
     let part = dst.with_extension(format!(
         "{}.part",
         dst.extension().unwrap_or_default().to_string_lossy()
     ));
-    let res = (|| -> Result<u64> {
+    let res = (|| -> Result<(u64, usize)> {
         let mut input = File::open(src)?;
         let mut output = File::create(&part)?;
         let mut h = blake3::Hasher::new();
         let mut buf = vec![0u8; 1 << 20];
         let mut total = 0u64;
+        let mut shifter = shift.map(|(by, around)| DateShifter::new(by, around));
+        let mut shifted = Vec::new();
         loop {
             if cancel.load(Ordering::Relaxed) {
                 return Err(Error::Invalid(
@@ -519,11 +570,23 @@ fn copy_verified(
                 ));
             }
             let n = input.read(&mut buf)?;
+            let data = match &mut shifter {
+                Some(s) => {
+                    shifted.clear();
+                    if n == 0 {
+                        s.finish(&mut shifted);
+                    } else {
+                        s.feed(&buf[..n], &mut shifted);
+                    }
+                    &shifted[..]
+                }
+                None => &buf[..n],
+            };
+            h.update(data);
+            output.write_all(data)?;
             if n == 0 {
                 break;
             }
-            h.update(&buf[..n]);
-            output.write_all(&buf[..n])?;
             total += n as u64;
             on_bytes(n as u64);
         }
@@ -540,7 +603,7 @@ fn copy_verified(
             )));
         }
         std::fs::rename(&part, dst)?;
-        Ok(total)
+        Ok((total, shifter.map_or(0, |s| s.replaced)))
     })();
     if res.is_err() {
         let _ = std::fs::remove_file(&part);
@@ -649,7 +712,8 @@ mod tests {
 
         let target = d.path().join("Bilder");
         let counters = counters(&found);
-        let pairs: Vec<(&Candidate, String)> = found.iter().zip(counters).collect();
+        let pairs: Vec<(&Candidate, String, i64)> =
+            found.iter().zip(counters).map(|(c, n)| (c, n, 0)).collect();
         let report = run(
             &pairs,
             &target,
@@ -689,7 +753,11 @@ mod tests {
         let cat = Mutex::new(Catalog::open_in_memory().unwrap());
         let target = d.path().join("Bilder");
         let found = scan(&card, &cat, &|_| {}).unwrap();
-        let pairs: Vec<(&Candidate, String)> = found.iter().zip(counters(&found)).collect();
+        let pairs: Vec<(&Candidate, String, i64)> = found
+            .iter()
+            .zip(counters(&found))
+            .map(|(c, n)| (c, n, 0))
+            .collect();
         assert_eq!(
             run(&pairs, &target, "", false, &AtomicBool::new(false), &|_| {}).imported,
             1
@@ -701,11 +769,115 @@ mod tests {
         jpeg(&card.join("DSC00010.JPG"), 9);
         let mut other = found[0].clone();
         other.size = std::fs::metadata(other.main()).unwrap().len();
-        let pairs = vec![(&other, "10".to_string())];
+        let pairs = vec![(&other, "10".to_string(), 0)];
         let r = run(&pairs, &target, "", false, &AtomicBool::new(false), &|_| {});
         assert_eq!(r.imported, 1);
         let dir = target_dir(&target, &other.captured_at, "");
         let stem = new_stem(&other.captured_at, "10");
         assert!(dir.join(format!("{stem}-2.JPG")).is_file());
+    }
+
+    /// JPEG mit EXIF-Aufnahmezeit (DateTimeOriginal und DateTime)
+    fn jpeg_taken(path: &Path, seed: u8, taken: &str) {
+        use exif::{Field, In, Tag, Value};
+        let mut jpg = Vec::new();
+        image::RgbImage::from_fn(64, 48, |x, y| image::Rgb([seed, x as u8, y as u8]))
+            .write_to(
+                &mut std::io::Cursor::new(&mut jpg),
+                image::ImageFormat::Jpeg,
+            )
+            .unwrap();
+        let ascii = |tag| Field {
+            tag,
+            ifd_num: In::PRIMARY,
+            value: Value::Ascii(vec![taken.as_bytes().to_vec()]),
+        };
+        let (a, b) = (ascii(Tag::DateTimeOriginal), ascii(Tag::DateTime));
+        let mut w = exif::experimental::Writer::new();
+        w.push_field(&a);
+        w.push_field(&b);
+        let mut tiff = std::io::Cursor::new(Vec::new());
+        w.write(&mut tiff, false).unwrap();
+        let tiff = tiff.into_inner();
+        // APP1-Segment direkt nach SOI
+        let mut out = jpg[..2].to_vec();
+        out.extend_from_slice(&[0xFF, 0xE1]);
+        out.extend_from_slice(&((2 + 6 + tiff.len()) as u16).to_be_bytes());
+        out.extend_from_slice(b"Exif  ");
+        out.extend_from_slice(&tiff);
+        out.extend_from_slice(&jpg[2..]);
+        std::fs::write(path, out).unwrap();
+    }
+
+    #[test]
+    fn shifts_capture_time_in_copies_only() {
+        let d = tempfile::tempdir().unwrap();
+        let card = d.path().join("karte");
+        std::fs::create_dir_all(&card).unwrap();
+        jpeg_taken(&card.join("DSC06545.JPG"), 1, "2024:10:10 12:41:45");
+        std::fs::write(
+            card.join("DSC06545.xmp"),
+            b"<xmp:CreateDate>2024-10-10T12:41:45</xmp:CreateDate>",
+        )
+        .unwrap();
+        let original = std::fs::read(card.join("DSC06545.JPG")).unwrap();
+        let cat = Mutex::new(Catalog::open_in_memory().unwrap());
+        let found = scan(&card, &cat, &|_| {}).unwrap();
+        assert_eq!(found[0].captured_at, "2024-10-10T12:41:45");
+        assert!(!found[0].date_from_file);
+
+        // Kamera ging 7 h 4 min nach (Zeit daheim)
+        let shift = 7 * 3600 + 4 * 60;
+        let pairs = vec![(&found[0], "6545".to_string(), shift)];
+        let target = d.path().join("Bilder");
+        let report = run(&pairs, &target, "", false, &AtomicBool::new(false), &|_| {});
+        assert_eq!((report.imported, report.unshifted), (1, 0), "{report:?}");
+        let dir = target.join("2024").join("2024.10.10");
+        let copy = dir.join("20241010_194545_6545.JPG");
+        assert!(
+            copy.is_file(),
+            "{:?}",
+            std::fs::read_dir(&dir).unwrap().collect::<Vec<_>>()
+        );
+        let (taken, ..) = metadata::read_capture(&copy);
+        assert_eq!(taken.as_deref(), Some("2024-10-10T19:45:45"));
+        let xmp = std::fs::read_to_string(dir.join("20241010_194545_6545.xmp")).unwrap();
+        assert!(xmp.contains("2024-10-10T19:45:45"), "{xmp}");
+        assert_eq!(
+            std::fs::read(card.join("DSC06545.JPG")).unwrap(),
+            original,
+            "Original unverändert"
+        );
+
+        // Noch einmal mit derselben Verschiebung: liegt schon da
+        let again = run(&pairs, &target, "", false, &AtomicBool::new(false), &|_| {});
+        assert_eq!((again.imported, again.existing), (0, 1));
+    }
+
+    #[test]
+    fn shift_crosses_midnight_into_the_next_days_folder() {
+        let d = tempfile::tempdir().unwrap();
+        let card = d.path().join("karte");
+        std::fs::create_dir_all(&card).unwrap();
+        jpeg_taken(&card.join("IMG_0001.JPG"), 3, "2024:10:10 20:00:00");
+        let cat = Mutex::new(Catalog::open_in_memory().unwrap());
+        let found = scan(&card, &cat, &|_| {}).unwrap();
+        let pairs = vec![(&found[0], "1".to_string(), 6 * 3600)];
+        let target = d.path().join("Bilder");
+        run(
+            &pairs,
+            &target,
+            "Bali",
+            false,
+            &AtomicBool::new(false),
+            &|_| {},
+        );
+        assert!(
+            target
+                .join("2024")
+                .join("2024.10.11_Bali")
+                .join("20241011_020000_1.JPG")
+                .is_file()
+        );
     }
 }

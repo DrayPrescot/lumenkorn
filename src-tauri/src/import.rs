@@ -205,7 +205,50 @@ struct ImportDone {
     outside_library: bool,
 }
 
+/// Geschätzte Abweichung der Uhr einer Kamera (Sekunden, die zur
+/// Aufnahmezeit addiert werden) aus den Fotos mit Ort im Katalog, z. B. vom
+/// Handy. `None`: nicht eindeutig.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShiftEstimate {
+    offset_s: i64,
+    matched: usize,
+    photos: usize,
+}
+
+#[tauri::command]
+pub async fn import_estimate_shift(
+    app: AppHandle,
+    camera: Option<String>,
+) -> Result<Option<ShiftEstimate>, Error> {
+    blocking(app, move |state| {
+        let s = session(state)?;
+        let times: Vec<i64> = s
+            .cands
+            .iter()
+            .filter(|c| c.camera == camera && !c.date_from_file)
+            .filter_map(|c| lumenkorn_core::geotime::parse_time(&c.captured_at))
+            .collect();
+        let refs = state.catalog.locked().reference_times(camera.as_deref())?;
+        Ok(lumenkorn_core::geotime::estimate_offset(
+            &times,
+            &refs,
+            lumenkorn_core::geotime::MAX_OFFSET_S,
+            60,
+            120,
+        )
+        .map(|(offset_s, matched)| ShiftEstimate {
+            offset_s,
+            matched,
+            photos: times.len(),
+        }))
+    })
+    .await
+}
+
 /// Importiert die Aufnahmen `ids` nach `target` (siehe `lumenkorn_core::import`).
+/// `shifts`: Abweichung der Uhr je Kamera (Name, `""` ohne Kamera) in
+/// Sekunden, die zur Aufnahmezeit addiert werden.
 #[tauri::command]
 pub async fn import_start(
     app: AppHandle,
@@ -213,6 +256,7 @@ pub async fn import_start(
     target: String,
     event: String,
     delete_after: bool,
+    shifts: HashMap<String, i64>,
 ) -> Result<(), Error> {
     let state = app.state::<AppState>();
     let s = session(&state)?;
@@ -255,9 +299,16 @@ pub async fn import_start(
         .spawn(move || {
             let _running = running;
             let state = app2.state::<AppState>();
-            let picked: Vec<(&Candidate, String)> = ids
+            let picked: Vec<(&Candidate, String, i64)> = ids
                 .iter()
-                .filter_map(|&i| Some((s.cands.get(i)?, s.counters.get(i)?.clone())))
+                .filter_map(|&i| {
+                    let c = s.cands.get(i)?;
+                    let shift = shifts
+                        .get(c.camera.as_deref().unwrap_or(""))
+                        .copied()
+                        .unwrap_or(0);
+                    Some((c, s.counters.get(i)?.clone(), shift))
+                })
                 .collect();
             let last = Mutex::new(std::time::Instant::now());
             let report = import::run(

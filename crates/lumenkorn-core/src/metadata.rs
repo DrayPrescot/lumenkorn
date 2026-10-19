@@ -186,11 +186,11 @@ fn tiff_raw_dims_in(d: &[u8]) -> Option<(u32, u32)> {
     best.filter(|(w, h)| *w >= 160 && *h >= 160)
 }
 
-/// Aufnahmezeit und EXIF-Ausrichtung, zuerst nur aus dem ersten MB der Datei
+/// Aufnahmezeit, EXIF-Ausrichtung und Kamera, zuerst nur aus dem ersten MB der Datei
 /// (Import von einer langsamen Speicherkarte): `kamadak-exif` liest
 /// TIFF-basierte RAWs sonst vollständig ein – bei 500 Fotos über 10 GB von
 /// der Karte. Steht dort kein Datum, wird die ganze Datei gelesen.
-pub fn read_capture(path: &Path) -> (Option<String>, Option<i64>) {
+pub fn read_capture(path: &Path) -> (Option<String>, Option<i64>, Option<String>) {
     let mut head = Vec::new();
     if let Ok(f) = File::open(path) {
         let _ = f.take(1 << 20).read_to_end(&mut head);
@@ -198,7 +198,9 @@ pub fn read_capture(path: &Path) -> (Option<String>, Option<i64>) {
     exif_from(&mut std::io::Cursor::new(&head))
         .filter(|m| m.captured_at.is_some())
         .or_else(|| read_exif(path))
-        .map_or((None, None), |m| (m.captured_at, m.orientation))
+        .map_or((None, None, None), |m| {
+            (m.captured_at, m.orientation, m.camera)
+        })
 }
 
 fn read_exif(path: &Path) -> Option<Metadata> {

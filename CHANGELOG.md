@@ -11,6 +11,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
   (e.g. from a phone) taken within a few minutes. It runs only when asked, on the photos of the
   view or the selection, and saves only the suggestions you confirm. A camera clock that is off
   is estimated per camera from the matching times, or entered by hand.
+- Import: the capture time can be corrected per camera before copying, for cameras that still
+  ran on home time or were simply off. Folders, file names and the EXIF and XMP time stamps of
+  the copies get the corrected time; the files on the card stay unchanged, and each copy is
+  still verified byte for byte (against the shifted original). "Estimate" derives the
+  difference from photos with a location already in the library, e.g. from a phone.
 
 ### Fixed
 - Map: right-click → "Move N selected photos here" did nothing. The menu sat inside the map,

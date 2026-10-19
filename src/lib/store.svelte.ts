@@ -211,6 +211,7 @@ class Library {
     const parts = [
       t(r.imported === 1 ? "{n} Foto importiert" : "{n} Fotos importiert", { n: r.imported }),
       r.existing && t("{n} waren schon da", { n: r.existing }),
+      r.unshifted && t("bei {n} Fotos fand sich keine Zeitangabe zum Korrigieren (nur Name und Ordner angepasst)", { n: r.unshifted }),
       r.deleted && t("{n} Dateien von der Karte gelöscht", { n: r.deleted }),
       r.failed.length && t("{n} Fehler (Details im Protokoll)", { n: r.failed.length }),
       r.canceled && t("abgebrochen"),

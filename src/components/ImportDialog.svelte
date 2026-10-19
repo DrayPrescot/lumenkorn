@@ -20,6 +20,58 @@
   let pathFor = $state<"source" | "target" | null>(null);
   let started = $state(false);
 
+  // --- Uhrzeit korrigieren (Kamerauhr ging falsch, z. B. Zeitzone daheim) ------
+
+  type Shift = { sign: 1 | -1; h: number; m: number };
+  let shiftOpen = $state(false);
+  let shifts = $state<Record<string, Shift>>({});
+  let estimating = $state<string | null>(null);
+  const camKey = (i: ImportItem) => i.camera ?? "";
+  const seconds = (s: Shift | undefined) => (s ? s.sign * ((Number(s.h) || 0) * 3600 + (Number(s.m) || 0) * 60) : 0);
+  /** Kameras der Quelle mit Zahl der Aufnahmen (ohne Fotos ohne EXIF-Datum) */
+  const cameras = $derived.by(() => {
+    const m = new Map<string, number>();
+    for (const i of items) if (!i.dateFromFile) m.set(camKey(i), (m.get(camKey(i)) ?? 0) + 1);
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  });
+  const shiftFor = (i: ImportItem) => (i.dateFromFile ? 0 : seconds(shifts[camKey(i)]));
+  const shiftedCount = $derived(items.filter((i) => shiftFor(i) !== 0).length);
+
+  /** Naive Ortszeit `JJJJ-MM-TTThh:mm:ss` um `s` Sekunden verschoben */
+  function shiftIso(iso: string, s: number) {
+    const d = new Date(Date.parse(`${iso.slice(0, 19)}Z`) + s * 1000);
+    return d.toISOString().slice(0, 19);
+  }
+
+  /** Aufnahmen mit korrigierter Zeit (Tage, Ordner und Namen danach) */
+  const view = $derived(
+    items.map((i) => {
+      const s = shiftFor(i);
+      if (!s) return i;
+      const at = shiftIso(i.capturedAt, s);
+      const stamp = `${at.slice(0, 10).replaceAll("-", "")}_${at.slice(11, 19).replaceAll(":", "")}`;
+      return { ...i, capturedAt: at, newName: stamp + i.newName.slice(15) };
+    }),
+  );
+
+  async function estimate(key: string) {
+    estimating = key;
+    try {
+      const e = await api.importEstimateShift(key || null);
+      if (!e) {
+        lib.notify(t("Nicht eindeutig: zu wenige Fotos mit Ort aus derselben Zeit in der Bibliothek. Bitte selbst eingeben."));
+        return;
+      }
+      const a = Math.abs(e.offsetS);
+      shifts[key] = { sign: e.offsetS < 0 ? -1 : 1, h: Math.floor(a / 3600), m: Math.round((a % 3600) / 60) };
+      lib.notify(t("Geschätzt aus {n} von {total} Fotos mit passendem Gegenstück.", { n: e.matched, total: e.photos }));
+    } catch (e) {
+      lib.notify(String(e), "error");
+    } finally {
+      estimating = null;
+    }
+  }
+
   const progress = $derived(lib.importProgress);
 
   // --- Einlesen ---------------------------------------------------------------
@@ -37,6 +89,7 @@
       const res = await api.importScan(path);
       if (token !== scanToken) return;
       items = res;
+      shifts = Object.fromEntries([...new Set(res.map(camKey))].map((k) => [k, { sign: 1, h: 0, m: 0 }]));
       // Neue Fotos vorausgewählt, schon importierte nicht
       for (const i of res) if (!i.already) selected.add(i.id);
     } catch (e) {
@@ -139,7 +192,7 @@
 
   const days = $derived.by(() => {
     const m = new Map<string, ImportItem[]>();
-    for (const i of items) {
+    for (const i of [...view].sort((a, b) => a.capturedAt.localeCompare(b.capturedAt))) {
       const d = i.capturedAt.slice(0, 10);
       let list = m.get(d);
       if (!list) m.set(d, (list = []));
@@ -173,7 +226,7 @@
     if (mode !== "none") for (const i of items) if (mode === "all" || !i.already) selected.add(i.id);
   }
 
-  const picked = $derived(items.filter((i) => selected.has(i.id)));
+  const picked = $derived(view.filter((i) => selected.has(i.id)));
   const bytes = $derived(picked.reduce((n, i) => n + i.size, 0));
   const fmt = (v: number, d: number) => num(v, { maximumFractionDigits: d });
   const size = (b: number) =>
@@ -205,11 +258,14 @@
     lib.importRunning = true;
     lib.importProgress = { done: 0, total: picked.length, bytes: 0, bytesTotal: bytes, current: "" };
     try {
+      const byCamera: Record<string, number> = {};
+      for (const [key] of cameras) if (seconds(shifts[key])) byCamera[key] = seconds(shifts[key]);
       await api.importStart(
         picked.map((i) => i.id),
         target,
         event,
         deleteAfter,
+        byCamera,
       );
     } catch (e) {
       started = false;
@@ -320,6 +376,41 @@
         <label class="label" for="import-event">{t("Anlass")}</label>
         <input id="import-event" type="text" bind:value={event} placeholder={t("optional, z. B. Hochzeit")} maxlength="60" disabled={started} />
       </div>
+      {#if items.length && cameras.length}
+        <div class="line">
+          <span class="label">{t("Uhrzeit")}</span>
+          <span class="dir muted">
+            {shiftedCount
+              ? t(shiftedCount === 1 ? "wird bei 1 Foto korrigiert" : "wird bei {n} Fotos korrigiert", { n: shiftedCount })
+              : t("wie von der Kamera aufgezeichnet")}
+          </span>
+          <button type="button" class="btn small" onclick={() => (shiftOpen = !shiftOpen)} disabled={started} aria-expanded={shiftOpen}>
+            {shiftOpen ? t("Fertig") : t("Korrigieren …")}
+          </button>
+        </div>
+        {#if shiftOpen}
+          <div class="shifts">
+            <p class="hint">
+              {t("Ging die Uhr einer Kamera falsch, etwa noch auf der Zeit daheim, wird die Aufnahmezeit hier korrigiert: in Ordner, Dateinamen und den EXIF-Daten der Kopien. Die Originale auf der Karte bleiben unverändert. „Schätzen“ vergleicht mit Fotos mit Ort in der Bibliothek, etwa vom Handy.")}
+            </p>
+            {#each cameras as [key, count] (key)}
+              {@const s = shifts[key]}
+              <div class="shift-row">
+                <span class="cam" title={key || t("Unbekannte Kamera")}>{key || t("Unbekannte Kamera")} <span class="muted">({count})</span></span>
+                <select bind:value={s.sign} disabled={started} aria-label={t("Richtung")}>
+                  <option value={1}>{t("geht nach um")}</option>
+                  <option value={-1}>{t("geht vor um")}</option>
+                </select>
+                <input type="number" min="0" max="23" bind:value={s.h} disabled={started} aria-label={t("Stunden")} /> h
+                <input type="number" min="0" max="59" bind:value={s.m} disabled={started} aria-label={t("Minuten")} /> min
+                <button type="button" class="btn small quiet" onclick={() => estimate(key)} disabled={started || estimating !== null}>
+                  {estimating === key ? t("Schätze …") : t("Schätzen")}
+                </button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      {/if}
       {#if example}
         <p class="hint">
           {t("Ordner: {path}", { path: example.path })}{example.more ? ` ${t(example.more === 1 ? "(und {n} weiterer Tag)" : "(und {n} weitere Tage)", { n: example.more })}` : ""}
@@ -561,6 +652,32 @@
     color: var(--muted);
     font-size: var(--step--1);
     overflow-wrap: anywhere;
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .shifts {
+    display: grid;
+    gap: 6px;
+    padding: 8px 10px;
+    background: var(--raised);
+    border-radius: var(--radius-s);
+  }
+  .shift-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .shift-row .cam {
+    flex: 1;
+    min-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .shift-row input[type="number"] {
+    width: 4.5em;
   }
   .check-line {
     display: inline-flex;

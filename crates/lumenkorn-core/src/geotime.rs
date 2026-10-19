@@ -235,6 +235,24 @@ struct CamRef {
 }
 
 impl Catalog {
+    /// Aufnahmezeiten aller Fotos mit Ort, außer denen der Kamera `camera`
+    /// (Referenz für [`estimate_offset`], z. B. beim Import).
+    pub fn reference_times(&self, camera: Option<&str>) -> Result<Vec<i64>> {
+        let mut st = self.conn.prepare(
+            "SELECT captured_at FROM images
+             WHERE missing = 0 AND gps_lat IS NOT NULL AND gps_lon IS NOT NULL
+               AND captured_at IS NOT NULL AND camera IS NOT ?1",
+        )?;
+        let rows = st.query_map([camera], |r| r.get::<_, String>(0))?;
+        let mut out = Vec::new();
+        for row in rows {
+            if let Some(t) = parse_time(&row?) {
+                out.push(t);
+            }
+        }
+        Ok(out)
+    }
+
     /// Orte für Fotos ohne Ort aus zeitgleichen Fotos mit Ort vorschlagen.
     /// `offset_s`: fester Uhrenversatz für alle Kameras, sonst wird er je
     /// Kamera geschätzt. Schreibt nichts in den Katalog.

@@ -44,6 +44,11 @@ the catalog before you let Lumenkorn loose on your whole collection.
   `DSC07869.ARW` becomes `…_7869.ARW`). RAW and JPEG pairs and `.xmp` files keep the same name.
   Photos already in the library are recognized. Every copy is checked byte for byte; only then
   can the originals be deleted from the card, if you ask for it.
+- If a camera clock was off, for example still on home time during a trip, “Correct…” next to
+  “Time” in the import dialog shifts the capture time per camera before copying. Folders, file
+  names and the time stamps inside the copies (EXIF, XMP) get the corrected time; the files on
+  the card are not touched. “Estimate” works out the difference from photos with a location
+  already in the library, such as those from your phone.
 - A file watcher picks up new, changed, renamed and moved files. Moved files are recognized by
   a content hash, so ratings, keywords and edits stay with the photo.
 - Projects collect any number of folders, also across drives.
