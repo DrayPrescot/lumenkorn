@@ -334,6 +334,31 @@ fn grade(@builtin(global_invocation_id) id: vec3<u32>) {
     outa[i] = vec4<f32>(fit_gamut(o, yn), 1.0);
 }
 
+// Gradationskurve (curve.rs: curve_px), in place. fa = Tabelle: RGB, Rot,
+// Grün, Blau je CURVE_LUT Werte; u.radius = Modus der RGB-Kurve
+fn curve_at(k: u32, v: f32) -> f32 {
+    let t = clamp(v, 0.0, 1.0) * f32(CURVE_LUT - 1u);
+    let i = min(u32(t), CURVE_LUT - 2u);
+    let f = t - f32(i);
+    let a = fa[k * CURVE_LUT + i];
+    let b = fa[k * CURVE_LUT + i + 1u];
+    return a + (b - a) * f;
+}
+
+@compute @workgroup_size(16, 16)
+fn curve(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x >= u.w || id.y >= u.h) { return; }
+    let i = id.y * u.w + id.x;
+    var c = outa[i].xyz;
+    if (u.radius == CURVE_PRESERVE) {
+        let y = luma(c);
+        c = apply_luma(c, y, curve_at(0u, y));
+    } else if (u.radius == CURVE_EACH) {
+        c = vec3<f32>(curve_at(0u, c.x), curve_at(0u, c.y), curve_at(0u, c.z));
+    }
+    outa[i] = vec4<f32>(curve_at(1u, c.x), curve_at(2u, c.y), curve_at(3u, c.z), outa[i].w);
+}
+
 // Schwarzweiß (pipeline.rs: monochrome), in place
 @compute @workgroup_size(16, 16)
 fn mono(@builtin(global_invocation_id) id: vec3<u32>) {

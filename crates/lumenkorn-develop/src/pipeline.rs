@@ -10,6 +10,7 @@
 //! | Dunst entfernen        | sRGB-kodiert                 |
 //! | Weiß/Schwarz, Lichter/Tiefen, Kontrast, Klarheit | sRGB-kodiert, auf der Helligkeit |
 //! | Dynamik, Sättigung, HSL, Color Grading | sRGB-kodiert |
+//! | Gradationskurve (RGB, je Kanal) | sRGB-kodiert            |
 //! | Lokale Anpassungen (Masken) | wie oben, je Ebene überblendet |
 //! | Schärfen               | sRGB-kodiert, Helligkeit     |
 //! | Drehen, Spiegeln, Crop | zuletzt – Masken und lokale Karten bleiben am Motiv |
@@ -448,6 +449,12 @@ pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -
         img.data
             .par_iter_mut()
             .for_each(|px| *px = grade_px(*px, g));
+    }
+    // Gradationskurve nach dem Color Grading (wie im Bedienfeld darunter)
+    if let Some(l) = crate::curve::curve_setup(&p.tone_curve) {
+        img.data
+            .par_iter_mut()
+            .for_each(|px| *px = crate::curve::curve_px(*px, &l));
     }
 
     // --- Lokale Anpassungen ------------------------------------------------
@@ -1066,7 +1073,7 @@ fn s_curve(v: f32, amount: f32) -> f32 {
 
 /// Überträgt eine Helligkeitsänderung auf RGB, ohne den Farbton zu verschieben.
 #[inline]
-fn apply_luma(c: [f32; 3], y_old: f32, y_new: f32) -> [f32; 3] {
+pub(crate) fn apply_luma(c: [f32; 3], y_old: f32, y_new: f32) -> [f32; 3] {
     let out = if y_old > 1e-4 {
         let k = y_new / y_old;
         [c[0] * k, c[1] * k, c[2] * k]

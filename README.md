@@ -71,6 +71,12 @@ the catalog before you let Lumenkorn loose on your whole collection.
 - HSL for eight color ranges, with an eyedropper that adjusts the color you click on.
 - Color grading with wheels for shadows, midtones, highlights and the whole image, plus
   blending and balance, as in Lightroom.
+- Tone curve below color grading, like darktable's RGB curve: one curve for RGB and one each for
+  red, green and blue, with the histogram of the channel behind it. Click to add a point (up to
+  16), drag to move it, double-click to remove it. The points are joined by a monotone spline, so
+  the curve never overshoots between them. “Preserve colors” (on by default) applies the RGB
+  curve to brightness so hue and saturation stay; turned off it works on each channel, as in
+  Lightroom, and more contrast also means stronger colors.
 - Lens correction for RAW files (on by default): distortion, color fringes and vignetting,
   from the correction data the camera writes into the file (Sony ARW, DNG) or from a
   [Lensfun](https://lensfun.github.io/) profile for about 1,500 lenses.
@@ -275,6 +281,7 @@ The pipeline runs in a fixed order:
 | Dehaze | display-referred values |
 | Whites/blacks, highlights/shadows, contrast, clarity | brightness |
 | Vibrance, saturation, HSL, color grading | color (HSL in Oklch) |
+| Tone curve | display-referred values (RGB or brightness, each channel) |
 | Local adjustments (masks) | each layer blended in |
 | Sharpening | brightness |
 | Rotate, flip, straighten, crop | last |

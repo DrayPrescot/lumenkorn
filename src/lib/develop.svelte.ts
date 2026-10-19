@@ -21,12 +21,14 @@ import {
   type PersonPart,
   type AnimalKind,
   type RepairLayer,
+  type ToneCurve,
   type TransferGroups,
   transferParams,
 } from "./api";
 import { lib } from "./store.svelte";
 import { isCanceled, t } from "./i18n";
 import type { HslMode } from "./hsl";
+import { isIdentity, type CurveChannel, type CurvePoint } from "./curve";
 
 export type MaskTool = "linear" | "radial" | "brush" | "object" | "color";
 /** KI-Masken, die ohne Klick sofort berechnet werden */
@@ -383,6 +385,26 @@ class Develop {
     }
     this.params.colorGrade = cur;
     this.schedule();
+  }
+
+  /** In der Gradationskurve gewählter Kanal */
+  curveChannel = $state<CurveChannel>("rgb");
+
+  /** Punkte einer Kurve setzen (live; `commit()` beim Loslassen). Die
+   * Gerade aus den beiden Endpunkten wird leer gespeichert (= unverändert);
+   * Ankerpunkte auf der Diagonalen bleiben, bis ein anderer Punkt sich bewegt. */
+  setCurve(ch: CurveChannel, pts: CurvePoint[]) {
+    const cur = $state.snapshot(this.params.toneCurve ?? DEFAULT_PARAMS.toneCurve) as ToneCurve;
+    cur[ch] = pts.length <= 2 && isIdentity(pts) ? [] : pts.map(([x, y]) => [x, y] as [number, number]);
+    this.params.toneCurve = cur;
+    this.schedule();
+  }
+
+  setCurvePreserve(on: boolean) {
+    const cur = $state.snapshot(this.params.toneCurve ?? DEFAULT_PARAMS.toneCurve) as ToneCurve;
+    this.params.toneCurve = { ...cur, preserveColors: on };
+    this.schedule();
+    this.commit();
   }
 
   /** Mehrere Bereiche auf einmal (Pipette): `base` + `delta` × Anteil. */

@@ -46,6 +46,8 @@ pub struct DevelopParams {
     pub hsl: Hsl,
     /// Tönung nach Tonwertbereichen (Farbräder)
     pub color_grade: ColorGrade,
+    /// Gradationskurve (RGB und je Kanal), wirkt nach dem Color Grading
+    pub tone_curve: ToneCurve,
     /// Schwarzweiß: nach Farbe, HSL und lokalen Anpassungen in Graustufen
     /// umwandeln (die HSL-Luminanz steuert so den Grau-Mix); Color Grading
     /// wirkt danach und tont das Schwarzweißbild.
@@ -175,6 +177,81 @@ impl ColorGrade {
     }
 }
 
+/// Höchstzahl der Stützpunkte je Kurve
+pub const CURVE_POINTS: usize = 16;
+
+/// Gradationskurve (wie darktables „RGB-Kurve“, Lightrooms Punktkurve):
+/// Stützpunkte (x, y) auf den sRGB-kodierten Werten 0…1, nach x sortiert.
+/// Eine leere Liste lässt den Kanal unverändert.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ToneCurve {
+    /// Wirkt auf alle Kanäle bzw. (mit `preserve_colors`) auf die Helligkeit
+    pub rgb: Vec<[f32; 2]>,
+    pub red: Vec<[f32; 2]>,
+    pub green: Vec<[f32; 2]>,
+    pub blue: Vec<[f32; 2]>,
+    /// RGB-Kurve auf die Helligkeit: Farbton und Sättigung bleiben (wie
+    /// darktable). Aus: auf jeden Kanal einzeln, kräftigt bei mehr Kontrast
+    /// auch die Farben (wie Lightroom).
+    pub preserve_colors: bool,
+}
+
+impl Default for ToneCurve {
+    fn default() -> Self {
+        Self {
+            rgb: vec![],
+            red: vec![],
+            green: vec![],
+            blue: vec![],
+            preserve_colors: true,
+        }
+    }
+}
+
+impl ToneCurve {
+    pub fn is_neutral(&self) -> bool {
+        [&self.rgb, &self.red, &self.green, &self.blue]
+            .iter()
+            .all(|c| c.is_empty())
+    }
+
+    /// Gültige Punkte (endlich, 0…1, nach x sortiert, nicht zu dicht,
+    /// höchstens [`CURVE_POINTS`]); eine Kurve auf der Diagonalen wird leer.
+    fn points(pts: &[[f32; 2]]) -> Vec<[f32; 2]> {
+        let mut v: Vec<[f32; 2]> = pts
+            .iter()
+            .filter(|p| p[0].is_finite() && p[1].is_finite())
+            .map(|p| [p[0].clamp(0.0, 1.0), p[1].clamp(0.0, 1.0)])
+            .collect();
+        v.sort_by(|a, b| a[0].total_cmp(&b[0]));
+        let mut out: Vec<[f32; 2]> = Vec::with_capacity(v.len());
+        for p in v {
+            if out.last().is_none_or(|l| p[0] - l[0] >= 0.005) {
+                out.push(p);
+            }
+        }
+        out.truncate(CURVE_POINTS);
+        let identity = out.iter().all(|p| (p[1] - p[0]).abs() < 1e-4)
+            && out.first().is_some_and(|p| p[0] <= 1e-4)
+            && out.last().is_some_and(|p| p[0] >= 1.0 - 1e-4);
+        if out.len() < 2 || identity {
+            return vec![];
+        }
+        out
+    }
+
+    fn sanitized(&self) -> Self {
+        Self {
+            rgb: Self::points(&self.rgb),
+            red: Self::points(&self.red),
+            green: Self::points(&self.green),
+            blue: Self::points(&self.blue),
+            preserve_colors: self.preserve_colors,
+        }
+    }
+}
+
 /// Welche Teile einer Bearbeitung beim Übertragen mitgehen.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -189,7 +266,7 @@ pub struct TransferGroups {
     // Feinere Gruppen für Presets (mit `basic` sind sie alle enthalten)
     /// Temperatur, Tönung
     pub white_balance: bool,
-    /// Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz
+    /// Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz, Gradationskurve
     pub light: bool,
     /// Dynamik, Sättigung, Schwarzweiß
     pub color: bool,
@@ -572,6 +649,7 @@ impl Default for DevelopParams {
             sharpen: 0.0,
             hsl: Hsl::default(),
             color_grade: ColorGrade::default(),
+            tone_curve: ToneCurve::default(),
             monochrome: false,
             rotate: 0,
             flip_horizontal: false,
@@ -620,6 +698,7 @@ impl DevelopParams {
                 luminance: self.hsl.luminance.map(|v| c(v, -100.0, 100.0)),
             },
             color_grade: self.color_grade.sanitized(),
+            tone_curve: self.tone_curve.sanitized(),
             monochrome: self.monochrome,
             rotate: self.rotate % 4,
             flip_horizontal: self.flip_horizontal,
@@ -708,6 +787,7 @@ impl DevelopParams {
             out.shadows = src.shadows;
             out.whites = src.whites;
             out.blacks = src.blacks;
+            out.tone_curve = src.tone_curve.clone();
         }
         if g.basic || g.color {
             out.vibrance = src.vibrance;

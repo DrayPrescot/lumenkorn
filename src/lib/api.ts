@@ -316,6 +316,8 @@ export interface DevelopParams {
   hsl: Hsl;
   /** Tönung nach Tonwertbereichen (Farbräder) */
   colorGrade: ColorGrade;
+  /** Gradationskurve (RGB und je Kanal), nach dem Color Grading */
+  toneCurve: ToneCurve;
   /** Schwarzweiß (nach HSL und lokalen Anpassungen; Color Grading tont danach) */
   monochrome: boolean;
   rotate: number;
@@ -352,6 +354,17 @@ export interface ColorGrade {
   blending: number;
   /** Grenze zwischen Tiefen und Lichtern, −100…100 */
   balance: number;
+}
+
+/** Gradationskurve (params.rs: ToneCurve). Punkte [x, y] 0…1 auf den
+ * sRGB-kodierten Werten, nach x sortiert; leer = unverändert. */
+export interface ToneCurve {
+  rgb: [number, number][];
+  red: [number, number][];
+  green: [number, number][];
+  blue: [number, number][];
+  /** RGB-Kurve auf die Helligkeit: Farbton und Sättigung bleiben */
+  preserveColors: boolean;
 }
 
 const NEUTRAL_WHEEL: GradeWheel = { hue: 0, saturation: 0, luminance: 0 };
@@ -547,6 +560,7 @@ export const DEFAULT_PARAMS: DevelopParams = {
     blending: 50,
     balance: 0,
   },
+  toneCurve: { rgb: [], red: [], green: [], blue: [], preserveColors: true },
   rotate: 0,
   flipHorizontal: false,
   straighten: 0,
@@ -568,7 +582,10 @@ export function transferParams(target: DevelopParams, src: DevelopParams, g: Tra
     for (const k of keys) (out as unknown as Record<string, unknown>)[k] = src[k];
   };
   if (g.basic || g.whiteBalance) copy(["temperature", "tint"]);
-  if (g.basic || g.light) copy(["exposure", "contrast", "highlights", "shadows", "whites", "blacks"]);
+  if (g.basic || g.light) {
+    copy(["exposure", "contrast", "highlights", "shadows", "whites", "blacks"]);
+    out.toneCurve = JSON.parse(JSON.stringify(src.toneCurve ?? DEFAULT_PARAMS.toneCurve));
+  }
   if (g.basic || g.color) copy(["vibrance", "saturation", "monochrome"]);
   if (g.basic || g.details) copy(["clarity", "dehaze", "sharpen"]);
   if (g.basic || g.hsl) out.hsl = JSON.parse(JSON.stringify(src.hsl ?? DEFAULT_PARAMS.hsl));

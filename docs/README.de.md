@@ -165,6 +165,12 @@ Der Reiter **Basis** enthält von oben nach unten:
   setzt Farbton und Sättigung, Doppelklick setzt ein Rad zurück. Dazu Luminanz je Bereich,
   Überblenden und Abgleich. Die Tönung macht nichts heller oder dunkler, Schwarz und Weiß bleiben
   neutral.
+- **Gradationskurve** (unter Color Grading), wie die RGB-Kurve in darktable: eine Kurve für RGB
+  und je eine für Rot, Grün und Blau, dahinter das Histogramm des Kanals. Klicken setzt einen
+  Punkt (bis zu 16), Ziehen verschiebt ihn, Doppelklick entfernt ihn. Die Punkte verbindet ein
+  monotoner Spline, die Kurve schwingt zwischen ihnen also nicht über. „Farben erhalten“
+  (Standard) wendet die RGB-Kurve auf die Helligkeit an, Farbton und Sättigung bleiben; aus wirkt
+  sie wie in Lightroom auf jeden Kanal, mehr Kontrast macht dann auch die Farben kräftiger.
 - **Objektiv:** Die **Objektivkorrektur** ist für RAWs standardmäßig an und entfernt
   Verzeichnung, Farbsäume und Vignettierung. Die Daten kommen aus dem RAW selbst (Sony
   schreibt sie in jedes ARW, DNG-Dateien enthalten sie oft) oder aus der
@@ -461,6 +467,7 @@ Die Reihenfolge ist fest:
 | Dunst entfernen | anzeigebezogen |
 | Weiß/Schwarz, Lichter/Tiefen, Kontrast, Klarheit | Helligkeit |
 | Dynamik, Sättigung, HSL, Color Grading | Farbe (HSL in Oklch) |
+| Gradationskurve | anzeigebezogen (RGB bzw. Helligkeit, je Kanal) |
 | Masken | je Ebene überblendet |
 | Schärfen | Helligkeit |
 | Drehen, Spiegeln, Geraderichten, Zuschneiden | zuletzt |

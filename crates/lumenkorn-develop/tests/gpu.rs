@@ -219,6 +219,29 @@ fn cases() -> Vec<(&'static str, DevelopParams)> {
             },
         ),
         (
+            "Gradationskurve (Farben erhalten)",
+            DevelopParams {
+                tone_curve: lumenkorn_develop::ToneCurve {
+                    rgb: vec![[0.0, 0.05], [0.25, 0.18], [0.75, 0.86], [1.0, 0.97]],
+                    blue: vec![[0.0, 0.0], [0.5, 0.56], [1.0, 1.0]],
+                    ..Default::default()
+                },
+                ..d()
+            },
+        ),
+        (
+            "Gradationskurve je Kanal",
+            DevelopParams {
+                tone_curve: lumenkorn_develop::ToneCurve {
+                    rgb: vec![[0.0, 0.0], [0.3, 0.22], [0.7, 0.8], [1.0, 1.0]],
+                    red: vec![[0.1, 0.0], [0.6, 0.7], [1.0, 1.0]],
+                    preserve_colors: false,
+                    ..Default::default()
+                },
+                ..d()
+            },
+        ),
+        (
             "Schwarzweiß",
             DevelopParams {
                 monochrome: true,

@@ -25,6 +25,7 @@
 pub mod auto;
 pub mod capture_sharpen;
 pub mod color;
+pub mod curve;
 pub mod denoised;
 pub(crate) mod dt;
 mod error;
@@ -72,7 +73,7 @@ pub use lens::{LensProfile, LensSummary};
 pub use masks::{GrayMask, MaskSource, NoMasks};
 pub use params::{
     ColorGrade, ColorSample, Crop, DenoiseRef, DevelopParams, GradeWheel, HSL_BANDS, Hsl,
-    LocalAdjust, MaskLayer, MaskShape, PromptPoint, RepairLayer, Stroke, TransferGroups,
+    LocalAdjust, MaskLayer, MaskShape, PromptPoint, RepairLayer, Stroke, ToneCurve, TransferGroups,
 };
 pub use pipeline::{RenderOptions, render, render_auto, render_auto_rgb8, render_with};
 pub use source::{Source, SourceKind};

@@ -16,6 +16,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
   the copies get the corrected time; the files on the card stay unchanged, and each copy is
   still verified byte for byte (against the shifted original). "Estimate" derives the
   difference from photos with a location already in the library, e.g. from a phone.
+- Develop: tone curve below color grading, modeled on darktable's RGB curve. One curve for RGB
+  and one each for red, green and blue, drawn over the channel's histogram; up to 16 points
+  joined by a monotone spline (no overshoot). "Preserve colors" (default on) applies the RGB
+  curve to brightness and keeps hue and saturation; off, it works per channel as in Lightroom.
+  CPU and GPU evaluate the same lookup table. Copying the "Light" settings includes the curve.
 
 ### Fixed
 - Map: right-click → "Move N selected photos here" did nothing. The menu sat inside the map,

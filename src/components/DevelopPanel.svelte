@@ -6,6 +6,7 @@
   import MaskPanel from "./MaskPanel.svelte";
   import HslSection from "./HslSection.svelte";
   import ColorGradeSection from "./ColorGradeSection.svelte";
+  import CurveSection from "./CurveSection.svelte";
   import RepairPanel from "./RepairPanel.svelte";
   import Icon from "./Icon.svelte";
   import Slider from "./Slider.svelte";
@@ -252,6 +253,7 @@
     <!-- HSL nach Details und Rauschreduzierung: seltener gebraucht -->
     <HslSection />
     <ColorGradeSection />
+    <CurveSection />
 
     <details open>
       <summary tabindex="-1">{t("Objektiv")}</summary>

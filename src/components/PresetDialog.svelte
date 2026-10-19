@@ -9,7 +9,7 @@
   type GroupKey = Exclude<keyof TransferGroups, "basic">;
   const GROUPS: { key: GroupKey; label: string; hint: string }[] = [
     { key: "whiteBalance", label: t("Weißabgleich"), hint: t("Temperatur, Tönung") },
-    { key: "light", label: t("Licht"), hint: t("Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz") },
+    { key: "light", label: t("Licht"), hint: t("Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz, Gradationskurve") },
     { key: "color", label: t("Farbe"), hint: t("Dynamik, Sättigung") },
     { key: "hsl", label: "HSL", hint: t("Farbton, Sättigung, Luminanz je Farbbereich") },
     { key: "colorGrade", label: "Color Grading", hint: t("Farbräder, Überblenden, Abgleich") },

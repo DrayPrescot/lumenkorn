@@ -2,6 +2,7 @@
   // Histogramm der aktuellen Vorschau. Wird im Browser aus dem gerenderten Bild
   // berechnet – auf einer verkleinerten Kopie, das reicht für die Form völlig.
   import { t, locale } from "../lib/i18n";
+  import { loadBins, peakOf } from "../lib/histogram";
 
   let { src }: { src: string | null } = $props();
 
@@ -13,36 +14,15 @@
 
   $effect(() => {
     if (!src || !canvas) return;
-    const img = new Image();
     let cancelled = false;
-    img.onload = () => {
-      if (cancelled) return;
-      const scale = Math.min(1, 320 / Math.max(img.width, img.height));
-      const w = Math.max(1, Math.round(img.width * scale));
-      const h = Math.max(1, Math.round(img.height * scale));
-      const off = document.createElement("canvas");
-      off.width = w;
-      off.height = h;
-      const octx = off.getContext("2d", { willReadFrequently: true })!;
-      octx.drawImage(img, 0, 0, w, h);
-      const px = octx.getImageData(0, 0, w, h).data;
-      const bins = [new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)];
-      let lo = 0;
-      let hi = 0;
-      for (let i = 0; i < px.length; i += 4) {
-        bins[0][px[i]]++;
-        bins[1][px[i + 1]]++;
-        bins[2][px[i + 2]]++;
-        const m = Math.max(px[i], px[i + 1], px[i + 2]);
-        if (m >= 254) hi++;
-        if (Math.max(px[i], px[i + 1], px[i + 2]) <= 1) lo++;
-      }
-      const n = px.length / 4;
-      clipLow = lo / n;
-      clipHigh = hi / n;
-      draw(bins);
-    };
-    img.src = src;
+    loadBins(src)
+      .then((r) => {
+        if (cancelled) return;
+        clipLow = r.clipLow;
+        clipHigh = r.clipHigh;
+        draw(r.bins.slice(0, 3));
+      })
+      .catch(() => {});
     return () => (cancelled = true);
   });
 
@@ -50,8 +30,7 @@
     const ctx = canvas.getContext("2d")!;
     ctx.clearRect(0, 0, W, H);
     // Spitzen an den Rändern (Ausgebranntes) sollen die Skala nicht plattdrücken.
-    let peak = 1;
-    for (const b of bins) for (let i = 2; i < 254; i++) peak = Math.max(peak, b[i]);
+    const peak = peakOf(...bins);
     ctx.globalCompositeOperation = "lighter";
     const colors = ["rgb(214 72 64 / 0.75)", "rgb(76 186 92 / 0.75)", "rgb(70 120 220 / 0.8)"];
     bins.forEach((b, c) => {

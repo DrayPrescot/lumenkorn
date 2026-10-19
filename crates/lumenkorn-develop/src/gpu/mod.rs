@@ -209,9 +209,10 @@ enum P {
     Dehaze,
     Grade,
     Mono,
+    Curve,
 }
 
-const ENTRY_POINTS: [&str; 17] = [
+const ENTRY_POINTS: [&str; 18] = [
     "prep",
     "luma_pass",
     "map_down",
@@ -229,6 +230,7 @@ const ENTRY_POINTS: [&str; 17] = [
     "dehaze_pass",
     "grade",
     "mono",
+    "curve",
 ];
 
 /// Zuordnung der Puffer zu den Bindungen 1–8 des Shaders.
@@ -313,6 +315,8 @@ struct State {
     maps: [Buffer; 3],
     uniform: Option<(Buffer, u64)>,
     alphas: Vec<(Arc<Vec<f32>>, Buffer)>,
+    /// Tabelle der Gradationskurve (`curve::CurveLut`) und ihr Puffer
+    curve: Option<(Vec<f32>, Buffer)>,
     tick: u64,
 }
 
@@ -397,6 +401,12 @@ fn shader_source() -> String {
         f("SHARPEN_GAIN", SHARPEN_GAIN),
         f("SHARPEN_THRESHOLD", SHARPEN_THRESHOLD),
         f("OVERLAY_OPACITY", OVERLAY_OPACITY),
+        format!("const CURVE_LUT: u32 = {}u;\n", crate::curve::CURVE_LUT),
+        format!("const CURVE_EACH: u32 = {}u;\n", crate::curve::MODE_EACH),
+        format!(
+            "const CURVE_PRESERVE: u32 = {}u;\n",
+            crate::curve::MODE_PRESERVE
+        ),
         format!(
             "const OVERLAY_COLOR = vec3<f32>({});\n",
             list(&OVERLAY_COLOR)
@@ -608,6 +618,7 @@ impl Gpu {
                 maps,
                 uniform: None,
                 alphas: Vec::new(),
+                curve: None,
                 tick: 0,
             }),
         })
@@ -943,6 +954,25 @@ impl<'a> Ctx<'a> {
         );
     }
 
+    /// Gradationskurve wie `curve::curve_px`, in place. `lut`: Puffer mit
+    /// der Tabelle aus `curve_setup`.
+    fn curve(&mut self, img: &'a Buffer, lut: &'a Buffer, mode: u32) {
+        let u = U {
+            radius: mode,
+            ..self.base_u()
+        };
+        self.run(
+            P::Curve,
+            u,
+            Binds {
+                outa: Some(img),
+                fa: Some(lut),
+                ..Default::default()
+            },
+            img2d(self.w, self.h),
+        );
+    }
+
     /// Wie `hsl()` in pipeline.rs, in place.
     fn hsl(&mut self, img: &'a Buffer, h: &crate::params::Hsl) {
         if h.is_neutral() {
@@ -1132,6 +1162,17 @@ impl Gpu {
             st.uniform = Some((b, size));
         }
 
+        // Gradationskurve: Tabelle hochladen, wenn sie sich geändert hat
+        let curve = crate::curve::curve_setup(&p.tone_curve);
+        if let Some(c) = &curve
+            && st.curve.as_ref().is_none_or(|(k, _)| *k != c.data)
+        {
+            let buf = storage(&self.device, "kurve", (c.data.len() * 4) as u64);
+            self.queue
+                .write_buffer(&buf, 0, bytemuck::cast_slice(&c.data));
+            st.curve = Some((c.data.clone(), buf));
+        }
+
         let result = {
             let st = &*st;
             let set = &st.sets[si];
@@ -1192,6 +1233,9 @@ impl Gpu {
             // Bei Schwarzweiß kommt das Color Grading erst nach der Umwandlung
             if !p.monochrome {
                 cx.grade(&set.img, &p.color_grade);
+            }
+            if let (Some(c), Some((_, lut))) = (&curve, &st.curve) {
+                cx.curve(&set.img, lut, c.mode);
             }
 
             // --- Lokale Anpassungen
