@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.8] – 2026-10-19
+
 ### Added
 - Map: "Suggest locations…" gives photos without a location the location of a photo with GPS
   (e.g. from a phone) taken within a few minutes. It runs only when asked, on the photos of the
