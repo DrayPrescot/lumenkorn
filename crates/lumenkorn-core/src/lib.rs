@@ -10,6 +10,7 @@ pub mod catalog;
 pub mod error;
 pub mod formats;
 pub mod geo;
+pub mod geotime;
 pub mod housekeeping;
 pub mod import;
 pub mod maskstore;

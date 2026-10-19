@@ -260,6 +260,29 @@ export const mock = {
           i.location = { lat: a.lat, lon: a.lon, place: a.place ?? near?.name ?? null, manual: true };
         }
         return out(null);
+      case "geo_time_suggest": {
+        await new Promise((r) => setTimeout(r, 500));
+        const without = images.filter((i) => !i.location);
+        const matches = without.slice(0, 14).map((i, k) => {
+          const pl = mockPlaces[k % 2];
+          return { id: i.id, refId: images.find((j) => j.location)?.id ?? i.id, lat: pl.lat, lon: pl.lon, place: pl.name, deltaS: 40 + k * 17 };
+        });
+        return out({
+          matches,
+          offsets: [
+            { camera: "Sony ILCE-7M4", offsetS: a.offsetS ?? -3720, estimated: a.offsetS == null, uncertain: false, matched: 9, photos: 30 },
+            { camera: "Fujifilm X-T5", offsetS: 0, estimated: false, uncertain: a.offsetS == null, matched: 5, photos: 12 },
+          ],
+          withoutTime: 2,
+          candidates: without.length,
+        });
+      }
+      case "geo_apply":
+        for (const it of a.items) {
+          const i = images.find((i) => i.id === it.id);
+          if (i) i.location = { lat: it.lat, lon: it.lon, place: it.place ?? null, manual: true };
+        }
+        return out(null);
       case "geo_clear_location":
         for (const i of images.filter((i) => a.ids.includes(i.id))) i.location = null;
         return out(null);

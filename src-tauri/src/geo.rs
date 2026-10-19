@@ -408,6 +408,56 @@ pub fn geo_clear_location(state: State<AppState>, ids: Vec<i64>) -> CmdResult<()
     state.catalog.locked().set_location(&ids, None, None)
 }
 
+// --- Vorschläge auf Anfrage ---------------------------------------------------
+
+/// Orte für Fotos der Ansicht ohne Ort aus zeitgleichen Fotos mit Ort
+/// vorschlagen (nur auf Anfrage, schreibt nichts). `offset_s`: Abweichung der
+/// Kamerauhr, sonst je Kamera geschätzt.
+#[tauri::command(async)]
+pub fn geo_time_suggest(
+    state: State<AppState>,
+    query: lumenkorn_core::ImageQuery,
+    offset_s: Option<i64>,
+    window_s: i64,
+) -> CmdResult<lumenkorn_core::geotime::TimeSuggestions> {
+    state
+        .catalog
+        .locked()
+        .time_suggestions(&query, offset_s, window_s.clamp(60, 4 * 3600))
+}
+
+/// Übernommener Vorschlag: Ort für ein Foto
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocationItem {
+    pub id: i64,
+    pub lat: f64,
+    pub lon: f64,
+    pub place: Option<String>,
+}
+
+/// Vorschläge übernehmen (viele Fotos, je eigener Ort). Fehlende Ortsnamen
+/// ermittelt der Hintergrund.
+#[tauri::command(async)]
+pub fn geo_apply(
+    app: AppHandle,
+    state: State<AppState>,
+    items: Vec<LocationItem>,
+) -> CmdResult<()> {
+    let rows: Vec<(i64, f64, f64, Option<String>)> = items
+        .into_iter()
+        .map(|i| (i.id, i.lat, i.lon, i.place))
+        .collect();
+    let unnamed = rows
+        .iter()
+        .any(|r| r.3.as_deref().is_none_or(str::is_empty));
+    state.catalog.locked().set_locations(&rows)?;
+    if unnamed {
+        kick(&app);
+    }
+    Ok(())
+}
+
 // --- Hintergrund: GPS nachtragen, Ortsnamen ermitteln -------------------------
 
 static RUNNING: AtomicBool = AtomicBool::new(false);

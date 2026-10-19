@@ -118,6 +118,11 @@ Filmstreifen darunter aus (Strg fügt zur Auswahl hinzu); Gruppen zoomen hinein.
   zeigt den Namen (bis er bekannt ist: die Koordinaten) mit einem Link zur Karte.
 - **Gespeichert** werden selbst gesetzte Orte nur im Katalog. Die Dateien bleiben unverändert, und
   ein erneutes Einlesen überschreibt keinen von Hand gesetzten Ort.
+- **Orte vorschlagen …** (Knopf über der Karte) gibt Fotos ohne Ort den Ort eines Fotos mit Ort
+  (etwa vom Handy), das wenige Minuten davor oder danach entstand. Das gilt für die Fotos der
+  Ansicht oder die ausgewählten, läuft nur auf Klick, und gespeichert wird erst, was du anhakst
+  und bestätigst. Geht die Kamerauhr falsch, schätzt Lumenkorn die Abweichung je Kamera aus den
+  Zeiten beider, oder du gibst sie selbst ein.
 - **Internet:** Karte und Ortsnamen brauchen eine Verbindung, siehe
   [Daten und Arbeitsspeicher](#daten-und-arbeitsspeicher).
 

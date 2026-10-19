@@ -222,6 +222,8 @@ pub fn run() {
             geo::geo_search,
             geo::geo_set_location,
             geo::geo_clear_location,
+            geo::geo_apply,
+            geo::geo_time_suggest,
             commands::set_language,
             commands::list_roots,
             commands::add_root,

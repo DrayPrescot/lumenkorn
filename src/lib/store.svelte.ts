@@ -1,7 +1,7 @@
 // Zentraler Oberflächenzustand (Svelte-5-Runes).
 
 import { isCanceled, lang, num, t, tc } from "./i18n";
-import { api, listen, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type DeleteReport, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress, type ImportProgress, type ImportDone } from "./api";
+import { api, listen, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type DeleteReport, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress, type ImportProgress, type ImportDone, type ImageQuery, type LocationItem } from "./api";
 
 class Library {
   roots = $state<Root[]>([]);
@@ -904,6 +904,24 @@ class Library {
     if (!ids.length) return;
     this.#patch(ids, { lat, lon });
     await this.#write(() => api.geoSetLocation(ids, lat, lon, place)).catch((e) => this.#writeFailed(e));
+    this.geoVersion++;
+  }
+
+  /** Abfrage der aktuellen Ansicht (Ordner, Projekt, Suche, Bewertung) */
+  currentQuery(): ImageQuery {
+    const text = this.search.trim();
+    return { scope: $state.snapshot(this.scope) as Scope, sort: this.sort, search: text || null, minRating: this.minRating || null };
+  }
+
+  /** Vorschläge übernehmen: je Foto eigener Ort */
+  async applyLocations(items: LocationItem[]) {
+    if (!items.length) return;
+    const byId = new Map(items.map((i) => [i.id, i]));
+    this.images = this.images.map((im) => {
+      const it = byId.get(im.id);
+      return it ? { ...im, lat: it.lat, lon: it.lon } : im;
+    });
+    await this.#write(() => api.geoApply(items)).catch((e) => this.#writeFailed(e));
     this.geoVersion++;
   }
 

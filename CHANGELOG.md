@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Map: "Suggest locations…" gives photos without a location the location of a photo with GPS
+  (e.g. from a phone) taken within a few minutes. It runs only when asked, on the photos of the
+  view or the selection, and saves only the suggestions you confirm. A camera clock that is off
+  is estimated per camera from the matching times, or entered by hand.
+
 ### Fixed
 - Map: right-click → "Move N selected photos here" did nothing. The menu sat inside the map,
   where Leaflet stops clicks before they reach the interface; it now sits next to it.

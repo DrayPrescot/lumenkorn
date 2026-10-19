@@ -155,6 +155,43 @@ export interface Location {
   manual: boolean;
 }
 
+/** Ort aus einem zeitgleichen Foto */
+export interface TimeMatch {
+  id: number;
+  refId: number;
+  lat: number;
+  lon: number;
+  place: string | null;
+  /** Abstand zum Partnerfoto in Sekunden (nach Abgleich der Uhren) */
+  deltaS: number;
+}
+
+/** Abweichung der Uhr einer Kamera gegenüber den Fotos mit Ort */
+export interface CameraOffset {
+  camera: string | null;
+  offsetS: number;
+  estimated: boolean;
+  /** Schätzung nicht eindeutig: Fotos anderer Geräte nicht zugeordnet */
+  uncertain: boolean;
+  matched: number;
+  photos: number;
+}
+
+export interface TimeSuggestions {
+  matches: TimeMatch[];
+  offsets: CameraOffset[];
+  withoutTime: number;
+  candidates: number;
+}
+
+/** Übernommener Vorschlag */
+export interface LocationItem {
+  id: number;
+  lat: number;
+  lon: number;
+  place: string | null;
+}
+
 /** Treffer der Ortssuche (OpenStreetMap) */
 export interface PlaceHit {
   name: string;
@@ -700,6 +737,9 @@ export const api = {
   geoSetLocation: (ids: number[], lat: number, lon: number, place: string | null = null) =>
     call<void>("geo_set_location", { ids, lat, lon, place }),
   geoClearLocation: (ids: number[]) => call<void>("geo_clear_location", { ids }),
+  geoApply: (items: LocationItem[]) => call<void>("geo_apply", { items }),
+  geoTimeSuggest: (query: ImageQuery, offsetS: number | null, windowS: number) =>
+    call<TimeSuggestions>("geo_time_suggest", { query, offsetS, windowS }),
   setLanguage: (lang: "de" | "en") => call<void>("set_language", { lang }),
 
   listRoots: () => call<Root[]>("list_roots"),

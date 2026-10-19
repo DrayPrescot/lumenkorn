@@ -70,6 +70,28 @@ impl Catalog {
         })
     }
 
+    /// Viele Orte auf einmal setzen (übernommene Vorschläge): je Foto
+    /// Koordinaten und Ortsname (falls bekannt). Wie [`Catalog::set_location`].
+    pub fn set_locations(&mut self, items: &[(i64, f64, f64, Option<String>)]) -> Result<()> {
+        if let Some((_, lat, lon, _)) = items.iter().find(|(_, la, lo, _)| {
+            !(la.is_finite() && lo.is_finite() && la.abs() <= 90.0 && lo.abs() <= 180.0)
+        }) {
+            return Err(crate::Error::Invalid(format!("{lat}, {lon}")));
+        }
+        self.with_tx(|tx| {
+            let mut st = tx.prepare_cached(
+                "UPDATE images SET gps_lat = ?2, gps_lon = ?3, place = ?4,
+                        gps_source = 'manual', geo_state = 1
+                 WHERE id = ?1",
+            )?;
+            for (id, lat, lon, place) in items {
+                let place = place.as_deref().filter(|p| !p.is_empty());
+                st.execute(params![id, lat, lon, place])?;
+            }
+            Ok(())
+        })
+    }
+
     /// Fotos der Abfrage mit bekanntem Ort (für die Karte)
     pub fn geo_points(&self, q: &ImageQuery) -> Result<Vec<GeoPoint>> {
         let (where_sql, args) = self.where_clause(q)?;

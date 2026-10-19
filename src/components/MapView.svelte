@@ -11,6 +11,7 @@
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
   import Filmstrip from "./Filmstrip.svelte";
+  import SuggestDialog from "./SuggestDialog.svelte";
   import Icon from "./Icon.svelte";
 
   const PHOTOS = "application/x-lumenkorn-photos";
@@ -27,6 +28,7 @@
   let query = $state("");
   let hits = $state<PlaceHit[] | null>(null);
   let searching = $state(false);
+  let suggesting = $state(false);
   let searchError = $state<string | null>(null);
   /** Gewählter Treffer: Stecknadel auf der Karte, Übernehmen-Knopf */
   let picked = $state<PlaceHit | null>(null);
@@ -280,6 +282,10 @@
     {#if withPlace}
       <button class="btn small quiet" onclick={() => lib.clearLocation(lib.targets())}>{t("Ort entfernen")}</button>
     {/if}
+    <button class="btn small suggest" onclick={() => (suggesting = true)} title={t("Ort für Fotos ohne Ort aus zeitgleichen Fotos mit Ort vorschlagen")}>
+      <Icon name="pin" size={13} />
+      {t("Orte vorschlagen …")}
+    </button>
   </div>
 
   {#if hits || searchError}
@@ -345,6 +351,8 @@
   <Filmstrip />
 </div>
 
+{#if suggesting}<SuggestDialog onclose={() => (suggesting = false)} />{/if}
+
 <style>
   .mapview {
     position: relative;
@@ -389,7 +397,12 @@
     border-radius: 0 var(--radius-s) var(--radius-s) 0;
   }
   .info {
+    flex: 1;
+    min-width: 0;
     font-size: var(--step--1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .muted {
     color: var(--muted);
@@ -459,6 +472,8 @@
     position: relative;
     flex: 1;
     min-height: 0;
+    /* Leaflets Ebenen (z-index 400 ff.) bleiben unter Dialogen */
+    isolation: isolate;
   }
   .map {
     position: absolute;

@@ -117,6 +117,11 @@ clusters zoom in.
   until the name is known) with a link to the map.
 - Locations you set are stored only in the catalog. The files are not changed, and a rescan does
   not overwrite a location set by hand.
+- **Suggest locations…** (button above the map) gives photos without a location the location
+  of a photo with one (say, from your phone) taken a few minutes before or after. It works on the
+  photos of the view, or on the selected ones, and only runs when you click it; nothing is saved
+  until you tick the suggestions and confirm. If the camera clock is off, Lumenkorn estimates the
+  difference per camera from the times of both, or you enter it yourself.
 - The map and the place names need the internet; see [Your data](#your-data).
 
 ## Getting started
