@@ -287,6 +287,10 @@ const MIGRATIONS: &[&str] = &[
     "#,
     // v21: Aufnahmeort (siehe `GEO`)
     GEO,
+    // v22: Index für „schon importiert?“ (`has_content`, je Aufnahme beim
+    // Import). v11 hatte `images_hash` entfernt; mit der Größe als zweiter
+    // Spalte deckt er die ganze Abfrage ab.
+    "CREATE INDEX images_hash ON images(quick_hash, size);",
 ];
 
 /// v21: Aufnahmeort je Foto – Koordinaten (aus EXIF oder vom Nutzer gesetzt)
@@ -2233,6 +2237,10 @@ mod search_tests {
 mod migration_tests {
     use super::*;
 
+    /// Stand vor v22 nachstellen: der Index für `has_content` fehlt wieder. Vor
+    /// `UNDO_V11` einsetzen, das den alten `images_hash` neu anlegt.
+    const UNDO_V22: &str = "DROP INDEX images_hash;";
+
     /// Stand vor v21 nachstellen: Ortsspalten weg, Suchansicht und Trigger
     /// wie vorher (Teil von `UNDO_V11`, das weiter zurückgeht).
     const UNDO_V21: &str = "DROP INDEX images_geo_pending; DROP INDEX images_place_pending;
@@ -2309,7 +2317,7 @@ mod migration_tests {
             cat.conn
                 .execute_batch(&format!(
                     // Stand vor v9 (und damit auch vor v10, v11) nachstellen
-                    "UPDATE images SET thumb_state = 1; {UNDO_V21} {UNDO_V11}
+                    "UPDATE images SET thumb_state = 1; {UNDO_V22} {UNDO_V21} {UNDO_V11}
                      DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
                      PRAGMA user_version = 8;"
                 ))
@@ -2396,7 +2404,9 @@ mod migration_tests {
             .unwrap();
         assert!(names.iter().any(|n| n == "faces_visible"), "{names:?}");
         assert!(names.iter().any(|n| n == "images_root_dir"), "{names:?}");
-        for gone in ["images_captured", "images_hash", "images_root"] {
+        // images_hash gibt es seit v22 wieder, mit (quick_hash, size)
+        assert!(names.iter().any(|n| n == "images_hash"), "{names:?}");
+        for gone in ["images_captured", "images_root"] {
             assert!(!names.iter().any(|n| n == gone), "{gone}: {names:?}");
         }
         let body = |id: i64| -> String {
@@ -2415,6 +2425,21 @@ mod migration_tests {
         flush_search(&cat.conn).unwrap();
         tests_support::exact(&cat, "Umbenennen");
         assert!(body(2).contains("Ada"));
+    }
+
+    /// v22: `has_content` nutzt den Index statt die Tabelle zu durchlaufen.
+    #[test]
+    fn has_content_uses_index() {
+        let cat = Catalog::open_in_memory().unwrap();
+        let plan: String = cat
+            .conn
+            .query_row(
+                "EXPLAIN QUERY PLAN SELECT 1 FROM images WHERE quick_hash = ?1 AND size = ?2 LIMIT 1",
+                params!["h", 1],
+                |r| r.get(3),
+            )
+            .unwrap();
+        assert!(plan.contains("images_hash"), "{plan}");
     }
 
     /// v10: Gesichts-IDs werden nach dem Löschen der neuesten Gesichter nicht
@@ -2439,7 +2464,7 @@ mod migration_tests {
             // Zustand vor v10 nachstellen: höchste ID bereits im Bestand
             cat.conn
                 .execute_batch(&format!(
-                    "{UNDO_V21} {UNDO_V11} DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
+                    "{UNDO_V22} {UNDO_V21} {UNDO_V11} DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
                      PRAGMA user_version = 9;"
                 ))
                 .unwrap();

@@ -33,8 +33,12 @@
     void dev.committedVersion;
     return untrack(() => {
       const m = new Map<string, RepairState>();
+      // Mit Objektivkorrektur berechnete Flicken passen nur zum korrigierten
+      // Bild; ist die Korrektur aus, setzt die Pipeline sie nicht ein
+      const lensOn = dev.params.lensCorrection && !!dev.lensInfo;
       for (const r of dev.params.repairs) {
         if (!r.result) m.set(r.id, "new");
+        else if (r.lens && !lensOn) m.set(r.id, "stale");
         else m.set(r.id, r.resultKey === dev.repairKey($state.snapshot(r.shapes) as MaskShape[]) ? "done" : "stale");
       }
       return m;

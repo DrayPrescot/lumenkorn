@@ -176,25 +176,23 @@ fn prepare_source(
             );
         }
     }
-    apply_repairs(img, p, opts, lens.map(|_| false));
+    // Ohne Korrektur (abgeschaltet oder keine Profildaten) bleiben Flicken, die
+    // auf dem korrigierten Bild berechnet wurden, weg: Sie säßen versetzt und
+    // müssen neu berechnet werden.
+    apply_repairs(img, p, opts, false);
     if let Some(l) = lens {
         *img = l.apply(img);
-        apply_repairs(img, p, opts, Some(true));
+        apply_repairs(img, p, opts, true);
     }
 }
 
 /// Reparaturen einsetzen. `corrected`: nur die vor (`false`) bzw. nach
-/// (`true`) der Objektivkorrektur; `None` (ohne Korrektur) alle.
-fn apply_repairs(
-    img: &mut ImageF32,
-    p: &DevelopParams,
-    opts: &RenderOptions,
-    corrected: Option<bool>,
-) {
+/// (`true`) der Objektivkorrektur berechneten.
+fn apply_repairs(img: &mut ImageF32, p: &DevelopParams, opts: &RenderOptions, corrected: bool) {
     for r in p
         .repairs
         .iter()
-        .filter(|r| r.enabled && corrected.is_none_or(|c| r.lens == c))
+        .filter(|r| r.enabled && r.lens == corrected)
     {
         if let Some(patch) = r.result.as_deref().and_then(|id| opts.repairs.get(id)) {
             patch.apply(img);
@@ -207,13 +205,17 @@ fn lens_of<'a>(src: &'a Source, p: &DevelopParams) -> Option<&'a crate::lens::Le
     p.lens_correction.then_some(src.lens.as_deref()).flatten()
 }
 
-fn has_repairs(p: &DevelopParams) -> bool {
-    p.repairs.iter().any(|r| r.enabled && r.result.is_some())
+/// Gibt es Reparaturen, die tatsächlich eingesetzt werden? Flicken nach der
+/// Objektivkorrektur zählen nur, wenn die Korrektur gilt.
+fn has_repairs(p: &DevelopParams, lens: bool) -> bool {
+    p.repairs
+        .iter()
+        .any(|r| r.enabled && r.result.is_some() && (lens || !r.lens))
 }
 
 /// Braucht das Bild eine vorbereitete (zwischengespeicherte) Quelle?
 fn needs_prepared(src: &Source, p: &DevelopParams) -> bool {
-    has_repairs(p) || lens_of(src, p).is_some()
+    lens_of(src, p).is_some() || has_repairs(p, false)
 }
 
 /// Für GPU und CPU: Quellbild mit bereits eingesetzten Reparaturen (und
@@ -288,7 +290,7 @@ fn repaired_source(src: &Source, p: &DevelopParams, opts: &RenderOptions) -> (Ar
         // 720 MB und ein voller Kopiervorgang je Export)
         Some(l) if !blend && !before_lens => {
             let mut img = l.apply(&src.image);
-            apply_repairs(&mut img, p, opts, Some(true));
+            apply_repairs(&mut img, p, opts, true);
             img
         }
         _ => {
@@ -1752,5 +1754,53 @@ mod tests {
         );
         let c = ov.data[40 + 20];
         assert!(c[0] > c[1] + 0.2, "rot überlagert: {c:?}");
+    }
+
+    #[test]
+    fn repairs_after_lens_need_the_correction() {
+        use crate::repair::{Patch, PatchPart};
+        struct One(Arc<Patch>);
+        impl RepairSource for One {
+            fn get(&self, _: &str) -> Option<Arc<Patch>> {
+                Some(self.0.clone())
+            }
+        }
+        let patch = Arc::new(Patch {
+            width: 8,
+            height: 8,
+            parts: vec![PatchPart {
+                x: 2,
+                y: 2,
+                w: 4,
+                h: 4,
+                rgb: vec![[1.0, 0.0, 0.0]; 16],
+                alpha: vec![255; 16],
+            }],
+        });
+        let source = One(patch);
+        let opts = RenderOptions {
+            repairs: &source,
+            ..Default::default()
+        };
+        let run = |lens_flag: bool| {
+            let p = DevelopParams {
+                repairs: vec![crate::params::RepairLayer {
+                    enabled: true,
+                    result: Some("a".into()),
+                    lens: lens_flag,
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+            let mut img = ImageF32::from_fn(8, 8, |_, _| [0.2; 3]);
+            prepare_source(&mut img, &p, &opts, None);
+            (img.data[3 * 8 + 3], has_repairs(&p, false))
+        };
+        // Auf dem korrigierten Bild berechnet, aber ohne Korrektur: übersprungen
+        let (px, any) = run(true);
+        assert!((px[0] - 0.2).abs() < 1e-6 && !any, "{px:?}");
+        // Aus dem Original: eingesetzt
+        let (px, any) = run(false);
+        assert!(px[0] > 0.9 && any, "{px:?}");
     }
 }

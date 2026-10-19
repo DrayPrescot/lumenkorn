@@ -49,6 +49,28 @@
   /** Katalog von einer neueren Version: nur das Update anbieten */
   let tooNew = $state<string | null>(null);
 
+  // Beim Schließen des Fensters ausstehende Bearbeitung sichern. Tauri wartet
+  // auf den Handler und zerstört das Fenster danach selbst (destroy).
+  onMount(() => {
+    if (!isTauri) return;
+    let unlisten: (() => void) | undefined;
+    let gone = false;
+    getCurrentWindow()
+      .onCloseRequested(async () => {
+        try {
+          await Promise.race([dev.flushForClose(), new Promise((r) => setTimeout(r, 5000))]);
+        } catch (e) {
+          console.error("Speichern beim Schließen fehlgeschlagen", e);
+        }
+      })
+      .then((u) => (gone ? u() : (unlisten = u)))
+      .catch((e) => console.error(e));
+    return () => {
+      gone = true;
+      unlisten?.();
+    };
+  });
+
   onMount(async () => {
     const info = await api.appInfo().catch(() => null);
     if (info?.catalogTooNew) tooNew = info.catalogTooNew;

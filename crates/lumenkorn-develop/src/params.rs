@@ -342,7 +342,8 @@ pub struct RepairLayer {
     /// Fingerabdruck der Auswahl beim Berechnen (Oberfläche erkennt Änderungen)
     pub result_key: Option<String>,
     /// Der Flicken wurde auf dem objektivkorrigierten Bild berechnet (und wird
-    /// danach eingesetzt); ältere Flicken stammen aus dem Original.
+    /// danach eingesetzt); ältere Flicken stammen aus dem Original. Ohne
+    /// Objektivkorrektur werden solche Flicken übersprungen (sie säßen versetzt).
     pub lens: bool,
 }
 

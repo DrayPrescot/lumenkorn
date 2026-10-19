@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Develop: closing the window right after a change (within half a second) lost that change, and
+  an open crop was not applied. Pending edits are now saved before the window closes.
+- Develop: "Straighten" and restoring a snapshot could land on the next photo when you switched
+  photos while they were still running.
+- Repair: patches computed with lens correction were placed off by the lens distortion once the
+  correction was turned off. They are now left out and shown as needing a recompute.
+- Develop: a rare crash when a photo changed on disk while it was being loaded.
+- Import: checking whether photos are already in the library was slow in large catalogs; a
+  missing index is back (catalog migration 22).
+
 ## [1.0.8] – 2026-10-19
 
 ### Added

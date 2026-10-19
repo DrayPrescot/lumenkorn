@@ -627,10 +627,13 @@ class Develop {
   }
 
   async autoStraighten() {
-    if (this.imageId === null) return;
+    const id = this.imageId;
+    if (id === null) return;
     this.maskBusy = t("Horizont wird gesucht …");
     try {
-      const fix = await api.developDetectTilt(this.imageId, this.params.rotate, this.params.flipHorizontal);
+      const fix = await api.developDetectTilt(id, this.params.rotate, this.params.flipHorizontal);
+      // Inzwischen anderes Foto geöffnet: Ergebnis gehört nicht hierher
+      if (this.imageId !== id || !this.ready) return;
       if (fix === null) lib.notify(t("Keine eindeutigen geraden Kanten gefunden."));
       else {
         this.params.straighten = Math.round(fix * 100) / 100;
@@ -640,7 +643,8 @@ class Develop {
     } catch (e) {
       lib.notify(String(e), "error");
     } finally {
-      this.maskBusy = null;
+      // Nur zurücksetzen, wenn es noch dieses Foto betrifft
+      if (this.imageId === id) this.maskBusy = null;
     }
   }
 
@@ -918,6 +922,14 @@ class Develop {
     this.#saveTimer = setTimeout(() => this.flush(), 500);
   }
 
+  /** Vor dem Schließen des Fensters: offenen Zuschnitt übernehmen und alles
+   *  schreiben, auch einen bereits laufenden Speichervorgang abwarten. */
+  async flushForClose() {
+    if (this.cropMode) this.applyCrop();
+    await this.flush();
+    await this.#saving;
+  }
+
   async flush() {
     clearTimeout(this.#saveTimer);
     const id = this.imageId;
@@ -1178,9 +1190,12 @@ class Develop {
 
   async restore(edit: Edit) {
     if (!this.ready) return;
+    const id = this.imageId;
     await this.flush();
     await this.#saving;
     const p = await api.developRestore(edit.id);
+    // Inzwischen anderes Foto geöffnet: Stand nicht übernehmen
+    if (this.imageId !== id || !this.ready) return;
     this.replace({ ...clone(DEFAULT_PARAMS), ...p });
     this.#saved = clone(this.params);
   }

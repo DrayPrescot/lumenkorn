@@ -195,8 +195,23 @@ pub(crate) fn load_proxy(state: &AppState, id: i64, max_edge: usize) -> Result<A
         job.orientation.map(|o| o as u16),
         Some(PROXY_EDGE),
     )?;
-    state.develop.insert(id, file, Arc::new(src));
-    Ok(state.develop.get(id, max_edge).expect("gerade eingefügt"))
+    let src = Arc::new(src);
+    state.develop.insert(id, file, src.clone());
+    // Der Eintrag kann schon wieder fehlen (Datei geändert, verdrängt,
+    // vergessen) – das frisch geladene Bild direkt verwenden
+    Ok(state
+        .develop
+        .get(id, max_edge)
+        .unwrap_or_else(|| fitted(&src, max_edge)))
+}
+
+/// Das Bild auf `max_edge` verkleinert (oder unverändert, wenn es kleiner ist).
+fn fitted(src: &Arc<Source>, max_edge: usize) -> Arc<Source> {
+    if max_edge >= src.image.long_edge() {
+        src.clone()
+    } else {
+        Arc::new(src.downscaled(max_edge))
+    }
 }
 
 /// Quelle in voller Auflösung (bzw. verkleinert auf `max_edge`, wenn kleiner).
@@ -228,13 +243,16 @@ fn load_full(state: &AppState, id: i64, max_edge: usize) -> Result<Arc<Source>, 
         "Volle Auflösung für Detailansicht geladen in {:.2?}",
         t.elapsed()
     );
+    let src = Arc::new(src);
     *state.develop.full.lock().unwrap() = Some(FullEntry {
         id,
         file,
-        source: Arc::new(src),
+        source: src.clone(),
         scaled: None,
     });
-    Ok(cached_full(state, id, max_edge).expect("gerade geladen"))
+    // Der Eintrag kann schon wieder fehlen (Datei geändert, `forget`,
+    // `release_large`) – das frisch geladene Bild direkt verwenden
+    Ok(cached_full(state, id, max_edge).unwrap_or_else(|| fitted(&src, max_edge)))
 }
 
 /// Volle Auflösung (bzw. auf `max_edge` verkleinert) aus dem Speicher, falls
