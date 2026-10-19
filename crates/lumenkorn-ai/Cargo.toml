@@ -24,7 +24,7 @@ sha2 = "0.11.0"
 tar = "0.4.46"
 thiserror = "2.0.21"
 ureq = { version = "3", features = ["platform-verifier"] }
-zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+zip = { version = "9.0.3", default-features = false, features = ["deflate"] }
 
 # Windows: Begleit-DLLs der GPU-Laufzeit (dxil.dll, dxcompiler.dll …)
 # vorab aus dem Laufzeitordner laden – Windows sucht sie sonst nur neben der .exe.
