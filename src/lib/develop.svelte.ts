@@ -513,10 +513,13 @@ class Develop {
   }
 
   /** Ausschnitt in hoher Auflösung für die Zoomansicht (Objekt-URL). */
-  async detailUrl(r: { x: number; y: number; w: number; h: number }, scale: number): Promise<string | null> {
+  /** Ausschnitt in hoher Auflösung; `before`: unbearbeitet wie `renderBefore` */
+  async detailUrl(r: { x: number; y: number; w: number; h: number }, scale: number, before = false): Promise<string | null> {
     const id = this.imageId;
     if (id === null) return null;
-    const params = $state.snapshot(this.params) as DevelopParams;
+    const params = before
+      ? { ...clone(DEFAULT_PARAMS), rotate: this.params.rotate, flipHorizontal: this.params.flipHorizontal }
+      : ($state.snapshot(this.params) as DevelopParams);
     if (this.cropMode) params.crop = null;
     const blob = await api.developRenderDetail(id, params, r, scale);
     if (id !== this.imageId) return null;

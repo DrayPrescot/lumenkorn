@@ -50,9 +50,13 @@
 
   const fullLong = $derived(Math.max(dev.fullSize[0], dev.fullSize[1]) || null);
   const srcLong = $derived(fullLong ? Math.min(dev.maxEdge, fullLong) : null);
-  const detail = $derived(
-    before || dev.showOverlay ? null : (r: { x: number; y: number; w: number; h: number }, scale: number) => dev.detailUrl(r, scale),
-  );
+  // Auch die Vorher-Ansicht in voller Auflösung, sonst wirkt der Vergleich
+  // schärfer, als er ist
+  const detail = $derived.by(() => {
+    if (dev.showOverlay) return null;
+    const b = before;
+    return (r: { x: number; y: number; w: number; h: number }, scale: number) => dev.detailUrl(r, scale, b);
+  });
 
   function onkeydown(e: KeyboardEvent) {
     if (isTyping(e)) return;

@@ -2,8 +2,11 @@
   // Bildanzeige mit Zoom (Scrollrad, Tasten über ZoomState), Verschieben per
   // Ziehen und Doppelklick (Einpassen ↔ 100 %). Reicht die Auflösung des
   // angezeigten Bildes nicht mehr, wird nachgeladen: entweder das ganze Bild
-  // in voller Auflösung (`hiSrc`, Bibliothek) oder nur der sichtbare
-  // Ausschnitt (`detail`, Entwickeln – die Bearbeitung ändert sich laufend).
+  // in voller Auflösung (`hiSrc`, Bibliothek, nur beim Zoomen) oder der
+  // sichtbare Ausschnitt (`detail`, Entwickeln – die Bearbeitung ändert sich
+  // laufend). Im Entwickeln auch eingepasst: Ist der Proxy kleiner als die
+  // Bühne in Gerätepixeln, kommt das ganze Bild in Bühnenauflösung aus der
+  // vollen Datei.
   import type { Snippet } from "svelte";
   import { onDestroy, untrack } from "svelte";
   import { t } from "../lib/i18n";
@@ -149,6 +152,15 @@
   // Reicht die Auflösung des angezeigten Bildes nicht mehr?
   const needMore = $derived(!zoom.fit && shownW > 0 && dw * dpr > shownW * 1.05);
 
+  // Lage des Bildes in der Ansicht, eingepasst (wie `object-fit: contain`)
+  // oder gezoomt
+  const viewW = $derived(zoom.fit ? (fullW * fitZoom) / dpr : dw);
+  const viewH = $derived(zoom.fit ? (fullH * fitZoom) / dpr : dh);
+  const viewL = $derived(zoom.fit ? (w - viewW) / 2 : left);
+  const viewT = $derived(zoom.fit ? (h - viewH) / 2 : top);
+  /** Ausschnitt in hoher Auflösung nötig (auch eingepasst, siehe oben) */
+  const needDetail = $derived(!!detail && !hiSrc && shownW > 0 && viewW * dpr > shownW * 1.05);
+
   // Nur sichtbare Ansichten laden die volle Auflösung (Vergleich: viele Zellen)
   let visible = $state(true);
   $effect(() => {
@@ -180,9 +192,10 @@
   let detTimer: ReturnType<typeof setTimeout> | undefined;
 
   $effect(() => {
-    const need = needMore && !!detail && !hiSrc;
+    const need = needDetail;
     const key = detailKey;
-    const [L, T, DW, DH, W, H, Z] = [left, top, dw, dh, w, h, zoom.zoom];
+    const [L, T, DW, DH, W, H] = [viewL, viewT, viewW, viewH, w, h];
+    const Z = zoom.fit ? fitZoom : zoom.zoom;
     clearTimeout(detTimer);
     if (!need) {
       detPending = false;
@@ -208,7 +221,7 @@
       detPending = false;
     }, 220);
   });
-  const showDet = $derived(!!det && det.key === detailKey && !zoom.fit && needMore);
+  const showDet = $derived(!!det && det.key === detailKey && needDetail);
 
   // Beim Schließen: laufende Anfrage verwerfen, Ausschnitt freigeben
   onDestroy(() => {
@@ -248,7 +261,7 @@
         src={det.url}
         alt=""
         draggable="false"
-        style={`left:${left + det.r.x * dw}px;top:${top + det.r.y * dh}px;width:${det.r.w * dw}px;height:${det.r.h * dh}px`}
+        style={`left:${viewL + det.r.x * viewW}px;top:${viewT + det.r.y * viewH}px;width:${det.r.w * viewW}px;height:${det.r.h * viewH}px`}
       />
     {/if}
   {/if}
@@ -256,13 +269,13 @@
   {@render children?.(zoom.fit ? null : { x: left, y: top, w: dw, h: dh })}
 
   {#if showBadge && fitZoom > 0}
-    <div class="badge" class:busy={!!hiLoading || (detPending && needMore)}>
+    <div class="badge" class:busy={!!hiLoading || (detPending && needDetail)}>
       <button title={t("Verkleinern (Strg −)")} onclick={(e) => { e.stopPropagation(); zoom.stepOut(); }}>−</button>
       <button class="pct" title={t("Einpassen ↔ 100 % (Z, Doppelklick)")} onclick={(e) => { e.stopPropagation(); zoom.toggle(cx, cy); }}>
         {zoom.fit ? t("Einpassen · {n} %", { n: String(Math.round(fitZoom * 100)) }) : `${Math.round(zoom.zoom * 100)} %`}
       </button>
       <button title={t("Vergrößern (Strg +, Scrollrad)")} onclick={(e) => { e.stopPropagation(); zoom.stepIn(); }}>+</button>
-      {#if hiLoading || (detPending && needMore)}<span class="spin" aria-label={t("Lädt hohe Auflösung")}></span>{/if}
+      {#if hiLoading || (detPending && needDetail)}<span class="spin" aria-label={t("Lädt hohe Auflösung")}></span>{/if}
     </div>
   {/if}
 </div>

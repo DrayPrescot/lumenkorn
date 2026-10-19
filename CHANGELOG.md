@@ -23,6 +23,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
   CPU and GPU evaluate the same lookup table. Copying the "Light" settings includes the curve.
 
 ### Fixed
+- Develop: on large or high-DPI screens the fitted view showed a 2048 px preview scaled up, so
+  it only looked sharp after zooming in. When the screen needs more pixels than the preview
+  has, the fitted view now loads the whole image at screen resolution from the full file, as
+  zooming already did; the before view as well. While a slider moves, the preview stands in.
 - Map: right-click → "Move N selected photos here" did nothing. The menu sat inside the map,
   where Leaflet stops clicks before they reach the interface; it now sits next to it.
 
