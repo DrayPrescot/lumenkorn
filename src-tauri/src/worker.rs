@@ -2,6 +2,7 @@
 //! Oberfläche zu blockieren. Fortschritt wird als Tauri-Event gemeldet.
 
 use lumenkorn_core::Catalog;
+use lumenkorn_core::LockExt;
 use lumenkorn_core::scanner::{scan_paths, scan_root};
 use lumenkorn_core::thumbs::{ThumbCache, generate_some};
 use serde::Serialize;
@@ -107,8 +108,7 @@ impl Worker {
                         Job::Changes(root_id) => {
                             let paths: Vec<PathBuf> = me
                                 .changes
-                                .lock()
-                                .unwrap()
+                                .locked()
                                 .remove(&root_id)
                                 .map(|s| s.into_iter().collect())
                                 .unwrap_or_default();
@@ -141,7 +141,7 @@ impl Worker {
                             // Fertige Thumbnails gebündelt melden (max. alle 250 ms).
                             let batch = Mutex::new((Vec::new(), Instant::now()));
                             let flush = |force: bool| {
-                                let mut b = batch.lock().unwrap();
+                                let mut b = batch.locked();
                                 if !b.0.is_empty()
                                     && (force || b.1.elapsed() > Duration::from_millis(250))
                                 {
@@ -151,7 +151,7 @@ impl Worker {
                                 }
                             };
                             let on_done = |id: i64, _ok: bool| {
-                                batch.lock().unwrap().0.push(id);
+                                batch.locked().0.push(id);
                                 flush(false);
                             };
                             // In Portionen: dazwischen kommen Ordneränderungen und Scans dran
@@ -193,13 +193,13 @@ impl Worker {
     /// Von der Dateiüberwachung gemeldete Pfade eines Quellordners abgleichen.
     pub fn submit_changes(&self, root_id: i64, paths: impl IntoIterator<Item = PathBuf>) {
         let too_many = {
-            let mut c = self.changes.lock().unwrap();
+            let mut c = self.changes.locked();
             let set = c.entry(root_id).or_default();
             set.extend(paths);
             set.len() > MAX_CHANGED_PATHS
         };
         if too_many {
-            self.changes.lock().unwrap().remove(&root_id);
+            self.changes.locked().remove(&root_id);
             self.submit(Job::Scan(root_id));
         } else {
             self.submit(Job::Changes(root_id));
@@ -207,7 +207,7 @@ impl Worker {
     }
 
     pub fn submit(&self, job: Job) {
-        if self.queued.lock().unwrap().insert(job) {
+        if self.queued.locked().insert(job) {
             let _ = self.tx.send(job);
         }
     }

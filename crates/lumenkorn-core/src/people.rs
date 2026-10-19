@@ -69,6 +69,53 @@ pub struct NewFace {
     pub embedding: Vec<f32>,
 }
 
+/// Entscheidungen des Nutzers an einem früheren Gesicht, die ein erneutes
+/// Erkennen überstehen sollen.
+struct KeptFace {
+    rect: [f64; 4],
+    person: Option<i64>,
+    confirmed: bool,
+    rejected: Option<i64>,
+    hidden: bool,
+}
+
+/// Überlappung zweier Rechtecke `[x, y, w, h]` (Schnitt durch Vereinigung).
+fn iou(a: &[f64; 4], b: &[f64; 4]) -> f64 {
+    let w = (a[0] + a[2]).min(b[0] + b[2]) - a[0].max(b[0]);
+    let h = (a[1] + a[3]).min(b[1] + b[3]) - a[1].max(b[1]);
+    if w <= 0.0 || h <= 0.0 {
+        return 0.0;
+    }
+    let inter = w * h;
+    let union = a[2] * a[3] + b[2] * b[3] - inter;
+    if union > 0.0 { inter / union } else { 0.0 }
+}
+
+/// Ordnet jedem neuen Gesicht das überlappendste frühere zu (IoU ≥ 0,5, gierig
+/// nach IoU absteigend, jedes frühere höchstens einmal).
+fn match_kept_faces(kept: &[KeptFace], faces: &[NewFace]) -> Vec<Option<usize>> {
+    let mut pairs: Vec<(f64, usize, usize)> = Vec::new();
+    for (k, f) in faces.iter().enumerate() {
+        let r = f.rect.map(f64::from);
+        for (i, o) in kept.iter().enumerate() {
+            let v = iou(&r, &o.rect);
+            if v >= 0.5 {
+                pairs.push((v, k, i));
+            }
+        }
+    }
+    pairs.sort_by(|a, b| b.0.total_cmp(&a.0));
+    let mut out = vec![None; faces.len()];
+    let mut taken = vec![false; kept.len()];
+    for (_, k, i) in pairs {
+        if out[k].is_none() && !taken[i] {
+            out[k] = Some(i);
+            taken[i] = true;
+        }
+    }
+    out
+}
+
 /// Spalten für [`face_from_row`]; Bedingung und Sortierung hängt der Aufrufer an.
 const FACE_SELECT: &str =
     "SELECT f.id, f.image_id, f.x, f.y, f.w, f.h, f.score, f.person_id, p.name, f.confirmed
@@ -348,17 +395,63 @@ impl Catalog {
                 .query_map([image_id], |r| r.get(0))?
                 .collect::<std::result::Result<_, _>>()?;
             index.stale.extend(&old);
+            // Entscheidungen des Nutzers (bestätigte Person, ausgeblendet,
+            // „nicht diese Person“) merken; Rechtecke sind normiert, also auch
+            // bei geänderter Bildgröße vergleichbar.
+            let kept: Vec<KeptFace> = tx
+                .prepare_cached(
+                    "SELECT x, y, w, h, person_id, confirmed, rejected_person, hidden
+                     FROM faces WHERE image_id = ?1
+                       AND (hidden = 1 OR rejected_person IS NOT NULL
+                            OR (confirmed = 1 AND person_id IS NOT NULL))",
+                )?
+                .query_map([image_id], |r| {
+                    Ok(KeptFace {
+                        rect: [r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?],
+                        person: r.get(4)?,
+                        confirmed: r.get::<_, i64>(5)? != 0,
+                        rejected: r.get(6)?,
+                        hidden: r.get::<_, i64>(7)? != 0,
+                    })
+                })?
+                .collect::<std::result::Result<_, _>>()?;
+            let inherited = match_kept_faces(&kept, faces);
             tx.execute("DELETE FROM faces WHERE image_id = ?1", [image_id])?;
             let mut ids = Vec::with_capacity(faces.len());
             // Eine Person erscheint höchstens einmal pro Foto
             let mut used: Vec<i64> = Vec::new();
+            let mut assigned: Vec<Option<i64>> = vec![None; faces.len()];
+            let mut locked = vec![false; faces.len()];
+            // Bestätigte Zuordnungen stehen fest und zählen in den Gruppen mit
+            for (k, f) in faces.iter().enumerate() {
+                let Some(old) = inherited[k].map(|i| &kept[i]) else {
+                    continue;
+                };
+                if let (true, Some(p)) = (old.confirmed && !old.hidden, old.person) {
+                    if used.contains(&p) {
+                        continue;
+                    }
+                    used.push(p);
+                    assigned[k] = Some(p);
+                    locked[k] = true;
+                    index.stale.insert(p);
+                    let named = index.clusters.get(&p).is_some_and(|c| c.named);
+                    index.add(p, named, &f.embedding, true);
+                }
+            }
             // Sicherste Gesichter zuerst zuordnen
             let mut order: Vec<usize> = (0..faces.len()).collect();
             order.sort_by(|a, b| faces[*b].score.total_cmp(&faces[*a].score));
-            let mut assigned = vec![0i64; faces.len()];
             for &k in &order {
                 let f = &faces[k];
-                let person = match index.best(&f.embedding, &used) {
+                let old = inherited[k].map(|i| &kept[i]);
+                // Ausgeblendete Gesichter und schon bestätigte bleiben, wie sie sind
+                if assigned[k].is_some() || old.is_some_and(|o| o.hidden) {
+                    continue;
+                }
+                let mut exclude = used.clone();
+                exclude.extend(old.and_then(|o| o.rejected));
+                let person = match index.best(&f.embedding, &exclude) {
                     Some(p) => p,
                     None => {
                         tx.execute(
@@ -369,18 +462,21 @@ impl Catalog {
                     }
                 };
                 used.push(person);
-                assigned[k] = person;
+                assigned[k] = Some(person);
                 index.stale.insert(person);
                 let named = index.clusters.get(&person).is_some_and(|c| c.named);
                 index.add(person, named, &f.embedding, false);
             }
-            for (f, person) in faces.iter().zip(&assigned) {
+            for (k, f) in faces.iter().enumerate() {
+                let old = inherited[k].map(|i| &kept[i]);
+                let confirmed = locked[k];
                 tx.execute(
                     // ID über allen je vergebenen (siehe Migration v10)
-                    "INSERT INTO faces (id, image_id, x, y, w, h, score, embedding, person_id)
+                    "INSERT INTO faces (id, image_id, x, y, w, h, score, embedding, person_id,
+                                        confirmed, rejected_person, hidden)
                      VALUES (MAX(COALESCE((SELECT MAX(id) FROM faces), 0),
                                  COALESCE((SELECT v FROM face_id_floor), 0)) + 1,
-                             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                     params![
                         image_id,
                         f.rect[0] as f64,
@@ -389,7 +485,10 @@ impl Catalog {
                         f.rect[3] as f64,
                         f.score as f64,
                         to_blob(&f.embedding),
-                        person
+                        assigned[k],
+                        confirmed,
+                        old.and_then(|o| o.rejected),
+                        old.is_some_and(|o| o.hidden)
                     ],
                 )?;
                 ids.push(tx.last_insert_rowid());
@@ -966,6 +1065,110 @@ mod tests {
         let (done, total, faces) = cat.face_counts().unwrap();
         assert_eq!((done, total), (5, 5));
         assert_eq!(faces, 4);
+    }
+
+    fn nf(rect: [f32; 4], e: Vec<f32>) -> NewFace {
+        NewFace {
+            rect,
+            score: 0.9,
+            embedding: e,
+        }
+    }
+
+    /// Bestätigung, Ausblenden und „nicht diese Person“ überstehen ein erneutes
+    /// Erkennen mit leicht verschobenen Rechtecken; ein neues Gesicht startet leer.
+    #[test]
+    fn user_decisions_survive_redetection() {
+        let (mut cat, imgs) = catalog_with_images(1);
+        let mut c = None;
+        let mut idx = cat.people_index().unwrap();
+        let a = [0.1, 0.1, 0.2, 0.2];
+        let b = [0.5, 0.1, 0.2, 0.2];
+        let r = [0.1, 0.6, 0.2, 0.2];
+        let ids = cat
+            .save_faces(
+                imgs[0],
+                &[
+                    nf(a, face(0, 0.1)),
+                    nf(b, face(3, 0.1)),
+                    nf(r, face(6, 0.1)),
+                ],
+                &mut idx,
+            )
+            .unwrap();
+        // a: bestätigt als Anna, b: ausgeblendet, r: „nicht diese Person“
+        let anna_group = cat.face(ids[0]).unwrap().person_id.unwrap();
+        let anna = cat.name_person(anna_group, "Anna", &mut c).unwrap();
+        cat.hide_face(ids[1]).unwrap();
+        let other = cat.face(ids[2]).unwrap().person_id.unwrap();
+        cat.reject_face(ids[2]).unwrap();
+
+        let mut idx = cat.people_index().unwrap();
+        let shift = |m: [f32; 4]| [m[0] + 0.02, m[1] + 0.01, m[2], m[3]];
+        let new = cat
+            .save_faces(
+                imgs[0],
+                &[
+                    nf(shift(a), face(0, 0.1)),
+                    nf(shift(b), face(3, 0.1)),
+                    nf(shift(r), face(6, 0.1)),
+                    nf([0.7, 0.7, 0.1, 0.1], face(9, 0.1)),
+                ],
+                &mut idx,
+            )
+            .unwrap();
+        let get = |id| {
+            cat.conn
+                .query_row(
+                    "SELECT person_id, confirmed, rejected_person, hidden FROM faces WHERE id = ?1",
+                    [id],
+                    |r| {
+                        Ok((
+                            r.get::<_, Option<i64>>(0)?,
+                            r.get::<_, i64>(1)?,
+                            r.get::<_, Option<i64>>(2)?,
+                            r.get::<_, i64>(3)?,
+                        ))
+                    },
+                )
+                .unwrap()
+        };
+        assert_eq!(get(new[0]), (Some(anna), 1, None, 0));
+        assert_eq!(get(new[1]), (None, 0, None, 1));
+        let f2 = get(new[2]);
+        assert_eq!((f2.1, f2.2, f2.3), (0, Some(other), 0));
+        assert_ne!(
+            f2.0,
+            Some(other),
+            "abgelehnte Gruppe nicht erneut vorgeschlagen"
+        );
+        assert_eq!(get(new[3]).1, 0);
+        assert_eq!(get(new[3]).2, None);
+        assert_eq!(get(new[3]).3, 0);
+        assert_eq!(
+            cat.image_faces(imgs[0]).unwrap().len(),
+            3,
+            "ausgeblendetes nicht sichtbar"
+        );
+    }
+
+    #[test]
+    fn rect_overlap_matching_is_greedy_and_thresholded() {
+        let kept = |rect| KeptFace {
+            rect,
+            person: None,
+            confirmed: false,
+            rejected: None,
+            hidden: true,
+        };
+        let k = [kept([0.0, 0.0, 0.2, 0.2])];
+        let faces = [
+            nf([0.01, 0.0, 0.2, 0.2], vec![1.0]),
+            nf([0.0, 0.0, 0.2, 0.2], vec![1.0]),
+            nf([0.5, 0.5, 0.2, 0.2], vec![1.0]),
+        ];
+        // Das genauere Gesicht bekommt das frühere, jedes nur einmal
+        assert_eq!(match_kept_faces(&k, &faces), vec![None, Some(0), None]);
     }
 
     #[test]

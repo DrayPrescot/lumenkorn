@@ -16,6 +16,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Develop: a rare crash when a photo changed on disk while it was being loaded.
 - Import: checking whether photos are already in the library was slow in large catalogs; a
   missing index is back (catalog migration 22).
+- People: when a photo file changed on disk (another editor, a sync tool), face detection ran
+  again and dropped confirmed people, hidden faces and "not this person" decisions. These now
+  carry over to the newly detected faces, and a file whose content is unchanged (only its date)
+  is not analyzed again.
+- A crash while loading an AI model, in the GPU pipeline or while exporting one photo no longer
+  disables that part until the app restarts; an export carries on with the next photo.
+- Masks: undoing a refinement of an object mask could show the refined mask or the earlier one,
+  depending on what was still cached. Every refinement is now stored as a new mask.
 
 ## [1.0.8] – 2026-10-19
 

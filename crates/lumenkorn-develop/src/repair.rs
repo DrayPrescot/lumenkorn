@@ -243,7 +243,7 @@ impl RepairFiles {
 
     /// Zwischenspeicher leeren (Dateien bleiben).
     pub fn clear_cache(&self) {
-        self.cache.lock().unwrap().clear();
+        self.cache.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
 
     pub fn path(&self, id: &str) -> Option<PathBuf> {
@@ -260,7 +260,7 @@ impl RepairFiles {
         std::fs::create_dir_all(&self.dir)?;
         patch.write(&path)?;
         let p = Arc::new(patch);
-        let mut c = self.cache.lock().unwrap();
+        let mut c = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         c.retain(|(k, _)| k != id);
         c.insert(0, (id.to_string(), p.clone()));
         c.truncate(8);
@@ -271,13 +271,13 @@ impl RepairFiles {
 impl RepairSource for RepairFiles {
     fn get(&self, id: &str) -> Option<Arc<Patch>> {
         {
-            let c = self.cache.lock().unwrap();
+            let c = self.cache.lock().unwrap_or_else(|e| e.into_inner());
             if let Some((_, p)) = c.iter().find(|(k, _)| k == id) {
                 return Some(p.clone());
             }
         }
         let p = Arc::new(Patch::read(&self.path(id)?).ok()?);
-        let mut c = self.cache.lock().unwrap();
+        let mut c = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         c.insert(0, (id.to_string(), p.clone()));
         c.truncate(8);
         Some(p)

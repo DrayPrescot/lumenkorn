@@ -94,40 +94,46 @@ pub fn start_janitor(app: AppHandle) {
             let mut next_sweep = Instant::now() + SWEEP_FIRST;
             loop {
                 std::thread::sleep(TICK);
-                let state = app.state::<AppState>();
-                if Instant::now() >= next_sweep {
-                    next_sweep = Instant::now() + SWEEP_EVERY;
-                    match sweep_data(&state) {
-                        // Katalog geändert (z. B. Abmessungen): Oberfläche lädt neu
-                        Ok((_, true)) => {
-                            let _ = app.emit("catalog-updated", ());
+                // Ein Panic in einem Durchlauf darf den Hausmeister nicht beenden
+                let round = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let state = app.state::<AppState>();
+                    if Instant::now() >= next_sweep {
+                        next_sweep = Instant::now() + SWEEP_EVERY;
+                        match sweep_data(&state) {
+                            // Katalog geändert (z. B. Abmessungen): Oberfläche lädt neu
+                            Ok((_, true)) => {
+                                let _ = app.emit("catalog-updated", ());
+                            }
+                            Ok(_) => {}
+                            Err(e) => log::warn!("Aufräumen des Datenordners: {e}"),
                         }
-                        Ok(_) => {}
-                        Err(e) => log::warn!("Aufräumen des Datenordners: {e}"),
                     }
-                }
-                let mut freed = Vec::new();
-                if state.usage.idle(Slot::Interactive) >= INTERACTIVE_IDLE {
-                    freed.extend(crate::ai::release_models(&state, true, false));
-                    if crate::repair::release_model(&state) {
-                        freed.push("LaMa");
+                    let mut freed = Vec::new();
+                    if state.usage.idle(Slot::Interactive) >= INTERACTIVE_IDLE {
+                        freed.extend(crate::ai::release_models(&state, true, false));
+                        if crate::repair::release_model(&state) {
+                            freed.push("LaMa");
+                        }
                     }
-                }
-                if state.usage.idle(Slot::Background) >= BACKGROUND_IDLE {
-                    freed.extend(crate::ai::release_models(&state, false, true));
-                    if crate::people::release_models(&state) {
-                        freed.push("Gesichter");
+                    if state.usage.idle(Slot::Background) >= BACKGROUND_IDLE {
+                        freed.extend(crate::ai::release_models(&state, false, true));
+                        if crate::people::release_models(&state) {
+                            freed.push("Gesichter");
+                        }
                     }
-                }
-                let full = crate::protocol::release_full(FULL_IDLE);
-                if full {
-                    log::info!("Ungenutzte Vollbilder freigegeben");
-                }
-                if !freed.is_empty() {
-                    log::info!("Ungenutzte KI-Modelle entladen: {}", freed.join(", "));
-                }
-                if full || !freed.is_empty() {
-                    trim_heap();
+                    let full = crate::protocol::release_full(FULL_IDLE);
+                    if full {
+                        log::info!("Ungenutzte Vollbilder freigegeben");
+                    }
+                    if !freed.is_empty() {
+                        log::info!("Ungenutzte KI-Modelle entladen: {}", freed.join(", "));
+                    }
+                    if full || !freed.is_empty() {
+                        trim_heap();
+                    }
+                }));
+                if round.is_err() {
+                    log::error!("Hausmeister: Durchlauf abgestürzt, läuft weiter");
                 }
             }
         })

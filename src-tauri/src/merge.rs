@@ -208,7 +208,7 @@ fn run(
     // Höchstens ~10 Meldungen pro Sekunde
     let last = Mutex::new(std::time::Instant::now() - std::time::Duration::from_secs(1));
     let progress = |stage: &str, done: usize, total: usize| {
-        let mut l = last.lock().unwrap();
+        let mut l = last.locked();
         if done == 0 || done >= total || l.elapsed().as_millis() >= 100 {
             *l = std::time::Instant::now();
             let _ = app.emit(

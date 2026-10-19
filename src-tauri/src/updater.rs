@@ -7,6 +7,7 @@
 
 use crate::AppState;
 use lumenkorn_core::Error;
+use lumenkorn_core::LockExt;
 use serde::Serialize;
 use tauri::AppHandle;
 
@@ -67,7 +68,7 @@ pub async fn update_check(app: AppHandle) -> Result<Option<UpdateInfo>, Error> {
         if let Some(i) = &info {
             log::info!("Update verfügbar: {} → {}", i.current, i.version);
         }
-        *app.state::<UpdaterState>().pending.lock().unwrap() = update;
+        *app.state::<UpdaterState>().pending.locked() = update;
         Ok(info)
     }
     #[cfg(not(desktop))]
@@ -88,8 +89,7 @@ pub async fn update_install(app: AppHandle) -> Result<(), Error> {
         let update = app
             .state::<UpdaterState>()
             .pending
-            .lock()
-            .unwrap()
+            .locked()
             .take()
             .ok_or_else(|| {
                 Error::Invalid(
@@ -131,7 +131,7 @@ pub async fn update_install(app: AppHandle) -> Result<(), Error> {
             )
             .await
             .map_err(|e| {
-                *app.state::<UpdaterState>().pending.lock().unwrap() = Some(retry);
+                *app.state::<UpdaterState>().pending.locked() = Some(retry);
                 Error::Invalid(e.to_string())
             })?;
         // Laufende KI-Arbeit beenden wie beim Neustart aus dem KI-Dialog;

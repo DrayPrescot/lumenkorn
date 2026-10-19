@@ -289,7 +289,7 @@ pub(crate) fn lazy_model<T>(
     label: &str,
     load: impl FnOnce() -> Result<T, Error>,
 ) -> Result<Arc<T>, Error> {
-    let mut g = slot.lock().unwrap();
+    let mut g = lock_slot(slot);
     if let Some(m) = g.as_ref() {
         return Ok(m.clone());
     }
@@ -306,7 +306,7 @@ pub(crate) fn err(e: impl std::fmt::Display) -> Error {
 
 /// Bibliothek, die beim (nächsten) Start geladen wird.
 fn desired_library(state: &AppState) -> Option<(PathBuf, Backend)> {
-    let pref = state.ai.settings.lock().unwrap().accel;
+    let pref = state.ai.settings.locked().accel;
     accel::choose_library(&models::ai_dir(&state.data_dir), pref)
 }
 
@@ -330,13 +330,29 @@ pub(crate) fn ensure_runtime(state: &AppState) -> Result<(), Error> {
         &lib.display().to_string(),
     );
     runtime::init_with(&lib, backend).map_err(err)?;
-    accel::set_use_gpu(state.ai.settings.lock().unwrap().accel != Preference::Cpu);
+    accel::set_use_gpu(state.ai.settings.locked().accel != Preference::Cpu);
     Ok(())
+}
+
+/// Sperrt einen Modell-Slot. Ist die Sperre vergiftet (ein Ladeversuch ist
+/// abgestürzt), gilt der Slot als leer und wird beim nächsten Zugriff neu
+/// geladen, statt dass jede weitere Nutzung ebenfalls paniken würde.
+fn lock_slot<T>(slot: &Mutex<Option<Arc<T>>>) -> std::sync::MutexGuard<'_, Option<Arc<T>>> {
+    match slot.lock() {
+        Ok(g) => g,
+        Err(e) => {
+            log::warn!("Modell-Slot war vergiftet, wird neu geladen");
+            let mut g = e.into_inner();
+            *g = None;
+            slot.clear_poison();
+            g
+        }
+    }
 }
 
 /// Leert `slot`, wenn das Modell gerade nirgends benutzt wird.
 pub(crate) fn drop_if_unused<T>(slot: &Mutex<Option<Arc<T>>>) -> bool {
-    let mut g = slot.lock().unwrap();
+    let mut g = lock_slot(slot);
     if g.as_ref().is_some_and(|m| Arc::strong_count(m) == 1) {
         *g = None;
         return true;
@@ -374,15 +390,15 @@ pub(crate) fn release_models(
             out.push("Face Mesh");
         }
         // Das SAM-Embedding gehört zum Modell und ist ohne es wertlos
-        if ai.sam.lock().unwrap().is_none() {
-            *ai.sam_embedding.lock().unwrap() = None;
+        if ai.sam.locked().is_none() {
+            *ai.sam_embedding.locked() = None;
         }
         if !ai.denoising.load(Ordering::SeqCst) && drop_if_unused(&ai.denoiser) {
             out.push("DRUNet");
         }
     }
     if background {
-        let mut g = ai.loaded.lock().unwrap();
+        let mut g = ai.loaded.locked();
         if g.as_ref()
             .is_some_and(|l| Arc::strong_count(&l.clip) == 1 && Arc::strong_count(&l.tagger) == 1)
         {
@@ -396,28 +412,28 @@ pub(crate) fn release_models(
 /// Vergisst alle geladenen Modelle, damit sie mit dem neuen Rechenwerk neu
 /// angelegt werden. Laufende Berechnungen behalten ihre Kopie.
 fn unload_models(state: &AppState) {
-    *state.ai.loaded.lock().unwrap() = None;
-    *state.ai.load_error.lock().unwrap() = None;
-    *state.ai.subject.lock().unwrap() = None;
-    *state.ai.sam.lock().unwrap() = None;
-    *state.ai.sky.lock().unwrap() = None;
-    *state.ai.owl.lock().unwrap() = None;
-    *state.ai.parts_seg.lock().unwrap() = None;
-    *state.ai.mesh.lock().unwrap() = None;
-    *state.ai.sam_embedding.lock().unwrap() = None;
-    *state.ai.denoiser.lock().unwrap() = None;
+    *state.ai.loaded.locked() = None;
+    *state.ai.load_error.locked() = None;
+    *state.ai.subject.locked() = None;
+    *state.ai.sam.locked() = None;
+    *state.ai.sky.locked() = None;
+    *state.ai.owl.locked() = None;
+    *state.ai.parts_seg.locked() = None;
+    *state.ai.mesh.locked() = None;
+    *state.ai.sam_embedding.locked() = None;
+    *state.ai.denoiser.locked() = None;
 }
 
 /// Lädt Laufzeit und Modell beim ersten Bedarf.
 fn ensure_loaded(state: &AppState) -> Result<Loaded, Error> {
     state.usage.touch(Slot::Background);
     let ai = &state.ai;
-    if let Some(l) = ai.loaded.lock().unwrap().clone() {
+    if let Some(l) = ai.loaded.locked().clone() {
         return Ok(l);
     }
     let _loading = ai.loading.lock().unwrap_or_else(|e| e.into_inner());
     // Inzwischen von einem anderen Aufrufer geladen
-    if let Some(l) = ai.loaded.lock().unwrap().clone() {
+    if let Some(l) = ai.loaded.locked().clone() {
         return Ok(l);
     }
     let status = models::status(&state.data_dir);
@@ -441,12 +457,12 @@ fn ensure_loaded(state: &AppState) -> Result<Loaded, Error> {
     })();
     match result {
         Ok(l) => {
-            *ai.loaded.lock().unwrap() = Some(l.clone());
-            *ai.load_error.lock().unwrap() = None;
+            *ai.loaded.locked() = Some(l.clone());
+            *ai.load_error.locked() = None;
             Ok(l)
         }
         Err(e) => {
-            *ai.load_error.lock().unwrap() = Some(e.to_string());
+            *ai.load_error.locked() = Some(e.to_string());
             Err(err(e))
         }
     }
@@ -496,11 +512,10 @@ struct AiProgress {
 /// Analysiert einen Stapel Bilder. `Ok(true)`, wenn noch weitere ausstehen.
 pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
     let state = app.state::<AppState>();
-    if !state.ai.settings.lock().unwrap().auto_tag || state.ai.downloading.load(Ordering::Relaxed) {
+    if !state.ai.settings.locked().auto_tag || state.ai.downloading.load(Ordering::Relaxed) {
         return Ok(false);
     }
-    if !models::status(&state.data_dir).model_ready || state.ai.load_error.lock().unwrap().is_some()
-    {
+    if !models::status(&state.data_dir).model_ready || state.ai.load_error.locked().is_some() {
         return Ok(false);
     }
     let ids = state.catalog.locked().pending_ai(BATCH)?;
@@ -622,15 +637,15 @@ fn accel_status(state: &AppState) -> AccelStatus {
 pub fn ai_status(state: State<AppState>) -> Result<AiStatus, Error> {
     let (analyzed, total) = state.catalog.locked().ai_counts()?;
     Ok(AiStatus {
-        crash_notice: state.ai.crash_notice.lock().unwrap().clone(),
+        crash_notice: state.ai.crash_notice.locked().clone(),
         accel: accel_status(&state),
         files: models::status(&state.data_dir),
         downloading: state.ai.downloading.load(Ordering::Relaxed),
-        loaded: state.ai.loaded.lock().unwrap().is_some(),
-        error: state.ai.load_error.lock().unwrap().clone(),
+        loaded: state.ai.loaded.locked().is_some(),
+        error: state.ai.load_error.locked().clone(),
         analyzed,
         total,
-        settings: state.ai.settings.lock().unwrap().clone(),
+        settings: state.ai.settings.locked().clone(),
     })
 }
 
@@ -648,9 +663,9 @@ pub fn ai_set_settings(state: State<AppState>, settings: AiSettings) -> Result<(
     if settings.develop_gpu {
         start_develop_gpu(state.ai.guard_dir.clone());
     }
-    let accel_changed = state.ai.settings.lock().unwrap().accel != settings.accel;
+    let accel_changed = state.ai.settings.locked().accel != settings.accel;
     let gpu = settings.accel != Preference::Cpu;
-    *state.ai.settings.lock().unwrap() = settings;
+    *state.ai.settings.locked() = settings;
     if accel_changed && runtime::is_loaded() {
         accel::set_use_gpu(gpu);
         unload_models(&state);
@@ -726,7 +741,7 @@ pub fn ai_download(app: AppHandle, component: Option<Component>) -> Result<(), E
                 ))
             });
             drop(done);
-            *state.ai.load_error.lock().unwrap() = None;
+            *state.ai.load_error.locked() = None;
             let error = match (res, component) {
                 (Ok(()), Component::Clip) => ensure_loaded(&state).err().map(|e| e.to_string()),
                 (Ok(()), Component::Faces) => {
@@ -762,7 +777,7 @@ pub fn ai_download(app: AppHandle, component: Option<Component>) -> Result<(), E
 /// Absturzmeldung gelesen.
 #[tauri::command]
 pub fn ai_dismiss_notice(state: State<AppState>) {
-    *state.ai.crash_notice.lock().unwrap() = None;
+    *state.ai.crash_notice.locked() = None;
 }
 
 /// Startet Lumenkorn neu – nötig, wenn eine andere Laufzeitbibliothek geladen
@@ -839,7 +854,7 @@ pub fn ai_cancel_download(state: State<AppState>) {
 #[tauri::command(async)]
 pub fn ai_retag_all(state: State<AppState>) -> Result<(), Error> {
     state.catalog.locked().reset_ai()?;
-    *state.ai.load_error.lock().unwrap() = None;
+    *state.ai.load_error.locked() = None;
     state.worker.submit(Job::Ai);
     Ok(())
 }
@@ -974,7 +989,7 @@ type SamKey = (i64, bool);
 
 fn sam_embedding(state: &AppState, sam: &Sam, id: i64) -> Result<Arc<SamEmbedding>, Error> {
     let key = (id, crate::develop::lens_setting(state, id));
-    if let Some((cached, e)) = state.ai.sam_embedding.lock().unwrap().as_ref()
+    if let Some((cached, e)) = state.ai.sam_embedding.locked().as_ref()
         && *cached == key
     {
         return Ok(e.clone());
@@ -983,21 +998,21 @@ fn sam_embedding(state: &AppState, sam: &Sam, id: i64) -> Result<Arc<SamEmbeddin
     let _g = analysis_guard(state, "Segment Anything");
     let e = Arc::new(sam.embed(&segmentation_input(state, id)?).map_err(err)?);
     log::info!("SAM-Embedding für Bild {id} in {:.2?}", t.elapsed());
-    *state.ai.sam_embedding.lock().unwrap() = Some((key, e.clone()));
+    *state.ai.sam_embedding.locked() = Some((key, e.clone()));
     Ok(e)
 }
 
+/// Legt eine Maske unter einer **neuen** ID ab. Bestehende Dateien werden nie
+/// überschrieben: „Rückgängig“ und Schnappschüsse verweisen weiter auf die
+/// alte ID und müssen dieselbe Maske wiederfinden. Unbenutzte Dateien räumt
+/// der Hausmeister (`memory::sweep_data`) nach 24 Stunden weg.
 fn store(
     state: &AppState,
-    id: Option<String>,
     image_id: i64,
     kind: &str,
     mask: &image::GrayImage,
 ) -> Result<MaskResult, Error> {
-    // Nur eigene Masken überschreiben – nie die eines anderen Fotos
-    let mask_id = id
-        .filter(|i| state.masks.path(i).is_some() && i.starts_with(&format!("{image_id}-")))
-        .unwrap_or_else(|| MaskFiles::new_id(image_id, kind));
+    let mask_id = MaskFiles::new_id(image_id, kind);
     state.masks.put(&mask_id, mask)?;
     let coverage = mask.pixels().filter(|p| p[0] > 127).count() as f32
         / (mask.width() * mask.height()).max(1) as f32;
@@ -1015,7 +1030,7 @@ pub async fn mask_subject(app: AppHandle, id: i64) -> Result<MaskResult, Error> 
             .predict(&segmentation_input(state, id)?)
             .map_err(err)?;
         log::info!("Motivmaske für Bild {id} in {:.2?}", t.elapsed());
-        store(state, None, id, "subject", &mask)
+        store(state, id, "subject", &mask)
     })
     .await
 }
@@ -1045,7 +1060,7 @@ pub async fn mask_sky(app: AppHandle, id: i64) -> Result<MaskResult, Error> {
             segment::sky_mask(&input, None, None).map_err(err)?
         };
         log::info!("Himmelsmaske für Bild {id} in {:.2?}", t.elapsed());
-        store(state, None, id, "sky", &mask)
+        store(state, id, "sky", &mask)
     })
     .await
 }
@@ -1104,7 +1119,7 @@ pub async fn mask_person(
             "Personenmaske ({part:?}) für Bild {id} in {:.2?}",
             t.elapsed()
         );
-        store(state, None, id, "person", &mask)
+        store(state, id, "person", &mask)
     })
     .await
 }
@@ -1125,13 +1140,14 @@ pub async fn mask_animal(
         let _g = analysis_guard(state, tr_s("Tiere", "Animals"));
         let mask = parts::animal_mask(&input, kind, &owl, (&sam, &emb)).map_err(err)?;
         log::info!("Tiermaske ({kind:?}) für Bild {id} in {:.2?}", t.elapsed());
-        store(state, None, id, "animal", &mask)
+        store(state, id, "animal", &mask)
     })
     .await
 }
 
-/// Objekt per Klick. Mit `mask_id` wird eine vorhandene Maske mit den neuen
-/// Punkten überschrieben (Punkte nachsetzen, um die Auswahl zu verfeinern).
+/// Objekt per Klick. Mit `mask_id` (die bisherige Maske) wird die Auswahl
+/// mit den neuen Punkten verfeinert; das Ergebnis bekommt immer eine neue ID,
+/// die alte Datei bleibt für „Rückgängig“ erhalten.
 #[tauri::command]
 pub async fn mask_object(
     app: AppHandle,
@@ -1154,7 +1170,15 @@ pub async fn mask_object(
             let _g = analysis_guard(state, "Segment Anything");
             sam.predict(&emb, &pts).map_err(err)?
         };
-        store(state, mask_id, id, "object", &mask)
+        // Die alte Datei bleibt für „Rückgängig“: Frist des Aufräumens neu starten
+        if let Some(old) = mask_id
+            .filter(|i| i.starts_with(&format!("{id}-")))
+            .and_then(|i| state.masks.path(&i))
+            && let Ok(f) = std::fs::OpenOptions::new().write(true).open(&old)
+        {
+            let _ = f.set_modified(std::time::SystemTime::now());
+        }
+        store(state, id, "object", &mask)
     })
     .await
 }
@@ -1296,4 +1320,23 @@ pub fn denoise_start(app: AppHandle, id: i64, strength: Option<f32>) -> Result<(
 #[tauri::command]
 pub fn denoise_cancel(state: State<AppState>) {
     state.ai.denoise_cancel.store(true, Ordering::SeqCst);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn poisoned_slot_counts_as_empty() {
+        let slot: Mutex<Option<Arc<u32>>> = Mutex::new(Some(Arc::new(1)));
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _g = slot.lock().unwrap();
+            panic!("Laden abgestürzt");
+        }));
+        assert!(slot.is_poisoned());
+        // Kein Panic, der Slot ist leer und wieder benutzbar
+        assert!(!drop_if_unused(&slot));
+        assert!(!slot.is_poisoned());
+        assert!(slot.locked().is_none());
+    }
 }

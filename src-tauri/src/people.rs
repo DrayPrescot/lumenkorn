@@ -33,7 +33,7 @@ pub struct PeopleState {
 impl PeopleState {
     /// Zentroide verwerfen – nach Änderungen durch den Nutzer neu aufbauen.
     pub(crate) fn invalidate(&self) {
-        *self.index.lock().unwrap() = None;
+        *self.index.locked() = None;
     }
 }
 
@@ -74,10 +74,10 @@ struct FacesProgress {
 /// Sucht Gesichter in einem Stapel Bilder. `Ok(true)`, wenn noch weitere ausstehen.
 pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
     let state = app.state::<AppState>();
-    if !state.ai.settings.lock().unwrap().faces
+    if !state.ai.settings.locked().faces
         || state.ai.downloading.load(Ordering::Relaxed)
         || !models::status(&state.data_dir).faces_ready
-        || state.people.load_error.lock().unwrap().is_some()
+        || state.people.load_error.locked().is_some()
     {
         return Ok(false);
     }
@@ -88,7 +88,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
     let m = match face_models(&state) {
         Ok(m) => m,
         Err(e) => {
-            *state.people.load_error.lock().unwrap() = Some(e.to_string());
+            *state.people.load_error.locked() = Some(e.to_string());
             return Err(e);
         }
     };
@@ -153,7 +153,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
             .collect();
         let face_ids = {
             let mut cat = state.catalog.locked();
-            let mut idx = state.people.index.lock().unwrap();
+            let mut idx = state.people.index.locked();
             if idx.as_ref().is_none_or(|i| !cat.people_index_current(i)) {
                 *idx = Some(cat.people_index()?);
             }
@@ -239,11 +239,11 @@ pub fn people_status(state: State<AppState>) -> Result<PeopleStatus, Error> {
     Ok(PeopleStatus {
         ready: files.faces_ready,
         download_size: files.faces_download_size,
-        enabled: state.ai.settings.lock().unwrap().faces,
+        enabled: state.ai.settings.locked().faces,
         analyzed,
         total,
         faces,
-        error: state.people.load_error.lock().unwrap().clone(),
+        error: state.people.load_error.locked().clone(),
     })
 }
 
@@ -308,13 +308,13 @@ pub fn person_rename(state: State<AppState>, id: i64, name: String) -> Result<i6
     // Klick neu aufgebaut (bei Fehlern verworfen). Sperren in derselben
     // Reihenfolge wie `run_batch`: Katalog, dann Index.
     let mut cat = state.catalog.locked();
-    cat.name_person(id, &name, &mut state.people.index.lock().unwrap())
+    cat.name_person(id, &name, &mut state.people.index.locked())
 }
 
 #[tauri::command(async)]
 pub fn face_assign(state: State<AppState>, face_id: i64, name: String) -> Result<i64, Error> {
     let mut cat = state.catalog.locked();
-    cat.assign_face(face_id, &name, &mut state.people.index.lock().unwrap())
+    cat.assign_face(face_id, &name, &mut state.people.index.locked())
 }
 
 #[tauri::command(async)]
@@ -331,11 +331,7 @@ pub fn faces_reassign(
     name: Option<String>,
 ) -> Result<Option<i64>, Error> {
     let mut cat = state.catalog.locked();
-    cat.reassign_faces(
-        &face_ids,
-        name.as_deref(),
-        &mut state.people.index.lock().unwrap(),
-    )
+    cat.reassign_faces(&face_ids, name.as_deref(), &mut state.people.index.locked())
 }
 
 /// Mehrere Vorschläge auf einmal bestätigen.
@@ -380,7 +376,7 @@ pub fn person_delete(state: State<AppState>, id: i64) -> Result<(), Error> {
 pub fn people_rescan(state: State<AppState>) -> Result<(), Error> {
     state.catalog.locked().reset_faces()?;
     state.people.invalidate();
-    *state.people.load_error.lock().unwrap() = None;
+    *state.people.load_error.locked() = None;
     let _ = std::fs::remove_dir_all(thumb_dir(&state));
     state.worker.submit(crate::worker::Job::Faces);
     Ok(())

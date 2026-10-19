@@ -151,7 +151,7 @@ pub async fn import_scan(app: AppHandle, source: String) -> Result<Vec<ImportIte
             .zip(&counters)
             .map(|(c, n)| c.item(n))
             .collect();
-        *state.import.session.lock().unwrap() = Some(Arc::new(Session {
+        *state.import.session.locked() = Some(Arc::new(Session {
             cands,
             counters,
             previews: Mutex::default(),
@@ -162,7 +162,7 @@ pub async fn import_scan(app: AppHandle, source: String) -> Result<Vec<ImportIte
 }
 
 fn session(state: &AppState) -> Result<Arc<Session>, Error> {
-    state.import.session.lock().unwrap().clone().ok_or_else(|| {
+    state.import.session.locked().clone().ok_or_else(|| {
         Error::Invalid(
             lumenkorn_develop::i18n::tr_s("Keine Quelle eingelesen", "No source has been read")
                 .into(),
@@ -175,7 +175,7 @@ fn session(state: &AppState) -> Result<Arc<Session>, Error> {
 pub async fn import_preview(app: AppHandle, id: usize) -> Result<Response, Error> {
     blocking(app, move |state| {
         let s = session(state)?;
-        if let Some(b) = s.previews.lock().unwrap().get(&id) {
+        if let Some(b) = s.previews.locked().get(&id) {
             return Ok(Response::new(b.as_ref().clone()));
         }
         let c = s
@@ -188,7 +188,7 @@ pub async fn import_preview(app: AppHandle, id: usize) -> Result<Response, Error
             c.orientation,
             PREVIEW_EDGE,
         )?);
-        s.previews.lock().unwrap().insert(id, bytes.clone());
+        s.previews.locked().insert(id, bytes.clone());
         Ok(Response::new(bytes.as_ref().clone()))
     })
     .await
@@ -319,7 +319,7 @@ pub async fn import_start(
                 &state.import.cancel,
                 &|p| {
                     // Fortschritt höchstens alle 100 ms (und am Ende jeder Aufnahme)
-                    let mut l = last.lock().unwrap();
+                    let mut l = last.locked();
                     if l.elapsed().as_millis() >= 100 || p.done == p.total {
                         *l = std::time::Instant::now();
                         let _ = app2.emit("import-progress", p.clone());
@@ -338,7 +338,7 @@ pub async fn import_start(
             );
             let (root_added, outside_library) = register(&state, &target, &report.dirs);
             // Vorschauen der Karte nicht weiter vorhalten
-            *state.import.session.lock().unwrap() = None;
+            *state.import.session.locked() = None;
             let _ = app2.emit(
                 "import-done",
                 ImportDone {
@@ -371,7 +371,7 @@ fn register(state: &AppState, target: &Path, dirs: &[PathBuf]) -> (bool, bool) {
     }
     match state.catalog.locked().add_root(target) {
         Ok(root) => {
-            if let Some(w) = state.watcher.lock().unwrap().as_mut()
+            if let Some(w) = state.watcher.locked().as_mut()
                 && let Err(e) = w.watch(Path::new(&root.path))
             {
                 log::warn!("Kann {} nicht überwachen: {e}", root.path);

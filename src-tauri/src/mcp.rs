@@ -115,7 +115,7 @@ pub fn start_if_enabled(app: &AppHandle) {
 
 fn start(app: &AppHandle) -> Result<(), Error> {
     let state = app.state::<AppState>();
-    let mut slot = state.mcp.server.lock().unwrap();
+    let mut slot = state.mcp.server.locked();
     if slot.is_some() {
         return Ok(());
     }
@@ -147,7 +147,7 @@ fn start(app: &AppHandle) -> Result<(), Error> {
 
 fn stop(app: &AppHandle) {
     let state = app.state::<AppState>();
-    if let Some(s) = state.mcp.server.lock().unwrap().take() {
+    if let Some(s) = state.mcp.server.locked().take() {
         s.unblock();
     }
     let mut cfg = load(&state.data_dir);
@@ -160,7 +160,7 @@ fn stop(app: &AppHandle) {
 pub fn mcp_status(app: AppHandle) -> McpStatus {
     let state = app.state::<AppState>();
     let cfg = load(&state.data_dir);
-    let running = state.mcp.server.lock().unwrap().is_some();
+    let running = state.mcp.server.locked().is_some();
     McpStatus {
         enabled: cfg.enabled,
         running,
@@ -188,7 +188,7 @@ pub fn mcp_new_token(app: AppHandle) -> Result<McpStatus, Error> {
     let mut cfg = load(&state.data_dir);
     cfg.token = new_token();
     save(&state.data_dir, &cfg);
-    let was = state.mcp.server.lock().unwrap().is_some();
+    let was = state.mcp.server.locked().is_some();
     if was {
         stop(&app);
         start(&app)?;

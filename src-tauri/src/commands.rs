@@ -87,7 +87,7 @@ pub fn list_roots(state: State<AppState>) -> CmdResult<Vec<Root>> {
 pub fn add_root(state: State<AppState>, path: String) -> CmdResult<Root> {
     let path = PathBuf::from(path);
     let root = state.catalog.locked().add_root(&path)?;
-    if let Some(w) = state.watcher.lock().unwrap().as_mut()
+    if let Some(w) = state.watcher.locked().as_mut()
         && let Err(e) = w.watch(Path::new(&root.path))
     {
         log::warn!("Kann {} nicht überwachen: {e}", root.path);
@@ -104,7 +104,7 @@ pub fn remove_root(state: State<AppState>, id: i64) -> CmdResult<()> {
     cat.remove_root(id)?;
     drop(cat);
     crate::ai::forget_in_index(&state, None);
-    if let Some(w) = state.watcher.lock().unwrap().as_mut() {
+    if let Some(w) = state.watcher.locked().as_mut() {
         w.unwatch(Path::new(&root.path));
     }
     Ok(())

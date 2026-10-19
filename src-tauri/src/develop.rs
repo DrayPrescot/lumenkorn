@@ -98,7 +98,7 @@ struct FullEntry {
 
 impl DevelopCache {
     fn get(&self, id: i64, max_edge: usize) -> Option<Arc<Source>> {
-        let mut entries = self.entries.lock().unwrap();
+        let mut entries = self.entries.locked();
         let pos = entries.iter().position(|e| e.id == id)?;
         let mut e = entries.remove(pos);
         if e.file.changed() {
@@ -122,7 +122,7 @@ impl DevelopCache {
     }
 
     fn insert(&self, id: i64, file: FileStamp, proxy: Arc<Source>) {
-        let mut entries = self.entries.lock().unwrap();
+        let mut entries = self.entries.locked();
         entries.retain(|e| e.id != id);
         entries.insert(
             0,
@@ -139,16 +139,16 @@ impl DevelopCache {
     /// Gibt die großen Puffer frei (volle Auflösung, entrauschte Fassungen).
     /// Die kleinen Proxys bleiben, damit das Zurückkehren schnell geht.
     pub fn release_large(&self) {
-        *self.full.lock().unwrap() = None;
-        *self.full_denoised.lock().unwrap() = None;
-        self.denoised.lock().unwrap().clear();
+        *self.full.locked() = None;
+        *self.full_denoised.locked() = None;
+        self.denoised.locked().clear();
     }
 
     pub fn forget(&self, id: i64) {
-        self.entries.lock().unwrap().retain(|e| e.id != id);
-        self.denoised.lock().unwrap().clear();
-        *self.full_denoised.lock().unwrap() = None;
-        let mut f = self.full.lock().unwrap();
+        self.entries.locked().retain(|e| e.id != id);
+        self.denoised.locked().clear();
+        *self.full_denoised.locked() = None;
+        let mut f = self.full.locked();
         if f.as_ref().is_some_and(|e| e.id == id) {
             *f = None;
         }
@@ -163,7 +163,7 @@ pub(crate) fn load_denoised(
 ) -> Option<Arc<ImageF32>> {
     let key = (denoise_id.to_string(), max_edge);
     {
-        let c = state.develop.denoised.lock().unwrap();
+        let c = state.develop.denoised.locked();
         if let Some((_, img)) = c.iter().find(|(k, _)| *k == key) {
             return Some(img.clone());
         }
@@ -175,7 +175,7 @@ pub(crate) fn load_denoised(
     } else {
         img
     });
-    let mut c = state.develop.denoised.lock().unwrap();
+    let mut c = state.develop.denoised.locked();
     c.insert(0, (key, img.clone()));
     c.truncate(4);
     Some(img)
@@ -229,7 +229,7 @@ fn load_full(state: &AppState, id: i64, max_edge: usize) -> Result<Arc<Source>, 
     if let Some(s) = cached_full(state, id, max_edge) {
         return Ok(s);
     }
-    *state.develop.full.lock().unwrap() = None; // alten Speicher vor dem Laden freigeben
+    *state.develop.full.locked() = None; // alten Speicher vor dem Laden freigeben
     let job = state.catalog.locked().thumb_job(id)?;
     let file = FileStamp::of(Path::new(&job.path));
     let t = std::time::Instant::now();
@@ -244,7 +244,7 @@ fn load_full(state: &AppState, id: i64, max_edge: usize) -> Result<Arc<Source>, 
         t.elapsed()
     );
     let src = Arc::new(src);
-    *state.develop.full.lock().unwrap() = Some(FullEntry {
+    *state.develop.full.locked() = Some(FullEntry {
         id,
         file,
         source: src.clone(),
@@ -258,7 +258,7 @@ fn load_full(state: &AppState, id: i64, max_edge: usize) -> Result<Arc<Source>, 
 /// Volle Auflösung (bzw. auf `max_edge` verkleinert) aus dem Speicher, falls
 /// es dieses Foto in unveränderter Fassung ist.
 fn cached_full(state: &AppState, id: i64, max_edge: usize) -> Option<Arc<Source>> {
-    let mut f = state.develop.full.lock().unwrap();
+    let mut f = state.develop.full.locked();
     let e = f.as_mut().filter(|e| e.id == id)?;
     if e.file.changed() {
         *f = None;
@@ -282,7 +282,7 @@ fn load_denoised_full(
     denoise_id: &str,
     max_edge: usize,
 ) -> Option<Arc<ImageF32>> {
-    let mut f = state.develop.full_denoised.lock().unwrap();
+    let mut f = state.develop.full_denoised.locked();
     if f.as_ref().is_none_or(|(k, _, _)| k != denoise_id) {
         *f = None;
         let path = lumenkorn_develop::denoised::path(&state.denoised_dir, denoise_id)?;
@@ -434,7 +434,7 @@ pub async fn develop_render_detail(
         };
         // Für Zoomstufen unter 100 % reicht eine verkleinerte Quelle
         let full_long = {
-            let f = state.develop.full.lock().unwrap();
+            let f = state.develop.full.locked();
             f.as_ref()
                 .filter(|e| e.id == id)
                 .map(|e| e.source.image.long_edge())
@@ -545,7 +545,15 @@ pub fn develop_save(
             .name("lumenkorn-save-thumbs".into())
             .spawn(move || {
                 let state = app.state::<AppState>();
-                match thumbs_from_proxy(&state, id, &proxy, &params) {
+                let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    thumbs_from_proxy(&state, id, &proxy, &params)
+                }))
+                .unwrap_or_else(|_| {
+                    Err(Error::Invalid(
+                        tr_s("Interner Fehler", "Internal error").into(),
+                    ))
+                });
+                match res {
                     Ok(true) => {
                         let _ = app.emit("thumbs-ready", serde_json::json!({ "ids": [id] }));
                     }
@@ -778,65 +786,79 @@ pub fn export_images(
             let mut failed = Vec::new();
             let mut used = std::collections::BTreeSet::new();
             for (i, id) in ids.iter().enumerate() {
-                let res = (|| -> Result<String, Error> {
-                    let (job, params) = {
-                        let cat = state.catalog.locked();
-                        (cat.thumb_job(*id)?, cat.develop_params(*id)?)
-                    };
-                    let name = Path::new(&job.path)
-                        .file_stem()
-                        .map(|s| s.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| id.to_string());
-                    let _ = app.emit(
-                        "export-progress",
-                        ExportProgress {
-                            done: i,
-                            total,
-                            current: Some(name.clone()),
-                            failed: failed.clone(),
-                            finished: false,
-                            dir: shown(&used),
-                        },
-                    );
-                    // Mit begrenzter Kantenlänge nicht in voller Auflösung
-                    // entwickeln: Die Quelle muss nur groß genug sein, dass der
-                    // Zuschnitt (und die Vergrößerung beim Geraderichten) die
-                    // Zielgröße erreicht.
-                    let load_edge = options.long_edge.filter(|m| *m > 0).map(|m| {
-                        let crop = params.crop.map_or(1.0, |c| c.w.min(c.h)).max(0.05);
-                        let tilt = if params.straighten != 0.0 { 1.5 } else { 1.0 };
-                        (m as f32 / crop * tilt).ceil() as usize
-                    });
-                    let src = Source::load(
-                        Path::new(&job.path),
-                        job.kind == ImageKind::Raw,
-                        job.orientation.map(|o| o as u16),
-                        load_edge,
-                    )?;
-                    let denoised = params.denoise.as_ref().and_then(|d| {
-                        let p = lumenkorn_develop::denoised::path(&state.denoised_dir, &d.id)?;
-                        lumenkorn_develop::denoised::read(&p, Some(src.image.long_edge())).ok()
-                    });
-                    let img = lumenkorn_develop::render_auto(
-                        &src,
-                        &params,
-                        &render_opts(&state, denoised.as_ref()),
-                    );
-                    let target_dir = match &dir {
-                        Some(d) => d.clone(),
-                        None => lumenkorn_core::scanner::export_dir_for(Path::new(&job.path))
-                            .map_err(|e| {
+                let mut cur_name: Option<String> = None;
+                // Ein Panic bei einem Bild (z. B. in der GPU-Pipeline) darf den
+                // Export nicht beenden: Das Bild gilt als fehlgeschlagen.
+                let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                    || -> Result<String, Error> {
+                        let (job, params) = {
+                            let cat = state.catalog.locked();
+                            (cat.thumb_job(*id)?, cat.develop_params(*id)?)
+                        };
+                        let name = Path::new(&job.path)
+                            .file_stem()
+                            .map(|s| s.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| id.to_string());
+                        cur_name = Some(name.clone());
+                        let _ = app.emit(
+                            "export-progress",
+                            ExportProgress {
+                                done: i,
+                                total,
+                                current: Some(name.clone()),
+                                failed: failed.clone(),
+                                finished: false,
+                                dir: shown(&used),
+                            },
+                        );
+                        // Mit begrenzter Kantenlänge nicht in voller Auflösung
+                        // entwickeln: Die Quelle muss nur groß genug sein, dass der
+                        // Zuschnitt (und die Vergrößerung beim Geraderichten) die
+                        // Zielgröße erreicht.
+                        let load_edge = options.long_edge.filter(|m| *m > 0).map(|m| {
+                            let crop = params.crop.map_or(1.0, |c| c.w.min(c.h)).max(0.05);
+                            let tilt = if params.straighten != 0.0 { 1.5 } else { 1.0 };
+                            (m as f32 / crop * tilt).ceil() as usize
+                        });
+                        let src = Source::load(
+                            Path::new(&job.path),
+                            job.kind == ImageKind::Raw,
+                            job.orientation.map(|o| o as u16),
+                            load_edge,
+                        )?;
+                        let denoised = params.denoise.as_ref().and_then(|d| {
+                            let p = lumenkorn_develop::denoised::path(&state.denoised_dir, &d.id)?;
+                            lumenkorn_develop::denoised::read(&p, Some(src.image.long_edge())).ok()
+                        });
+                        let img = lumenkorn_develop::render_auto(
+                            &src,
+                            &params,
+                            &render_opts(&state, denoised.as_ref()),
+                        );
+                        let target_dir = match &dir {
+                            Some(d) => d.clone(),
+                            None => lumenkorn_core::scanner::export_dir_for(Path::new(&job.path))
+                                .map_err(|e| {
                                 Error::Invalid(tr!("Export-Ordner: {e}", "Export folder: {e}"))
                             })?,
-                    };
-                    let target = unique_path(&target_dir, &name, options.format.extension());
-                    used.insert(target_dir);
-                    output::write(&img, &target, &options)?;
-                    Ok(name)
-                })();
+                        };
+                        let target = unique_path(&target_dir, &name, options.format.extension());
+                        used.insert(target_dir);
+                        output::write(&img, &target, &options)?;
+                        Ok(name)
+                    },
+                ))
+                .unwrap_or_else(|_| {
+                    Err(Error::Invalid(
+                        tr_s("Interner Fehler", "Internal error").into(),
+                    ))
+                });
                 if let Err(e) = res {
                     log::warn!("Export {id}: {e}");
-                    failed.push(format!("{id}: {e}"));
+                    match cur_name {
+                        Some(n) => failed.push(format!("{n}: {e}")),
+                        None => failed.push(format!("{id}: {e}")),
+                    }
                 }
             }
             // Puffer in voller Auflösung nicht bis zum nächsten Export behalten

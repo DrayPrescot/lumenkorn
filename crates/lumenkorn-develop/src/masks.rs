@@ -73,14 +73,14 @@ static CACHE: Mutex<Vec<CacheEntry>> = Mutex::new(Vec::new());
 
 /// Verwirft alle zwischengespeicherten Masken.
 pub(crate) fn release_cache() {
-    CACHE.lock().unwrap().clear();
+    CACHE.lock().unwrap_or_else(|e| e.into_inner()).clear();
 }
 
 /// Nur Masken in voller Auflösung verwerfen (nach einem Export).
 pub(crate) fn release_large() {
     CACHE
         .lock()
-        .unwrap()
+        .unwrap_or_else(|e| e.into_inner())
         .retain(|e| e.3.len() <= crate::LARGE_PIXELS);
 }
 
@@ -117,7 +117,7 @@ pub(crate) fn evaluate_cached(
         hw.0.finish()
     };
     if complete {
-        let mut c = CACHE.lock().unwrap();
+        let mut c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(pos) = c
             .iter()
             .position(|(k, cw, ch, _)| *cw == w && *ch == h && *k == key)
@@ -130,7 +130,7 @@ pub(crate) fn evaluate_cached(
     }
     let a = Arc::new(evaluate(layer, w, h, store, image));
     if complete {
-        let mut c = CACHE.lock().unwrap();
+        let mut c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
         c.insert(0, (key, w, h, a.clone()));
         c.truncate(ENTRIES);
         // Volle Auflösung (Zoom) belegt viel Speicher: ~256 MB behalten, aber

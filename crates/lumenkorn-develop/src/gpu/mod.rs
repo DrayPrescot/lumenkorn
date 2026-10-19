@@ -73,7 +73,7 @@ pub fn init() -> Result<&'static Gpu, String> {
 
 pub fn set_enabled(on: bool) {
     ENABLED.store(on, Ordering::SeqCst);
-    *LAST_ERROR.lock().unwrap() = None;
+    *LAST_ERROR.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
 pub fn status() -> GpuStatus {
@@ -84,7 +84,7 @@ pub fn status() -> GpuStatus {
         info: g.and_then(|r| r.as_ref().ok()).map(|g| g.info.clone()),
         error: LAST_ERROR
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .clone()
             .or_else(|| g.and_then(|r| r.as_ref().err().cloned())),
     }
@@ -94,7 +94,7 @@ pub fn status() -> GpuStatus {
 /// Geräte und Shader bleiben – das nächste Rendern legt die Puffer neu an.
 pub(crate) fn trim() {
     if let Some(Ok(g)) = GPU.get() {
-        let mut st = g.state.lock().unwrap();
+        let mut st = g.lock_state();
         st.sets.clear();
         st.alphas.clear();
     }
@@ -104,7 +104,7 @@ pub(crate) fn trim() {
 /// bleiben, damit das Weiterbearbeiten nicht neu hochladen muss.
 pub(crate) fn trim_large() {
     if let Some(Ok(g)) = GPU.get() {
-        let mut st = g.state.lock().unwrap();
+        let mut st = g.lock_state();
         st.sets.retain(|s| s.cap <= crate::LARGE_PIXELS);
         st.alphas.retain(|(a, _)| a.len() <= crate::LARGE_PIXELS);
     }
@@ -120,7 +120,7 @@ pub(crate) fn active() -> Option<&'static Gpu> {
 
 pub(crate) fn note_error(e: &str) {
     log::warn!("GPU-Bildbearbeitung fehlgeschlagen, rechne auf der CPU: {e}");
-    *LAST_ERROR.lock().unwrap() = Some(e.to_string());
+    *LAST_ERROR.lock().unwrap_or_else(|e| e.into_inner()) = Some(e.to_string());
 }
 
 /// Ergebnis eines GPU-Durchlaufs.
@@ -630,7 +630,37 @@ impl Gpu {
     }
 }
 
+/// Sperrt `m`. Ist die Sperre vergiftet (ein Panic beim Hochladen oder
+/// Auslesen), kann der Inhalt halb beschrieben sein: `reset` verwirft ihn,
+/// damit der nächste Lauf alles sauber neu anlegt.
+fn lock_or_reset<T>(m: &Mutex<T>, reset: impl FnOnce(&mut T)) -> std::sync::MutexGuard<'_, T> {
+    match m.lock() {
+        Ok(g) => g,
+        Err(e) => {
+            log::warn!("GPU-Zustand war vergiftet, Puffer werden neu angelegt");
+            let mut g = e.into_inner();
+            reset(&mut g);
+            m.clear_poison();
+            g
+        }
+    }
+}
+
+impl Gpu {
+    fn lock_state(&self) -> std::sync::MutexGuard<'_, State> {
+        lock_or_reset(&self.state, State::reset)
+    }
+}
+
 impl State {
+    /// Verwirft alle zwischengespeicherten Puffer (nach einem Panic).
+    fn reset(&mut self) {
+        self.sets.clear();
+        self.alphas.clear();
+        self.uniform = None;
+        self.curve = None;
+    }
+
     /// Puffersatz für mindestens `n` Pixel (wiederverwendet oder neu).
     fn set_for(&mut self, device: &wgpu::Device, n: usize, max_binding: u64) -> usize {
         self.tick += 1;
@@ -1099,7 +1129,7 @@ impl Gpu {
 
         let oom = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
         let val = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let mut st = self.state.lock().unwrap();
+        let mut st = self.lock_state();
         let si = st.set_for(&self.device, n, self.max_binding);
 
         // Quelle und entrauschte Fassung hochladen, falls nicht schon da
@@ -1594,5 +1624,25 @@ mod tests {
         let mut v = vec![("a", 1), ("b", 1)];
         evict_oldest(&mut v, |e| e.1, 2);
         assert_eq!(v.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod lock_tests {
+    use super::*;
+
+    #[test]
+    fn poisoned_state_is_reset() {
+        let m = Mutex::new(vec![1, 2, 3]);
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _g = m.lock().unwrap();
+            panic!("Hochladen abgestürzt");
+        }));
+        assert!(m.is_poisoned());
+        assert!(lock_or_reset(&m, |v| v.clear()).is_empty());
+        assert!(!m.is_poisoned());
+        // Ohne Vergiftung bleibt der Inhalt
+        m.lock().unwrap().push(7);
+        assert_eq!(*lock_or_reset(&m, |v| v.clear()), vec![7]);
     }
 }

@@ -919,7 +919,8 @@ impl Catalog {
         Ok(tx.last_insert_rowid())
     }
 
-    /// Datei hat sich inhaltlich geändert: Metadaten neu, Vorschau neu erzeugen.
+    /// Datei hat sich geändert: Metadaten neu, Vorschau neu erzeugen. KI und
+    /// Gesichtserkennung laufen nur bei geänderter Größe oder Prüfsumme neu.
     pub(crate) fn update_image_content(
         tx: &rusqlite::Transaction,
         id: i64,
@@ -930,7 +931,11 @@ impl Catalog {
             "UPDATE images SET size = ?2, mtime = ?3, quick_hash = ?4, width = ?5, height = ?6,
                     orientation = ?7, captured_at = ?8, camera = ?9, lens = ?10, iso = ?11,
                     exposure = ?12, aperture = ?13, focal_length = ?14,
-                    missing = 0, thumb_state = 0, ai_state = 0, face_state = 0, geo_state = 1,
+                    missing = 0, thumb_state = 0, geo_state = 1,
+                    -- KI und Gesichter nur neu, wenn sich der Inhalt geändert hat (nicht
+                    -- bei bloßer Änderungszeit, z. B. `touch` oder Sync-Werkzeug)
+                    ai_state = CASE WHEN size IS ?2 AND quick_hash IS ?4 THEN ai_state ELSE 0 END,
+                    face_state = CASE WHEN size IS ?2 AND quick_hash IS ?4 THEN face_state ELSE 0 END,
                     -- Vom Nutzer gesetzte Orte bleiben, sonst gilt das neue EXIF
                     place = CASE WHEN gps_source = 'manual' OR (gps_lat IS ?15 AND gps_lon IS ?16)
                                  THEN place ELSE NULL END,
@@ -1962,6 +1967,63 @@ pub(crate) mod tests_support {
             Ok(ids)
         })
         .unwrap()
+    }
+}
+
+#[cfg(test)]
+mod content_update_tests {
+    use super::*;
+
+    fn changed(id_path: &str, root_id: i64, mtime: i64, hash: &str) -> NewImage {
+        NewImage {
+            root_id,
+            path: id_path.into(),
+            dir: "/tmp/lumenkorn-test".into(),
+            file_name: "bild0.jpg".into(),
+            ext: "jpg".into(),
+            kind: ImageKind::Raster,
+            size: 1,
+            mtime,
+            quick_hash: hash.into(),
+            meta: Default::default(),
+        }
+    }
+
+    #[test]
+    fn only_changed_content_resets_ai_and_faces() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let ids = tests_support::insert_dummy_images(&mut cat, 1);
+        let root_id: i64 = cat
+            .conn
+            .query_row("SELECT root_id FROM images WHERE id = ?1", [ids[0]], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        let path = "/tmp/lumenkorn-test/bild0.jpg";
+        let states = |cat: &Catalog| -> (i64, i64, i64) {
+            cat.conn
+                .query_row(
+                    "SELECT ai_state, face_state, thumb_state FROM images WHERE id = ?1",
+                    [ids[0]],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                )
+                .unwrap()
+        };
+        cat.conn
+            .execute("UPDATE images SET ai_state = 1, face_state = 1", [])
+            .unwrap();
+
+        // Nur die Änderungszeit: KI und Gesichter bleiben fertig
+        let img = changed(path, root_id, 99, "h0");
+        cat.with_tx(|tx| Catalog::update_image_content(tx, ids[0], &img))
+            .unwrap();
+        assert_eq!(states(&cat), (1, 1, 0));
+
+        // Anderer Hash: alles neu
+        let img = changed(path, root_id, 100, "andere");
+        cat.with_tx(|tx| Catalog::update_image_content(tx, ids[0], &img))
+            .unwrap();
+        assert_eq!(states(&cat), (0, 0, 0));
     }
 }
 
