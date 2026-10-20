@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.12] – 2026-10-20
+
 ### Added
 - Photo album: date and place are written onto the page where a new day or place begins (date and
   place, date only, place only, or none). Your own texts can go above or below the photos (the
