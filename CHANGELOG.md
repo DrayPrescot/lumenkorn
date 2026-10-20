@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.10] – 2026-10-20
+
 ### Added
 - Photo album: the **Fotoalbum** button above a project or folder picks the best photos for a
   theme (vacation, travel, wedding, birthday, family and more, or your own description) and lays
