@@ -2,11 +2,10 @@
   // Bildanzeige mit Zoom (Scrollrad, Tasten über ZoomState), Verschieben per
   // Ziehen und Doppelklick (Einpassen ↔ 100 %). Reicht die Auflösung des
   // angezeigten Bildes nicht mehr, wird nachgeladen: entweder das ganze Bild
-  // in voller Auflösung (`hiSrc`, Bibliothek, nur beim Zoomen) oder der
+  // in voller Auflösung (`hiSrc`, Bibliothek) oder der
   // sichtbare Ausschnitt (`detail`, Entwickeln – die Bearbeitung ändert sich
-  // laufend). Im Entwickeln auch eingepasst: Ist der Proxy kleiner als die
-  // Bühne in Gerätepixeln, kommt das ganze Bild in Bühnenauflösung aus der
-  // vollen Datei.
+  // laufend). Das gilt auch eingepasst: Ist die Vorschau bzw. der Proxy
+  // kleiner als die Bühne in Gerätepixeln, kommt die volle Auflösung.
   import type { Snippet } from "svelte";
   import { onDestroy, untrack } from "svelte";
   import { t } from "../lib/i18n";
@@ -149,15 +148,15 @@
     zoom.toggle(Math.min(1, Math.max(0, ix)), Math.min(1, Math.max(0, iy)));
   }
 
-  // Reicht die Auflösung des angezeigten Bildes nicht mehr?
-  const needMore = $derived(!zoom.fit && shownW > 0 && dw * dpr > shownW * 1.05);
-
   // Lage des Bildes in der Ansicht, eingepasst (wie `object-fit: contain`)
   // oder gezoomt
   const viewW = $derived(zoom.fit ? (fullW * fitZoom) / dpr : dw);
   const viewH = $derived(zoom.fit ? (fullH * fitZoom) / dpr : dh);
   const viewL = $derived(zoom.fit ? (w - viewW) / 2 : left);
   const viewT = $derived(zoom.fit ? (h - viewH) / 2 : top);
+  /** Reicht die Auflösung des angezeigten Bildes nicht – gezoomt, aber auch
+   *  eingepasst, wenn die Ansicht mehr Gerätepixel hat als die Vorschau? */
+  const needMore = $derived(shownW > 0 && viewW * dpr > shownW * 1.05);
   /** Ausschnitt in hoher Auflösung nötig (auch eingepasst, siehe oben) */
   const needDetail = $derived(!!detail && !hiSrc && shownW > 0 && viewW * dpr > shownW * 1.05);
 

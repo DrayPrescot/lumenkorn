@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Library: the loupe now shows photos at full resolution right away when the screen has more
+  pixels than the 2048 px preview, not only after zooming in. While you flip through photos it
+  prepares the next one in the direction you are going, so it is sharp as soon as it appears.
+
 ### Fixed
 - Develop: closing the window right after a change (within half a second) lost that change, and
   an open crop was not applied. Pending edits are now saved before the window closes.
