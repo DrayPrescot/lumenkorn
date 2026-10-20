@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.14] – 2026-10-20
+
 ### Added
 - Photo album: alignment, font size, colour and bold for the date and place captions can be set when
   creating the album (and changed later for all captions at once); they are also the default for
