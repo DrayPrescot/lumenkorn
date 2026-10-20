@@ -43,6 +43,8 @@ export const LIBRARIES: Credit[] = [
   { name: "half, bytemuck, pollster", url: "https://github.com/VoidStarKat/half-rs", use: t("Hilfen für die Grafikkarte"), license: "MIT / Apache-2.0" },
   { name: "regex, log, env_logger, thiserror, libloading, dirs, base64", url: "https://github.com/rust-lang/regex", use: t("Hilfsbibliotheken"), license: "MIT / Apache-2.0, ISC" },
   { name: "Instrument Sans", url: "https://github.com/Instrument/instrument-sans", use: t("Schrift der Oberfläche"), license: "OFL-1.1" },
+  { name: "Lora", url: "https://github.com/cyrealtype/Lora-Cyrillic", use: t("Serifenschrift im Fotoalbum"), license: "OFL-1.1" },
+  { name: "Natural Earth", url: "https://www.naturalearthdata.com", use: t("Ländergrenzen für die Karte im Fotoalbum"), license: "Public Domain" },
 ];
 
 /** KI-Modelle – nicht in der App enthalten, werden bei Bedarf heruntergeladen */

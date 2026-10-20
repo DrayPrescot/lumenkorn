@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Photo album: date and place are written onto the page where a new day or place begins (date and
+  place, date only, place only, or none). Your own texts can go above or below the photos (the
+  photos move together) or anywhere on the page, with size, alignment, colour and bold; two fonts
+  (Instrument Sans, Lora).
+- Photo album: a map page (first or last page) with country outlines, the visited countries
+  highlighted and a pin for every place, nearby places sharing one pin. It works offline.
+
 ## [1.0.11] – 2026-10-20
 
 ### Fixed

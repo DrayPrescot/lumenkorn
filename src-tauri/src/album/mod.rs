@@ -38,6 +38,11 @@ fn half() -> f64 {
 #[serde(rename_all = "camelCase")]
 pub struct AlbumPage {
     pub cells: Vec<AlbumCell>,
+    /// Texte und Karte als PNG mit Alpha (Base64, Standard-Alphabet), das die
+    /// ganze Seite samt Beschnittzugabe abdeckt. Wird nach den Fotos mit Alpha
+    /// über die Seite gelegt. Seiten ohne Fotos, aber mit Ebene, sind erlaubt.
+    #[serde(default)]
+    pub overlay: Option<String>,
 }
 
 /// Das fertig gestaltete Album, wie es gespeichert wird.

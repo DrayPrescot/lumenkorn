@@ -178,6 +178,30 @@
           <label><input type="radio" bind:group={s.background} value="black" /> {t("Schwarz")}</label>
         </span>
       </div>
+      <label class="row">
+        <span>{t("Datum und Ort")}</span>
+        <select bind:value={s.captions}>
+          <option value="both">{t("Datum und Ort")}</option>
+          <option value="date">{t("Nur Datum")}</option>
+          <option value="place">{t("Nur Ort")}</option>
+          <option value="none">{t("Keine")}</option>
+        </select>
+      </label>
+      <label class="row">
+        <span>{t("Karte")}</span>
+        <select bind:value={s.map}>
+          <option value="none">{t("Keine")}</option>
+          <option value="first">{t("Auf der ersten Seite")}</option>
+          <option value="last">{t("Auf der letzten Seite")}</option>
+        </select>
+      </label>
+      <label class="row">
+        <span>{t("Schrift")}</span>
+        <select bind:value={s.font}>
+          <option value="sans">Instrument Sans</option>
+          <option value="serif">Lora</option>
+        </select>
+      </label>
     </fieldset>
 
     {#if available === 0}

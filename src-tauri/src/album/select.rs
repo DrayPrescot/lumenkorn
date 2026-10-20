@@ -95,6 +95,13 @@ pub struct AlbumCandidate {
     /// Auflösung im Druck)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pixels: Option<u32>,
+    /// Aufnahmeort (Breite/Länge) und Ortsname, soweit bekannt
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lat: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lon: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub place: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -271,6 +278,8 @@ pub(crate) struct Features {
     pub people: Vec<i64>,
     pub focus: Option<[f32; 2]>,
     pub pixels: Option<u32>,
+    pub lat: Option<f64>,
+    pub lon: Option<f64>,
     pub theme: Option<f32>,
     pub negative: Option<f32>,
     pub vector: Option<Vec<f32>>,
@@ -811,6 +820,8 @@ fn suggest(state: &AppState, app: &AppHandle, req: AlbumRequest) -> Result<Album
                             .width
                             .max(img.height)
                             .and_then(|p| u32::try_from(p).ok()),
+                        lat: img.lat,
+                        lon: img.lon,
                         ..Default::default()
                     })
                 })();
@@ -840,6 +851,7 @@ fn suggest(state: &AppState, app: &AppHandle, req: AlbumRequest) -> Result<Album
     // grober Anhaltspunkt, die Oberfläche nimmt ihn nur ohne Zuschnitt.
     let ids: Vec<i64> = f.iter().map(|x| x.id).collect();
     let faces = state.catalog.locked().faces_of_images(&ids)?;
+    let mut places = state.catalog.locked().places(&ids)?;
     let mut by_image: HashMap<i64, Vec<&lumenkorn_core::people::FaceInfo>> = HashMap::new();
     for face in &faces {
         // Kleine Gesichter im Hintergrund zählen nicht
@@ -929,6 +941,9 @@ fn suggest(state: &AppState, app: &AppHandle, req: AlbumRequest) -> Result<Album
                 sharpness: sharp[i],
                 focus: x.focus,
                 pixels: x.pixels,
+                lat: x.lat,
+                lon: x.lon,
+                place: places.remove(&x.id).filter(|p| !p.is_empty()),
             })
             .collect(),
         theme_used,

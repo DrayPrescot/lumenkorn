@@ -11,7 +11,7 @@ use lumenkorn_develop::{DevelopParams, TransferGroups};
 use lumenkorn_develop::{i18n::tr_s, tr};
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, Row, params, params_from_iter};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1291,6 +1291,18 @@ impl Catalog {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
+    /// Ortsnamen (Spalte `place`) der Fotos; Fotos ohne oder mit leerem Namen
+    /// fehlen im Ergebnis.
+    pub fn places(&self, ids: &[i64]) -> Result<HashMap<i64, String>> {
+        let ids = serde_json::to_string(ids)?;
+        let mut st = self.conn.prepare(
+            "SELECT id, place FROM images
+             WHERE id IN (SELECT value FROM json_each(?1)) AND place IS NOT NULL AND place <> ''",
+        )?;
+        let rows = st.query_map([ids], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
     pub fn thumb_job(&self, id: i64) -> Result<ThumbJob> {
         self.conn
             .prepare_cached(&format!("{THUMB_JOB_SELECT} WHERE i.id = ?1"))?
@@ -2085,6 +2097,25 @@ mod cull_tests {
             .unwrap();
         assert_eq!(left, 3);
         assert!(cat.rejected_files(&ids).unwrap().is_empty());
+    }
+
+    #[test]
+    fn places_returns_only_non_empty_names() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let ids = tests_support::insert_dummy_images(&mut cat, 3);
+        cat.conn
+            .execute(
+                "UPDATE images SET place = 'Lissabon' WHERE id = ?1",
+                [ids[0]],
+            )
+            .unwrap();
+        cat.conn
+            .execute("UPDATE images SET place = '' WHERE id = ?1", [ids[1]])
+            .unwrap();
+        let p = cat.places(&ids).unwrap();
+        assert_eq!(p.len(), 1);
+        assert_eq!(p[&ids[0]], "Lissabon");
+        assert!(cat.places(&[]).unwrap().is_empty());
     }
 }
 

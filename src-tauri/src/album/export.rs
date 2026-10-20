@@ -21,6 +21,8 @@ use tauri::{AppHandle, Emitter, Manager};
 const EDGE_TOL_MM: f64 = 0.5;
 const JPEG_QUALITY: u8 = 92;
 const MAX_PAGE_PX: f64 = 20000.0;
+/// Längste erlaubte Base64-Ebene je Seite (Zeichen).
+const MAX_OVERLAY_B64: usize = 64 * 1024 * 1024;
 
 static CANCEL: AtomicBool = AtomicBool::new(false);
 
@@ -91,6 +93,49 @@ fn paint_cell(page: &mut RgbImage, photo: &RgbImage, cell: &AlbumCell, rect: (u3
     let part = imageops::crop_imm(photo, l, t, cw, ch).to_image();
     let scaled = imageops::resize(&part, w, h, imageops::FilterType::Lanczos3);
     imageops::replace(page, &scaled, x as i64, y as i64);
+}
+
+/// Ein Farbkanal: `src` mit Deckkraft `a` (0…255) über `dst`.
+fn blend_channel(src: u8, dst: u8, a: u8) -> u8 {
+    let a = a as u32;
+    ((src as u32 * a + dst as u32 * (255 - a) + 127) / 255) as u8
+}
+
+/// Legt ein RGBA-Bild (gleiche Größe wie die Seite) mit Alpha über die Seite.
+fn blend_overlay(page: &mut RgbImage, overlay: &image::RgbaImage) {
+    for (dst, src) in page.pixels_mut().zip(overlay.pixels()) {
+        let a = src.0[3];
+        if a == 0 {
+            continue;
+        }
+        for c in 0..3 {
+            dst.0[c] = blend_channel(src.0[c], dst.0[c], a);
+        }
+    }
+}
+
+/// Base64-PNG der Ebene lesen; weicht die Größe von `size` ab, wird skaliert.
+fn decode_overlay(b64: &str, size: (u32, u32)) -> Result<image::RgbaImage, String> {
+    use base64::Engine;
+    if b64.len() > MAX_OVERLAY_B64 {
+        return Err(tr_s("Ebene zu groß", "Layer too large").into());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64.trim())
+        .map_err(|e| e.to_string())?;
+    let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?
+        .to_rgba8();
+    if img.dimensions() == size {
+        Ok(img)
+    } else {
+        Ok(imageops::resize(
+            &img,
+            size.0,
+            size.1,
+            imageops::FilterType::CatmullRom,
+        ))
+    }
 }
 
 // --- PDF ------------------------------------------------------------------------
@@ -484,6 +529,19 @@ fn write_pages(
             }
         }
         drop(cache);
+        if let Some(b64) = page.overlay.as_deref().filter(|o| !o.is_empty()) {
+            match decode_overlay(b64, page_px) {
+                Ok(ov) => blend_overlay(&mut img, &ov),
+                Err(e) => {
+                    log::warn!("Album Seite {}: Ebene: {e}", n + 1);
+                    failed.push(format!(
+                        "{page_label} {}: {}: {e}",
+                        n + 1,
+                        tr_s("Text/Karte", "Text/map")
+                    ));
+                }
+            }
+        }
         let jpeg = output::encode_jpeg_rgb8(&img, JPEG_QUALITY)?;
         drop(img);
         std::fs::write(dir.join(format!("{page_label} {:03}.jpg", n + 1)), &jpeg)?;
@@ -503,6 +561,47 @@ fn write_pages(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn png_b64(img: &image::RgbaImage) -> String {
+        use base64::Engine;
+        let mut buf = std::io::Cursor::new(Vec::new());
+        img.write_to(&mut buf, image::ImageFormat::Png).unwrap();
+        base64::engine::general_purpose::STANDARD.encode(buf.into_inner())
+    }
+
+    #[test]
+    fn alpha_blend() {
+        let mut page = RgbImage::from_pixel(2, 1, image::Rgb([255, 255, 255]));
+        let mut ov = image::RgbaImage::new(2, 1);
+        ov.put_pixel(0, 0, image::Rgba([255, 0, 0, 128]));
+        ov.put_pixel(1, 0, image::Rgba([0, 0, 0, 0]));
+        blend_overlay(&mut page, &ov);
+        let p = page.get_pixel(0, 0).0;
+        assert_eq!(p[0], 255);
+        assert!(
+            (120..=135).contains(&p[1]) && (120..=135).contains(&p[2]),
+            "{p:?}"
+        );
+        assert_eq!(page.get_pixel(1, 0).0, [255, 255, 255]);
+        assert_eq!(blend_channel(10, 200, 255), 10);
+        assert_eq!(blend_channel(10, 200, 0), 200);
+    }
+
+    #[test]
+    fn overlay_is_scaled_to_page() {
+        let ov = image::RgbaImage::from_pixel(4, 4, image::Rgba([1, 2, 3, 255]));
+        let out = decode_overlay(&png_b64(&ov), (10, 6)).unwrap();
+        assert_eq!(out.dimensions(), (10, 6));
+        let same = decode_overlay(&png_b64(&ov), (4, 4)).unwrap();
+        assert_eq!(same.dimensions(), (4, 4));
+    }
+
+    #[test]
+    fn broken_overlay_is_an_error() {
+        assert!(decode_overlay("!!!kein base64!!!", (4, 4)).is_err());
+        assert!(decode_overlay("QUJDRA==", (4, 4)).is_err()); // gültig, aber kein PNG
+        assert!(decode_overlay("", (4, 4)).is_err());
+    }
 
     fn cell(x: f64, y: f64, w: f64, h: f64) -> AlbumCell {
         AlbumCell {

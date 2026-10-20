@@ -472,6 +472,9 @@ export const mock = {
           picked: false,
           sharpness: ((i.id * 53) % 100) / 100,
           pixels: Math.max(i.width ?? 0, i.height ?? 0) || undefined,
+          ...(i.lat != null && i.lon != null
+            ? { lat: i.lat, lon: i.lon, place: images.find((x) => x.id === i.id)?.location?.place ?? undefined }
+            : {}),
         }));
         const best = new Set([...cands].sort((x, y) => y.score - x.score).slice(0, a.request.count).map((c) => c.id));
         for (const i of list) if (i.rating >= 4) best.add(i.id);

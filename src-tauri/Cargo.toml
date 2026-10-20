@@ -21,7 +21,7 @@ tauri-build = { version = "2", features = [] }
 lumenkorn-core = { path = "../crates/lumenkorn-core" }
 lumenkorn-develop = { path = "../crates/lumenkorn-develop" }
 lumenkorn-ai = { path = "../crates/lumenkorn-ai" }
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }

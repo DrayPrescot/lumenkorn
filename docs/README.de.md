@@ -403,6 +403,13 @@ A3 oder eigene Maße in mm), die Anzahl der Fotos und Seiten und ob mit Rand ode
   Ausschnitt. Ein Klick auf eine Seite bietet Fotos zum Hinzufügen, eine andere Anordnung und
   Seiten einfügen oder löschen. Ein rotes Schild zeigt Fotos, deren Auflösung für die Größe im
   Druck zu gering ist.
+- **Texte:** Datum und Ort stehen einmal auf der Seite, auf der ein neuer Tag bzw. Ort beginnt
+  (Datum und Ort, nur Datum, nur Ort oder keine). Eigene Texte kommen über oder unter die Fotos
+  (die Fotos rücken zusammen) oder frei auf die Seite (ziehen), mit Größe, Ausrichtung, Farbe und
+  Fett, in Instrument Sans oder Lora. Vorschau und Druck zeichnen Texte auf dieselbe Weise.
+- **Karte:** Eine Kartenseite als erste oder letzte Seite zeigt die Ländergrenzen, hebt die
+  besuchten Länder hervor und setzt eine Stecknadel für jeden Ort; nahe Orte teilen sich eine
+  Nadel, benannt nach dem Ort oder – für eine ganze Insel – nach der Region. Ohne Internet.
 - **Als PDF speichern** schreibt ein druckfertiges PDF (300 dpi, 3 mm Beschnittzugabe an jedem
   Rand, mit Endformat-Rahmen) und einen Ordner mit jeder Seite als JPG, wie ihn die meisten
   Fotobuch-Druckereien annehmen. Das Album bleibt erhalten und lässt sich später weiter
@@ -612,7 +619,8 @@ die Kameradaten von [rawspeed](https://github.com/darktable-org/rawspeed) (LGPL-
 [regex](https://github.com/rust-lang/regex), [log](https://github.com/rust-lang/log), [env_logger](https://github.com/rust-cli/env_logger), [thiserror](https://github.com/dtolnay/thiserror), [dirs](https://github.com/dirs-dev/dirs-rs) und [base64](https://github.com/marshallpierce/rust-base64) (MIT/Apache-2.0),
 [libloading](https://github.com/nagisa/rust_libloading) (ISC),
 die [Lensfun](https://github.com/lensfun/lensfun)-Datenbank für die Objektivkorrektur (CC BY-SA 3.0, als JSON mitgeliefert, erzeugt mit `tools/lensfun_db.py`),
-die Schrift [Instrument Sans](https://github.com/Instrument/instrument-sans) über [Fontsource](https://fontsource.org) (OFL-1.1),
+die Schriften [Instrument Sans](https://github.com/Instrument/instrument-sans) und [Lora](https://github.com/cyrealtype/Lora-Cyrillic) über [Fontsource](https://fontsource.org) (OFL-1.1),
+die Ländergrenzen von [Natural Earth](https://www.naturalearthdata.com) (Admin 0, 1:50m) für die Karte im Fotoalbum (gemeinfrei, mitgeliefert, erzeugt mit `tools/build_countries.mjs`),
 [Leaflet](https://github.com/Leaflet/Leaflet) für die Kartenanzeige (BSD-2-Clause),
 [Leaflet.markercluster](https://github.com/Leaflet/Leaflet.markercluster) für die gruppierten Markierungen (MIT).
 

@@ -127,6 +127,13 @@ photos and pages, with or without margins.
   remove it or move it to the next or previous page; drag it to move the crop. Click a page to
   add photos, try a different layout, or insert and delete pages. A red badge marks photos whose
   resolution is too low for their size in print.
+- **Texts:** date and place are written once on the page where a new day or place begins (date
+  and place, date only, place only, or none). Add your own texts above or below the photos (the
+  photos move together) or anywhere on the page by dragging, with size, alignment, colour and
+  bold, in Instrument Sans or Lora. Texts are drawn the same way for the preview and the print.
+- **Map:** a map page as first or last page shows the country outlines, highlights the countries
+  you visited and puts a pin on every place; places close together share one pin, named after
+  the town or, for a whole island, the region. It needs no internet.
 - **Save as PDF** writes a print-ready PDF (300 dpi, 3 mm bleed on each side, trim box set) and a
   folder with every page as a JPG, which most photo book printers accept. The album is kept and
   can be opened and changed again later.
@@ -518,7 +525,9 @@ The same list is shown in the app: click ⓘ (**About Lumenkorn**) at the bottom
 | [half](https://github.com/VoidStarKat/half-rs), [bytemuck](https://github.com/Lokathor/bytemuck), [pollster](https://github.com/zesterer/pollster) | 16-bit floats, GPU buffers | MIT or Apache-2.0 |
 | [regex](https://github.com/rust-lang/regex), [log](https://github.com/rust-lang/log), [env_logger](https://github.com/rust-cli/env_logger), [thiserror](https://github.com/dtolnay/thiserror), [libloading](https://github.com/nagisa/rust_libloading), [dirs](https://github.com/dirs-dev/dirs-rs), [base64](https://github.com/marshallpierce/rust-base64) | text processing, logging, errors, loading DLLs, folders, encoding | MIT or Apache-2.0 / ISC |
 | [Lensfun](https://github.com/lensfun/lensfun) database (bundled, converted to JSON by `tools/lensfun_db.py`) | lens profiles for lens correction | CC BY-SA 3.0 |
-| [Instrument Sans](https://github.com/Instrument/instrument-sans) via [Fontsource](https://fontsource.org) | interface font | OFL-1.1 |
+| [Instrument Sans](https://github.com/Instrument/instrument-sans) via [Fontsource](https://fontsource.org) | interface font, photo album | OFL-1.1 |
+| [Lora](https://github.com/cyrealtype/Lora-Cyrillic) via [Fontsource](https://fontsource.org) | serif font for the photo album | OFL-1.1 |
+| [Natural Earth](https://www.naturalearthdata.com) Admin 0 countries, 1:50m (built into the app, made with `tools/build_countries.mjs`) | country outlines for the album map | Public domain |
 | [Leaflet](https://github.com/Leaflet/Leaflet) | map display | BSD-2-Clause |
 | [Leaflet.markercluster](https://github.com/Leaflet/Leaflet.markercluster) | clustered markers on the map | MIT |
 

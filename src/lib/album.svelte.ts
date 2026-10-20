@@ -5,15 +5,22 @@
 import { api, listen, pickPdfTarget, type AlbumExportProgress, type Scope } from "./api";
 import {
   DEFAULT_SETTINGS,
+  autoCaptions,
   buildAlbum,
+  mapPage,
+  textId,
   pageLayout,
   redistribute,
   toDoc,
   validAlbum,
   type AlbumCandidate,
+  type AlbumFont,
   type AlbumSettings,
   type AlbumState,
+  type AlbumText,
+  type CaptionMode,
 } from "./album";
+import { renderOverlay } from "./albumDraw";
 import { lib } from "./store.svelte";
 import { t } from "./i18n";
 
@@ -38,7 +45,8 @@ function store(key: string, value: unknown) {
   }
 }
 
-export type AlbumSelection = { page: number; id: number | null };
+/** Gewählt: ein Foto (`id`), ein Text (`text`) oder nur die Seite */
+export type AlbumSelection = { page: number; id: number | null; text?: string };
 
 class AlbumStore {
   state = $state<AlbumState | null>(null);
@@ -84,6 +92,8 @@ class AlbumStore {
     this.#listen();
     const saved = load<unknown>(albumKey(scope));
     if (validAlbum(saved)) {
+      // Ältere Fassungen kennen Schrift, Beschriftung und Karte noch nicht
+      saved.settings = { ...DEFAULT_SETTINGS, ...saved.settings };
       this.state = saved;
       this.selection = null;
       lib.view = "album";
@@ -207,6 +217,74 @@ class AlbumStore {
     });
   }
 
+  // --- Texte -------------------------------------------------------------------
+
+  /** Neuer Text auf der Seite (unter den Fotos) */
+  addText(page: number) {
+    const text: AlbumText = { id: textId(), text: t("Text"), pos: "bottom", size: 12, align: "center", color: "auto" };
+    this.#edit((a) => {
+      const p = a.pages[page];
+      p.texts = [...(p.texts ?? []), text];
+      delete p.slots;
+    });
+    this.selection = { page, id: null, text: text.id };
+  }
+
+  updateText(page: number, id: string, patch: Partial<AlbumText>, save = true) {
+    if (!this.state) return;
+    const p = this.state.pages[page];
+    const t = p?.texts?.find((x) => x.id === id);
+    if (!t) return;
+    Object.assign(t, patch, { auto: false });
+    // Bänder oben/unten verändern den Platz für die Fotos
+    if (t.pos !== "free" || patch.pos) delete p.slots;
+    if (save) this.#save();
+  }
+
+  /** Nach dem Ziehen eines Textes einmal speichern */
+  commitText() {
+    this.#save();
+  }
+
+  removeText(page: number, id: string) {
+    this.#edit((a) => {
+      const p = a.pages[page];
+      p.texts = (p.texts ?? []).filter((x) => x.id !== id);
+      if (!p.texts.length) delete p.texts;
+      delete p.slots;
+    });
+    this.selection = { page, id: null };
+  }
+
+  /** Datum/Ort neu eintragen (ersetzt nur die automatischen Beschriftungen) */
+  setCaptions(mode: CaptionMode) {
+    this.#edit((a) => {
+      a.settings.captions = mode;
+      a.pages = autoCaptions(a, this.byId);
+      for (const p of a.pages) delete p.slots;
+    });
+  }
+
+  setFont(font: AlbumFont) {
+    this.#edit((a) => (a.settings.font = font));
+  }
+
+  /** Kartenseite vorne oder hinten einfügen */
+  addMap(where: "first" | "last") {
+    this.#edit((a) => {
+      if (where === "first") a.pages.unshift(mapPage());
+      else a.pages.push(mapPage());
+    });
+    this.selection = { page: where === "first" ? 0 : this.state!.pages.length - 1, id: null };
+  }
+
+  setMapLabels(page: number, labels: boolean) {
+    this.#edit((a) => {
+      const p = a.pages[page];
+      if (p.map) p.map.labels = labels;
+    });
+  }
+
   setOffset(id: number, pos: [number, number]) {
     if (!this.state) return;
     this.state.offsets[id] = pos;
@@ -246,10 +324,18 @@ class AlbumStore {
     const path = await pickPdfTarget(t("Album speichern"), a.title || t("Fotoalbum"));
     if (!path) return;
     const doc = toDoc(a, this.byId);
-    doc.pages = doc.pages.filter((p) => p.cells.length);
-    if (!doc.pages.length) return;
     this.exporting = { done: 0, total: doc.pages.length, finished: false, failed: [], error: null, pdf: path, dir: "" };
     try {
+      // Texte und Karte in Druckauflösung zeichnen (dieselbe Schrift wie in der Vorschau)
+      const snap = $state.snapshot(a) as AlbumState;
+      for (let i = 0; i < doc.pages.length; i++) doc.pages[i].overlay = await renderOverlay(snap, i, this.layouts[i]);
+      // Leere Seiten (ohne Fotos, Text und Karte) nicht drucken
+      doc.pages = doc.pages.filter((p) => p.cells.length || p.overlay);
+      if (!doc.pages.length) {
+        this.exporting = null;
+        return;
+      }
+      this.exporting = { ...this.exporting, total: doc.pages.length };
       await api.albumExport(doc, path);
     } catch (e) {
       this.exporting = null;

@@ -3,7 +3,8 @@
   // eine Seite), Ziehen im gewählten Foto verschiebt den Ausschnitt, rechts
   // stehen Ersatzfotos und Aktionen.
   import { api, imageUrl } from "../lib/api";
-  import { alternatives, effectiveDpi, formatName, type AlbumCandidate, type AlbumCell } from "../lib/album";
+  import { alternatives, effectiveDpi, formatName, type AlbumCandidate, type AlbumCell, type AlbumText, type CaptionMode, type PlacedText } from "../lib/album";
+  import AlbumPageCanvas from "./AlbumPageCanvas.svelte";
   import { album } from "../lib/album.svelte";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
@@ -26,7 +27,10 @@
   const selCand = $derived(sel?.id != null ? album.byId.get(sel.id) : undefined);
   const selCell = $derived(sel?.id != null ? album.layouts[sel.page]?.cells.find((c) => c.id === sel.id) : undefined);
   const unused = $derived(a.candidates.length - album.photoCount);
-  const emptyPages = $derived(a.pages.filter((p) => !p.ids.length).length);
+  const emptyPages = $derived(a.pages.filter((p) => !p.ids.length && !p.map && !p.texts?.length).length);
+  const selText = $derived(sel?.text ? a.pages[sel.page]?.texts?.find((x) => x.id === sel.text) : undefined);
+  const hasMap = $derived(a.pages.some((p) => p.map));
+  const hasLocations = $derived(a.candidates.some((c) => c.lat != null && c.lon != null));
 
   const alts = $derived.by(() => {
     if (!sel) return [];
@@ -82,10 +86,58 @@
     drag = null;
   }
 
+  // --- Texte wählen und frei verschieben ---------------------------------------
+  let textDrag: { page: number; id: string; x: number; y: number; tx: number; ty: number; mmPerPx: number; moved: boolean } | null = null;
+
+  function textDown(e: PointerEvent, page: number, pt: PlacedText) {
+    e.stopPropagation();
+    if (e.button !== 0) return;
+    const isSel = sel?.text === pt.text.id && sel.page === page;
+    album.selection = { page, id: null, text: pt.text.id };
+    if (!isSel || pt.text.pos !== "free") return;
+    const el = e.currentTarget as HTMLElement;
+    const pageEl = el.parentElement!;
+    el.setPointerCapture(e.pointerId);
+    textDrag = { page, id: pt.text.id, x: e.clientX, y: e.clientY, tx: pt.x, ty: pt.y, mmPerPx: s.widthMm / pageEl.clientWidth, moved: false };
+  }
+
+  function textMove(e: PointerEvent) {
+    if (!textDrag) return;
+    const dx = (e.clientX - textDrag.x) * textDrag.mmPerPx;
+    const dy = (e.clientY - textDrag.y) * textDrag.mmPerPx;
+    if (Math.abs(dx) + Math.abs(dy) > 0.5) textDrag.moved = true;
+    album.updateText(textDrag.page, textDrag.id, { x: textDrag.tx + dx, y: textDrag.ty + dy }, false);
+  }
+
+  function textUp() {
+    if (textDrag?.moved) album.commitText();
+    textDrag = null;
+  }
+
+  /** Text verändern; aus „oben/unten“ nach „frei“: an der bisherigen Stelle lassen */
+  function setText(patch: Partial<AlbumText>) {
+    if (!sel?.text) return;
+    if (patch.pos === "free" && selText?.pos !== "free") {
+      const placed = album.layouts[sel.page]?.texts.find((x) => x.text.id === sel.text);
+      if (placed) Object.assign(patch, { x: placed.x, y: placed.y, w: placed.w });
+    }
+    album.updateText(sel.page, sel.text, patch);
+  }
+
+  const CAPTIONS: Record<CaptionMode, string> = {
+    both: t("Datum und Ort"),
+    date: t("Nur Datum"),
+    place: t("Nur Ort"),
+    none: t("Keine"),
+  };
+
   function onkeydown(e: KeyboardEvent) {
     if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === "Escape" && sel) {
       album.selection = null;
+      e.preventDefault();
+    } else if ((e.key === "Delete" || e.key === "Backspace") && sel?.text) {
+      album.removeText(sel.page, sel.text);
       e.preventDefault();
     } else if ((e.key === "Delete" || e.key === "Backspace") && sel?.id != null) {
       album.remove(sel.page, sel.id);
@@ -172,12 +224,34 @@
                     {/if}
                   </div>
                 {/each}
-                {#if !a.pages[p].ids.length}
+                {#if layout}
+                  <AlbumPageCanvas page={p} {layout} />
+                  {#each layout.texts as pt (pt.text.id)}
+                    <div
+                      class="textbox"
+                      class:selected={sel?.text === pt.text.id && sel.page === p}
+                      class:free={pt.text.pos === "free"}
+                      style:left="{(pt.x / s.widthMm) * 100}%"
+                      style:top="{(pt.y / s.heightMm) * 100}%"
+                      style:width="{(pt.w / s.widthMm) * 100}%"
+                      style:height="{(pt.h / s.heightMm) * 100}%"
+                      onpointerdown={(e) => textDown(e, p, pt)}
+                      onpointermove={textMove}
+                      onpointerup={textUp}
+                      onpointercancel={textUp}
+                      onclick={(e) => e.stopPropagation()}
+                      role="button"
+                      tabindex="-1"
+                      aria-label={t("Text")}
+                    ></div>
+                  {/each}
+                {/if}
+                {#if !a.pages[p].ids.length && !a.pages[p].map}
                   <span class="empty">{t("Leere Seite – rechts Fotos hinzufügen")}</span>
                 {/if}
               </div>
               <div class="label">
-                <span>{t("Seite {n}", { n: p + 1 })}</span>
+                <span>{a.pages[p].map ? t("Seite {n} · Karte", { n: p + 1 }) : t("Seite {n}", { n: p + 1 })}</span>
                 {#if (layout?.variants ?? 0) > 1}
                   <button class="icon-btn" title={t("Anders anordnen")} aria-label={t("Anders anordnen")} onclick={(e) => { e.stopPropagation(); album.relayout(p); }}>
                     <Icon name="refresh" size={13} />
@@ -191,7 +265,49 @@
     </div>
 
     <aside class="side">
-      {#if sel && selCand && selCell}
+      {#if sel && selText}
+        <h4>{t("Text auf Seite {n}", { n: sel.page + 1 })}</h4>
+        <textarea rows="4" value={selText.text} oninput={(e) => setText({ text: e.currentTarget.value })} onkeydown={(e) => e.stopPropagation()}></textarea>
+        <label class="field">
+          <span>{t("Lage")}</span>
+          <select value={selText.pos} onchange={(e) => setText({ pos: e.currentTarget.value as AlbumText["pos"] })}>
+            <option value="top">{t("Über den Fotos")}</option>
+            <option value="bottom">{t("Unter den Fotos")}</option>
+            <option value="free">{t("Frei auf der Seite (ziehen)")}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>{t("Größe")}</span>
+          <input type="range" min="7" max="48" step="1" value={selText.size} oninput={(e) => setText({ size: Number(e.currentTarget.value) })} />
+          <span class="muted small">{selText.size} pt</span>
+        </label>
+        <div class="field">
+          <span>{t("Ausrichtung")}</span>
+          <span class="seg">
+            {#each [["left", t("Links")], ["center", t("Mitte")], ["right", t("Rechts")]] as [v, l]}
+              <button class="btn quiet" class:on={selText.align === v} onclick={() => setText({ align: v as AlbumText["align"] })}>{l}</button>
+            {/each}
+          </span>
+        </div>
+        <div class="field">
+          <span>{t("Farbe")}</span>
+          <span class="seg">
+            {#each [["auto", t("Automatisch")], ["dark", t("Dunkel")], ["light", t("Hell")]] as [v, l]}
+              <button class="btn quiet" class:on={selText.color === v} onclick={() => setText({ color: v as AlbumText["color"] })}>{l}</button>
+            {/each}
+          </span>
+        </div>
+        <label class="check"><input type="checkbox" checked={!!selText.bold} onchange={(e) => setText({ bold: e.currentTarget.checked })} /> {t("Fett")}</label>
+        {#if selText.pos === "free"}
+          <label class="field">
+            <span>{t("Breite")}</span>
+            <input type="range" min="20" max={s.widthMm} step="1" value={selText.w ?? s.widthMm * 0.6} oninput={(e) => setText({ w: Number(e.currentTarget.value) })} />
+          </label>
+        {/if}
+        <div class="actions">
+          <button class="btn quiet danger" onclick={() => album.removeText(sel.page, selText.id)}><Icon name="trash" size={13} /> {t("Text löschen")}</button>
+        </div>
+      {:else if sel && selCand && selCell}
         <h4>{t("Foto auf Seite {n}", { n: sel.page + 1 })}</h4>
         <p class="muted small">{dateOf(selCand)}</p>
         <p class="muted small">{t("Ziehen verschiebt den Ausschnitt. Entf nimmt das Foto heraus.")}</p>
@@ -221,9 +337,23 @@
         {:else}
           <p class="muted small">{t("Alle Fotos sind schon im Album.")}</p>
         {/if}
+      {:else if sel && a.pages[sel.page]?.map}
+        <h4>{t("Seite {n} · Karte", { n: sel.page + 1 })}</h4>
+        <p class="muted small">{t("Die Karte zeigt alle Aufnahmeorte des Projekts. Nahe beieinander liegende Orte teilen sich eine Stecknadel.")}</p>
+        <label class="check">
+          <input type="checkbox" checked={a.pages[sel.page].map!.labels} onchange={(e) => album.setMapLabels(sel.page, e.currentTarget.checked)} />
+          {t("Ortsnamen anzeigen")}
+        </label>
+        <div class="actions">
+          <button class="btn quiet" onclick={() => album.addText(sel.page)}><Icon name="plus" size={13} /> {t("Text hinzufügen")}</button>
+          <button class="btn quiet danger" disabled={a.pages.length <= 1} onclick={() => album.deletePage(sel.page)}>
+            <Icon name="trash" size={13} /> {t("Seite löschen")}
+          </button>
+        </div>
       {:else if sel}
         <h4>{t("Seite {n}", { n: sel.page + 1 })}</h4>
         <div class="actions">
+          <button class="btn quiet" onclick={() => album.addText(sel.page)}><Icon name="plus" size={13} /> {t("Text hinzufügen")}</button>
           {#if (album.layouts[sel.page]?.variants ?? 0) > 1}
             <button class="btn quiet" onclick={() => album.relayout(sel.page)}><Icon name="refresh" size={13} /> {t("Anders anordnen")}</button>
           {/if}
@@ -254,6 +384,28 @@
           <p class="muted small">{t("Das Thema wurde nicht berücksichtigt, weil die Fotos noch nicht von der KI analysiert sind.")}</p>
         {:else if a.unanalyzed}
           <p class="muted small">{t("{n} Fotos sind noch nicht von der KI analysiert und zählen nur nach Qualität.", { n: a.unanalyzed })}</p>
+        {/if}
+        <label class="field">
+          <span>{t("Datum und Ort")}</span>
+          <select value={s.captions} onchange={(e) => album.setCaptions(e.currentTarget.value as CaptionMode)}>
+            {#each Object.entries(CAPTIONS) as [v, l]}
+              <option value={v}>{l}</option>
+            {/each}
+          </select>
+        </label>
+        <p class="muted small">{t("Steht einmal auf der Seite, auf der ein neuer Tag bzw. Ort beginnt. Eigene Texte bleiben beim Ändern erhalten.")}</p>
+        <label class="field">
+          <span>{t("Schrift")}</span>
+          <select value={s.font} onchange={(e) => album.setFont(e.currentTarget.value as "sans" | "serif")}>
+            <option value="sans">Instrument Sans</option>
+            <option value="serif">Lora</option>
+          </select>
+        </label>
+        {#if !hasMap && hasLocations}
+          <div class="actions">
+            <button class="btn quiet" onclick={() => album.addMap("first")}><Icon name="map" size={13} /> {t("Karte als erste Seite")}</button>
+            <button class="btn quiet" onclick={() => album.addMap("last")}><Icon name="map" size={13} /> {t("Karte als letzte Seite")}</button>
+          </div>
         {/if}
         <div class="actions">
           <button class="btn quiet" onclick={() => album.close()}>{t("Zurück zu den Fotos")}</button>
@@ -350,6 +502,48 @@
     display: block;
     user-select: none;
     pointer-events: none;
+  }
+  .textbox {
+    position: absolute;
+    z-index: 3;
+    cursor: pointer;
+    border-radius: 2px;
+  }
+  .textbox:hover {
+    outline: 1px dashed color-mix(in srgb, var(--accent) 70%, transparent);
+  }
+  .textbox.selected {
+    outline: 2px solid var(--accent);
+  }
+  .textbox.selected.free {
+    cursor: grab;
+  }
+  textarea {
+    width: 100%;
+    resize: vertical;
+    font: inherit;
+  }
+  .field {
+    display: grid;
+    gap: 4px;
+  }
+  .field > span:first-child {
+    color: var(--muted);
+    font-size: var(--step--1);
+  }
+  .seg {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .seg .on {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
   .low {
     position: absolute;
