@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.13] – 2026-10-20
+
 ### Added
 - Photo album: the places on the map can be renamed or their names hidden.
 
