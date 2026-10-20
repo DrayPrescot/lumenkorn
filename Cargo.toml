@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/lumenkorn-ai","crates/lumenkorn-core", "crates/lumenkorn-develop", "src-tauri"]
 
 [workspace.package]
-version = "1.0.10"
+version = "1.0.11"
 edition = "2024"
 license = "GPL-3.0-or-later"
 authors = ["DrayPrescot"]
