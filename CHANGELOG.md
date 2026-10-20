@@ -17,6 +17,18 @@ and the project uses [Semantic Versioning](https://semver.org/).
   delete pages. The album is saved as a print-ready PDF (300 dpi, 3 mm bleed) plus one JPG per
   page. By default only edited photos and JPEGs are used, no unedited RAW files.
 
+### Security
+- Crafted image files (PNG, TIFF, EXR) whose header claims a huge size no longer make Lumenkorn
+  run out of memory and close; the limit now depends on the free memory. Originals over 1 GB are
+  no longer read into memory as a whole.
+- AI agents (MCP): exports only go to folders inside the library or the Pictures folder, at most
+  500 photos per call; requests with `Origin: null` or a foreign `Host` header are refused.
+- Place names: coordinates sent to OpenStreetMap are rounded to about 100 m.
+- Import never replaces a file that appeared in the target folder while copying.
+- Stricter content security policy; a damaged saved album is ignored instead of loaded.
+- Dependencies: rustls 0.23.46 (TLS fixes), zip 9, updater plugin 2.14; GitHub Actions are
+  pinned to commit hashes.
+
 ## [1.0.9] – 2026-10-20
 
 ### Fixed

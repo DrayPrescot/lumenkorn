@@ -17,10 +17,45 @@ use rayon::prelude::*;
 use std::path::Path;
 use std::sync::Mutex;
 
-/// Obergrenze für das dekodierte Bild. Schützt vor defekten oder absurden
-/// Kopfdaten (eine falsche Breite kann sonst zig GB anfordern); echte Fotos
+/// Absolute Obergrenzen fürs Dekodieren. Schützt vor defekten oder
+/// präparierten Kopfdaten (eine falsche Breite fordert sonst zig GB an; eine
+/// fehlgeschlagene Allokation beendet den Prozess, und weil Vorschauen bei
+/// jedem Start neu erzeugt werden, gäbe das eine Absturzschleife). Echte Fotos
 /// liegen weit darunter (1 Gigapixel RGB8 = 3 GB).
-const MAX_DECODED_BYTES: u64 = 16 << 30;
+const MAX_BYTES_CAP: u64 = 16 << 30;
+const MIN_BYTES_CAP: u64 = 1 << 30;
+/// Ohne bekannte Speichergröße (z. B. macOS).
+const FALLBACK_BYTES: u64 = 4 << 30;
+/// Harte Pixel-Obergrenze, unabhängig vom Speicher.
+pub(crate) const MAX_PIXELS: u64 = 1_500_000_000;
+
+/// Höchste erlaubte Größe des dekodierten Bilds: die Hälfte des gerade
+/// verfügbaren Arbeitsspeichers, mindestens 1 GiB, höchstens 16 GiB.
+pub(crate) fn byte_limit(available: Option<u64>) -> u64 {
+    match available {
+        Some(a) => (a / 2).clamp(MIN_BYTES_CAP, MAX_BYTES_CAP),
+        None => FALLBACK_BYTES,
+    }
+}
+
+/// Darf ein Bild mit `pixels` Pixeln und `bytes` dekodierter Größe angelegt
+/// werden? `available`: verfügbarer Arbeitsspeicher, falls bekannt.
+pub(crate) fn decode_allowed(bytes: u64, pixels: u64, available: Option<u64>) -> bool {
+    pixels <= MAX_PIXELS && bytes <= byte_limit(available)
+}
+
+/// [`decode_allowed`] mit dem jetzt verfügbaren Arbeitsspeicher.
+/// `None` bei Überlauf der Maße gilt als nicht erlaubt.
+pub(crate) fn dims_allowed(width: usize, height: usize, bytes_per_px: u64) -> bool {
+    let Some(pixels) = (width as u64).checked_mul(height as u64) else {
+        return false;
+    };
+    let Some(bytes) = pixels.checked_mul(bytes_per_px) else {
+        return false;
+    };
+    let avail = crate::merge::available_bytes().map(|b| b as u64);
+    decode_allowed(bytes, pixels, avail)
+}
 
 /// Ab dieser Größe wird nur ein Bild gleichzeitig dekodiert.
 const LARGE_BYTES: u64 = 512 << 20;
@@ -33,7 +68,10 @@ pub fn open(path: &Path) -> ImageResult<DynamicImage> {
     reader.limits(Limits::no_limits());
     let decoder = reader.into_decoder()?;
     let bytes = decoder.total_bytes();
-    if bytes > MAX_DECODED_BYTES {
+    let (w, h) = decoder.dimensions();
+    let pixels = u64::from(w) * u64::from(h);
+    let avail = crate::merge::available_bytes().map(|b| b as u64);
+    if !decode_allowed(bytes, pixels, avail) {
         return Err(ImageError::Limits(LimitError::from_kind(
             LimitErrorKind::InsufficientMemory,
         )));
@@ -129,6 +167,31 @@ fn convert<T: Copy + Sync>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decode_limits() {
+        let gib = 1u64 << 30;
+        // Panorama 30 000 x 14 000 RGB8 = 1,26 GB bei normalem Speicher
+        let (px, by) = (30_000u64 * 14_000, 30_000u64 * 14_000 * 3);
+        assert!(decode_allowed(by, px, Some(16 * gib)));
+        assert!(decode_allowed(by, px, Some(8 * gib)));
+        // Wenig Speicher: Untergrenze 1 GiB, das Panorama passt nicht mehr
+        assert!(!decode_allowed(by, px, Some(gib)));
+        assert_eq!(byte_limit(Some(0)), gib);
+        assert_eq!(byte_limit(Some(10 * gib)), 5 * gib);
+        assert_eq!(byte_limit(Some(1000 * gib)), 16 * gib);
+        assert_eq!(byte_limit(None), 4 * gib);
+        // Pixelgrenze gilt auch bei viel Speicher
+        assert!(!decode_allowed(
+            MAX_PIXELS + 1,
+            MAX_PIXELS + 1,
+            Some(1000 * gib)
+        ));
+        assert!(decode_allowed(MAX_PIXELS, MAX_PIXELS, Some(1000 * gib)));
+        // Überlauf der Maße
+        assert!(!dims_allowed(usize::MAX, usize::MAX, 12));
+        assert!(dims_allowed(64, 32, 12));
+    }
 
     #[test]
     fn opens_images_above_the_default_limit() {

@@ -269,7 +269,9 @@ impl Area {
 /// Umrissfläche des Ortes – nur auf Gemeindeebene (eine Region wie „Bali“
 /// wäre zu grob, um ihren Namen an andere Fotos weiterzugeben).
 fn reverse(lat: f64, lon: f64) -> CmdResult<Place> {
-    let (la, lo) = (format!("{lat:.6}"), format!("{lon:.6}"));
+    // Auf drei Nachkommastellen (~100 m) gerundet: genug für den Ort auf
+    // Gemeindeebene, verrät OSM aber nicht den genauen Standort
+    let (la, lo) = (format!("{lat:.3}"), format!("{lon:.3}"));
     let v = nominatim(
         "reverse",
         &[

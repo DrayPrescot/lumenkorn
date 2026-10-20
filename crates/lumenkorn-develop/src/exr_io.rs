@@ -81,20 +81,48 @@ pub fn dimensions(path: &Path) -> Option<(usize, usize)> {
 /// Liest die erste RGB(A)-Ebene als lineares Bild; `true`, wenn es wie ein
 /// RAW zu entwickeln ist (Standard für fremde EXR-Dateien).
 pub fn read(path: &Path) -> Result<(ImageF32, bool)> {
+    // Die Maße stehen im Kopf und würden sonst ungeprüft für die Allokation
+    // benutzt: begrenzen (12 B/px als ImageF32). Die Prüfung sitzt im
+    // Allokations-Callback selbst, denn gelesen wird die erste RGBA-Ebene –
+    // nicht zwingend die des ersten Kopfs.
     let img = read_first_rgba_layer_from_file(
         path,
-        |res, _| ImageF32 {
-            width: res.0,
-            height: res.1,
-            data: vec![[0.0; 3]; res.0 * res.1],
+        |res, _| {
+            if crate::raster::dims_allowed(res.0, res.1, 12) {
+                ImageF32 {
+                    width: res.0,
+                    height: res.1,
+                    data: vec![[0.0; 3]; res.0 * res.1],
+                }
+            } else {
+                // Maße merken, aber ohne Pixel: Marker für „zu groß“
+                ImageF32 {
+                    width: res.0,
+                    height: res.1,
+                    data: Vec::new(),
+                }
+            }
         },
         |img: &mut ImageF32, pos, (r, g, b, _a): (f32, f32, f32, f32)| {
+            if img.data.is_empty() {
+                return;
+            }
             let w = img.width;
             img.data[pos.1 * w + pos.0] =
                 [r, g, b].map(|v| if v.is_finite() { v.max(0.0) } else { 0.0 });
         },
     )
     .map_err(|e| Error::Params(crate::tr!("EXR lesen: {e}", "Reading EXR: {e}")))?;
+    let (w, h) = (
+        img.layer_data.channel_data.pixels.width,
+        img.layer_data.channel_data.pixels.height,
+    );
+    if img.layer_data.channel_data.pixels.data.is_empty() && w > 0 && h > 0 {
+        return Err(Error::Params(crate::tr!(
+            "EXR zu groß: {w} × {h} Pixel",
+            "EXR too large: {w} × {h} pixels"
+        )));
+    }
     let scene = !matches!(
         img.layer_data.attributes.other.get(&Text::from(KIND_ATTR)),
         Some(AttributeValue::Text(t)) if t.as_slice() == b"display"

@@ -9,6 +9,7 @@ import {
   pageLayout,
   redistribute,
   toDoc,
+  validAlbum,
   type AlbumCandidate,
   type AlbumSettings,
   type AlbumState,
@@ -81,8 +82,8 @@ class AlbumStore {
   /** Album des Bereichs öffnen; gibt es noch keins, die Einstellungen zeigen. */
   open(scope: Scope, title: string) {
     this.#listen();
-    const saved = load<AlbumState>(albumKey(scope));
-    if (saved?.version === 1 && saved.pages) {
+    const saved = load<unknown>(albumKey(scope));
+    if (validAlbum(saved)) {
       this.state = saved;
       this.selection = null;
       lib.view = "album";

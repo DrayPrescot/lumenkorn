@@ -541,6 +541,36 @@ fn hash_shifted(p: &Path, shift: Shift) -> std::io::Result<blake3::Hash> {
     }
 }
 
+/// Benennt `part` in `dst` um, ohne eine vorhandene Datei zu ersetzen
+/// (`rename` überschreibt unter Windows). Ist `dst` inzwischen belegt – etwa
+/// von einem anderen Programm auf derselben Netzfreigabe –, gibt es einen
+/// Fehler; das Original bleibt dann ohnehin erhalten.
+fn move_no_clobber(part: &Path, dst: &Path) -> Result<()> {
+    // Ein harter Link schlägt fehl, wenn das Ziel existiert – atomar
+    match std::fs::hard_link(part, dst) {
+        Ok(()) => {
+            std::fs::remove_file(part)?;
+            Ok(())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(Error::Invalid(
+            lumenkorn_develop::tr!("{} existiert bereits", "{} already exists", dst.display()),
+        )),
+        // Dateisysteme ohne harte Links (FAT32, exFAT auf Speicherkarten und
+        // externen Platten): prüfen und umbenennen
+        Err(_) => {
+            if dst.exists() {
+                return Err(Error::Invalid(lumenkorn_develop::tr!(
+                    "{} existiert bereits",
+                    "{} already exists",
+                    dst.display()
+                )));
+            }
+            std::fs::rename(part, dst)?;
+            Ok(())
+        }
+    }
+}
+
 /// Kopiert über eine `.part`-Datei, prüft sie gegen den Hash des gelesenen
 /// (bei `shift` des verschobenen) Originals und benennt sie erst dann um.
 /// Übernimmt die Änderungszeit. Ergebnis: (Bytes, verschobene Zeitangaben).
@@ -602,7 +632,7 @@ fn copy_verified(
                 src.display()
             )));
         }
-        std::fs::rename(&part, dst)?;
+        move_no_clobber(&part, dst)?;
         Ok((total, shifter.map_or(0, |s| s.replaced)))
     })();
     if res.is_err() {
@@ -626,6 +656,22 @@ fn delete_originals(c: &Candidate, failed: &mut Vec<(String, String)>) -> usize 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finishing_a_copy_never_replaces_a_file() {
+        let dir = std::env::temp_dir().join(format!("lw-noclobber-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (part, dst) = (dir.join("a.jpg.part"), dir.join("a.jpg"));
+        std::fs::write(&part, b"neu").unwrap();
+        std::fs::write(&dst, b"schon da").unwrap();
+        assert!(move_no_clobber(&part, &dst).is_err());
+        assert_eq!(std::fs::read(&dst).unwrap(), b"schon da");
+        std::fs::remove_file(&dst).unwrap();
+        move_no_clobber(&part, &dst).unwrap();
+        assert_eq!(std::fs::read(&dst).unwrap(), b"neu");
+        assert!(!part.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn counters_come_from_the_camera_number() {

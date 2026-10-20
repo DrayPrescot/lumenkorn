@@ -447,3 +447,34 @@ export function alternatives(a: AlbumState, ref: { group?: number; events: numbe
     .sort((x, y) => rank(x) - rank(y) || y.score - x.score)
     .slice(0, limit);
 }
+
+/**
+ * Prüft ein gespeichertes Album (localStorage) auf Form und Wertebereiche,
+ * bevor es benutzt wird – eine kaputte oder fremde Fassung soll die Ansicht
+ * nicht zum Absturz bringen oder unsinnige Seiten an den Export geben.
+ */
+export function validAlbum(x: unknown): x is AlbumState {
+  const a = x as AlbumState;
+  const num = (v: unknown, min = -Infinity, max = Infinity) => typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
+  const id = (v: unknown) => Number.isInteger(v);
+  const s = a?.settings;
+  return (
+    !!a &&
+    a.version === 1 &&
+    !!s &&
+    num(s.widthMm, 50, 600) &&
+    num(s.heightMm, 50, 600) &&
+    (s.style === "margins" || s.style === "borderless") &&
+    s.background in BACKGROUNDS &&
+    Array.isArray(a.candidates) &&
+    a.candidates.every((c) => id(c?.id) && num(c.aspect, 0.01, 100) && num(c.score) && num(c.event, 0) && num(c.group, 0)) &&
+    Array.isArray(a.pages) &&
+    a.pages.length <= 1000 &&
+    a.pages.every((p) => Array.isArray(p?.ids) && p.ids.length <= MAX_PER_PAGE && p.ids.every(id) && num(p.variant, 0)) &&
+    typeof a.offsets === "object" &&
+    a.offsets !== null &&
+    Object.values(a.offsets).every((o) => Array.isArray(o) && o.length === 2 && num(o[0], 0, 1) && num(o[1], 0, 1)) &&
+    typeof a.scope === "object" &&
+    a.scope !== null
+  );
+}

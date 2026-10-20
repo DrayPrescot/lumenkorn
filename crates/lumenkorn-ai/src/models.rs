@@ -1260,7 +1260,10 @@ fn extract_entry(archive: &Path, url: &str, entry: &str, target: &Path) -> Resul
         let mut zip = zip::ZipArchive::new(File::open(archive)?)
             .map_err(|e| Error::Download(e.to_string()))?;
         let name = (0..zip.len())
-            .filter_map(|i| zip.by_index(i).ok().map(|f| f.name().to_string()))
+            .filter_map(|i| {
+                let f = zip.by_index(i).ok()?;
+                f.name().ok().map(|n| n.into_owned())
+            })
             .find(|n| n.ends_with(entry));
         match name {
             Some(n) => {

@@ -5,6 +5,7 @@
 //! das Pixelergebnis als Datei vor, während die Bearbeitung nur die ID und die
 //! Eingaben (Klickpunkte) speichert.
 
+use crate::LockExt;
 use crate::error::{Error, Result};
 use lumenkorn_develop::{GrayMask, MaskSource};
 use std::path::{Path, PathBuf};
@@ -28,7 +29,7 @@ impl MaskFiles {
 
     /// Zwischenspeicher leeren (Dateien bleiben).
     pub fn clear_cache(&self) {
-        self.cache.lock().unwrap().clear();
+        self.cache.locked().clear();
     }
 
     pub fn dir(&self) -> &Path {
@@ -73,7 +74,7 @@ impl MaskFiles {
         let tmp = path.with_extension("tmp.png");
         mask.save(&tmp)?;
         std::fs::rename(&tmp, &path)?;
-        let mut c = self.cache.lock().unwrap();
+        let mut c = self.cache.locked();
         c.retain(|(k, _)| k != id);
         c.insert(0, (id.to_string(), Arc::new(GrayMask::from_image(mask))));
         c.truncate(CACHE);
@@ -84,7 +85,7 @@ impl MaskFiles {
 impl MaskSource for MaskFiles {
     fn get(&self, id: &str) -> Option<Arc<GrayMask>> {
         {
-            let mut c = self.cache.lock().unwrap();
+            let mut c = self.cache.locked();
             if let Some(pos) = c.iter().position(|(k, _)| k == id) {
                 let e = c.remove(pos);
                 let m = e.1.clone();
@@ -94,7 +95,7 @@ impl MaskSource for MaskFiles {
         }
         let img = image::open(self.path(id)?).ok()?.to_luma8();
         let m = Arc::new(GrayMask::from_image(&img));
-        let mut c = self.cache.lock().unwrap();
+        let mut c = self.cache.locked();
         c.insert(0, (id.to_string(), m.clone()));
         c.truncate(CACHE);
         Some(m)

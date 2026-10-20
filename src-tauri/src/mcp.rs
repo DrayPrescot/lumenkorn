@@ -139,7 +139,7 @@ fn start(app: &AppHandle) -> Result<(), Error> {
         .name("lumenkorn-mcp".into())
         .spawn(move || {
             for req in srv.incoming_requests() {
-                handle_http(&handle, &token, req);
+                handle_http(&handle, &token, port, req);
             }
         })
         .map_err(|e| Error::Invalid(e.to_string()))?;
@@ -201,12 +201,72 @@ pub fn mcp_new_token(app: AppHandle) -> Result<McpStatus, Error> {
 
 // --- HTTP ------------------------------------------------------------------------
 
-/// Origin einer lokalen Seite: genau 127.0.0.1 bzw. localhost, mit oder ohne
-/// Port – nicht etwa `http://localhost.example.com`.
-fn local_origin(origin: &str) -> bool {
-    if origin == "null" {
-        return true;
+/// Höchstzahl Fotos je Export-Aufruf
+const MAX_EXPORT: usize = 500;
+
+/// Pfad als Bestandteile: ohne `\\?\`-Präfix, `.` und `..` aufgelöst, unter
+/// Windows ohne Groß/Klein-Unterschied.
+fn path_parts(p: &str) -> Vec<String> {
+    let p = p.strip_prefix(r"\\?\").unwrap_or(p);
+    let mut out: Vec<String> = Vec::new();
+    for part in p.split(['/', '\\']) {
+        match part {
+            "" | "." => {}
+            ".." => {
+                out.pop();
+            }
+            s if cfg!(windows) => out.push(s.to_lowercase()),
+            s => out.push(s.to_string()),
+        }
     }
+    out
+}
+
+/// Liegt `child` in `parent` (oder ist es selbst)? Komponentenweise, damit
+/// `C:\Bilder2` nicht als in `C:\Bilder` gilt.
+fn path_inside(child: &str, parent: &str) -> bool {
+    let (c, p) = (path_parts(child), path_parts(parent));
+    !p.is_empty() && c.starts_with(&p)
+}
+
+/// Prüft den Zielordner eines Exports: absolut, vorhanden und (nach
+/// Auflösen von Verknüpfungen) innerhalb eines der erlaubten Ordner.
+fn check_export_folder(folder: &str, allowed: &[std::path::PathBuf]) -> Result<String, String> {
+    const MSG: &str =
+        "folder must be inside one of the library folders; omit it to export next to the originals";
+    let path = std::path::Path::new(folder);
+    if !path.is_absolute() {
+        return Err(format!("folder must be an absolute path; {MSG}"));
+    }
+    let real = std::fs::canonicalize(path).map_err(|_| format!("folder does not exist; {MSG}"))?;
+    if !real.is_dir() {
+        return Err(format!("folder is not a directory; {MSG}"));
+    }
+    let real = real.to_string_lossy().into_owned();
+    let ok = allowed.iter().any(|a| {
+        let a = std::fs::canonicalize(a).unwrap_or_else(|_| a.clone());
+        path_inside(&real, &a.to_string_lossy())
+    });
+    if ok {
+        Ok(real.strip_prefix(r"\\?\").unwrap_or(&real).to_string())
+    } else {
+        Err(MSG.into())
+    }
+}
+
+/// `Host` nur 127.0.0.1, localhost oder [::1] mit dem gebundenen Port
+/// (zweite Verteidigung gegen DNS-Rebinding).
+fn local_host(host: &str, port: u16) -> bool {
+    let host = host.trim().to_ascii_lowercase();
+    ["127.0.0.1", "localhost", "[::1]"]
+        .iter()
+        .any(|h| host == format!("{h}:{port}"))
+}
+
+/// Origin einer lokalen Seite: genau 127.0.0.1 bzw. localhost, mit oder ohne
+/// Port – nicht etwa `http://localhost.example.com`. `Origin: null` (Datei,
+/// Sandbox-iframe) kann jede fremde Seite erzeugen und gilt nicht als lokal.
+fn local_origin(origin: &str) -> bool {
     let Some(rest) = origin.strip_prefix("http://") else {
         return false;
     };
@@ -221,7 +281,7 @@ fn local_origin(origin: &str) -> bool {
 /// Größte angenommene Anfrage (Bytes)
 const MAX_BODY: usize = 4 << 20;
 
-fn handle_http(app: &AppHandle, token: &str, mut req: tiny_http::Request) {
+fn handle_http(app: &AppHandle, token: &str, port: u16, mut req: tiny_http::Request) {
     use tiny_http::{Header, Method, Response};
     let header = |name: &str| {
         req.headers()
@@ -237,6 +297,12 @@ fn handle_http(app: &AppHandle, token: &str, mut req: tiny_http::Request) {
                 .with_header(json_header.clone()),
         );
     };
+    // Host muss auf uns selbst zeigen (DNS-Rebinding)
+    if let Some(host) = header("Host")
+        && !local_host(&host, port)
+    {
+        return reply(req, 403, r#"{"error":"host not allowed"}"#.into());
+    }
     // Nur lokale Webseiten dürfen (Schutz vor DNS-Rebinding)
     if let Some(origin) = header("Origin")
         && !local_origin(&origin)
@@ -539,7 +605,7 @@ fn tools() -> Vec<Value> {
         tool(
             "export_photos",
             "Export photos",
-            "Export developed photos in the background. Without `folder`, each goes into an \"Export\" subfolder next to its original. format jpeg (quality 1–100), png or tiff; long_edge limits the size in pixels.",
+            "Export developed photos in the background. Without `folder`, each goes into an \"Export\" subfolder next to its original. `folder` must be an existing absolute path inside one of the library folders (or the user's Pictures folder); at most 500 photos per call. format jpeg (quality 1–100), png or tiff; long_edge limits the size in pixels.",
             json!({ "type": "object", "properties": {
                 "ids": ids_schema(),
                 "folder": { "type": "string" },
@@ -855,7 +921,27 @@ async fn call(app: &AppHandle, name: &str, a: &Value) -> ToolResult {
                 "longEdge": arg(a, "long_edge").and_then(Value::as_u64),
             }))
             .map_err(|x| x.to_string())?;
-            let dir = arg(a, "folder").and_then(Value::as_str).map(str::to_string);
+            if ids.len() > MAX_EXPORT {
+                return Err(format!(
+                    "too many photos for one export (max {MAX_EXPORT}); split the list"
+                ));
+            }
+            // Zielordner nur innerhalb der Bibliothek oder des Bilder-Ordners
+            let dir = match arg(a, "folder").and_then(Value::as_str) {
+                Some(f) => {
+                    let mut allowed: Vec<std::path::PathBuf> = state
+                        .catalog
+                        .locked()
+                        .roots()
+                        .map_err(e)?
+                        .into_iter()
+                        .map(|r| r.path.into())
+                        .collect();
+                    allowed.extend(dirs::picture_dir());
+                    Some(check_export_folder(f, &allowed)?)
+                }
+                None => None,
+            };
             crate::develop::export_images(app.clone(), ids.clone(), dir.clone(), options)
                 .map_err(e)?;
             text(json!({
@@ -1223,10 +1309,11 @@ mod tests {
 
     #[test]
     fn only_exact_local_origins() {
-        for ok in ["null", "http://localhost", "http://127.0.0.1:5173"] {
+        for ok in ["http://localhost", "http://127.0.0.1:5173"] {
             assert!(local_origin(ok), "{ok}");
         }
         for bad in [
+            "null",
             "http://localhost.evil.com",
             "http://127.0.0.1.evil.com:80",
             "http://localhost:80@evil.com",
@@ -1234,6 +1321,63 @@ mod tests {
         ] {
             assert!(!local_origin(bad), "{bad}");
         }
+    }
+
+    #[test]
+    fn host_header_must_be_local_with_our_port() {
+        for ok in [
+            "127.0.0.1:47800",
+            "localhost:47800",
+            "[::1]:47800",
+            "LocalHost:47800",
+        ] {
+            assert!(local_host(ok, 47800), "{ok}");
+        }
+        for bad in [
+            "evil.com",
+            "evil.com:47800",
+            "127.0.0.1",
+            "127.0.0.1:1",
+            "localhost.evil.com:47800",
+            "127.0.0.1:47800.evil.com",
+        ] {
+            assert!(!local_host(bad, 47800), "{bad}");
+        }
+    }
+
+    #[test]
+    fn path_inside_is_component_wise() {
+        assert!(path_inside(r"C:\Bilder\Urlaub", r"C:\Bilder"));
+        assert!(path_inside(r"C:\Bilder", r"C:\Bilder"));
+        assert!(!path_inside(r"C:\Bilder2", r"C:\Bilder"));
+        assert!(!path_inside(r"C:\Bilder\..\Windows", r"C:\Bilder"));
+        assert!(!path_inside(r"C:\Bilder\..\..\Windows", r"C:\Bilder"));
+        assert!(path_inside(r"C:\Bilder\a\..\b", r"C:\Bilder"));
+        assert!(!path_inside(r"C:\Bilder", r"C:\Bilder\Urlaub"));
+        assert!(!path_inside("/a/b", ""));
+        assert!(path_inside(r"\\?\C:\Bilder\x", r"C:\Bilder"));
+        if cfg!(windows) {
+            assert!(path_inside(r"c:\bilder\x", r"C:\Bilder"));
+        }
+    }
+
+    #[test]
+    fn export_folder_is_checked() {
+        let base = std::env::temp_dir().join(format!("lk_mcp_{}", std::process::id()));
+        let (root, root2) = (base.join("Bilder"), base.join("Bilder2"));
+        std::fs::create_dir_all(root.join("sub")).unwrap();
+        std::fs::create_dir_all(&root2).unwrap();
+        let allowed = vec![root.clone()];
+        let s = |p: &std::path::Path| p.to_string_lossy().into_owned();
+        assert!(check_export_folder(&s(&root), &allowed).is_ok());
+        assert!(check_export_folder(&s(&root.join("sub")), &allowed).is_ok());
+        assert!(check_export_folder(&s(&root.join("sub").join("..")), &allowed).is_ok());
+        assert!(check_export_folder(&s(&root2), &allowed).is_err());
+        assert!(check_export_folder(&s(&root.join("..").join("Bilder2")), &allowed).is_err());
+        assert!(check_export_folder(&s(&root.join("fehlt")), &allowed).is_err());
+        assert!(check_export_folder("Export", &allowed).is_err());
+        assert!(check_export_folder("..", &allowed).is_err());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     fn rpc(body: Value) -> Option<Value> {

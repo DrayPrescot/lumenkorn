@@ -213,6 +213,18 @@ pub fn serves_original(job: &ThumbJob) -> bool {
             .as_ref()
             .is_none_or(|e| DevelopParams::from_json(e).is_default())
         && is_jpeg(Path::new(&job.path))
+        && within_read_cap(Path::new(&job.path))
+}
+
+/// Obergrenze für Dateien, die ganz in den Speicher gelesen werden (Original-
+/// JPEG, RAW mit eingebetteter Vorschau). Eine präparierte Riesendatei soll
+/// keine fehlgeschlagene Allokation (= Prozessabbruch) auslösen.
+const MAX_WHOLE_FILE: u64 = 1 << 30;
+
+/// Ist die Datei klein genug, um sie ganz zu lesen? (Unlesbar: ja – der
+/// anschließende Lesevorgang meldet den eigentlichen Fehler.)
+fn within_read_cap(path: &Path) -> bool {
+    std::fs::metadata(path).is_ok_and(|m| m.len() <= MAX_WHOLE_FILE)
 }
 
 /// Beginnt die Datei mit einem JPEG-Kopf (SOI + Marker)?
@@ -232,6 +244,9 @@ fn full_size_preview(job: &ThumbJob) -> Result<Option<Vec<u8>>> {
     let Some(sensor) = job.long_edge else {
         return Ok(None);
     };
+    if !within_read_cap(Path::new(&job.path)) {
+        return Ok(None);
+    }
     let data = std::fs::read(&job.path)?;
     let Some((jpeg, edge)) = embedded_jpegs(&data)
         .into_iter()
@@ -488,6 +503,9 @@ fn decode_embedded_preview(path: &Path, min_edge: u32) -> Result<DynamicImage> {
         return Ok(img);
     }
     let data = if file_len > HEAD {
+        if file_len > MAX_WHOLE_FILE {
+            return Err(Error::NoPreview(path.display().to_string()));
+        }
         std::fs::read(path)?
     } else {
         head
