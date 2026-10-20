@@ -1,6 +1,7 @@
 <script lang="ts">
   // Texte und Karte einer Albumseite als Ebene über den Fotos – derselbe
   // Zeichencode wie beim Export (albumDraw.ts), nur in Bildschirmauflösung.
+  import { untrack } from "svelte";
   import type { PageLayout } from "../lib/album";
   import { album } from "../lib/album.svelte";
   import { countries, drawPage, ensureFonts, hasOverlay } from "../lib/albumDraw";
@@ -16,6 +17,16 @@
 
   const a = $derived(album.state!);
   const needed = $derived(hasOverlay(a, page));
+  // Neu zeichnen nur, wenn sich diese Seite ändert (Texte, Karte), die
+  // Einstellungen oder – bei der Karte – die Orte; nicht bei Änderungen an
+  // anderen Seiten
+  const key = $derived(
+    JSON.stringify([
+      a.pages[page],
+      a.settings,
+      a.pages[page]?.map ? a.candidates.map((c) => [c.lat, c.lon, c.place]) : null,
+    ]),
+  );
 
   // Kartendaten und Schriften einmal nachladen, dann neu zeichnen
   $effect(() => {
@@ -28,19 +39,23 @@
 
   $effect(() => {
     if (!canvas || !width || !height) return;
-    // Abhängigkeiten: Seite (Texte, Karte), Einstellungen, Layout
-    const snap = $state.snapshot(a);
+    // Abhängigkeiten: `key`, Layout, Größe, Kartendaten, Schriften
+    void key;
     void fontsReady;
+    const l = layout;
+    const m = map;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
     const ctx = canvas.getContext("2d")!;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (!needed) return;
-    const pxPerMm = (width * dpr) / snap.settings.widthMm;
-    ctx.scale(pxPerMm, pxPerMm);
-    drawPage(ctx, snap as typeof a, page, layout, map);
+    if (!untrack(() => needed)) return;
+    untrack(() => {
+      const pxPerMm = (width * dpr) / a.settings.widthMm;
+      ctx.scale(pxPerMm, pxPerMm);
+      drawPage(ctx, a, page, l, m);
+    });
   });
 </script>
 

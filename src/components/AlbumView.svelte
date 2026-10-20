@@ -3,8 +3,9 @@
   // eine Seite), Ziehen im gewählten Foto verschiebt den Ausschnitt, rechts
   // stehen Ersatzfotos und Aktionen.
   import { api, imageUrl } from "../lib/api";
-  import { alternatives, effectiveDpi, formatName, type AlbumCandidate, type AlbumCell, type AlbumText, type CaptionMode, type PlacedText } from "../lib/album";
+  import { alternatives, effectiveDpi, formatName, textStyleOf, type AlbumCandidate, type AlbumCell, type AlbumText, type CaptionMode, type PlacedText } from "../lib/album";
   import AlbumPageCanvas from "./AlbumPageCanvas.svelte";
+  import TextStyleFields from "./TextStyleFields.svelte";
   import { mapPins } from "../lib/albumDraw";
   import { album } from "../lib/album.svelte";
   import { lib } from "../lib/store.svelte";
@@ -428,6 +429,9 @@
             <option value="serif">Lora</option>
           </select>
         </label>
+        <div class="style">
+          <TextStyleFields stacked value={textStyleOf(s)} onchange={(v) => album.setTextStyle(v)} />
+        </div>
         {#if !hasMap && hasLocations}
           <div class="actions">
             <button class="btn quiet" onclick={() => album.addMap("first")}><Icon name="map" size={13} /> {t("Karte als erste Seite")}</button>
@@ -566,6 +570,10 @@
   .seg .on {
     color: var(--accent);
     border-color: var(--accent);
+  }
+  .style {
+    display: grid;
+    gap: 8px;
   }
   .pins {
     display: grid;

@@ -19,6 +19,9 @@ import {
   type AlbumState,
   type AlbumText,
   type CaptionMode,
+  type PageLayout,
+  type TextStyle,
+  textStyleOf,
 } from "./album";
 import { renderOverlay } from "./albumDraw";
 import { lib } from "./store.svelte";
@@ -58,8 +61,28 @@ class AlbumStore {
   selection = $state<AlbumSelection | null>(null);
 
   byId = $derived(new Map<number, AlbumCandidate>((this.state?.candidates ?? []).map((c) => [c.id, c])));
-  /** Layout je Seite (Felder in mm, Zahl der Anordnungen) */
-  layouts = $derived(this.state ? this.state.pages.map((p) => pageLayout(this.state!, p, this.byId)) : []);
+  /**
+   * Layout je Seite (Felder in mm, Zahl der Anordnungen). Zwischengespeichert
+   * je Seiteninhalt: Eine Seite durchzurechnen kostet bis zu ~2000 Anordnungen
+   * – bei jedem Tastendruck in einem Text alle Seiten neu zu rechnen, ließ die
+   * Oberfläche minutenlang hängen.
+   */
+  layouts = $derived.by(() => {
+    const a = this.state;
+    if (!a) return [];
+    const settings = JSON.stringify(a.settings);
+    if (this.#layoutCache.size > 400) this.#layoutCache.clear();
+    return a.pages.map((p) => {
+      const key = settings + JSON.stringify(p) + JSON.stringify(p.ids.map((id) => a.offsets[id] ?? null));
+      let l = this.#layoutCache.get(key);
+      if (!l) {
+        l = pageLayout(a, p, this.byId);
+        this.#layoutCache.set(key, l);
+      }
+      return l;
+    });
+  });
+  #layoutCache = new Map<string, PageLayout>();
   photoCount = $derived(this.state ? this.state.pages.reduce((n, p) => n + p.ids.length, 0) : 0);
 
   #listening = false;
@@ -138,18 +161,29 @@ class AlbumStore {
   }
 
   close() {
+    this.#saveNow();
     this.selection = null;
     lib.view = "grid";
   }
 
   /** Album verwerfen (gespeicherte Fassung löschen) */
   discard() {
+    clearTimeout(this.#saveTimer);
     if (this.state) store(albumKey(this.state.scope), null);
     this.state = null;
     this.close();
   }
 
+  /** Speichern gebündelt (beim Tippen nicht bei jedem Zeichen) */
   #save() {
+    clearTimeout(this.#saveTimer);
+    this.#saveTimer = setTimeout(() => this.#saveNow(), 400);
+  }
+  #saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+  #saveNow() {
+    clearTimeout(this.#saveTimer);
+    this.#saveTimer = undefined;
     if (this.state) store(albumKey(this.state.scope), $state.snapshot(this.state));
   }
 
@@ -222,7 +256,17 @@ class AlbumStore {
 
   /** Neuer Text auf der Seite (unter den Fotos) */
   addText(page: number) {
-    const text: AlbumText = { id: textId(), text: t("Text"), pos: "bottom", size: 12, align: "center", color: "auto" };
+    // Vorgabe aus dem Schriftstil des Albums
+    const style = textStyleOf(this.state?.settings ?? {});
+    const text: AlbumText = {
+      id: textId(),
+      text: t("Text"),
+      pos: "bottom",
+      size: style.size,
+      align: style.align,
+      color: style.color,
+      ...(style.bold ? { bold: true } : {}),
+    };
     this.#edit((a) => {
       const p = a.pages[page];
       p.texts = [...(p.texts ?? []), text];
@@ -268,6 +312,15 @@ class AlbumStore {
 
   setFont(font: AlbumFont) {
     this.#edit((a) => (a.settings.font = font));
+  }
+
+  /** Schriftstil ändern: gilt für die automatische Beschriftung und neue Texte */
+  setTextStyle(style: TextStyle) {
+    this.#edit((a) => {
+      a.settings.textStyle = style;
+      a.pages = autoCaptions(a, this.byId);
+      for (const p of a.pages) delete p.slots;
+    });
   }
 
   /** Kartenseite vorne oder hinten einfügen */

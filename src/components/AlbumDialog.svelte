@@ -3,8 +3,9 @@
   // Backend (Vorschauen messen, KI-Thema), danach öffnet sich die Album-Ansicht.
   import { onMount, untrack } from "svelte";
   import type { Scope } from "../lib/api";
-  import { DEFAULT_SETTINGS, FORMATS, formatName, autoPages, MAX_PER_PAGE, THEME_KEYS, type AlbumSettings, type ThemeKey } from "../lib/album";
+  import { DEFAULT_SETTINGS, FORMATS, formatName, textStyleOf, autoPages, MAX_PER_PAGE, THEME_KEYS, type AlbumSettings, type ThemeKey } from "../lib/album";
   import { album } from "../lib/album.svelte";
+  import TextStyleFields from "./TextStyleFields.svelte";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
 
@@ -202,6 +203,8 @@
           <option value="serif">Lora</option>
         </select>
       </label>
+      <TextStyleFields value={textStyleOf(s)} onchange={(v) => (s.textStyle = v)} />
+      <p class="meta small">{t("Schriftstil für Datum und Ort und als Vorgabe für eigene Texte – einzelne Texte lassen sich später anpassen.")}</p>
     </fieldset>
 
     {#if available === 0}

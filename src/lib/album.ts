@@ -148,6 +148,25 @@ export interface AlbumSettings {
   captions: CaptionMode;
   map: MapPlacement;
   font: AlbumFont;
+  /** Stil der Beschriftung (Datum/Ort) und Vorgabe für neue Texte */
+  textStyle: TextStyle;
+}
+
+export interface TextStyle {
+  /** Punkt */
+  size: number;
+  align: "left" | "center" | "right";
+  color: "auto" | "dark" | "light";
+  bold: boolean;
+}
+
+export const DEFAULT_TEXT_STYLE: TextStyle = { size: 11, align: "left", color: "auto", bold: false };
+
+/** Gültiger Schriftstil (ältere Alben kennen ihn noch nicht) */
+export function textStyleOf(s: Partial<AlbumSettings>): TextStyle {
+  const t = s.textStyle;
+  const ok = t && typeof t.size === "number" && t.size >= 4 && t.size <= 200;
+  return ok ? { ...DEFAULT_TEXT_STYLE, ...t } : DEFAULT_TEXT_STYLE;
 }
 
 export const DEFAULT_SETTINGS: AlbumSettings = {
@@ -164,6 +183,7 @@ export const DEFAULT_SETTINGS: AlbumSettings = {
   captions: "both",
   map: "none",
   font: "sans",
+  textStyle: DEFAULT_TEXT_STYLE,
 };
 
 export interface AlbumPage {
@@ -368,20 +388,23 @@ export function autoCaptions(a: AlbumState, byId: Map<number, AlbumCandidate>): 
     const parts = [mode !== "place" ? formatDay(day) : "", mode !== "date" ? place : ""].filter(Boolean);
     if (!parts.length) return page;
     const borderless = a.settings.style === "borderless";
+    const style = textStyleOf(a.settings);
     const caption: AlbumText = {
       id: textId(),
       text: parts.join(" · "),
       pos: borderless ? "free" : "top",
-      size: 11,
-      align: "left",
-      color: "auto",
+      size: style.size,
+      align: style.align,
+      color: style.color,
+      bold: style.bold || undefined,
       auto: true,
     };
     if (borderless) {
-      // Randlos: unten links auf dem Foto, im sicheren Bereich
+      // Randlos: unten auf dem Foto, im sicheren Bereich, links/mittig/rechts
+      // je nach Ausrichtung
       const safe = safeArea(a.settings);
-      caption.x = safe.x;
       caption.w = safe.w * 0.7;
+      caption.x = style.align === "left" ? safe.x : style.align === "right" ? safe.x + safe.w - caption.w : safe.x + (safe.w - caption.w) / 2;
       caption.y = safe.y + safe.h - textHeight(1, caption.size);
     }
     return { ...page, texts: [caption, ...own] };

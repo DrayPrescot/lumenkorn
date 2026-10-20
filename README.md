@@ -130,7 +130,8 @@ photos and pages, with or without margins.
 - **Texts:** date and place are written once on the page where a new day or place begins (date
   and place, date only, place only, or none). Add your own texts above or below the photos (the
   photos move together) or anywhere on the page by dragging, with size, alignment, colour and
-  bold, in Instrument Sans or Lora. Texts are drawn the same way for the preview and the print.
+  bold, in Instrument Sans or Lora; the style of the captions (and the default for new texts) is
+  chosen when creating the album and can be changed for all of them later. Texts are drawn the same way for the preview and the print.
 - **Map:** a map page as first or last page shows the country outlines, highlights the countries
   you visited and puts a pin on every place; places close together share one pin, named after
   the town or, for a whole island, the region. The names can be changed or hidden in the side

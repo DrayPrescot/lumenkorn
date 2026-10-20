@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Photo album: alignment, font size, colour and bold for the date and place captions can be set when
+  creating the album (and changed later for all captions at once); they are also the default for
+  new texts.
+
+### Fixed
+- Photo album: typing in a text (for example the date and place caption) froze the window for a long
+  time in larger albums, because every key press laid out and redrew all pages. Now only the page
+  that changed is updated (about 250 times faster).
+
 ## [1.0.13] – 2026-10-20
 
 ### Added

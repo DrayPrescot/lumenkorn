@@ -124,4 +124,6 @@ export default {
   "ohne Namen": "no name",
   "Vorschlag: {name}": "Suggested: {name}",
   "Vorschlag wiederherstellen: {name}": "Restore suggestion: {name}",
+  "Schriftgröße": "Font size",
+  "Schriftstil für Datum und Ort und als Vorgabe für eigene Texte – einzelne Texte lassen sich später anpassen.": "Text style for date and place and the default for your own texts – single texts can be adjusted later.",
 } satisfies Record<string, string>;

@@ -407,7 +407,8 @@ A3 oder eigene Maße in mm), die Anzahl der Fotos und Seiten und ob mit Rand ode
 - **Texte:** Datum und Ort stehen einmal auf der Seite, auf der ein neuer Tag bzw. Ort beginnt
   (Datum und Ort, nur Datum, nur Ort oder keine). Eigene Texte kommen über oder unter die Fotos
   (die Fotos rücken zusammen) oder frei auf die Seite (ziehen), mit Größe, Ausrichtung, Farbe und
-  Fett, in Instrument Sans oder Lora. Vorschau und Druck zeichnen Texte auf dieselbe Weise.
+  Fett, in Instrument Sans oder Lora; den Stil der Beschriftung (und die Vorgabe für neue Texte)
+  wählt man beim Erstellen und kann ihn später für alle auf einmal ändern. Vorschau und Druck zeichnen Texte auf dieselbe Weise.
 - **Karte:** Eine Kartenseite als erste oder letzte Seite zeigt die Ländergrenzen, hebt die
   besuchten Länder hervor und setzt eine Stecknadel für jeden Ort; nahe Orte teilen sich eine
   Nadel, benannt nach dem Ort oder – für eine ganze Insel – nach der Region. Die Namen lassen sich
