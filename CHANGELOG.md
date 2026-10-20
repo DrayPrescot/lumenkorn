@@ -6,10 +6,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Changed
-- Library: the loupe now shows photos at full resolution right away when the screen has more
-  pixels than the 2048 px preview, not only after zooming in. While you flip through photos it
-  prepares the next one in the direction you are going, so it is sharp as soon as it appears.
+## [1.0.9] – 2026-10-20
 
 ### Fixed
 - Develop: closing the window right after a change (within half a second) lost that change, and
@@ -41,6 +38,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   on import are handled instead of crashing or marking all photos missing.
 
 ### Changed
+- Library: the loupe now shows photos at full resolution right away when the screen has more
+  pixels than the 2048 px preview, not only after zooming in. While you flip through photos it
+  prepares the next one in the direction you are going, so it is sharp as soon as it appears.
 - Performance: removing a large source folder, the daily clean-up and AI search no longer hold
   the catalog for seconds; scrolling quickly through many photos no longer queues thousands of
   thumbnail jobs; a photo is decoded once when several views ask for it at the same time; the
