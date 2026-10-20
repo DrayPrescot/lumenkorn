@@ -69,6 +69,55 @@ fn db() -> Option<&'static Db> {
     .as_ref()
 }
 
+/// Vorberechnete Wortlisten der Datenbank (parallel zu `cameras` bzw. `lenses`),
+/// damit die Suche nicht bei jedem Foto tausende Namen neu zerlegt.
+struct Index {
+    /// je Kamera, je Modellname: Wörter
+    camera_models: Vec<Vec<Vec<String>>>,
+    /// je Kamera: erstes Wort jedes Herstellernamens
+    camera_makers: Vec<Vec<Option<String>>>,
+    /// je Objektiv, je Modellname: Wörter
+    lens_models: Vec<Vec<Vec<String>>>,
+    /// je Objektiv: Wörter aller Herstellernamen
+    lens_makers: Vec<Vec<String>>,
+}
+
+fn index() -> Option<&'static Index> {
+    static INDEX: OnceLock<Option<Index>> = OnceLock::new();
+    INDEX
+        .get_or_init(|| {
+            let db = db()?;
+            Some(Index {
+                camera_models: db
+                    .cameras
+                    .iter()
+                    .map(|c| c.model.iter().map(|m| tokens(m)).collect())
+                    .collect(),
+                camera_makers: db
+                    .cameras
+                    .iter()
+                    .map(|c| {
+                        c.maker
+                            .iter()
+                            .map(|m| tokens(m).into_iter().next())
+                            .collect()
+                    })
+                    .collect(),
+                lens_models: db
+                    .lenses
+                    .iter()
+                    .map(|l| l.model.iter().map(|m| tokens(m)).collect())
+                    .collect(),
+                lens_makers: db
+                    .lenses
+                    .iter()
+                    .map(|l| l.maker.iter().flat_map(|m| tokens(m)).collect())
+                    .collect(),
+            })
+        })
+        .as_ref()
+}
+
 /// Was ein Foto über Kamera und Objektiv verrät.
 #[derive(Debug, Clone, Default)]
 pub struct Shot {
@@ -118,23 +167,18 @@ fn tokens(s: &str) -> Vec<String> {
         .collect()
 }
 
-fn same_name(a: &str, b: &str) -> bool {
-    tokens(a) == tokens(b)
-}
-
 fn camera<'a>(db: &'a Db, shot: &Shot) -> Option<&'a Camera> {
-    let make = tokens(&shot.camera_make);
-    let first = make.first().cloned().unwrap_or_default();
-    let candidates: Vec<&Camera> = db
-        .cameras
-        .iter()
-        .filter(|c| c.model.iter().any(|m| same_name(m, &shot.camera_model)))
+    let idx = index()?;
+    let first = tokens(&shot.camera_make).into_iter().next();
+    let model = tokens(&shot.camera_model);
+    let candidates: Vec<usize> = (0..db.cameras.len())
+        .filter(|&i| idx.camera_models[i].contains(&model))
         .collect();
     candidates
         .iter()
-        .find(|c| c.maker.iter().any(|m| tokens(m).first() == Some(&first)))
+        .find(|&&i| idx.camera_makers[i].contains(&first))
         .or(candidates.first())
-        .copied()
+        .map(|&i| &db.cameras[i])
 }
 
 /// Bestes Objektiv zum EXIF-Namen: alle Wörter und Zahlen des EXIF-Namens
@@ -164,14 +208,15 @@ fn lens<'a>(db: &'a Db, shot: &Shot, cam: Option<&Camera>) -> Option<(&'a Lens, 
             v
         })
         .unwrap_or_default();
+    let idx = index()?;
     let mut best: Option<(i64, &Lens, &str)> = None;
-    for l in &db.lenses {
-        for m in &l.model {
-            let have = tokens(m);
+    for (li, l) in db.lenses.iter().enumerate() {
+        for (mi, m) in l.model.iter().enumerate() {
+            let have = &idx.lens_models[li][mi];
             if !want.iter().all(|t| have.contains(t)) {
                 continue;
             }
-            let maker: Vec<String> = l.maker.iter().flat_map(|m| tokens(m)).collect();
+            let maker = &idx.lens_makers[li];
             let extra = have
                 .iter()
                 .filter(|t| !want.contains(t) && !maker.contains(t))
@@ -330,47 +375,50 @@ pub(crate) fn profile(shot: &Shot, w: usize, h: usize) -> Option<Profile> {
     });
 
     // Vignettierung: Einträge der größten Entfernung, Blende in Stufen
-    let vig_gain = shot.aperture.filter(|a| *a > 0.0).and_then(|ap| {
-        let far = lens.vig.iter().map(|v| v[2]).fold(f64::MIN, f64::max);
-        let mut by_focal: Vec<(f64, VigByAperture)> = Vec::new();
-        for v in lens.vig.iter().filter(|v| v[2] == far) {
-            let e = (v[1].log2(), [v[3], v[4], v[5]]);
-            match by_focal.iter_mut().find(|(f, _)| *f == v[0]) {
-                Some((_, l)) => l.push(e),
-                None => by_focal.push((v[0], vec![e])),
+    let vig_gain = shot
+        .aperture
+        .filter(|a| a.is_finite() && *a > 0.0)
+        .and_then(|ap| {
+            let far = lens.vig.iter().map(|v| v[2]).fold(f64::MIN, f64::max);
+            let mut by_focal: Vec<(f64, VigByAperture)> = Vec::new();
+            for v in lens.vig.iter().filter(|v| v[2] == far && v[1] > 0.0) {
+                let e = (v[1].log2(), [v[3], v[4], v[5]]);
+                match by_focal.iter_mut().find(|(f, _)| *f == v[0]) {
+                    Some((_, l)) => l.push(e),
+                    None => by_focal.push((v[0], vec![e])),
+                }
             }
-        }
-        if by_focal.is_empty() {
-            return None;
-        }
-        by_focal.sort_by(|a, b| a.0.total_cmp(&b.0));
-        for (_, l) in by_focal.iter_mut() {
-            l.sort_by(|a, b| a.0.total_cmp(&b.0));
-        }
-        let at_focal = |list: &VigByAperture, rv: f64| -> f64 {
-            let gain = |k: &[f64; 3]| {
-                let r2 = rv * rv;
-                1.0 / (1.0 + r2 * (k[0] + r2 * (k[1] + r2 * k[2]))).max(0.1)
+            if by_focal.is_empty() {
+                return None;
+            }
+            by_focal.sort_by(|a, b| a.0.total_cmp(&b.0));
+            for (_, l) in by_focal.iter_mut() {
+                l.sort_by(|a, b| a.0.total_cmp(&b.0));
+            }
+            let at_focal = |list: &VigByAperture, rv: f64| -> f64 {
+                let gain = |k: &[f64; 3]| {
+                    let r2 = rv * rv;
+                    1.0 / (1.0 + r2 * (k[0] + r2 * (k[1] + r2 * k[2]))).max(0.1)
+                };
+                match around(list, ap.log2()) {
+                    Some((a, b, t)) => gain(a) + (gain(b) - gain(a)) * t,
+                    None => 1.0,
+                }
             };
-            match around(list, ap.log2()) {
-                Some((a, b, t)) => gain(a) + (gain(b) - gain(a)) * t,
-                None => 1.0,
-            }
-        };
-        Some(
-            knots
-                .iter()
-                .map(|r| {
-                    let rv = *r as f64 * half_diag / half_diag_cal;
-                    let g = match around(&by_focal, focal) {
-                        Some((a, b, t)) => at_focal(a, rv) * (1.0 - t) + at_focal(b, rv) * t,
-                        None => 1.0,
-                    };
-                    g as f32
-                })
-                .collect::<Vec<f32>>(),
-        )
-    });
+            Some(
+                knots
+                    .iter()
+                    .map(|r| {
+                        let rv = *r as f64 * half_diag / half_diag_cal;
+                        let g = match around(&by_focal, focal) {
+                            Some((a, b, t)) => at_focal(a, rv) * (1.0 - t) + at_focal(b, rv) * t,
+                            None => 1.0,
+                        };
+                        g as f32
+                    })
+                    .collect::<Vec<f32>>(),
+            )
+        });
     if factor.is_none() && vig_gain.is_none() {
         return None;
     }

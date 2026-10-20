@@ -18,27 +18,17 @@ use std::path::Path;
 /// Längste Kante gespeicherter Masken.
 pub const MASK_EDGE: u32 = 1024;
 
-fn open_session(path: &Path) -> Result<Model> {
-    if !crate::runtime::is_loaded() {
-        return Err(Error::RuntimeMissing);
-    }
-    if !path.is_file() {
-        return Err(Error::ModelMissing(
-            path.file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .into_owned(),
-        ));
-    }
-    crate::accel::session(path)
-}
-
-fn mask_size(w: u32, h: u32) -> (u32, u32) {
-    let s = (MASK_EDGE as f32 / w.max(h) as f32).min(1.0);
+/// Größe (w, h) mit der längsten Kante höchstens `edge`, nie vergrößert.
+pub(crate) fn fit_size(w: u32, h: u32, edge: u32) -> (u32, u32) {
+    let s = (edge as f32 / w.max(h) as f32).min(1.0);
     (
         ((w as f32 * s).round() as u32).max(1),
         ((h as f32 * s).round() as u32).max(1),
     )
+}
+
+fn mask_size(w: u32, h: u32) -> (u32, u32) {
+    fit_size(w, h, MASK_EDGE)
 }
 
 // --- Motiv ----------------------------------------------------------------
@@ -53,7 +43,7 @@ pub struct SubjectModel {
 
 impl SubjectModel {
     pub fn load(path: &Path) -> Result<Self> {
-        let mut session = open_session(path)?;
+        let mut session = crate::accel::open_model(path)?;
         let s = session.inspect();
         let input = s
             .inputs()
@@ -87,7 +77,12 @@ impl SubjectModel {
         let input = Tensor::from_array(([1usize, 3, S as usize, S as usize], data))?;
         let mut session = self.session.lock();
         let outputs = session.run(vec![(self.input.as_str(), input.into_dyn())])?;
-        let (_, pred) = outputs[self.output.as_str()].try_extract_tensor::<f32>()?;
+        let (_, pred) = crate::accel::output_f32(&outputs, &self.output)?;
+        if pred.len() < (S * S) as usize {
+            return Err(Error::ModelFormat(
+                tr_s("unerwartete Ausgabegröße", "unexpected output size").into(),
+            ));
+        }
         let (mi, ma) = pred
             .iter()
             .fold((f32::MAX, f32::MIN), |(a, b), v| (a.min(*v), b.max(*v)));
@@ -145,7 +140,7 @@ pub struct Point {
 
 impl Sam {
     pub fn load(encoder: &Path, decoder: &Path) -> Result<Self> {
-        let mut decoder = open_session(decoder)?;
+        let mut decoder = crate::accel::open_model(decoder)?;
         let low_res = decoder
             .inspect()
             .outputs()
@@ -155,7 +150,7 @@ impl Sam {
             log::warn!("SAM-Decoder ohne low_res_masks – Masken nur bei 3:2 quer passgenau");
         }
         Ok(Self {
-            encoder: open_session(encoder)?,
+            encoder: crate::accel::open_model(encoder)?,
             decoder,
             low_res,
         })
@@ -186,7 +181,13 @@ impl Sam {
         let name = enc.inputs()[0].name().to_string();
         let out_name = enc.outputs()[0].name().to_string();
         let outputs = enc.run(vec![(name.as_str(), input.into_dyn())])?;
-        let (_, emb) = outputs[out_name.as_str()].try_extract_tensor::<f32>()?;
+        let (_, emb) = crate::accel::output_f32(&outputs, &out_name)?;
+        // Das Embedding wird später als 1×256×64×64 an den Decoder gegeben
+        if emb.len() != 256 * 64 * 64 {
+            return Err(Error::ModelFormat(
+                tr_s("unerwartete Ausgabegröße", "unexpected output size").into(),
+            ));
+        }
         Ok(SamEmbedding {
             data: emb.to_vec(),
             width: w,
@@ -268,8 +269,8 @@ impl Sam {
         } else {
             "masks"
         };
-        let (shape, masks) = outputs[name].try_extract_tensor::<f32>()?;
-        let (_, iou) = outputs["iou_predictions"].try_extract_tensor::<f32>()?;
+        let (shape, masks) = crate::accel::output_f32(&outputs, name)?;
+        let (_, iou) = crate::accel::output_f32(&outputs, "iou_predictions")?;
         let count = shape.get(1).copied().unwrap_or(1).max(1) as usize;
         let best = (0..count.min(iou.len()))
             .max_by(|a, b| iou[*a].total_cmp(&iou[*b]))
@@ -333,7 +334,7 @@ pub struct SkyModel {
 
 impl SkyModel {
     pub fn load(path: &Path) -> Result<Self> {
-        let mut session = open_session(path)?;
+        let mut session = crate::accel::open_model(path)?;
         let s = session.inspect();
         let first = s
             .inputs()
@@ -381,7 +382,7 @@ impl SkyModel {
         let input = Tensor::from_array(([1usize, 3, sh, sw], data))?;
         let mut session = self.session.lock();
         let outputs = session.run(vec![(self.input.as_str(), input.into_dyn())])?;
-        let (_, pred) = outputs[self.output.as_str()].try_extract_tensor::<f32>()?;
+        let (_, pred) = crate::accel::output_f32(&outputs, &self.output)?;
         if pred.len() < n {
             return Err(Error::ModelFormat(
                 tr_s("unerwartete Ausgabegröße", "unexpected output size").into(),
@@ -1184,30 +1185,34 @@ const SAM_EDGE: usize = 3;
 
 /// Binäres Dilatieren (`grow`) bzw. Erodieren mit quadratischem Radius `r`.
 fn morph(b: &[bool], w: usize, h: usize, r: usize, grow: bool) -> Vec<bool> {
+    if w == 0 || h == 0 {
+        return Vec::new();
+    }
     // Getrennt waagerecht und senkrecht – bei Quadrat gleichwertig
-    let pass = |src: &[bool], horizontal: bool| -> Vec<bool> {
-        (0..w * h)
-            .map(|i| {
-                let (x, y) = (i % w, i / w);
-                let (lo, hi, at): (usize, usize, Box<dyn Fn(usize) -> usize>) = if horizontal {
-                    (
-                        x.saturating_sub(r),
-                        (x + r).min(w - 1),
-                        Box::new(move |k| y * w + k),
-                    )
-                } else {
-                    (
-                        y.saturating_sub(r),
-                        (y + r).min(h - 1),
-                        Box::new(move |k| k * w + x),
-                    )
-                };
-                let mut it = (lo..=hi).map(|k| src[at(k)]);
-                if grow { it.any(|v| v) } else { it.all(|v| v) }
-            })
-            .collect()
-    };
-    pass(&pass(b, true), false)
+    let mut horizontal = vec![false; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let row = &b[y * w + x.saturating_sub(r)..=y * w + (x + r).min(w - 1)];
+            horizontal[y * w + x] = if grow {
+                row.iter().any(|v| *v)
+            } else {
+                row.iter().all(|v| *v)
+            };
+        }
+    }
+    let mut out = vec![false; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let mut column =
+                (y.saturating_sub(r)..=(y + r).min(h - 1)).map(|k| horizontal[k * w + x]);
+            out[y * w + x] = if grow {
+                column.any(|v| v)
+            } else {
+                column.all(|v| v)
+            };
+        }
+    }
+    out
 }
 
 fn iou(a: &GrayImage, b: &GrayImage) -> f32 {
@@ -1247,6 +1252,19 @@ mod tests {
                 ])
             }
         }))
+    }
+
+    #[test]
+    fn morph_grows_and_shrinks() {
+        let (w, h) = (7, 5);
+        let mut b = vec![false; w * h];
+        b[2 * w + 3] = true;
+        let grown = morph(&b, w, h, 1, true);
+        assert_eq!(grown.iter().filter(|v| **v).count(), 9);
+        assert!(grown[w + 2] && grown[3 * w + 4] && !grown[2 * w + 5]);
+        // Erodieren macht den gewachsenen Punkt wieder zu einem Punkt
+        let back = morph(&grown, w, h, 1, false);
+        assert_eq!(back, b);
     }
 
     #[test]

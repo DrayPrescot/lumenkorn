@@ -49,21 +49,6 @@ pub struct Face {
     pub score: f32,
 }
 
-fn open(path: &Path) -> Result<Model> {
-    if !crate::runtime::is_loaded() {
-        return Err(Error::RuntimeMissing);
-    }
-    if !path.is_file() {
-        return Err(Error::ModelMissing(
-            path.file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .into_owned(),
-        ));
-    }
-    crate::accel::session(path)
-}
-
 // --- Finden ------------------------------------------------------------------
 
 pub struct FaceDetector {
@@ -73,7 +58,7 @@ pub struct FaceDetector {
 impl FaceDetector {
     pub fn load(path: &Path) -> Result<Self> {
         Ok(Self {
-            session: open(path)?,
+            session: crate::accel::open_model(path)?,
         })
     }
 
@@ -128,17 +113,26 @@ impl FaceDetector {
         let input = Tensor::from_array(([1usize, 3, INPUT, INPUT], data))?;
         let mut session = self.session.lock();
         let out = session.run(vec![("input", input.into_dyn())])?;
-        let get = |name: String| -> Result<Vec<f32>> {
-            let (_, v) = out[name.as_str()].try_extract_tensor::<f32>()?;
+        // Jede Ausgabe hat pro Zelle `per` Werte; ein anderes Modell darf nicht
+        // zu Indexfehlern führen
+        let get = |name: String, per: usize, cells: usize| -> Result<Vec<f32>> {
+            let (_, v) = crate::accel::output_f32(&out, &name)?;
+            if v.len() < cells * per {
+                return Err(Error::ModelFormat(tr!(
+                    "YuNet-Ausgang {name} zu kurz",
+                    "YuNet output {name} too short"
+                )));
+            }
             Ok(v.to_vec())
         };
         let mut faces = Vec::new();
         for s in STRIDES {
-            let cls = get(format!("cls_{s}"))?;
-            let obj = get(format!("obj_{s}"))?;
-            let bbox = get(format!("bbox_{s}"))?;
-            let kps = get(format!("kps_{s}"))?;
             let cols = INPUT / s;
+            let cells = cols * cols;
+            let cls = get(format!("cls_{s}"), 1, cells)?;
+            let obj = get(format!("obj_{s}"), 1, cells)?;
+            let bbox = get(format!("bbox_{s}"), 4, cells)?;
+            let kps = get(format!("kps_{s}"), 10, cells)?;
             let sf = s as f32;
             for (idx, (&c, &o)) in cls.iter().zip(&obj).enumerate() {
                 let score = (c.clamp(0.0, 1.0) * o.clamp(0.0, 1.0)).sqrt();
@@ -307,7 +301,7 @@ pub struct FaceEmbedder {
 impl FaceEmbedder {
     pub fn load(path: &Path) -> Result<Self> {
         Ok(Self {
-            session: open(path)?,
+            session: crate::accel::open_model(path)?,
         })
     }
 
@@ -325,7 +319,7 @@ impl FaceEmbedder {
         let input = Tensor::from_array(([1usize, 3, 112, 112], data))?;
         let mut session = self.session.lock();
         let out = session.run(vec![("data", input.into_dyn())])?;
-        let (_, v) = out["fc1"].try_extract_tensor::<f32>()?;
+        let (_, v) = crate::accel::output_f32(&out, "fc1")?;
         let mut e = v.to_vec();
         if e.len() != EMBED_DIM {
             return Err(Error::ModelFormat(tr!(

@@ -13,7 +13,7 @@ use crate::geometry;
 use crate::image_f32::ImageF32;
 use crate::masks;
 use crate::params::DevelopParams;
-use crate::pipeline::{RenderOptions, base_look, white_balance};
+use crate::pipeline::{RenderOptions, Tone, base_look, white_balance};
 use crate::source::{Source, SourceKind};
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -73,6 +73,11 @@ pub fn init() -> Result<&'static Gpu, String> {
 
 pub fn set_enabled(on: bool) {
     ENABLED.store(on, Ordering::SeqCst);
+    crate::pipeline::reset_gpu_failures();
+    if !on {
+        // Ausgeschaltet: Grafikspeicher zurückgeben
+        trim();
+    }
     *LAST_ERROR.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
@@ -150,8 +155,8 @@ struct U {
     fx: f32,
     fy: f32,
     amount: f32,
-    black: f32,
-    white: f32,
+    blacks: f32,
+    whites: f32,
     shadows: f32,
     highlights: f32,
     contrast: f32,
@@ -173,7 +178,8 @@ struct U {
     dehaze: f32,
     haze: f32,
     haze_lift: f32,
-    _p2: f32,
+    /// Modus der RGB-Kurve (`curve::MODE_*`)
+    curve_mode: u32,
     _p3: f32,
     /// HSL je Farbbereich: [0..2) Farbton, [2..4) Sättigung, [4..6) Luminanz
     hsl: [[f32; 4]; 6],
@@ -372,10 +378,15 @@ fn raw_tone_consts() -> String {
 /// so stehen die Zahlen nur einmal im Code. `{:?}` schreibt f32 immer mit
 /// Dezimalpunkt und exakt umkehrbar, der Shader rechnet also mit denselben Werten.
 fn shader_source() -> String {
+    use crate::color::{
+        HSL_GRAY_EDGE, HSL_HUE_RANGE, HSL_LUM_RANGE, OKLAB_LAB_TO_LMS, OKLAB_LIN_TO_LMS,
+        OKLAB_LMS_TO_LAB, OKLAB_LMS_TO_LIN,
+    };
     use crate::pipeline::{
-        BLACKS_GAIN, CLARITY_GAIN, CONTRAST_MIX, DEHAZE_CHROMA, DEHAZE_GAIN, DEHAZE_MIN_T,
-        HAZE_ADD, OVERLAY_COLOR, OVERLAY_OPACITY, SHADOW_HIGHLIGHT_GAIN, SHARPEN_GAIN,
-        SHARPEN_THRESHOLD, SKIN_EDGE, SOFT_CLIP_KNEE, WHITES_GAIN,
+        BLACKS_GAIN, BLACKS_RANGE, CLARITY_GAIN, CONTRAST_MIX, DEHAZE_CHROMA, DEHAZE_GAIN,
+        DEHAZE_MIN_T, HAZE_ADD, HIGHLIGHT_RANGE, MID_WEIGHT_K, OVERLAY_COLOR, OVERLAY_OPACITY,
+        SHADOW_HIGHLIGHT_GAIN, SHADOW_RANGE, SHARPEN_GAIN, SHARPEN_THRESHOLD, SKIN_EDGE,
+        SKIN_PROTECT, SOFT_CLIP_KNEE, WHITES_GAIN, WHITES_RANGE,
     };
     let f = |name: &str, v: f32| format!("const {name}: f32 = {v:?};\n");
     let list = |v: &[f32]| {
@@ -385,7 +396,49 @@ fn shader_source() -> String {
             .join(", ")
     };
     let c = crate::color::HSL_CENTERS;
+    let v2 = |name: &str, v: (f32, f32)| {
+        format!(
+            "const {name} = vec2<f32>({:?}, {:?});
+",
+            v.0, v.1
+        )
+    };
+    let rows3 = |name: &str, m: &[[f32; 3]; 3]| {
+        let r: Vec<String> = m
+            .iter()
+            .map(|r| format!("vec3<f32>({})", list(r)))
+            .collect();
+        format!(
+            "const {name} = array<vec3<f32>, 3>({});
+",
+            r.join(", ")
+        )
+    };
+    let rows2 = |name: &str, m: &[[f32; 2]; 3]| {
+        let r: Vec<String> = m
+            .iter()
+            .map(|r| format!("vec2<f32>({})", list(r)))
+            .collect();
+        format!(
+            "const {name} = array<vec2<f32>, 3>({});
+",
+            r.join(", ")
+        )
+    };
     [
+        v2("SHADOW_RANGE", SHADOW_RANGE),
+        v2("HIGHLIGHT_RANGE", HIGHLIGHT_RANGE),
+        v2("WHITES_RANGE", WHITES_RANGE),
+        v2("BLACKS_RANGE", BLACKS_RANGE),
+        f("MID_WEIGHT_K", MID_WEIGHT_K),
+        f("SKIN_PROTECT", SKIN_PROTECT),
+        f("HSL_GRAY_EDGE", HSL_GRAY_EDGE),
+        f("HSL_HUE_RANGE", HSL_HUE_RANGE),
+        f("HSL_LUM_RANGE", HSL_LUM_RANGE),
+        rows3("OKLAB_LIN_TO_LMS", &OKLAB_LIN_TO_LMS),
+        rows3("OKLAB_LMS_TO_LAB", &OKLAB_LMS_TO_LAB),
+        rows2("OKLAB_LAB_TO_LMS", &OKLAB_LAB_TO_LMS),
+        rows3("OKLAB_LMS_TO_LIN", &OKLAB_LMS_TO_LIN),
         raw_tone_consts(),
         f("SKIN_EDGE", SKIN_EDGE),
         f("SOFT_CLIP_KNEE", SOFT_CLIP_KNEE),
@@ -669,7 +722,9 @@ impl State {
             .sets
             .iter()
             .enumerate()
-            .filter(|(_, s)| s.cap >= n)
+            // Nicht viel größer als nötig: Ein 60-MP-Satz soll kein Thumbnail
+            // bedienen (die Mindestgröße eines Satzes ist 1 Mi Pixel).
+            .filter(|(_, s)| s.cap >= n && s.cap <= 4 * n.max(1 << 20))
             .min_by_key(|(_, s)| s.cap)
             .map(|(i, _)| i)
         {
@@ -779,27 +834,6 @@ impl Gpu {
     }
 }
 
-/// Tonwert-Parameter, wie `Tone` in pipeline.rs (normiert auf −1…1).
-struct ToneVals {
-    contrast: f32,
-    highlights: f32,
-    shadows: f32,
-    whites: f32,
-    blacks: f32,
-    clarity: f32,
-}
-
-impl ToneVals {
-    fn active(&self) -> bool {
-        self.highlights != 0.0
-            || self.shadows != 0.0
-            || self.whites != 0.0
-            || self.blacks != 0.0
-            || self.clarity != 0.0
-            || self.contrast != 0.0
-    }
-}
-
 struct Ctx<'a> {
     ops: Vec<Op<'a>>,
     w: usize,
@@ -889,7 +923,7 @@ impl<'a> Ctx<'a> {
     }
 
     /// Wie `tone()` in pipeline.rs, in place auf `img`.
-    fn tone(&mut self, img: &'a Buffer, t: &ToneVals) {
+    fn tone(&mut self, img: &'a Buffer, t: &Tone) {
         if !t.active() {
             return;
         }
@@ -915,9 +949,8 @@ impl<'a> Ctx<'a> {
             u.flags |= F_DETAIL;
             b.fc = Some(detail);
         }
-        // Feldnamen historisch: tragen die Reglerwerte Schwarz/Weiß (−1…1)
-        u.black = t.blacks;
-        u.white = t.whites;
+        u.blacks = t.blacks;
+        u.whites = t.whites;
         u.shadows = t.shadows;
         u.highlights = t.highlights;
         u.contrast = t.contrast;
@@ -988,7 +1021,7 @@ impl<'a> Ctx<'a> {
     /// der Tabelle aus `curve_setup`.
     fn curve(&mut self, img: &'a Buffer, lut: &'a Buffer, mode: u32) {
         let u = U {
-            radius: mode,
+            curve_mode: mode,
             ..self.base_u()
         };
         self.run(
@@ -1079,7 +1112,19 @@ impl Gpu {
         mask_image: &ImageF32,
         ident: u64,
     ) -> Result<Rendered, String> {
-        let p = params.sanitized();
+        self.render_sanitized(src, &params.sanitized(), opts, pack, mask_image, ident)
+    }
+
+    /// Wie [`Gpu::render_masked`], aber `p` ist schon bereinigt (`sanitized`).
+    pub(crate) fn render_sanitized(
+        &self,
+        src: &Source,
+        p: &DevelopParams,
+        opts: &RenderOptions,
+        pack: bool,
+        mask_image: &ImageF32,
+        ident: u64,
+    ) -> Result<Rendered, String> {
         let raw = src.kind == SourceKind::Raw;
         let (w, h) = (src.image.width, src.image.height);
         let n = w * h;
@@ -1149,6 +1194,9 @@ impl Gpu {
                 self.upload_rgba(&slot.buf, dn);
                 slot.key = Some(key);
             }
+        } else {
+            // Wird nicht gebraucht: Grafikspeicher freigeben
+            st.sets[si].dn = None;
         }
         // Masken hochladen (je Ebene ein Puffer, nach Inhalt zwischengespeichert).
         // Reihenfolge = Nutzung: Benutzte rücken ans Ende, verdrängt wird vorn.
@@ -1241,15 +1289,15 @@ impl Gpu {
             // --- Dunst (Dunsthelligkeit wie auf der CPU aus der Quelle)
             if p.dehaze != 0.0 {
                 let amount = p.dehaze / 100.0;
-                let haze = crate::pipeline::haze_level(&src.image, &p, raw, amount);
+                let haze = crate::pipeline::haze_level(&src.image, p, raw, amount);
                 cx.dehaze(&set.img, amount, haze);
             }
 
             // --- Tonwerte und Farbe
-            let (contrast, saturation, vibrance) = base_look(&p, raw);
+            let (contrast, saturation, vibrance) = base_look(p, raw);
             cx.tone(
                 &set.img,
-                &ToneVals {
+                &Tone {
                     contrast,
                     highlights: p.highlights / 100.0,
                     shadows: p.shadows / 100.0,
@@ -1300,7 +1348,7 @@ impl Gpu {
                     }
                     cx.tone(
                         &set.loc,
-                        &ToneVals {
+                        &Tone {
                             contrast: a.contrast / 100.0,
                             highlights: a.highlights / 100.0,
                             shadows: a.shadows / 100.0,
@@ -1644,5 +1692,61 @@ mod lock_tests {
         // Ohne Vergiftung bleibt der Inhalt
         m.lock().unwrap().push(7);
         assert_eq!(*lock_or_reset(&m, |v| v.clear()), vec![7]);
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+
+    /// Byte-Größe eines WGSL-Feldtyps (nur die hier benutzten Typen).
+    fn wgsl_size(ty: &str) -> usize {
+        let ty = ty.trim();
+        if let Some(inner) = ty.strip_prefix("array<").and_then(|t| t.strip_suffix('>')) {
+            let (elem, n) = inner.rsplit_once(',').expect("array<T, N>");
+            return wgsl_size(elem) * n.trim().parse::<usize>().expect("Länge");
+        }
+        match ty {
+            "u32" | "i32" | "f32" => 4,
+            "vec2<f32>" => 8,
+            "vec3<f32>" | "vec4<f32>" => 16,
+            _ => panic!("unbekannter WGSL-Typ {ty}"),
+        }
+    }
+
+    /// `struct U` in Rust und im Shader müssen gleich groß sein, sonst liest
+    /// der Shader verschobene Werte (oder die Bindung scheitert erst auf der GPU).
+    #[test]
+    fn uniform_struct_matches_wgsl() {
+        let src = include_str!("pipeline.wgsl");
+        let start = src.find("struct U {").expect("struct U");
+        let body = &src[start + "struct U {".len()..];
+        let body = &body[..body.find("};").expect("Ende von struct U")];
+        let mut size = 0;
+        for line in body.lines() {
+            let line = line.split("//").next().unwrap().trim();
+            // Felder durch Komma getrennt; Typen mit Komma (array<..., N>) beachten
+            let mut depth = 0;
+            let mut field = String::new();
+            let mut fields = Vec::new();
+            for ch in line.chars() {
+                match ch {
+                    '<' => depth += 1,
+                    '>' => depth -= 1,
+                    _ => {}
+                }
+                if ch == ',' && depth == 0 {
+                    fields.push(std::mem::take(&mut field));
+                } else {
+                    field.push(ch);
+                }
+            }
+            fields.push(field);
+            for f in fields.iter().filter(|f| !f.trim().is_empty()) {
+                let (_, ty) = f.split_once(':').expect("Name: Typ");
+                size += wgsl_size(ty);
+            }
+        }
+        assert_eq!(std::mem::size_of::<U>(), size.next_multiple_of(16));
     }
 }

@@ -54,9 +54,78 @@ fn referenced(p: &DevelopParams, out: &mut HashSet<String>) {
     out.extend(p.raster_mask_ids());
 }
 
+/// Rohdaten für [`Live`]: schnell unter der Katalogsperre eingesammelt, das
+/// (teure) Parsen der Bearbeitungen geschieht danach ohne Sperre.
+#[derive(Debug, Default)]
+pub struct RawLive {
+    images: HashSet<i64>,
+    faces: HashSet<i64>,
+    edit_params: Vec<String>,
+}
+
+impl RawLive {
+    pub fn resolve(self) -> Live {
+        Live {
+            images: self.images,
+            faces: self.faces,
+            files: files_from_params(self.edit_params.iter().map(String::as_str)),
+        }
+    }
+}
+
+/// Datei-IDs aus den JSON-Texten der Bearbeitungen. Ein Text, der nicht
+/// parst, darf seine Dateien nicht freigeben: Dann zählt vorsichtshalber jede
+/// Zeichenkette darin (zwischen Anführungszeichen) als Verweis.
+fn files_from_params<'a>(params: impl Iterator<Item = &'a str>) -> HashSet<String> {
+    let mut files = HashSet::new();
+    for json in params {
+        match serde_json::from_str::<serde_json::Value>(json) {
+            Ok(v) => referenced(&DevelopParams::from_json(&v), &mut files),
+            Err(_) => files.extend(json.split('"').skip(1).step_by(2).map(str::to_owned)),
+        }
+    }
+    files
+}
+
+/// Änderung einer Bearbeitung: (Bearbeitungs-ID, Foto-ID, alter Text, neuer Text).
+pub type EditFix = (i64, i64, String, String);
+
+/// Berechnet, welche Bearbeitungen Verweise auf Dateien anderer Fotos
+/// enthalten (reine Rechnung, ohne Katalogzugriff). Zeilen: (id, image_id, params).
+pub fn plan_foreign_refs(rows: Vec<(i64, i64, String)>) -> Result<Vec<EditFix>> {
+    let mut fixed = Vec::new();
+    for (edit_id, image_id, json) in rows {
+        // Nicht lesbare Texte bleiben unberührt
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) else {
+            continue;
+        };
+        let mut p = DevelopParams::from_json(&v);
+        let own = format!("{image_id}-");
+        let foreign = |id: &str| !id.starts_with(&own);
+        let foreign_shape = |s: &lumenkorn_develop::MaskShape| matches!(s, lumenkorn_develop::MaskShape::Raster { mask_id, .. } if foreign(mask_id));
+        let before = (p.denoise.is_some(), p.masks.len(), p.repairs.len());
+        if p.denoise.as_ref().is_some_and(|d| foreign(&d.id)) {
+            p.denoise = None;
+        }
+        p.masks.retain(|m| !m.shapes.iter().any(foreign_shape));
+        p.repairs.retain(|r| {
+            !r.result.as_deref().is_some_and(foreign) && !r.shapes.iter().any(foreign_shape)
+        });
+        if before != (p.denoise.is_some(), p.masks.len(), p.repairs.len()) {
+            fixed.push((edit_id, image_id, json, serde_json::to_string(&p)?));
+        }
+    }
+    Ok(fixed)
+}
+
 impl Catalog {
     pub fn live(&self) -> Result<Live> {
-        let mut live = Live::default();
+        Ok(self.live_raw()?.resolve())
+    }
+
+    /// Wie [`Catalog::live`], parst aber die Bearbeitungen noch nicht.
+    pub fn live_raw(&self) -> Result<RawLive> {
+        let mut live = RawLive::default();
         let mut st = self.conn.prepare("SELECT id FROM images")?;
         for r in st.query_map([], |r| r.get(0))? {
             live.images.insert(r?);
@@ -65,21 +134,58 @@ impl Catalog {
         for r in st.query_map([], |r| r.get(0))? {
             live.faces.insert(r?);
         }
-        live.files = self.live_files()?;
+        live.edit_params = self.edit_params_all()?;
         Ok(live)
     }
 
     /// Nur [`Live::files`] – ohne alle Bild- und Gesichts-IDs zu sammeln.
     pub fn live_files(&self) -> Result<HashSet<String>> {
-        let mut files = HashSet::new();
-        // Auch Schnappschüsse: Wiederherstellen braucht ihre Dateien
+        let all = self.edit_params_all()?;
+        Ok(files_from_params(all.iter().map(String::as_str)))
+    }
+
+    /// Auch Schnappschüsse: Wiederherstellen braucht ihre Dateien.
+    fn edit_params_all(&self) -> Result<Vec<String>> {
         let mut st = self.conn.prepare("SELECT params FROM edits")?;
-        for r in st.query_map([], |r| r.get::<_, String>(0))? {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r?) {
-                referenced(&DevelopParams::from_json(&v), &mut files);
-            }
+        Ok(st
+            .query_map([], |r| r.get::<_, String>(0))?
+            .collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Alle Bearbeitungen als (id, image_id, params), nur eingesammelt.
+    pub fn edit_rows(&self) -> Result<Vec<(i64, i64, String)>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT id, image_id, params FROM edits")?;
+        Ok(st
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Schreibt die Ergebnisse von [`plan_foreign_refs`] in einer kurzen
+    /// Transaktion. Eine Bearbeitung, die sich seit dem Einlesen geändert hat,
+    /// bleibt unberührt (Vergleich mit dem alten Text). Liefert die Anzahl.
+    pub fn apply_edit_fixes(&mut self, fixed: &[EditFix]) -> Result<usize> {
+        if fixed.is_empty() {
+            return Ok(0);
         }
-        Ok(files)
+        self.with_tx(|tx| {
+            let mut n = 0;
+            for (edit_id, image_id, old, new) in fixed {
+                let changed = tx.execute(
+                    "UPDATE edits SET params = ?3 WHERE id = ?1 AND params = ?2",
+                    rusqlite::params![edit_id, old, new],
+                )?;
+                if changed > 0 {
+                    n += 1;
+                    tx.execute(
+                        "UPDATE images SET thumb_state = 0 WHERE id = ?1",
+                        [image_id],
+                    )?;
+                }
+            }
+            Ok(n)
+        })
     }
 
     /// Entfernt Verweise auf Dateien anderer Fotos aus allen Bearbeitungen.
@@ -88,53 +194,12 @@ impl Catalog {
     /// Entrauschung, Reparaturen und KI-Masken des Ursprungsfotos übertragen –
     /// das Zielfoto zeigte dann fremde Pixel. Alle Datei-IDs beginnen mit der
     /// ID ihres Fotos (`42-dn-…`), daran ist ein fremder Verweis erkennbar.
-    /// Liefert die Anzahl bereinigter Bearbeitungen.
+    /// Liefert die Anzahl bereinigter Bearbeitungen. Wer die Sperre schonen
+    /// will, ruft `edit_rows`, `plan_foreign_refs` und `apply_edit_fixes`
+    /// einzeln auf.
     pub fn drop_foreign_refs(&mut self) -> Result<usize> {
-        let rows: Vec<(i64, i64, String)> = {
-            let mut st = self
-                .conn
-                .prepare("SELECT id, image_id, params FROM edits")?;
-            st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
-                .collect::<std::result::Result<_, _>>()?
-        };
-        let mut fixed = Vec::new();
-        for (edit_id, image_id, json) in rows {
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) else {
-                continue;
-            };
-            let mut p = DevelopParams::from_json(&v);
-            let own = format!("{image_id}-");
-            let foreign = |id: &str| !id.starts_with(&own);
-            let foreign_shape = |s: &lumenkorn_develop::MaskShape| matches!(s, lumenkorn_develop::MaskShape::Raster { mask_id, .. } if foreign(mask_id));
-            let before = (p.denoise.is_some(), p.masks.len(), p.repairs.len());
-            if p.denoise.as_ref().is_some_and(|d| foreign(&d.id)) {
-                p.denoise = None;
-            }
-            p.masks.retain(|m| !m.shapes.iter().any(foreign_shape));
-            p.repairs.retain(|r| {
-                !r.result.as_deref().is_some_and(foreign) && !r.shapes.iter().any(foreign_shape)
-            });
-            if before != (p.denoise.is_some(), p.masks.len(), p.repairs.len()) {
-                fixed.push((edit_id, image_id, serde_json::to_string(&p)?));
-            }
-        }
-        if fixed.is_empty() {
-            return Ok(0);
-        }
-        self.with_tx(|tx| {
-            for (edit_id, image_id, json) in &fixed {
-                tx.execute(
-                    "UPDATE edits SET params = ?2 WHERE id = ?1",
-                    rusqlite::params![edit_id, json],
-                )?;
-                tx.execute(
-                    "UPDATE images SET thumb_state = 0 WHERE id = ?1",
-                    [image_id],
-                )?;
-            }
-            Ok(())
-        })?;
-        Ok(fixed.len())
+        let fixed = plan_foreign_refs(self.edit_rows()?)?;
+        self.apply_edit_fixes(&fixed)
     }
 
     /// RAWs, für die beim Einlesen nur die Maße des Mini-Thumbnails
@@ -153,9 +218,12 @@ impl Catalog {
     /// Statistiken für den Abfrageplaner aktualisieren (günstig, empfohlen
     /// von SQLite für lange laufende Anwendungen).
     pub fn optimize(&self) -> Result<()> {
-        // Suchindex: nach vielen kleinen Änderungen die Segmente zusammenführen
-        self.conn
-            .execute_batch("INSERT INTO search(search) VALUES ('optimize'); PRAGMA optimize;")?;
+        // Suchindex: nach vielen kleinen Änderungen die Segmente zusammenführen,
+        // aber nur begrenzt viel je Durchlauf (ein vollständiges 'optimize'
+        // hielte die Katalogsperre bei großen Katalogen lange)
+        self.conn.execute_batch(
+            "INSERT INTO search(search, rank) VALUES ('merge', 500); PRAGMA optimize;",
+        )?;
         Ok(())
     }
 }
@@ -324,5 +392,33 @@ mod tests {
             "A unverändert"
         );
         assert_eq!(cat.drop_foreign_refs().unwrap(), 0);
+    }
+
+    #[test]
+    fn unparsable_edit_keeps_its_files() {
+        let files = files_from_params(
+            [r#"{"denoise":{"id":"7-dn-a"}, kaputt"#, r#"{"masks":[]}"#].into_iter(),
+        );
+        assert!(files.contains("7-dn-a"));
+    }
+
+    #[test]
+    fn removes_root_in_chunks_and_finds_ids() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let ids = crate::catalog::tests_support::insert_dummy_images(&mut cat, 3);
+        let found = cat
+            .query_image_ids(&crate::model::ImageQuery::new(crate::model::Scope::All))
+            .unwrap();
+        assert_eq!(found, ids.iter().copied().collect());
+        let root = cat.roots().unwrap()[0].id;
+        let cat = std::sync::Mutex::new(cat);
+        Catalog::remove_root_chunked(&cat, root).unwrap();
+        let cat = cat.lock().unwrap();
+        assert!(cat.roots().unwrap().is_empty());
+        assert!(
+            cat.query_image_ids(&crate::model::ImageQuery::new(crate::model::Scope::All))
+                .unwrap()
+                .is_empty()
+        );
     }
 }

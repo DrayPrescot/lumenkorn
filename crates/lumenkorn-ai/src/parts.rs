@@ -17,6 +17,7 @@
 //! Rechteck aus (genauere Kanten als jedes der anderen Modelle).
 
 use crate::accel::Model;
+use crate::clip::{MEAN as CLIP_MEAN, STD as CLIP_STD};
 use crate::error::{Error, Result};
 use crate::segment::{Sam, SamEmbedding};
 use crate::tokenizer::ClipTokenizer;
@@ -95,21 +96,6 @@ fn prompt(noun: &str) -> String {
     format!("a photo of a {noun}")
 }
 
-fn open_session(path: &Path) -> Result<Model> {
-    if !crate::runtime::is_loaded() {
-        return Err(Error::RuntimeMissing);
-    }
-    if !path.is_file() {
-        return Err(Error::ModelMissing(
-            path.file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .into_owned(),
-        ));
-    }
-    crate::accel::session(path)
-}
-
 fn no(what: &str) -> Error {
     Error::ModelFormat(what.into())
 }
@@ -137,12 +123,10 @@ pub struct Owl {
 
 /// Länge der Textabfragen (Positionseinbettungen des OWLv2-Textmodells)
 const OWL_TEXT_LEN: usize = 16;
-const CLIP_MEAN: [f32; 3] = [0.481_454_66, 0.457_827_5, 0.408_210_73];
-const CLIP_STD: [f32; 3] = [0.268_629_54, 0.261_302_6, 0.275_777_1];
 
 impl Owl {
     pub fn load(dir: &Path) -> Result<Self> {
-        let mut session = open_session(&dir.join(OWL_FILE))?;
+        let mut session = crate::accel::open_model(&dir.join(OWL_FILE))?;
         let read = |f: &str| {
             std::fs::read_to_string(dir.join(f)).map_err(|_| Error::ModelMissing(f.into()))
         };
@@ -367,7 +351,7 @@ impl ClassMap {
 
 impl PartsSeg {
     pub fn load(path: &Path) -> Result<Self> {
-        let mut session = open_session(path)?;
+        let mut session = crate::accel::open_model(path)?;
         let s = session.inspect();
         let input = s
             .inputs()
@@ -439,7 +423,7 @@ pub struct FaceMesh {
 
 impl FaceMesh {
     pub fn load(path: &Path) -> Result<Self> {
-        let mut session = open_session(path)?;
+        let mut session = crate::accel::open_model(path)?;
         let s = session.inspect();
         let input = s
             .inputs()
@@ -695,11 +679,7 @@ fn grow(pts: &[[f32; 2]], f: f32) -> Vec<[f32; 2]> {
 }
 
 fn mask_size(w: u32, h: u32) -> (u32, u32) {
-    let s = (PARTS_EDGE as f32 / w.max(h) as f32).min(1.0);
-    (
-        ((w as f32 * s).round() as u32).max(1),
-        ((h as f32 * s).round() as u32).max(1),
-    )
+    crate::segment::fit_size(w, h, PARTS_EDGE)
 }
 
 // --- Personen ---------------------------------------------------------------------

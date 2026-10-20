@@ -15,12 +15,12 @@ struct U {
     dw: u32, dh: u32, radius: u32, flags: u32,
     wb_r: f32, wb_g: f32, wb_b: f32, gain: f32,
     denoise: f32, fx: f32, fy: f32, amount: f32,
-    black: f32, white: f32, shadows: f32, highlights: f32,
+    blacks: f32, whites: f32, shadows: f32, highlights: f32,
     contrast: f32, clarity: f32, sat: f32, vib: f32,
     out_w: u32, out_h: u32, rot: u32, flip: u32,
     ow: u32, oh: u32, crop_x: u32, crop_y: u32,
     st_s: f32, st_c: f32, st_k: f32, dehaze: f32,
-    haze: f32, haze_lift: f32, _p2: f32, _p3: f32,
+    haze: f32, haze_lift: f32, curve_mode: u32, _p3: f32,
     // HSL je Farbbereich (−1…1): [0..2) Farbton, [2..4) Sättigung, [4..6) Luminanz
     hsl: array<vec4<f32>, 6>,
     // Color Grading (pipeline.rs: GradeVals): Tiefen, Mitten, Lichter, Global
@@ -79,6 +79,12 @@ fn enc3(c: vec3<f32>) -> vec3<f32> {
 fn sstep(e0: f32, e1: f32, x: f32) -> f32 {
     let t = clamp((x - e0) / (e1 - e0), 0.0, 1.0);
     return t * t * (3.0 - 2.0 * t);
+}
+
+// Gewicht der Mitteltöne (pipeline.rs: mid_weight)
+fn mid_weight(y: f32) -> f32 {
+    let v = clamp(y, 0.0, 1.0);
+    return MID_WEIGHT_K * v * (1.0 - v);
 }
 
 fn fit_gamut(c: vec3<f32>, y_in: f32) -> vec3<f32> {
@@ -335,7 +341,7 @@ fn grade(@builtin(global_invocation_id) id: vec3<u32>) {
 }
 
 // Gradationskurve (curve.rs: curve_px), in place. fa = Tabelle: RGB, Rot,
-// Grün, Blau je CURVE_LUT Werte; u.radius = Modus der RGB-Kurve
+// Grün, Blau je CURVE_LUT Werte; u.curve_mode = Modus der RGB-Kurve
 fn curve_at(k: u32, v: f32) -> f32 {
     let t = clamp(v, 0.0, 1.0) * f32(CURVE_LUT - 1u);
     let i = min(u32(t), CURVE_LUT - 2u);
@@ -350,10 +356,10 @@ fn curve(@builtin(global_invocation_id) id: vec3<u32>) {
     if (id.x >= u.w || id.y >= u.h) { return; }
     let i = id.y * u.w + id.x;
     var c = outa[i].xyz;
-    if (u.radius == CURVE_PRESERVE) {
+    if (u.curve_mode == CURVE_PRESERVE) {
         let y = luma(c);
         c = apply_luma(c, y, curve_at(0u, y));
-    } else if (u.radius == CURVE_EACH) {
+    } else if (u.curve_mode == CURVE_EACH) {
         c = vec3<f32>(curve_at(0u, c.x), curve_at(0u, c.y), curve_at(0u, c.z));
     }
     outa[i] = vec4<f32>(curve_at(1u, c.x), curve_at(2u, c.y), curve_at(3u, c.z), outa[i].w);
@@ -393,8 +399,7 @@ fn dehaze_pass(@builtin(global_invocation_id) id: vec3<u32>) {
     let t = max(1.0 - u.dehaze * DEHAZE_GAIN * d / a, DEHAZE_MIN_T);
     let y = luma(c);
     var yn = (y - a) / t + a;
-    let v = clamp(yn, 0.0, 1.0);
-    yn = yn + u.haze_lift * 4.0 * v * (1.0 - v);
+    yn = yn + u.haze_lift * mid_weight(yn);
     let k = pow(t, -DEHAZE_CHROMA);
     outa[i] = vec4<f32>(fit_gamut(vec3<f32>(yn) + (c - vec3<f32>(y)) * k, yn), 1.0);
 }
@@ -410,27 +415,27 @@ fn tone(@builtin(global_invocation_id) id: vec3<u32>) {
     if ((u.flags & F_BASE) != 0u) {
         let b = sample_map(0u, u.mw, u.mh, id.x, id.y);
         if (u.shadows != 0.0) {
-            let ws = 1.0 - sstep(0.1, 0.75, b);
+            let ws = 1.0 - sstep(SHADOW_RANGE.x, SHADOW_RANGE.y, b);
             v *= exp(u.shadows * SHADOW_HIGHLIGHT_GAIN * ws * max(1.0 - v, 0.0));
         }
         if (u.highlights != 0.0) {
-            let wh = sstep(0.25, 0.9, b);
+            let wh = sstep(HIGHLIGHT_RANGE.x, HIGHLIGHT_RANGE.y, b);
             v = 1.0 - (1.0 - v) * exp(-u.highlights * SHADOW_HIGHLIGHT_GAIN * wh * max(v, 0.0));
         }
     }
-    // Weiß und Schwarz (pipeline.rs: tone_ends); u.white/u.black = Reglerwerte
-    if (u.white != 0.0) {
-        let w = sstep(0.4, 1.0, v);
-        v += u.white * WHITES_GAIN * w * w;
+    // Weiß und Schwarz (pipeline.rs: tone_ends); u.whites/u.blacks = Reglerwerte
+    if (u.whites != 0.0) {
+        let w = sstep(WHITES_RANGE.x, WHITES_RANGE.y, v);
+        v += u.whites * WHITES_GAIN * w * w;
     }
-    if (u.black != 0.0) {
-        let s = 1.0 - sstep(0.0, 0.6, v);
-        v += u.black * BLACKS_GAIN * s * s;
+    if (u.blacks != 0.0) {
+        let s = 1.0 - sstep(BLACKS_RANGE.x, BLACKS_RANGE.y, v);
+        v += u.blacks * BLACKS_GAIN * s * s;
     }
     v = s_curve(clamp(v, 0.0, 1.0), u.contrast);
     if ((u.flags & F_DETAIL) != 0u) {
         let d = sample_map(1u, u.dw, u.dh, id.x, id.y);
-        let mid = 4.0 * v * (1.0 - v);
+        let mid = MID_WEIGHT_K * v * (1.0 - v);
         v += u.clarity * CLARITY_GAIN * (y0 - d) * mid;
     }
     outa[i] = vec4<f32>(apply_luma(outa[i].xyz, y0, clamp(v, 0.0, 1.0)), 1.0);
@@ -444,7 +449,7 @@ fn color(@builtin(global_invocation_id) id: vec3<u32>) {
     let p = outa[i].xyz;
     let y = luma(p);
     let chroma = max(p.x, max(p.y, p.z)) - min(p.x, min(p.y, p.z));
-    let skin = 1.0 - 0.5 * sstep(0.0, SKIN_EDGE, min(p.x - p.y, p.y - p.z));
+    let skin = 1.0 - SKIN_PROTECT * sstep(0.0, SKIN_EDGE, min(p.x - p.y, p.y - p.z));
     var vk = 1.0;
     if (u.vib > 0.0) {
         vk = skin;
@@ -459,27 +464,27 @@ fn oklab(c: vec3<f32>) -> vec3<f32> {
     let r = max(c.x, 0.0);
     let g = max(c.y, 0.0);
     let b = max(c.z, 0.0);
-    let l = pow(0.41222146 * r + 0.53633255 * g + 0.051445995 * b, 1.0 / 3.0);
-    let m = pow(0.2119035 * r + 0.6806995 * g + 0.10739696 * b, 1.0 / 3.0);
-    let s = pow(0.08830246 * r + 0.28171885 * g + 0.6299787 * b, 1.0 / 3.0);
+    let l = pow(OKLAB_LIN_TO_LMS[0].x * r + OKLAB_LIN_TO_LMS[0].y * g + OKLAB_LIN_TO_LMS[0].z * b, 1.0 / 3.0);
+    let m = pow(OKLAB_LIN_TO_LMS[1].x * r + OKLAB_LIN_TO_LMS[1].y * g + OKLAB_LIN_TO_LMS[1].z * b, 1.0 / 3.0);
+    let s = pow(OKLAB_LIN_TO_LMS[2].x * r + OKLAB_LIN_TO_LMS[2].y * g + OKLAB_LIN_TO_LMS[2].z * b, 1.0 / 3.0);
     return vec3<f32>(
-        0.21045426 * l + 0.7936178 * m - 0.004072047 * s,
-        1.9779985 * l - 2.4285922 * m + 0.4505937 * s,
-        0.025904037 * l + 0.78277177 * m - 0.80867577 * s,
+        OKLAB_LMS_TO_LAB[0].x * l + OKLAB_LMS_TO_LAB[0].y * m + OKLAB_LMS_TO_LAB[0].z * s,
+        OKLAB_LMS_TO_LAB[1].x * l + OKLAB_LMS_TO_LAB[1].y * m + OKLAB_LMS_TO_LAB[1].z * s,
+        OKLAB_LMS_TO_LAB[2].x * l + OKLAB_LMS_TO_LAB[2].y * m + OKLAB_LMS_TO_LAB[2].z * s,
     );
 }
 
 fn oklab_to_linear(c: vec3<f32>) -> vec3<f32> {
-    let l0 = c.x + 0.39633778 * c.y + 0.21580376 * c.z;
-    let m0 = c.x - 0.105561346 * c.y - 0.06385417 * c.z;
-    let s0 = c.x - 0.08948418 * c.y - 1.2914855 * c.z;
+    let l0 = c.x + OKLAB_LAB_TO_LMS[0].x * c.y + OKLAB_LAB_TO_LMS[0].y * c.z;
+    let m0 = c.x + OKLAB_LAB_TO_LMS[1].x * c.y + OKLAB_LAB_TO_LMS[1].y * c.z;
+    let s0 = c.x + OKLAB_LAB_TO_LMS[2].x * c.y + OKLAB_LAB_TO_LMS[2].y * c.z;
     let l = l0 * l0 * l0;
     let m = m0 * m0 * m0;
     let s = s0 * s0 * s0;
     return vec3<f32>(
-        4.0767417 * l - 3.3077116 * m + 0.23096994 * s,
-        -1.268438 * l + 2.6097574 * m - 0.34131938 * s,
-        -0.0041960863 * l - 0.7034186 * m + 1.7076147 * s,
+        OKLAB_LMS_TO_LIN[0].x * l + OKLAB_LMS_TO_LIN[0].y * m + OKLAB_LMS_TO_LIN[0].z * s,
+        OKLAB_LMS_TO_LIN[1].x * l + OKLAB_LMS_TO_LIN[1].y * m + OKLAB_LMS_TO_LIN[1].z * s,
+        OKLAB_LMS_TO_LIN[2].x * l + OKLAB_LMS_TO_LIN[2].y * m + OKLAB_LMS_TO_LIN[2].z * s,
     );
 }
 
@@ -516,10 +521,10 @@ fn hsl(@builtin(global_invocation_id) id: vec3<u32>) {
             break;
         }
     }
-    let g = sstep(0.0, 0.04, c);
-    let h2 = radians(hue + dh * 30.0 * g);
+    let g = sstep(0.0, HSL_GRAY_EDGE, c);
+    let h2 = radians(hue + dh * HSL_HUE_RANGE * g);
     let c2 = c * max(1.0 + ds, 0.0);
-    let l2 = lab.x * (1.0 + dl * 0.5 * g);
+    let l2 = lab.x * (1.0 + dl * HSL_LUM_RANGE * g);
     let o = clamp(oklab_to_linear(vec3<f32>(l2, c2 * cos(h2), c2 * sin(h2))), vec3<f32>(0.0), vec3<f32>(1.0));
     outa[idx] = vec4<f32>(enc3(o), 1.0);
 }

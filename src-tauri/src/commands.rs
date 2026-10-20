@@ -99,10 +99,10 @@ pub fn add_root(state: State<AppState>, path: String) -> CmdResult<Root> {
 /// Entfernt den Ordner nur aus dem Katalog – Dateien bleiben unangetastet.
 #[tauri::command(async)]
 pub fn remove_root(state: State<AppState>, id: i64) -> CmdResult<()> {
-    let cat = state.catalog.locked();
-    let root = cat.root(id)?;
-    cat.remove_root(id)?;
-    drop(cat);
+    let root = state.catalog.locked().root(id)?;
+    // In Portionen, die Katalogsperre ist dazwischen frei: Ein Ordner mit
+    // Zehntausenden Fotos legt die Oberfläche sonst lange still
+    lumenkorn_core::catalog::Catalog::remove_root_chunked(&state.catalog, id)?;
     crate::ai::forget_in_index(&state, None);
     if let Some(w) = state.watcher.locked().as_mut() {
         w.unwatch(Path::new(&root.path));

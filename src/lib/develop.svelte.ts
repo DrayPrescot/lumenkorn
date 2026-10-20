@@ -97,6 +97,8 @@ export function describeShape(s: MaskShape): string {
 }
 
 const same = (a: DevelopParams, b: DevelopParams) => JSON.stringify(a) === JSON.stringify(b);
+/** Obergrenze für den Rückgängig-Verlauf (Zeichen der JSON-Darstellung, grob 50 MB) */
+const UNDO_MAX_CHARS = 50_000_000;
 const clone = (p: DevelopParams): DevelopParams => JSON.parse(JSON.stringify(p));
 
 /** Übertragen wird ausschließlich der Reiter „Basis“ (ohne Rauschreduzierung). */
@@ -169,6 +171,8 @@ class Develop {
   exportProgress = $state<ExportProgress | null>(null);
 
   #undo: DevelopParams[] = [];
+  /** Geschätzte Größe (JSON-Länge) der Verlaufsschritte */
+  #undoSize = new WeakMap<DevelopParams, number>();
   #redo: DevelopParams[] = [];
   #committed: DevelopParams = clone(DEFAULT_PARAMS);
   #saved: DevelopParams = clone(DEFAULT_PARAMS);
@@ -181,6 +185,7 @@ class Develop {
   #renderSeq = 0;
   #pending = false;
   #saveTimer: ReturnType<typeof setTimeout> | undefined;
+  #exportTimer: ReturnType<typeof setTimeout> | undefined;
   #loadToken = 0;
   /** Zuletzt angefordertes Bild – kann noch auf das Speichern warten, während
    *  `imageId` schon wieder auf das vorige zeigt */
@@ -259,6 +264,8 @@ class Develop {
 
     listen("export-progress", (p) => {
       this.exportProgress = p;
+      // Ein neuer Export darf nicht vom Ausblenden des alten getroffen werden
+      clearTimeout(this.#exportTimer);
       if (p.finished) {
         const ok = p.total - p.failed.length;
         lib.notify(
@@ -267,7 +274,7 @@ class Develop {
             : t(ok === 1 ? "{n} Foto exportiert nach {dir}" : "{n} Fotos exportiert nach {dir}", { n: ok, dir: p.dir }),
           p.failed.length ? "error" : "info",
         );
-        setTimeout(() => (this.exportProgress = null), 1500);
+        this.#exportTimer = setTimeout(() => (this.exportProgress = null), 1500);
       }
     });
   }
@@ -425,9 +432,20 @@ class Develop {
   commit() {
     if (!this.ready) return;
     const snap = $state.snapshot(this.params) as DevelopParams;
-    if (same(snap, this.#committed)) return;
+    // Die Serialisierung entsteht beim Vergleich ohnehin; ihre Länge schätzt
+    // zugleich den Speicherbedarf des Verlaufsschritts.
+    const prevJson = JSON.stringify(this.#committed);
+    if (JSON.stringify(snap) === prevJson) return;
+    this.#undoSize.set(this.#committed, prevJson.length);
     this.#undo.push(this.#committed);
-    if (this.#undo.length > 200) this.#undo.shift();
+    // Verlauf nach Anzahl und Gesamtgröße begrenzen (älteste zuerst);
+    // der jüngste Schritt bleibt immer erhalten.
+    let total = 0;
+    for (const e of this.#undo) total += this.#undoSize.get(e) ?? 0;
+    while (this.#undo.length > 1 && (this.#undo.length > 200 || total > UNDO_MAX_CHARS)) {
+      total -= this.#undoSize.get(this.#undo[0]) ?? 0;
+      this.#undo.shift();
+    }
     this.#redo = [];
     this.#setCommitted(clone(snap));
     this.scheduleSave();
@@ -512,8 +530,8 @@ class Develop {
     }
   }
 
-  /** Ausschnitt in hoher Auflösung für die Zoomansicht (Objekt-URL). */
-  /** Ausschnitt in hoher Auflösung; `before`: unbearbeitet wie `renderBefore` */
+  /** Ausschnitt in hoher Auflösung für die Zoomansicht (Objekt-URL, der Aufrufer
+   *  muss sie mit `URL.revokeObjectURL` freigeben); `before`: unbearbeitet wie `renderBefore` */
   async detailUrl(r: { x: number; y: number; w: number; h: number }, scale: number, before = false): Promise<string | null> {
     const id = this.imageId;
     if (id === null) return null;
@@ -785,7 +803,10 @@ class Develop {
 
   removeMask(index: number) {
     this.list.splice(index, 1);
-    if (this.activeMask !== null && this.activeMask >= this.list.length) this.activeMask = null;
+    if (this.activeMask !== null) {
+      if (index === this.activeMask) this.activeMask = null;
+      else if (index < this.activeMask) this.activeMask--;
+    }
     this.tool = null;
     this.schedule();
     this.commit();
@@ -1185,7 +1206,9 @@ class Develop {
       lib.notify(t("Ohne Bearbeitung gibt es nichts festzuhalten."));
       return;
     }
-    this.snapshots = await api.developSnapshot(this.imageId, name);
+    const id = this.imageId;
+    const list = await api.developSnapshot(id, name);
+    if (this.imageId === id) this.snapshots = list;
   }
 
   async restore(edit: Edit) {
@@ -1202,7 +1225,9 @@ class Develop {
 
   async deleteSnapshot(edit: Edit) {
     if (this.imageId === null) return;
-    this.snapshots = await api.developDeleteSnapshot(this.imageId, edit.id);
+    const id = this.imageId;
+    const list = await api.developDeleteSnapshot(id, edit.id);
+    if (this.imageId === id) this.snapshots = list;
   }
 }
 

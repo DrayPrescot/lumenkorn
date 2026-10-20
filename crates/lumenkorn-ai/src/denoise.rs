@@ -20,6 +20,35 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+/// Höchstbedarf an Arbeitsspeicher je Pixel neben dem Eingabebild: kodiertes
+/// Bild (12 B), Halbauflösung (3 B), Ergebnis (12 B), dazu Zwischenpuffer.
+const BYTES_PER_PIXEL: u64 = 32;
+
+/// Prüft vorab, ob der freie Arbeitsspeicher für ein Bild dieser Größe reicht –
+/// besser eine klare Meldung als ein Abbruch durch Speichermangel mitten im Lauf.
+/// Ist der freie Speicher nicht zu ermitteln, wird nicht geprüft.
+fn check_memory(w: usize, h: usize) -> Result<()> {
+    let Some(free) = available_bytes() else {
+        return Ok(());
+    };
+    let need = (w as u64)
+        .saturating_mul(h as u64)
+        .saturating_mul(BYTES_PER_PIXEL);
+    if need > free {
+        let (need_mb, free_mb) = (need >> 20, free >> 20);
+        return Err(Error::OutOfMemory(tr!(
+            "Das Bild ({w}×{h}) braucht etwa {need_mb} MB, frei sind {free_mb} MB. Bitte andere Programme schließen oder die Rauschreduzierung auf einem kleineren Ausschnitt anwenden.",
+            "The image ({w}×{h}) needs about {need_mb} MB, {free_mb} MB are free. Close other programs or denoise a smaller crop."
+        )));
+    }
+    Ok(())
+}
+
+/// Freier Arbeitsspeicher in Bytes (`None`: unbekannt, dann keine Prüfung).
+fn available_bytes() -> Option<u64> {
+    lumenkorn_develop::merge::available_bytes().map(|b| b as u64)
+}
+
 /// Kachelgröße auf der CPU (große Kacheln = wenig doppelt gerechneter Rand).
 const TILE_CPU: usize = 1024;
 /// Auf der GPU: 512 + Rand = 576² × 64 Kanäle × 4 Byte ≈ 85 MB pro Zwischenergebnis.
@@ -203,11 +232,8 @@ pub struct Rgb<'a> {
 
 impl Denoiser {
     pub fn load(path: &Path) -> Result<Self> {
-        if !crate::runtime::is_loaded() {
-            return Err(Error::RuntimeMissing);
-        }
         Ok(Self {
-            session: crate::accel::session(path)?,
+            session: crate::accel::open_model(path)?,
         })
     }
 
@@ -247,6 +273,7 @@ impl Denoiser {
         cancel: &AtomicBool,
     ) -> Result<Vec<[f32; 3]>> {
         let (w, h) = (img.width, img.height);
+        check_memory(w, h)?;
         let gain = encoding_gain(img.data);
         let enc: Vec<[f32; 3]> = img
             .data

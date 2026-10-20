@@ -39,13 +39,17 @@
 
   /** Fotos, für die ein Ort gesetzt würde (Auswahl bzw. aktuelles Foto) */
   const count = $derived(lib.selection.size > 1 ? lib.selection.size : lib.focused ? 1 : 0);
-  const withPlace = $derived(
-    lib.selection.size > 1
-      ? lib.images.filter((i) => lib.selection.has(i.id) && i.lat !== undefined).length
-      : lib.focused?.lat !== undefined
-        ? 1
-        : 0,
-  );
+  // Hängt nur an Auswahl, Fokus und den Versionszählern – nicht an jeder
+  // Bewertung/Markierung (die tauscht die Fotoliste ebenfalls aus).
+  const withPlace = $derived.by(() => {
+    const sel = lib.selection;
+    void lib.focus;
+    void lib.geoVersion;
+    void lib.layoutVersion;
+    return untrack(() =>
+      sel.size > 1 ? lib.images.filter((i) => sel.has(i.id) && i.lat !== undefined).length : lib.focused?.lat !== undefined ? 1 : 0,
+    );
+  });
 
   const dot = (selected: boolean) =>
     L.divIcon({ className: selected ? "geo-dot sel" : "geo-dot", iconSize: [14, 14], html: "<span></span>" });
@@ -118,9 +122,12 @@
   // Entferntes ändern (Bewertungen ändern die Liste auch, nicht die Orte)
   let fitted = false;
   $effect(() => {
-    const images = lib.images;
+    // Nur bei neuer Liste oder geänderten Orten (nicht bei Bewertungen)
+    void lib.layoutVersion;
+    void lib.geoVersion;
     if (!ready || !cluster || !map) return;
     untrack(() => {
+      const images = lib.images;
       const seen = new Set<number>();
       const add: L.Marker[] = [];
       const remove: L.Marker[] = [];

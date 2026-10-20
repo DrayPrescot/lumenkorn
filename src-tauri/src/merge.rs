@@ -60,6 +60,9 @@ struct MergeEvent {
     /// Neues Foto im Katalog
     image_id: Option<i64>,
     file_name: Option<String>,
+    /// Fotos (1-basiert, Reihenfolge der Auswahl), die sich nicht ausrichten
+    /// ließen; leer: alles ausgerichtet
+    unaligned: Vec<usize>,
 }
 
 #[tauri::command]
@@ -138,8 +141,9 @@ pub fn merge_start(
                     error: Some(lumenkorn_develop::i18n::tr_s("Abgebrochen", "Canceled").into()),
                     image_id: None,
                     file_name: None,
+                    unaligned: vec![],
                 }),
-                Ok((id, name)) => {
+                Ok((id, name, unaligned)) => {
                     log::info!(
                         "{kind:?} aus {} Fotos in {:.1?}: {name}",
                         ids.len(),
@@ -153,6 +157,7 @@ pub fn merge_start(
                         error: None,
                         image_id: id,
                         file_name: Some(name),
+                        unaligned: unaligned.iter().map(|i| i + 1).collect(),
                     })
                 }
                 Err(e) => {
@@ -165,6 +170,7 @@ pub fn merge_start(
                         error: Some(e.to_string()),
                         image_id: None,
                         file_name: None,
+                        unaligned: vec![],
                     })
                 }
             }
@@ -183,7 +189,7 @@ fn run(
     kind: MergeKind,
     ids: &[i64],
     options: &MergeOptions,
-) -> Result<(Option<i64>, String), Error> {
+) -> Result<(Option<i64>, String, Vec<usize>), Error> {
     let jobs = {
         let cat = state.catalog.locked();
         ids.iter()
@@ -221,6 +227,7 @@ fn run(
                     error: None,
                     image_id: None,
                     file_name: None,
+                    unaligned: vec![],
                 },
             );
         }
@@ -231,16 +238,19 @@ fn run(
     // HDR ist auf die mittlere Belichtung skaliert (nicht auf das erste Foto,
     // das z. B. die −2-EV-Aufnahme sein kann), Focus Stacking richtet auf die
     // mittlere Aufnahme aus.
-    let (img, reference) = match kind {
+    let (img, reference, unaligned) = match kind {
         MergeKind::Hdr => {
             let m = hdr::merge(n, &load, options.hdr, &progress, cancel)?;
-            (m.image, m.reference)
+            (m.image, m.reference, m.unaligned)
         }
-        MergeKind::Pano => (pano::merge(n, &load, options.pano, &progress, cancel)?, 0),
-        MergeKind::Focus => (
-            focus::merge(n, &load, options.focus, &progress, cancel)?,
-            n / 2,
-        ),
+        MergeKind::Pano => {
+            let m = pano::merge_report(n, &load, options.pano, &progress, cancel)?;
+            (m.image, 0, m.unaligned)
+        }
+        MergeKind::Focus => {
+            let m = focus::merge_report(n, &load, options.focus, &progress, cancel)?;
+            (m.image, n / 2, m.unaligned)
+        }
     };
     if cancel.load(Ordering::SeqCst) {
         return Err(Error::Invalid(tr_s("abgebrochen", "canceled").into()));
@@ -290,5 +300,5 @@ fn run(
         Err(e) => log::warn!("Zusammenfügen: Katalog-Scan von {name}: {e}"),
     }
     state.worker.submit(Job::Thumbs);
-    Ok((id, name))
+    Ok((id, name, unaligned))
 }

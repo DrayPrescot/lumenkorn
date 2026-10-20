@@ -81,27 +81,32 @@ fn downloads_runtime_and_model_with_progress() {
                 name: "vision.onnx".into(),
                 url: format!("{base}/v.onnx"),
                 size: None,
+                sha256: None,
             },
             FileSpec {
                 name: "text.onnx".into(),
                 url: format!("{base}/t.onnx"),
                 size: None,
+                sha256: None,
             },
             FileSpec {
                 name: "vocab.json".into(),
                 url: format!("{base}/vocab.json"),
                 size: None,
+                sha256: None,
             },
             FileSpec {
                 name: "merges.txt".into(),
                 url: format!("{base}/merges.txt"),
                 size: None,
+                sha256: None,
             },
         ],
         masks: vec![FileSpec {
             name: "subject.onnx".into(),
             url: format!("{base}/t.onnx"),
             size: None,
+            sha256: None,
         }],
         denoise: vec![],
         gpu_runtimes: vec![],
@@ -163,6 +168,7 @@ fn cancel_and_404_leave_no_partial_files() {
             name: "vision.onnx".into(),
             url: format!("{base}/fehlt.onnx"),
             size: None,
+            sha256: None,
         }],
         masks: vec![],
         denoise: vec![],
@@ -201,6 +207,7 @@ fn truncated_download_is_rejected() {
             name: "vision.onnx".into(),
             url: format!("{base}/v.onnx"),
             size: Some(50_000),
+            sha256: None,
         }],
         masks: vec![],
         denoise: vec![],
@@ -322,4 +329,229 @@ fn gpu_runtime_from_wheel_checks_sha256() {
             .to_string_lossy()
             .contains("part"))
     );
+}
+
+fn single_file_manifest(data: &std::path::Path, spec: FileSpec) {
+    let ai = models::ai_dir(data);
+    std::fs::create_dir_all(&ai).unwrap();
+    let manifest = Manifest {
+        runtime: None,
+        model: vec![spec],
+        masks: vec![],
+        denoise: vec![],
+        gpu_runtimes: vec![],
+        faces: vec![],
+        repair: vec![],
+    };
+    std::fs::write(
+        ai.join("quellen.json"),
+        serde_json::to_string(&manifest).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn model_checksum_is_verified_on_fresh_download() {
+    use sha2::Digest;
+    let body = vec![3u8; 5000];
+    let sha: String = sha2::Sha256::digest(&body)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let base = serve(vec![("/v.onnx", body.clone())]);
+    let run = |sha: &str| {
+        let data = tempfile::tempdir().unwrap();
+        single_file_manifest(
+            data.path(),
+            FileSpec {
+                name: "vision.onnx".into(),
+                url: format!("{base}/v.onnx"),
+                size: Some(5000),
+                sha256: Some(sha.into()),
+            },
+        );
+        let res = models::download_missing(
+            data.path(),
+            Component::Clip,
+            &|_| {},
+            &AtomicBool::new(false),
+        );
+        (data, res)
+    };
+    let (data, res) = run(&sha);
+    res.unwrap();
+    let dir = models::model_dir(data.path());
+    assert_eq!(std::fs::read(dir.join("vision.onnx")).unwrap(), body);
+    assert!(!dir.join("vision.onnx.part.src").exists());
+
+    // Falsche Prüfsumme: Datei wird nicht übernommen, Teil samt Marker gelöscht
+    let (data, res) = run(&"0".repeat(64));
+    assert!(res.unwrap_err().to_string().contains("Prüfsumme"));
+    let dir = models::model_dir(data.path());
+    assert!(!dir.join("vision.onnx").exists());
+    assert!(!dir.join("vision.onnx.part").exists());
+    assert!(!dir.join("vision.onnx.part.src").exists());
+
+    // Schon vorhandene Datei: gilt als fertig, wird weder geprüft noch neu geladen
+    let data = tempfile::tempdir().unwrap();
+    single_file_manifest(
+        data.path(),
+        FileSpec {
+            name: "vision.onnx".into(),
+            url: format!("{base}/fehlt"),
+            size: Some(5000),
+            sha256: Some("0".repeat(64)),
+        },
+    );
+    let dir = models::model_dir(data.path());
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("vision.onnx"), b"alt").unwrap();
+    models::download_missing(
+        data.path(),
+        Component::Clip,
+        &|_| {},
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    assert_eq!(std::fs::read(dir.join("vision.onnx")).unwrap(), b"alt");
+}
+
+/// Abbruch greift auch bei hängender Verbindung binnen Sekunden und lässt den
+/// Teil für die Fortsetzung liegen.
+#[test]
+fn cancel_is_prompt_and_keeps_part() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut s) = stream else { continue };
+            let mut buf = [0u8; 4096];
+            let _ = s.read(&mut buf);
+            let _ = write!(s, "HTTP/1.1 200 OK\r\nContent-Length: 100000\r\n\r\n");
+            let _ = s.write_all(&[1u8; 30_000]);
+            let _ = s.flush();
+            std::thread::sleep(std::time::Duration::from_secs(20));
+        }
+    });
+    let data = tempfile::tempdir().unwrap();
+    single_file_manifest(
+        data.path(),
+        FileSpec {
+            name: "vision.onnx".into(),
+            url: format!("http://{addr}/v.onnx"),
+            size: Some(100_000),
+            sha256: None,
+        },
+    );
+    let cancel = std::sync::Arc::new(AtomicBool::new(false));
+    let c2 = cancel.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(700));
+        c2.store(true, std::sync::atomic::Ordering::Relaxed);
+    });
+    let started = std::time::Instant::now();
+    let res = models::download_missing(data.path(), Component::Clip, &|_| {}, &cancel);
+    assert!(
+        matches!(res, Err(lumenkorn_ai::Error::Cancelled)),
+        "{res:?}"
+    );
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    let part = models::model_dir(data.path()).join("vision.onnx.part");
+    assert_eq!(std::fs::metadata(part).unwrap().len(), 30_000);
+}
+
+/// Ein Teil von einer anderen Quelle wird nicht fortgesetzt.
+#[test]
+fn part_from_other_source_is_not_resumed() {
+    let body: Vec<u8> = (0..9000u32).map(|i| (i % 7) as u8).collect();
+    let base = serve(vec![("/v.onnx", body.clone())]);
+    let data = tempfile::tempdir().unwrap();
+    single_file_manifest(
+        data.path(),
+        FileSpec {
+            name: "vision.onnx".into(),
+            url: format!("{base}/v.onnx"),
+            size: Some(9000),
+            sha256: None,
+        },
+    );
+    let dir = models::model_dir(data.path());
+    std::fs::create_dir_all(&dir).unwrap();
+    // Teil ohne passenden Marker (z. B. aus einer älteren Version)
+    std::fs::write(dir.join("vision.onnx.part"), vec![9u8; 4000]).unwrap();
+    models::download_missing(
+        data.path(),
+        Component::Clip,
+        &|_| {},
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    assert_eq!(std::fs::read(dir.join("vision.onnx")).unwrap(), body);
+}
+
+#[test]
+fn manifest_with_unsafe_names_or_urls_is_ignored() {
+    let write = |name: &str, url: &str, runtime_sha: bool| {
+        let data = tempfile::tempdir().unwrap();
+        let ai = models::ai_dir(data.path());
+        std::fs::create_dir_all(&ai).unwrap();
+        let manifest = Manifest {
+            runtime: Some(RuntimeSpec {
+                url: url.into(),
+                archive_entry: "x".into(),
+                size: None,
+                sha256: runtime_sha.then(|| "0".repeat(64)),
+            }),
+            model: vec![FileSpec {
+                name: name.into(),
+                url: "https://example.org/a".into(),
+                size: None,
+                sha256: None,
+            }],
+            masks: vec![],
+            denoise: vec![],
+            gpu_runtimes: vec![],
+            faces: vec![],
+            repair: vec![],
+        };
+        std::fs::write(
+            ai.join("quellen.json"),
+            serde_json::to_string(&manifest).unwrap(),
+        )
+        .unwrap();
+        models::load_manifest(data.path())
+    };
+    let custom = |m: &Manifest| m.model.len() == 1 && m.model[0].name != "vision.onnx";
+    assert!(custom(&write(
+        "eigen.onnx",
+        "https://example.org/rt.zip",
+        false
+    )));
+    assert!(custom(&write(
+        "eigen.onnx",
+        "http://127.0.0.1:9/rt.zip",
+        false
+    )));
+    for bad in ["../x.onnx", "a/b.onnx", r"a\b.onnx", "C:x.onnx", ".."] {
+        assert!(
+            !custom(&write(bad, "https://example.org/rt.zip", false)),
+            "{bad}"
+        );
+    }
+    // Laufzeit ohne Prüfsumme nur über https; mit Prüfsumme genügt http
+    assert!(!custom(&write(
+        "eigen.onnx",
+        "http://example.org/rt.zip",
+        false
+    )));
+    assert!(custom(&write(
+        "eigen.onnx",
+        "http://example.org/rt.zip",
+        true
+    )));
+    assert!(!custom(&write(
+        "eigen.onnx",
+        "ftp://example.org/rt.zip",
+        true
+    )));
 }

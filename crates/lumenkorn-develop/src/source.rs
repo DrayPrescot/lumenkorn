@@ -72,10 +72,11 @@ impl Source {
             };
             (kind, apply_exif_orientation(img, orientation.unwrap_or(1)))
         } else if raw {
-            let (img, raw_orientation) = decode_raw(path)?;
+            let (img, raw_orientation, opened) = decode_raw(path)?;
             let o = orientation.unwrap_or(raw_orientation);
             let size = img_size(&img, o);
-            lens = crate::lens::LensProfile::read(path, o, size).map(std::sync::Arc::new);
+            lens = crate::lens::LensProfile::read_from(&opened.file, opened.meta.as_ref(), o, size)
+                .map(std::sync::Arc::new);
             full = Some(size);
             // Erst verkleinern, dann aufrichten: Bei Hochformat drehte sonst
             // jede Vorschau das volle Bild (bis 720 MB Kopie)
@@ -133,11 +134,27 @@ fn img_size(img: &ImageF32, o: u16) -> (usize, usize) {
 /// (siehe [`crate::dt::raw`]); Sonderfälle (Fuji SuperCCD, Vierfarb-Sensoren,
 /// Monochrom, fehlende Kameramatrix) rechnet rawler. Mit Eingangsschärfung
 /// (siehe [`crate::capture_sharpen`]).
-fn decode_raw(path: &Path) -> Result<(ImageF32, u16)> {
-    let raw = rawler::decode_file(path)?;
+/// Die einmal geöffnete RAW-Datei mit ihren Metadaten (für Objektivdaten).
+struct Opened {
+    file: rawler::rawsource::RawSource,
+    meta: Option<rawler::decoders::RawMetadata>,
+}
+
+fn decode_raw(path: &Path) -> Result<(ImageF32, u16, Opened)> {
+    use rawler::decoders::RawDecodeParams;
+    // Eine Öffnung und ein Lesen der Metadaten für Entwicklung und Objektivprofil
+    let file = rawler::rawsource::RawSource::new(path)?;
+    let raw = rawler::decode(&file, &RawDecodeParams::default())?;
+    let meta = rawler::get_decoder(&file)
+        .ok()
+        .and_then(|d| d.raw_metadata(&file, &RawDecodeParams::default()).ok());
     let orientation = raw.orientation.to_u16();
     let mut img = if crate::dt::raw::applies(&raw) {
-        crate::dt::raw::develop(raw, crate::dt::raw::Exif::read(path))?
+        let exif = meta
+            .as_ref()
+            .map(crate::dt::raw::Exif::from_metadata)
+            .unwrap_or_default();
+        crate::dt::raw::develop(raw, exif)?
     } else {
         rawler_pipeline(&raw)?
     };
@@ -145,7 +162,7 @@ fn decode_raw(path: &Path) -> Result<(ImageF32, u16)> {
         return Err(Error::Raw(tr_s("leeres Bild", "empty image").into()));
     }
     crate::capture_sharpen::apply(&mut img);
-    Ok((img, orientation))
+    Ok((img, orientation, Opened { file, meta }))
 }
 
 /// rawler komplett: Sonderfälle (Fuji SuperCCD, Vierfarb-Sensoren, Monochrom).
@@ -227,7 +244,7 @@ mod tests {
         for f in files {
             let raw = rawler::decode_file(&f).unwrap();
             let dt = crate::dt::raw::applies(&raw);
-            let (img, _) = decode_raw(&f).unwrap();
+            let (img, _, _) = decode_raw(&f).unwrap();
             assert!(img.data.iter().flatten().all(|v| v.is_finite()), "{f:?}");
             let mean = img.data.iter().map(|p| p[1] as f64).sum::<f64>() / img.data.len() as f64;
             eprintln!(

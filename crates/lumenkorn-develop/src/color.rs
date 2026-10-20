@@ -102,30 +102,64 @@ mod tests {
 
 // --- Oklab und HSL --------------------------------------------------------------
 
-/// Lineares Rec.709/sRGB → Oklab (Björn Ottosson). Wahrnehmungsnah: gleiche
+/// Oklab-Matrizen (Björn Ottosson). Der Shader bekommt dieselben Zahlen über
+/// `gpu::shader_source`.
+pub(crate) const OKLAB_LIN_TO_LMS: [[f32; 3]; 3] = [
+    [0.412_221_46, 0.536_332_55, 0.051_445_995],
+    [0.211_903_5, 0.680_699_5, 0.107_396_96],
+    [0.088_302_46, 0.281_718_85, 0.629_978_7],
+];
+pub(crate) const OKLAB_LMS_TO_LAB: [[f32; 3]; 3] = [
+    [0.210_454_26, 0.793_617_8, -0.004_072_047],
+    [1.977_998_5, -2.428_592_2, 0.450_593_7],
+    [0.025_904_037, 0.782_771_77, -0.808_675_77],
+];
+pub(crate) const OKLAB_LAB_TO_LMS: [[f32; 2]; 3] = [
+    [0.396_337_78, 0.215_803_76],
+    [-0.105_561_346, -0.063_854_17],
+    [-0.089_484_18, -1.291_485_5],
+];
+pub(crate) const OKLAB_LMS_TO_LIN: [[f32; 3]; 3] = [
+    [4.076_741_7, -3.307_711_6, 0.230_969_94],
+    [-1.268_438, 2.609_757_4, -0.341_319_38],
+    [-0.004_196_086_3, -0.703_418_6, 1.707_614_7],
+];
+
+/// HSL: Buntheit, ab der Farbton und Luminanz voll wirken (darunter weich aus)
+pub(crate) const HSL_GRAY_EDGE: f32 = 0.04;
+/// HSL: Farbtondrehung in Grad bei ±100
+pub(crate) const HSL_HUE_RANGE: f32 = 30.0;
+/// HSL: Anteil der Oklab-Helligkeit, um den ±100 verschieben
+pub(crate) const HSL_LUM_RANGE: f32 = 0.5;
+
+/// Lineares Rec.709/sRGB → Oklab. Wahrnehmungsnah: gleiche
 /// Abstände sehen ungefähr gleich verschieden aus.
 pub fn oklab(c: [f32; 3]) -> [f32; 3] {
     let [r, g, b] = c.map(|v| v.max(0.0));
-    let l = 0.412_221_46 * r + 0.536_332_55 * g + 0.051_445_995 * b;
-    let m = 0.211_903_5 * r + 0.680_699_5 * g + 0.107_396_96 * b;
-    let s = 0.088_302_46 * r + 0.281_718_85 * g + 0.629_978_7 * b;
-    let (l, m, s) = (l.cbrt(), m.cbrt(), s.cbrt());
+    let m = &OKLAB_LIN_TO_LMS;
+    let l = m[0][0] * r + m[0][1] * g + m[0][2] * b;
+    let mm = m[1][0] * r + m[1][1] * g + m[1][2] * b;
+    let s = m[2][0] * r + m[2][1] * g + m[2][2] * b;
+    let (l, m, s) = (l.cbrt(), mm.cbrt(), s.cbrt());
+    let k = &OKLAB_LMS_TO_LAB;
     [
-        0.210_454_26 * l + 0.793_617_8 * m - 0.004_072_047 * s,
-        1.977_998_5 * l - 2.428_592_2 * m + 0.450_593_7 * s,
-        0.025_904_037 * l + 0.782_771_77 * m - 0.808_675_77 * s,
+        k[0][0] * l + k[0][1] * m + k[0][2] * s,
+        k[1][0] * l + k[1][1] * m + k[1][2] * s,
+        k[2][0] * l + k[2][1] * m + k[2][2] * s,
     ]
 }
 
 /// Oklab → lineares Rec.709/sRGB.
 pub fn oklab_to_linear([lab_l, a, b]: [f32; 3]) -> [f32; 3] {
-    let l = (lab_l + 0.396_337_78 * a + 0.215_803_76 * b).powi(3);
-    let m = (lab_l - 0.105_561_346 * a - 0.063_854_17 * b).powi(3);
-    let s = (lab_l - 0.089_484_18 * a - 1.291_485_5 * b).powi(3);
+    let k = &OKLAB_LAB_TO_LMS;
+    let l = (lab_l + k[0][0] * a + k[0][1] * b).powi(3);
+    let m = (lab_l + k[1][0] * a + k[1][1] * b).powi(3);
+    let s = (lab_l + k[2][0] * a + k[2][1] * b).powi(3);
+    let o = &OKLAB_LMS_TO_LIN;
     [
-        4.076_741_7 * l - 3.307_711_6 * m + 0.230_969_94 * s,
-        -1.268_438 * l + 2.609_757_4 * m - 0.341_319_38 * s,
-        -0.004_196_086_3 * l - 0.703_418_6 * m + 1.707_614_7 * s,
+        o[0][0] * l + o[0][1] * m + o[0][2] * s,
+        o[1][0] * l + o[1][1] * m + o[1][2] * s,
+        o[2][0] * l + o[2][1] * m + o[2][2] * s,
     ]
 }
 
@@ -185,10 +219,10 @@ pub fn hsl_pixel(p: [f32; 3], adj: &HslAdjust) -> [f32; 3] {
         ds += wi * adj.sat[i];
         dl += wi * adj.lum[i];
     }
-    let g = smoothstep(0.0, 0.04, c);
-    let h2 = (hue + dh * 30.0 * g).to_radians();
+    let g = smoothstep(0.0, HSL_GRAY_EDGE, c);
+    let h2 = (hue + dh * HSL_HUE_RANGE * g).to_radians();
     let c2 = c * (1.0 + ds).max(0.0);
-    let l2 = l * (1.0 + dl * 0.5 * g);
+    let l2 = l * (1.0 + dl * HSL_LUM_RANGE * g);
     let out = oklab_to_linear([l2, c2 * h2.cos(), c2 * h2.sin()]);
     out.map(|v| linear_to_srgb(v.clamp(0.0, 1.0)))
 }

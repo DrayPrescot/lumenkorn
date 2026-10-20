@@ -42,13 +42,24 @@ pub fn handle<R: tauri::Runtime>(
     } else {
         &POOL
     };
-    pool.submit(Box::new(move || {
+    pool.submit(Box::new(move |dropped| {
+        if dropped {
+            // Verdrängt: das Frontend wartet vermutlich nicht mehr
+            responder.respond(status(StatusCode::SERVICE_UNAVAILABLE));
+            return;
+        }
         let state = app.state::<AppState>();
         responder.respond(serve(&state, &path));
     }));
 }
 
-type Task = Box<dyn FnOnce() + Send>;
+/// Aufgabe; der Parameter ist `true`, wenn sie aus der Warteschlange verdrängt
+/// wurde und nur noch abgewiesen werden soll.
+type Task = Box<dyn FnOnce(bool) + Send>;
+
+/// So viele Anfragen warten höchstens je Pool (die jüngsten bleiben). Das
+/// reicht für ein volles Raster; ältere sind längst aus dem Bild gescrollt.
+const QUEUE_MAX: usize = 600;
 
 /// Kleiner Thread-Pool mit LIFO-Warteschlange.
 struct Pool {
@@ -76,11 +87,16 @@ impl Pool {
                     .spawn(move || self.work());
             }
         });
-        self.queue
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(task);
+        let dropped = {
+            let mut q = self.queue.lock().unwrap_or_else(|e| e.into_inner());
+            q.push(task);
+            (q.len() > QUEUE_MAX).then(|| q.remove(0))
+        };
         self.ready.notify_one();
+        if let Some(old) = dropped {
+            // Außerhalb der Sperre beantworten
+            old(true);
+        }
     }
 
     fn work(&'static self) {
@@ -95,7 +111,7 @@ impl Pool {
                 }
             };
             // Eine Panik (kaputte Datei) darf den Arbeiter nicht beenden
-            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(task)).is_err() {
+            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| task(false))).is_err() {
                 log::error!("Bildanfrage abgebrochen (Panik)");
             }
         }

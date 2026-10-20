@@ -60,6 +60,9 @@ pub struct HdrMerged {
     /// Index (in Ladereihenfolge) der Referenzaufnahme – deren Aufnahmedaten
     /// (Belichtungszeit, ISO, Blende) passen zum Ergebnis, nicht die des ersten Bildes.
     pub reference: usize,
+    /// Aufnahmen (0-basiert), die sich nicht ausrichten ließen und ohne
+    /// Verschiebung eingerechnet wurden (Geisterbilder möglich).
+    pub unaligned: Vec<usize>,
 }
 
 pub fn merge(
@@ -133,6 +136,7 @@ pub fn merge(
     // homs[i]: Referenzkoordinaten → Koordinaten in Bild i
     progress(tr_s("Ausrichten", "Aligning"), 0, n);
     let mut homs: Vec<Mat3> = vec![align::IDENTITY; n];
+    let mut unaligned = Vec::new();
     if opts.align {
         for (k, &(i, j)) in chain.iter().enumerate() {
             check(cancel)?;
@@ -143,7 +147,11 @@ pub fn merge(
                 // Direkt mit der Referenz versuchen, sonst Stativ annehmen
                 None => align::align(&feats[r], &feats[i], 25)
                     .and_then(|f| align::invert(&f.h))
-                    .unwrap_or(homs[j]),
+                    .unwrap_or_else(|| {
+                        log::warn!("HDR: Aufnahme {} nicht ausrichtbar, nehme Stativ an", i + 1);
+                        unaligned.push(i);
+                        homs[j]
+                    }),
             };
             progress(tr_s("Ausrichten", "Aligning"), k + 1, n);
         }
@@ -306,6 +314,7 @@ pub fn merge(
             data: acc,
         },
         reference: r,
+        unaligned,
     })
 }
 

@@ -33,6 +33,7 @@ tiny_http = "0.12"
 dirs = "7"
 ureq = { version = "3", default-features = false }
 base64 = "0.22"
+getrandom = "0.3"
 
 # Papierkorb des Betriebssystems (Windows, macOS, Linux/freedesktop)
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]

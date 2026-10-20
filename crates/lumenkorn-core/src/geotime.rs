@@ -37,6 +37,16 @@ pub fn parse_time(s: &str) -> Option<i64> {
     if !(1..=12).contains(&m) || !(1..=31).contains(&d) || h > 23 || mi > 59 || se > 60 {
         return None;
     }
+    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let month_days = match m {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    if d > month_days {
+        return None;
+    }
     // Tage seit 1970 (Howard Hinnant, days_from_civil)
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);

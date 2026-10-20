@@ -927,6 +927,8 @@ export interface MergeProgress {
   error: string | null;
   imageId: number | null;
   fileName: string | null;
+  /** Fotos (1-basiert), die sich nicht ausrichten ließen */
+  unaligned?: number[];
 }
 
 // --- Ereignisse ---------------------------------------------------------------

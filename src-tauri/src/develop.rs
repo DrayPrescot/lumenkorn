@@ -68,6 +68,9 @@ pub struct DevelopCache {
     /// Hält nur, wer gerade die volle Auflösung lädt (Sekunden). `full`
     /// bleibt währenddessen frei für Abfragen und `release_large`.
     full_loading: Mutex<()>,
+    /// Ladesperre je Bild für die Proxys: Gleichzeitige Aufrufe für dasselbe
+    /// Bild dekodieren es nur einmal, andere Bilder warten nicht darauf.
+    proxy_loading: Mutex<Vec<(i64, Arc<Mutex<()>>)>>,
     full_denoised: Mutex<Option<FullDenoised>>,
     /// Ein Export läuft. Zwei gleichzeitig verdoppelten den Speicherbedarf
     /// (volle Auflösung), und das Aufräumen am Ende des ersten gäbe Puffer
@@ -182,6 +185,35 @@ pub(crate) fn load_denoised(
 }
 
 pub(crate) fn load_proxy(state: &AppState, id: i64, max_edge: usize) -> Result<Arc<Source>, Error> {
+    if let Some(s) = state.develop.get(id, max_edge) {
+        return Ok(s);
+    }
+    // Je Bild nur ein Ladevorgang; wer wartet, nimmt danach das Ergebnis
+    let lock = {
+        let mut l = state.develop.proxy_loading.locked();
+        match l.iter().find(|(i, _)| *i == id) {
+            Some((_, m)) => m.clone(),
+            None => {
+                let m = Arc::new(Mutex::new(()));
+                l.push((id, m.clone()));
+                m
+            }
+        }
+    };
+    let loaded = {
+        let _loading = lock.lock().unwrap_or_else(|e| e.into_inner());
+        load_proxy_locked(state, id, max_edge)
+    };
+    // Eintrag aufräumen; Wartende halten ihre Sperre über den eigenen Arc
+    state
+        .develop
+        .proxy_loading
+        .locked()
+        .retain(|(i, m)| !(*i == id && Arc::ptr_eq(m, &lock)));
+    loaded
+}
+
+fn load_proxy_locked(state: &AppState, id: i64, max_edge: usize) -> Result<Arc<Source>, Error> {
     if let Some(s) = state.develop.get(id, max_edge) {
         return Ok(s);
     }

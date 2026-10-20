@@ -158,6 +158,9 @@ struct Active {
     gpu_error: Option<String>,
     /// Wo jedes geladene Modell rechnet: (Datei, auf der GPU)
     placements: Vec<(String, bool)>,
+    /// Modelle (Pfad, Dateigröße), die sich sicher nicht auf der GPU anlegen
+    /// lassen (Operationen ohne GPU-Umsetzung): der Versuch wird nicht wiederholt
+    cpu_only: Vec<(PathBuf, u64)>,
 }
 
 static ACTIVE: Mutex<Active> = Mutex::new(Active {
@@ -165,6 +168,7 @@ static ACTIVE: Mutex<Active> = Mutex::new(Active {
     use_gpu: false,
     gpu_error: None,
     placements: Vec::new(),
+    cpu_only: Vec::new(),
 });
 
 /// Wird von [`crate::runtime::init`] aufgerufen.
@@ -178,6 +182,7 @@ pub fn set_use_gpu(on: bool) {
     a.use_gpu = on;
     a.gpu_error = None;
     a.placements.clear();
+    a.cpu_only.clear();
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -304,6 +309,18 @@ impl Model {
     }
 }
 
+/// Wie [`session`], prüft aber vorher, ob die Laufzeit geladen und die
+/// Modelldatei vorhanden ist (gemeinsamer Einstieg aller Modelle).
+pub fn open_model(path: &Path) -> Result<Model> {
+    if !crate::runtime::is_loaded() {
+        return Err(Error::RuntimeMissing);
+    }
+    if !path.is_file() {
+        return Err(Error::ModelMissing(file_name(path)));
+    }
+    session(path)
+}
+
 /// Öffnet ein Modell – auf der GPU, wenn eingeschaltet, sonst (oder wenn die
 /// GPU scheitert) auf der CPU. Ein GPU-Fehler wird gemerkt und angezeigt,
 /// verhindert aber nie, dass die Funktion überhaupt läuft.
@@ -319,9 +336,16 @@ pub fn session(path: &Path) -> Result<Model> {
 /// über die globale Liste in [`on_gpu`], die ein paralleles Laden derselben
 /// Datei überschreiben könnte.
 fn session_placed(path: &Path) -> Result<(Session, bool)> {
+    let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
     let (backend, want_gpu) = {
         let a = ACTIVE.lock().unwrap();
-        (a.library, a.use_gpu && a.library.is_gpu())
+        // Steht das Modell schon als „nicht GPU-fähig“ fest, den teuren
+        // Versuch (Shader-Übersetzung, Kopieren der Gewichte) überspringen
+        let known_cpu_only = a.cpu_only.iter().any(|(p, n)| p == path && *n == size);
+        (
+            a.library,
+            a.use_gpu && a.library.is_gpu() && !known_cpu_only,
+        )
     };
     if want_gpu {
         let t = std::time::Instant::now();
@@ -353,6 +377,11 @@ fn session_placed(path: &Path) -> Result<(Session, bool)> {
                     "{} enthält Operationen ohne GPU-Umsetzung – läuft auf der CPU",
                     file_name(path)
                 );
+                ACTIVE
+                    .lock()
+                    .unwrap()
+                    .cpu_only
+                    .push((path.to_path_buf(), size));
             }
             Err(e) => {
                 log::warn!("GPU nicht nutzbar für {}: {e}", file_name(path));
@@ -506,6 +535,22 @@ fn detect_platform() -> Vec<GpuDevice> {
     // Abfrage über DXGI würde eine weitere große Abhängigkeit bedeuten – die
     // Anzeige beschränkt sich dort auf „Grafikkarte über DirectX 12“.
     Vec::new()
+}
+
+/// Ausgang eines Laufs als f32-Tensor. Fehlt er oder hat er einen anderen
+/// Typ, ist das ein Fehler des Modells (`ModelFormat`), kein Programmfehler.
+pub(crate) fn output_f32<'a>(
+    outputs: &'a ort::session::SessionOutputs<'_>,
+    name: &str,
+) -> Result<(&'a [i64], &'a [f32])> {
+    let value = outputs.get(name).ok_or_else(|| {
+        Error::ModelFormat(tr!(
+            "Ausgang {name} fehlt im Modell",
+            "output {name} missing in model"
+        ))
+    })?;
+    let (shape, data) = value.try_extract_tensor::<f32>()?;
+    Ok((shape, data))
 }
 
 /// Prüft eine heruntergeladene Datei gegen ihre SHA-256-Prüfsumme.

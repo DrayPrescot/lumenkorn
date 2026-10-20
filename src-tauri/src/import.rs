@@ -16,6 +16,8 @@ use tauri::{AppHandle, Emitter, Manager};
 /// Kantenlänge der Vorschauen im Import-Dialog
 const PREVIEW_EDGE: u32 = 240;
 const SETTINGS_FILE: &str = "import.json";
+/// Größte erlaubte Zeitverschiebung beim Import (Sekunden)
+const MAX_SHIFT_S: i64 = 48 * 3600;
 
 #[derive(Default)]
 pub struct ImportState {
@@ -258,6 +260,17 @@ pub async fn import_start(
     delete_after: bool,
     shifts: HashMap<String, i64>,
 ) -> Result<(), Error> {
+    // Uhrenabweichungen sind Stunden; riesige Werte wären ein Fehler der
+    // Oberfläche und ergäben unmögliche Jahreszahlen
+    if shifts.values().any(|v| v.abs() > MAX_SHIFT_S) {
+        return Err(Error::Invalid(
+            lumenkorn_develop::i18n::tr_s(
+                "Die Zeitverschiebung darf höchstens 48 Stunden betragen.",
+                "The time shift may be at most 48 hours.",
+            )
+            .into(),
+        ));
+    }
     let state = app.state::<AppState>();
     let s = session(&state)?;
     let target = PathBuf::from(target.trim());

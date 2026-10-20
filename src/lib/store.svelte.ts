@@ -222,12 +222,17 @@ class Library {
   }
 
   async refreshPeople() {
+    const token = ++this.#peopleToken;
     try {
-      [this.people, this.peopleStatus, this.personGroups] = await Promise.all([api.peopleList(), api.peopleStatus(), api.personGroups()]);
+      const [people, status, groups] = await Promise.all([api.peopleList(), api.peopleStatus(), api.personGroups()]);
+      // Veraltete Antwort (neuere Anfrage läuft) verwerfen
+      if (token !== this.#peopleToken) return;
+      [this.people, this.peopleStatus, this.personGroups] = [people, status, groups];
     } catch {
-      this.people = [];
+      // Alten Stand behalten
     }
   }
+  #peopleToken = 0;
 
   /** Änderung an Personengruppen ausführen, Fehler melden, neu laden. */
   async groupAction<T>(f: () => Promise<T>): Promise<T | null> {
@@ -253,20 +258,28 @@ class Library {
   /** Ordner und ihre Bäume laden; `only`: nur die Bäume dieser Ordner neu laden
    *  (je Ordner eine Anfrage), die übrigen bleiben. */
   async loadRoots(only?: Set<number>) {
-    this.roots = await api.listRoots();
+    const token = ++this.#rootsToken;
+    const roots = await api.listRoots();
     const trees: Record<number, FolderNode> = {};
     await Promise.all(
-      this.roots.map(async (r) => {
+      roots.map(async (r) => {
         const old = only && !only.has(r.id) ? this.trees[r.id] : undefined;
         trees[r.id] = old ?? (await api.folderTree(r.id));
       }),
     );
+    // Nur die neueste Antwort übernehmen; ein Fehler lässt den alten Stand stehen
+    if (token !== this.#rootsToken) return;
+    this.roots = roots;
     this.trees = trees;
   }
+  #rootsToken = 0;
 
   async loadProjects() {
-    this.projects = await api.listProjects();
+    const token = ++this.#projectsToken;
+    const projects = await api.listProjects();
+    if (token === this.#projectsToken) this.projects = projects;
   }
+  #projectsToken = 0;
 
   /** Lädt die Bilder des aktuellen Bereichs. `keepFocus` behält die Auswahl bei. */
   /** Lädt die Fotos der Ansicht. `keepFocus`: fokussiertes Foto (und Auswahl)
@@ -293,7 +306,7 @@ class Library {
       const later = this.#patchLog.filter((p) => p.seq > startSeq);
       this.#patchLog = later;
       if (later.length) {
-        images = images.map((i) => later.reduce((acc, p) => (p.ids.has(i.id) ? { ...acc, ...p.change } : acc), i));
+        images = images.map((i) => later.reduce((acc, p) => (p.ids.has(i.id) ? { ...acc, ...(p.change instanceof Map ? p.change.get(i.id) : p.change) } : acc), i));
       }
       // Fokus erst jetzt lesen: Während der Anfrage kann weitergeblättert worden sein
       const focusId = keepFocus ? this.focused?.id : undefined;
@@ -603,6 +616,16 @@ class Library {
     } else {
       this.notify(t("{file} erstellt (in dieser Ansicht nicht sichtbar)", { file: e.fileName ?? "" }));
     }
+    // Nicht ausgerichtete Fotos: Das Ergebnis kann dort Doppelkanten zeigen
+    const off = e.unaligned ?? [];
+    if (off.length) {
+      this.notify(
+        t(off.length === 1 ? "Foto {list} ließ sich nicht ausrichten – das Ergebnis kann dort versetzt sein." : "Fotos {list} ließen sich nicht ausrichten – das Ergebnis kann dort versetzt sein.", {
+          list: off.join(", "),
+        }),
+        "error",
+      );
+    }
   }
 
   /** Offenes Rechtsklick-Menü (Bildschirmposition) */
@@ -639,20 +662,23 @@ class Library {
   /** Ändert die Bilder `ids` (Set statt `includes`: bei 50 000 Fotos O(n) statt O(n·m)). */
   #patchSeq = 0;
   /** Änderungen seit dem Start der letzten Listenabfrage (siehe `loadImages`) */
-  #patchLog: { seq: number; ids: Set<number>; change: Partial<ImageSummary> }[] = [];
+  #patchLog: { seq: number; ids: Set<number>; change: Partial<ImageSummary> | Map<number, Partial<ImageSummary>> }[] = [];
 
-  #patch(ids: number[], change: Partial<ImageSummary>) {
+  /** `change` gilt für alle `ids`, oder je Foto eigene Werte (Map, `ids` = deren Schlüssel). */
+  #patch(ids: number[], change: Partial<ImageSummary> | Map<number, Partial<ImageSummary>>) {
     const set = new Set(ids);
     this.#patchLog.push({ seq: ++this.#patchSeq, ids: set, change });
     if (this.#patchLog.length > 500) this.#patchLog.splice(0, this.#patchLog.length - 500);
     let delta = 0; // Abgelehnt-Zähler im selben Durchlauf nachführen
     this.images = this.images.map((i) => {
       if (!set.has(i.id)) return i;
-      const n = { ...i, ...change };
+      const n = { ...i, ...(change instanceof Map ? change.get(i.id) : change) };
       delta += Number(isRejected(n)) - Number(isRejected(i));
       return n;
     });
     if (delta) this.rejectedCount += delta;
+    // Ortsänderungen sofort für die Karte melden (sie hört auf geoVersion)
+    if (change instanceof Map || "lat" in change || "lon" in change) this.geoVersion++;
   }
 
   async rate(rating: number) {
@@ -917,11 +943,10 @@ class Library {
   /** Vorschläge übernehmen: je Foto eigener Ort */
   async applyLocations(items: LocationItem[]) {
     if (!items.length) return;
-    const byId = new Map(items.map((i) => [i.id, i]));
-    this.images = this.images.map((im) => {
-      const it = byId.get(im.id);
-      return it ? { ...im, lat: it.lat, lon: it.lon } : im;
-    });
+    this.#patch(
+      items.map((i) => i.id),
+      new Map(items.map((i) => [i.id, { lat: i.lat, lon: i.lon }])),
+    );
     await this.#write(() => api.geoApply(items)).catch((e) => this.#writeFailed(e));
     this.geoVersion++;
   }

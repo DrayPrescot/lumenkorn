@@ -17,7 +17,7 @@
 //!    größte vollständig gefüllte Rechteck zuschneiden.
 
 use super::align::{self, Features, Mat3};
-use super::{FrameCache, Loader, Progress, check};
+use super::{FrameCache, Loader, Merged, Progress, check};
 use crate::color::luma;
 use crate::error::{Error, Result};
 use crate::i18n::tr_s;
@@ -368,6 +368,17 @@ pub fn merge(
     progress: Progress,
     cancel: &AtomicBool,
 ) -> Result<ImageF32> {
+    merge_report(n, load, opts, progress, cancel).map(|m| m.image)
+}
+
+/// Wie [`merge`], meldet zusätzlich Fotos, deren Drehung nicht bestimmbar war.
+pub fn merge_report(
+    n: usize,
+    load: Loader,
+    opts: PanoOptions,
+    progress: Progress,
+    cancel: &AtomicBool,
+) -> Result<Merged> {
     if n < 2 {
         return Err(Error::Params(
             tr_s(
@@ -424,7 +435,7 @@ pub fn merge(
 
     // --- 2. Brennweite und Drehungen ---------------------------------------------
     let f = estimate_focal(&fits, &sizes);
-    let rot = rotations(&tree, reference, f, &sizes);
+    let (rot, unaligned) = rotations(&tree, reference, f, &sizes);
 
     // --- 3. Horizont ausgleichen und zentrieren -------------------------------------
     let rot = level_and_center(rot);
@@ -567,7 +578,10 @@ pub fn merge(
     if let Some((x, y, w, h)) = rect {
         crop_in_place(&mut out, x, y, w, h);
     }
-    Ok(out)
+    Ok(Merged {
+        image: out,
+        unaligned,
+    })
 }
 
 /// Maximaler Spannbaum (Kruskal) über die Anzahl passender Punkte: je Bild die
@@ -679,8 +693,9 @@ fn rotations(
     reference: usize,
     f: f64,
     sizes: &[(usize, usize)],
-) -> Vec<Mat3> {
+) -> (Vec<Mat3>, Vec<usize>) {
     let n = tree.len();
+    let mut unaligned = Vec::new();
     let k = [[f, 0.0, 0.0], [0.0, f, 0.0], [0.0, 0.0, 1.0]];
     let kinv = [[1.0 / f, 0.0, 0.0], [0.0, 1.0 / f, 0.0], [0.0, 0.0, 1.0]];
 
@@ -695,14 +710,20 @@ fn rotations(
                 continue;
             }
             let m = align::mul(&kinv, &align::mul(&centered(&h_cp, sizes, p, c), &k));
-            let r_pc = orthonormalize(&m).unwrap_or(align::IDENTITY);
+            let r_pc = orthonormalize(&m).unwrap_or_else(|| {
+                log::warn!("Panorama: Drehung von Foto {} nicht bestimmbar", c + 1);
+                unaligned.push(c);
+                align::IDENTITY
+            });
             rot[c] = Some(align::mul(&rp, &r_pc));
             queue.push_back(c);
         }
     }
-    rot.into_iter()
+    let rot = rot
+        .into_iter()
         .map(|r| r.unwrap_or(align::IDENTITY))
-        .collect()
+        .collect();
+    (rot, unaligned)
 }
 
 /// Helligkeitsausgleich: je Bild ein Faktor (`Cam::gain`), damit

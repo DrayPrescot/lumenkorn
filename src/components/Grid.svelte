@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import { isTyping } from "../lib/keys";
   import { imageUrl } from "../lib/api";
+  import { retryImage } from "../lib/retry";
   import { aspectOf, justify, type Row } from "../lib/layout";
   import { lib } from "../lib/store.svelte";
   import Icon from "./Icon.svelte";
@@ -143,7 +144,7 @@
           oncontextmenu={(e) => lib.openMenu(e, cell.index)}
           title={img.fileName}
         >
-          <img src={imageUrl("thumb", img.id, lib.thumbVersion(img.id))} alt="" decoding="async" draggable="false" />
+          <img src={imageUrl("thumb", img.id, lib.thumbVersion(img.id))} alt="" decoding="async" draggable="false" use:retryImage />
           <span class="meta">
             {#if img.flag === 1}<span class="flag" title={t("Markiert")}><Icon name="flag" size={12} /></span>{/if}
             {#if img.rating}<span class="rating">{"★".repeat(img.rating)}</span>{/if}

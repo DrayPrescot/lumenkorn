@@ -206,11 +206,25 @@ impl LensProfile {
     /// aufgerichtet wird; `size`: Bildgröße nach dem Aufrichten.
     pub fn read(path: &Path, orientation: u16, size: (usize, usize)) -> Option<Self> {
         // Speicherabgebildet statt `fs::read`: Gelesen werden nur die Seiten
-        // mit den Tags – nicht 40–100 MB RAW bei jedem Laden. Eine Öffnung
-        // für Kameradaten und EXIF.
+        // mit den Tags – nicht 40–100 MB RAW bei jedem Laden.
         let file = rawler::rawsource::RawSource::new(path).ok()?;
+        let meta = rawler::get_decoder(&file).ok().and_then(|d| {
+            d.raw_metadata(&file, &rawler::decoders::RawDecodeParams::default())
+                .ok()
+        });
+        Self::read_from(&file, meta.as_ref(), orientation, size)
+    }
+
+    /// Wie [`Self::read`] mit schon geöffneter Datei und gelesenen Metadaten
+    /// (spart zweimaliges Öffnen und Lesen beim Laden).
+    pub fn read_from(
+        file: &rawler::rawsource::RawSource,
+        meta: Option<&rawler::decoders::RawMetadata>,
+        orientation: u16,
+        size: (usize, usize),
+    ) -> Option<Self> {
         let embedded = Self::read_embedded(file.buf(), orientation);
-        let shot = shot(&file);
+        let shot = meta.map(shot);
         let (w, h) = if (5..=8).contains(&orientation) {
             (size.1, size.0)
         } else {
@@ -437,10 +451,7 @@ pub struct LensSummary {
 }
 
 /// Kamera, Objektiv, Brennweite und Blende aus den Metadaten (rawler).
-fn shot(file: &rawler::rawsource::RawSource) -> Option<crate::lensfun::Shot> {
-    use rawler::decoders::RawDecodeParams;
-    let dec = rawler::get_decoder(file).ok()?;
-    let md = dec.raw_metadata(file, &RawDecodeParams::default()).ok()?;
+fn shot(md: &rawler::decoders::RawMetadata) -> crate::lensfun::Shot {
     let r = |v: Option<rawler::formats::tiff::Rational>| {
         v.filter(|r| r.d != 0).map(|r| r.n as f64 / r.d as f64)
     };
@@ -449,20 +460,22 @@ fn shot(file: &rawler::rawsource::RawSource) -> Option<crate::lensfun::Shot> {
     let lens_model = md
         .exif
         .lens_model
+        .clone()
         .filter(|m| !m.trim().is_empty())
         .or_else(|| from_db.map(|l| l.lens_model.clone()));
     let lens_make = md
         .exif
         .lens_make
+        .clone()
         .or_else(|| from_db.map(|l| l.lens_make.clone()));
-    Some(crate::lensfun::Shot {
-        camera_make: md.make,
-        camera_model: md.model,
+    crate::lensfun::Shot {
+        camera_make: md.make.clone(),
+        camera_model: md.model.clone(),
         lens_make,
         lens_model,
         focal: r(md.exif.focal_length),
         aperture: r(md.exif.fnumber),
-    })
+    }
 }
 
 fn max_radius(cx: f32, cy: f32, w: f32, h: f32) -> f32 {
@@ -549,6 +562,8 @@ fn parse_opcodes(b: &[u8], warp: &mut Option<DngWarp>, vignette: &mut Option<Dng
                 let k = [0, 1, 2, 3, 4].map(|i| f64_at(d + i * 8).unwrap_or(0.0));
                 if let (Some(cx), Some(cy)) = (f64_at(d + 40), f64_at(d + 48))
                     && k.iter().all(|v| v.is_finite())
+                    && cx.is_finite()
+                    && cy.is_finite()
                 {
                     *vignette = Some((k, (cx, cy)));
                 }

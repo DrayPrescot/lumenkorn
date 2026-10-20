@@ -149,7 +149,11 @@ pub fn sweep_data(state: &AppState) -> Result<(Swept, bool), lumenkorn_core::Err
     const EDIT_FILES: Duration = Duration::from_secs(24 * 3600);
     const DERIVED: Duration = Duration::from_secs(3600);
     let t = Instant::now();
-    let fixed = state.catalog.locked().drop_foreign_refs()?;
+    // Unter der Sperre wird nur eingesammelt bzw. kurz geschrieben, das
+    // Parsen der Bearbeitungen geschieht ohne Sperre.
+    let rows = state.catalog.locked().edit_rows()?;
+    let plan = housekeeping::plan_foreign_refs(rows)?;
+    let fixed = state.catalog.locked().apply_edit_fixes(&plan)?;
     if fixed > 0 {
         log::info!("{fixed} Bearbeitungen mit Verweisen auf fremde Fotos bereinigt");
         state.worker.submit(crate::worker::Job::Thumbs);
@@ -158,7 +162,7 @@ pub fn sweep_data(state: &AppState) -> Result<(Swept, bool), lumenkorn_core::Err
     if dims > 0 {
         log::info!("Abmessungen von {dims} RAWs korrigiert");
     }
-    let live = state.catalog.locked().live()?;
+    let live = state.catalog.locked().live_raw()?.resolve();
     let keep_file = |stem: &str| live.files.contains(stem);
     let mut swept = Swept::default();
     for dir in crate::dirs::EDIT_FILES {

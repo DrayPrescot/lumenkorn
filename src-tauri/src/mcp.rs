@@ -79,22 +79,25 @@ fn save(data_dir: &Path, c: &McpConfig) {
     }
 }
 
-/// Zufälliger Schlüssel (128 Bit aus den Zufallsschlüsseln von `RandomState`,
-/// die das Betriebssystem liefert).
+/// Zufälliger Schlüssel: 256 Bit vom Zufallsgenerator des Betriebssystems, hex.
 fn new_token() -> String {
-    use std::hash::{BuildHasher, Hasher};
-    (0..2)
-        .map(|i| {
-            let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-            h.write_u64(i);
-            h.write_u128(
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_or(0, |d| d.as_nanos()),
-            );
-            format!("{:016x}", h.finish())
-        })
-        .collect()
+    let mut b = [0u8; 32];
+    if getrandom::fill(&mut b).is_err() {
+        // Ohne Zufallsquelle gibt es keinen brauchbaren Schlüssel
+        log::error!("MCP: keine Zufallsquelle für den Schlüssel");
+        return String::new();
+    }
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+/// Vergleich ohne vorzeitigen Abbruch (Laufzeit hängt nicht vom Treffer ab)
+fn same_token(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    let mut diff = a.len() ^ b.len();
+    for i in 0..a.len().max(b.len()) {
+        diff |= (a.get(i).copied().unwrap_or(0) ^ b.get(i).copied().unwrap_or(0)) as usize;
+    }
+    diff == 0
 }
 
 fn exe() -> String {
@@ -215,6 +218,9 @@ fn local_origin(origin: &str) -> bool {
     host == "127.0.0.1" || host == "localhost"
 }
 
+/// Größte angenommene Anfrage (Bytes)
+const MAX_BODY: usize = 4 << 20;
+
 fn handle_http(app: &AppHandle, token: &str, mut req: tiny_http::Request) {
     use tiny_http::{Header, Method, Response};
     let header = |name: &str| {
@@ -237,8 +243,12 @@ fn handle_http(app: &AppHandle, token: &str, mut req: tiny_http::Request) {
     {
         return reply(req, 403, r#"{"error":"origin not allowed"}"#.into());
     }
-    let auth_ok = header("Authorization")
-        .is_some_and(|a| a.strip_prefix("Bearer ").is_some_and(|t| t.trim() == token));
+    // Ein leerer Schlüssel (keine Zufallsquelle) lässt nie jemanden herein
+    let auth_ok = !token.is_empty()
+        && header("Authorization").is_some_and(|a| {
+            a.strip_prefix("Bearer ")
+                .is_some_and(|t| same_token(t.trim(), token))
+        });
     if !auth_ok {
         return reply(req, 401, r#"{"error":"missing or wrong token"}"#.into());
     }
@@ -253,8 +263,14 @@ fn handle_http(app: &AppHandle, token: &str, mut req: tiny_http::Request) {
         _ => return reply(req, 405, String::new()),
     }
     let mut body = String::new();
-    if std::io::Read::read_to_string(req.as_reader(), &mut body).is_err() {
+    let limit = MAX_BODY as u64 + 1;
+    if std::io::Read::read_to_string(&mut std::io::Read::take(req.as_reader(), limit), &mut body)
+        .is_err()
+    {
         return reply(req, 400, String::new());
+    }
+    if body.len() > MAX_BODY {
+        return reply(req, 413, r#"{"error":"request too large"}"#.into());
     }
     match handle_body(app, &body) {
         Some(out) => reply(req, 200, out),
@@ -1110,6 +1126,19 @@ pub fn run_stdio() {
     }
 }
 
+/// Die Verbindung kam gar nicht zustande (die Anfrage wurde nie gesendet).
+fn not_reached(e: &ureq::Error) -> bool {
+    use std::io::ErrorKind;
+    match e {
+        ureq::Error::ConnectionFailed | ureq::Error::HostNotFound => true,
+        ureq::Error::Io(io) => matches!(
+            io.kind(),
+            ErrorKind::ConnectionRefused | ErrorKind::AddrNotAvailable | ErrorKind::NotConnected
+        ),
+        _ => false,
+    }
+}
+
 fn forward(
     agent: &ureq::Agent,
     data: &Path,
@@ -1132,11 +1161,15 @@ fn forward(
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json, text/event-stream")
                 .send(line);
-            // Fehler heißt: nicht erreichbar, Lumenkorn läuft nicht (mehr) – starten
-            if let Ok(mut r) = res {
-                {
+            match res {
+                Ok(mut r) => {
                     let status = r.status().as_u16();
-                    let body = r.body_mut().read_to_string().unwrap_or_default();
+                    let body = match r.body_mut().read_to_string() {
+                        Ok(b) => b,
+                        // Antwort abgebrochen: der Aufruf lief womöglich schon,
+                        // also nicht noch einmal senden
+                        Err(e) => return Err(format!("Lumenkorn: reading the answer failed: {e}")),
+                    };
                     return match status {
                         200 => Ok(Some(body)),
                         202 => Ok(None),
@@ -1150,6 +1183,11 @@ fn forward(
                         s => Err(format!("Lumenkorn answered HTTP {s}: {body}")),
                     };
                 }
+                // Nicht erreichbar: Lumenkorn läuft nicht (mehr) – starten, warten
+                Err(e) if not_reached(&e) => {}
+                // Zeitüberschreitung oder Abbruch mitten im Aufruf: nicht erneut
+                // senden (ein Werkzeug könnte doppelt laufen)
+                Err(e) => return Err(format!("Lumenkorn: request failed: {e}")),
             }
         }
         if !*launched {
@@ -1170,6 +1208,18 @@ fn forward(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn token_is_random_hex_and_compared_exactly() {
+        let (a, b) = (new_token(), new_token());
+        assert_eq!(a.len(), 64);
+        assert!(a.bytes().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(a, b);
+        assert!(same_token(&a, &a));
+        assert!(!same_token(&a, &b));
+        assert!(!same_token(&a, &a[..63]));
+        assert!(!same_token("", &a));
+    }
 
     #[test]
     fn only_exact_local_origins() {

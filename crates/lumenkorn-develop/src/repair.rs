@@ -90,7 +90,9 @@ impl Patch {
     }
 
     pub fn read(path: &Path) -> Result<Patch> {
-        let mut f = BufReader::with_capacity(1 << 20, std::fs::File::open(path)?);
+        let file = std::fs::File::open(path)?;
+        let len = file.metadata()?.len();
+        let mut f = BufReader::with_capacity(1 << 20, file);
         let u32s = |n: usize, f: &mut BufReader<std::fs::File>| -> Result<Vec<usize>> {
             let mut b = vec![0u8; 4 * n];
             f.read_exact(&mut b)?;
@@ -109,23 +111,29 @@ impl Patch {
         }
         let head = u32s(4, &mut f)?;
         let (width, height, n) = (head[1], head[2], head[3]);
-        if n > 10_000 {
+        if head[0] != 1 || n > 10_000 {
             return Err(Error::Params(
                 tr_s("Reparatur beschädigt", "repair corrupted").into(),
             ));
         }
         let mut parts = Vec::with_capacity(n);
+        // Noch nicht gelesene Bytes: Teilgröße gegen die Dateilänge prüfen, damit
+        // eine beschädigte Datei keine Riesen-Allokation auslöst.
+        let mut left = len.saturating_sub(20);
         for _ in 0..n {
             let r = u32s(4, &mut f)?;
+            left = left.saturating_sub(16);
             let (x, y, w, h) = (r[0], r[1], r[2], r[3]);
             if x.checked_add(w).is_none_or(|v| v > width)
                 || y.checked_add(h).is_none_or(|v| v > height)
-                || w.checked_mul(h).is_none_or(|n| n > 256 << 20)
+                || w.checked_mul(h)
+                    .is_none_or(|n| n > 256 << 20 || n as u64 * 7 > left)
             {
                 return Err(Error::Params(
                     tr_s("Reparatur beschädigt", "repair corrupted").into(),
                 ));
             }
+            left -= (w * h) as u64 * 7;
             let rgb = crate::denoised::read_f16(&mut f, w * h)?;
             let mut alpha = vec![0u8; w * h];
             f.read_exact(&mut alpha)?;
@@ -324,6 +332,28 @@ mod tests {
         let back = fresh.get("t1").unwrap();
         assert_eq!(back.parts[0].rgb[0], [1.0, 0.0, 0.0]);
         assert!(fresh.get("../x").is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn corrupt_files_do_not_allocate() {
+        let dir = std::env::temp_dir().join(format!("lw-rp-bad-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Kopf behauptet einen riesigen Teil, die Datei ist winzig
+        let mut b = MAGIC.to_vec();
+        for v in [1u32, 100_000, 100_000, 1, 0, 0, 100_000, 100_000] {
+            b.extend_from_slice(&v.to_le_bytes());
+        }
+        let f = dir.join("big.lwrp");
+        std::fs::write(&f, &b).unwrap();
+        assert!(Patch::read(&f).is_err());
+        // Unbekannte Version
+        let mut b = MAGIC.to_vec();
+        for v in [9u32, 10, 10, 0] {
+            b.extend_from_slice(&v.to_le_bytes());
+        }
+        std::fs::write(&f, &b).unwrap();
+        assert!(Patch::read(&f).is_err());
         let _ = std::fs::remove_dir_all(dir);
     }
 }

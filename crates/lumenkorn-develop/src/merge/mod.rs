@@ -15,6 +15,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// Fortschritt: (Schritt, erledigt, gesamt)
 pub type Progress<'a> = &'a (dyn Fn(&str, usize, usize) + Sync);
 
+/// Ergebnis von Focus Stacking und Panorama.
+pub struct Merged {
+    pub image: ImageF32,
+    /// Fotos (0-basiert, Ladereihenfolge), die sich nicht ausrichten ließen und
+    /// ohne Verschiebung bzw. Drehung eingerechnet wurden – das Ergebnis kann
+    /// dort Geisterbilder oder Versatz zeigen. Leer: alles ausgerichtet.
+    pub unaligned: Vec<usize>,
+}
+
 /// Liefert Eingabebild `i` (linear, aufrecht, volle Auflösung).
 pub type Loader<'a> = &'a (dyn Fn(usize) -> Result<ImageF32> + Sync);
 
@@ -88,7 +97,7 @@ impl<'a> FrameCache<'a> {
 
 /// Verfügbarer Arbeitsspeicher: `MemAvailable` aus /proc/meminfo (Linux).
 #[cfg(not(windows))]
-fn available_bytes() -> Option<usize> {
+pub fn available_bytes() -> Option<usize> {
     let s = std::fs::read_to_string("/proc/meminfo").ok()?;
     let line = s.lines().find(|l| l.starts_with("MemAvailable:"))?;
     let kb: usize = line.split_whitespace().nth(1)?.parse().ok()?;
@@ -97,7 +106,7 @@ fn available_bytes() -> Option<usize> {
 
 /// Verfügbarer Arbeitsspeicher laut `GlobalMemoryStatusEx` (Windows).
 #[cfg(windows)]
-fn available_bytes() -> Option<usize> {
+pub fn available_bytes() -> Option<usize> {
     #[repr(C)]
     struct MemoryStatusEx {
         length: u32,

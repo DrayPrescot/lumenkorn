@@ -50,6 +50,16 @@ macro_rules! c {
 }
 
 pub fn default_groups() -> Vec<Group> {
+    groups().to_vec()
+}
+
+/// Das Vokabular, einmal aufgebaut (die Suche übersetzt bei jeder Anfrage).
+fn groups() -> &'static [Group] {
+    static GROUPS: std::sync::OnceLock<Vec<Group>> = std::sync::OnceLock::new();
+    GROUPS.get_or_init(build_groups)
+}
+
+fn build_groups() -> Vec<Group> {
     vec![
         Group {
             name: "Ort",
@@ -182,27 +192,56 @@ pub fn default_groups() -> Vec<Group> {
 
 /// Deutsche Wörter für die semantische Suche ins Englische übertragen – CLIP
 /// versteht deutsche Anfragen kaum. Unbekannte Wörter bleiben unverändert.
+///
+/// Bei englischer Oberfläche wird nichts übersetzt; es werden nur englische
+/// Schlagworte zur ausführlicheren Formulierung ergänzt („beach“ → „sandy beach“).
+/// Wörter, die im Englischen ebenfalls vorkommen ([`AMBIGUOUS`]), werden nur
+/// ersetzt, wenn die Anfrage auch sonst Deutsch ist.
 pub fn translate_query(query: &str) -> String {
-    let groups = default_groups();
-    let mut words: Vec<String> = Vec::new();
-    for raw in query.split_whitespace() {
-        let w = raw
-            .trim_matches(|c: char| !c.is_alphanumeric())
-            .to_lowercase();
-        let hit = groups
-            .iter()
-            .flat_map(|g| &g.concepts)
-            .find(|c| c.tag.to_lowercase() == w || c.en.to_lowercase() == w)
-            .map(|c| strip_article(c.phrase).to_string())
-            .or_else(|| {
-                EXTRA
-                    .iter()
-                    .find(|(de, _)| *de == w)
-                    .map(|(_, en)| en.to_string())
-            });
-        words.push(hit.unwrap_or_else(|| raw.to_string()));
-    }
-    words.join(" ")
+    translate_for(query, lumenkorn_develop::i18n::is_english())
+}
+
+fn translate_for(query: &str, english_ui: bool) -> String {
+    let words: Vec<(&str, String)> = query
+        .split_whitespace()
+        .map(|raw| {
+            (
+                raw,
+                raw.trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_lowercase(),
+            )
+        })
+        .collect();
+    // Treffer je Wort: (Ersatz, mehrdeutig)
+    let hits: Vec<Option<(String, bool)>> = words
+        .iter()
+        .map(|(_, w)| {
+            let concept = groups()
+                .iter()
+                .flat_map(|g| &g.concepts)
+                .find(|c| c.en.to_lowercase() == *w || (!english_ui && c.tag.to_lowercase() == *w));
+            if let Some(c) = concept {
+                return Some((strip_article(c.phrase).to_string(), false));
+            }
+            if english_ui {
+                return None;
+            }
+            EXTRA
+                .iter()
+                .find(|(de, _)| de == w)
+                .map(|(_, en)| (en.to_string(), AMBIGUOUS.contains(&w.as_str())))
+        })
+        .collect();
+    let german = hits.iter().flatten().any(|(_, ambiguous)| !ambiguous);
+    words
+        .iter()
+        .zip(hits)
+        .map(|((raw, _), hit)| match hit {
+            Some((en, ambiguous)) if german || !ambiguous => en,
+            _ => raw.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn strip_article(s: &str) -> &str {
@@ -213,6 +252,9 @@ fn strip_article(s: &str) -> &str {
     }
     s
 }
+
+/// Deutsche Funktionswörter aus [`EXTRA`], die auch englische Wörter sind.
+const AMBIGUOUS: &[&str] = &["am", "an", "die", "hell", "rot", "mit"];
 
 const EXTRA: &[(&str, &str)] = &[
     ("am", "at the"),
@@ -284,6 +326,23 @@ mod tests {
     fn translates_known_words() {
         assert_eq!(translate_query("Hund am Strand"), "dog at the sandy beach");
         assert_eq!(translate_query("Eiffelturm"), "Eiffelturm");
+    }
+
+    #[test]
+    fn english_words_stay_alone() {
+        // „an“, „die“, „hell“ sind auch englisch: ohne weiteres deutsches Wort bleiben sie
+        assert_eq!(translate_query("an apple"), "an apple");
+        assert_eq!(translate_query("die hard"), "die hard");
+        assert_eq!(translate_query("hell"), "hell");
+        assert_eq!(translate_query("Hund an Strand"), "dog at sandy beach");
+    }
+
+    #[test]
+    fn english_interface_does_not_translate_german() {
+        let a = translate_for("Hund und beach", true);
+        let b = translate_for("an der Strand", true);
+        assert_eq!(a, "Hund und sandy beach");
+        assert_eq!(b, "an der Strand");
     }
 
     #[test]

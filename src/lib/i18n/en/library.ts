@@ -208,4 +208,6 @@ export default {
   "wird bei 1 Foto korrigiert": "corrected for 1 photo",
   "wird bei {n} Fotos korrigiert": "corrected for {n} photos",
   "bei {n} Fotos fand sich keine Zeitangabe zum Korrigieren (nur Name und Ordner angepasst)": "{n} photos had no time stamp to correct (only name and folder adjusted)",
+  "Foto {list} ließ sich nicht ausrichten – das Ergebnis kann dort versetzt sein.": "Photo {list} could not be aligned – the result may be offset there.",
+  "Fotos {list} ließen sich nicht ausrichten – das Ergebnis kann dort versetzt sein.": "Photos {list} could not be aligned – the result may be offset there.",
 } satisfies Record<string, string>;

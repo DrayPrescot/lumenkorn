@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { imageUrl } from "../lib/api";
+  import { retryImage } from "../lib/retry";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
   import { aspectOf } from "../lib/layout";
@@ -123,7 +124,7 @@
         aria-label={im.fileName}
         title={im.fileName}
       >
-        <img src={imageUrl("thumb", im.id, lib.thumbVersion(im.id))} alt="" draggable="false" />
+        <img src={imageUrl("thumb", im.id, lib.thumbVersion(im.id))} alt="" draggable="false" use:retryImage />
         {#if im.edited}<span class="badge"><Icon name="sliders" size={10} /></span>{/if}
         {#if im.lat !== undefined && lib.view === "map"}<span class="badge geo" title={t("Hat einen Aufnahmeort")}><Icon name="pin" size={10} /></span>{/if}
       </button>

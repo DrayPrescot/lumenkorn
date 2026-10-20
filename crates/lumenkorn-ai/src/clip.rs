@@ -23,8 +23,8 @@ use std::path::Path;
 
 pub const EMBED_DIM: usize = 512;
 const IMAGE_SIZE: u32 = 224;
-const MEAN: [f32; 3] = [0.481_454_66, 0.457_827_5, 0.408_210_73];
-const STD: [f32; 3] = [0.268_629_54, 0.261_302_6, 0.275_777_1];
+pub(crate) const MEAN: [f32; 3] = [0.481_454_66, 0.457_827_5, 0.408_210_73];
+pub(crate) const STD: [f32; 3] = [0.268_629_54, 0.261_302_6, 0.275_777_1];
 
 pub struct Clip {
     vision: Model,
@@ -48,7 +48,7 @@ impl Clip {
                 return Err(Error::ModelMissing(f.into()));
             }
         }
-        let open = |file: &str| crate::accel::session(&dir.join(file));
+        let open = |file: &str| crate::accel::open_model(&dir.join(file));
         let mut vision = open("vision.onnx")?;
         let mut text = open("text.onnx")?;
         let (vs, ts) = (vision.inspect(), text.inspect());
@@ -119,7 +119,7 @@ impl Clip {
         let input = Tensor::from_array((shape, data))?;
         let mut session = self.vision.lock();
         let outputs = session.run(vec![(self.vision_in.as_str(), input.into_dyn())])?;
-        let (shape, values) = outputs[self.vision_out.as_str()].try_extract_tensor::<f32>()?;
+        let (shape, values) = crate::accel::output_f32(&outputs, &self.vision_out)?;
         split_rows(shape, values, images.len())
     }
 
@@ -145,7 +145,7 @@ impl Clip {
         }
         let mut session = self.text.lock();
         let outputs = session.run(inputs)?;
-        let (shape, values) = outputs[self.text_out.as_str()].try_extract_tensor::<f32>()?;
+        let (shape, values) = crate::accel::output_f32(&outputs, &self.text_out)?;
         split_rows(shape, values, texts.len())
     }
 }
@@ -177,9 +177,10 @@ fn preprocess(img: &DynamicImage) -> image::RgbImage {
 fn split_rows(shape: &[i64], values: &[f32], n: usize) -> Result<Vec<Vec<f32>>> {
     let dim = *shape
         .last()
-        .ok_or_else(|| Error::ModelFormat(tr_s("leerer Ausgang", "empty output").into()))?
-        as usize;
-    if shape.len() != 2 || values.len() != n * dim {
+        .ok_or_else(|| Error::ModelFormat(tr_s("leerer Ausgang", "empty output").into()))?;
+    // `dim` darf weder null noch negativ sein (chunks_exact(0) wäre ein Panic)
+    let dim = usize::try_from(dim).unwrap_or(0);
+    if shape.len() != 2 || dim == 0 || values.len() != n * dim {
         return Err(Error::ModelFormat(tr!(
             "unerwartete Ausgabeform {shape:?}",
             "unexpected output shape {shape:?}"

@@ -15,7 +15,7 @@
 //!    aktuelle Bild.
 
 use super::align::{self, Features};
-use super::{Loader, Progress, check};
+use super::{Loader, Merged, Progress, check};
 use crate::color::luma;
 use crate::error::{Error, Result};
 use crate::i18n::tr_s;
@@ -323,6 +323,18 @@ pub fn merge(
     progress: Progress,
     cancel: &AtomicBool,
 ) -> Result<ImageF32> {
+    merge_report(n, load, opts, progress, cancel).map(|m| m.image)
+}
+
+/// Wie [`merge`], meldet zusätzlich Fotos, die sich nicht ausrichten ließen.
+pub fn merge_report(
+    n: usize,
+    load: Loader,
+    opts: FocusOptions,
+    progress: Progress,
+    cancel: &AtomicBool,
+) -> Result<Merged> {
+    let mut unaligned = Vec::new();
     if n < 2 {
         return Err(Error::Params(
             tr_s(
@@ -392,6 +404,7 @@ pub fn merge(
                             "Focus Stacking: Bild {} nicht ausrichtbar, nehme Stativ an",
                             i + 1
                         );
+                        unaligned.push(i);
                         align::IDENTITY
                     }
                 };
@@ -434,7 +447,10 @@ pub fn merge(
     }
     drop(reference);
     progress(step, n, n);
-    Ok(stack.finish())
+    Ok(Merged {
+        image: stack.finish(),
+        unaligned,
+    })
 }
 
 #[cfg(test)]

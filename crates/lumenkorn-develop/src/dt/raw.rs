@@ -26,19 +26,9 @@ pub(crate) struct Exif {
 }
 
 impl Exif {
-    pub(crate) fn read(path: &std::path::Path) -> Exif {
-        let read = || -> Option<rawler::exif::Exif> {
-            let src = rawler::rawsource::RawSource::new(path).ok()?;
-            let dec = rawler::get_decoder(&src).ok()?;
-            Some(
-                dec.raw_metadata(&src, &rawler::decoders::RawDecodeParams::default())
-                    .ok()?
-                    .exif,
-            )
-        };
-        let Some(e) = read() else {
-            return Exif::default();
-        };
+    /// Aus den bereits gelesenen RAW-Metadaten (rawler).
+    pub(crate) fn from_metadata(md: &rawler::decoders::RawMetadata) -> Exif {
+        let e = &md.exif;
         Exif {
             exposure_bias: e
                 .exposure_bias
@@ -82,9 +72,55 @@ pub(crate) fn applies(raw: &rawler::RawImage) -> bool {
     if roi.width() < 32 || roi.height() < 32 {
         return false;
     }
+    // Bereiche aus dem Decoder nicht blind übernehmen: sie müssen im Bild
+    // liegen und die Daten groß genug sein, sonst übernimmt rawler.
+    let inside = |r: &rawler::imgop::Rect, w: usize, h: usize| {
+        r.p.x.checked_add(r.width()).is_some_and(|x| x <= w)
+            && r.p.y.checked_add(r.height()).is_some_and(|y| y <= h)
+    };
+    let len = match &raw.data {
+        rawler::rawimage::RawImageData::Integer(v) => v.len(),
+        rawler::rawimage::RawImageData::Float(v) => v.len(),
+    };
+    if raw.width.checked_mul(raw.height).is_none_or(|n| len < n)
+        || !inside(&roi, raw.width, raw.height)
+    {
+        return false;
+    }
+    if let Some(crop) = &raw.crop_area {
+        let ok = match &raw.active_area {
+            // Zuschnitt wird relativ zum aktiven Bereich angewandt
+            Some(a) => {
+                crop.p.x >= a.p.x
+                    && crop.p.y >= a.p.y
+                    && inside(
+                        &rawler::imgop::Rect::new(
+                            rawler::imgop::Point::new(crop.p.x - a.p.x, crop.p.y - a.p.y),
+                            crop.d,
+                        ),
+                        a.width(),
+                        a.height(),
+                    )
+            }
+            None => inside(crop, raw.width, raw.height),
+        };
+        if !ok || crop.width() == 0 || crop.height() == 0 {
+            return false;
+        }
+    }
     let cfa = config.cfa.shift(roi.p.x, roi.p.y);
     let colors_ok = (0..6).all(|r| (0..6).all(|c| cfa.color_at(r, c) <= 2));
-    colors_ok && xyz_to_cam(raw).and_then(|m| color::inv(&m)).is_some()
+    colors_ok
+        && xyz_to_cam(raw).is_some_and(|m| {
+            // Matrix muss sich invertieren lassen, Weißabgleich und Primärfarben
+            // müssen endlich bleiben (Zeilensumme 0 würde NaN ergeben)
+            color::inv(&m).is_some()
+                && color::camera_to_xyz(&m)
+                    .is_some_and(|c| c.iter().flatten().all(|v| v.is_finite()))
+                && color::d65_coeffs(&m)
+                    .iter()
+                    .all(|v| v.is_finite() && *v > 0.0)
+        })
 }
 
 /// Entwickelt bis zum szenenbezogenen linearen sRGB (siehe Modulbeschreibung).
@@ -93,7 +129,8 @@ pub(crate) fn develop(mut raw: rawler::RawImage, exif: Exif) -> Result<ImageF32>
     use rawler::imgop::sensor::SensorType;
     use rawler::rawimage::{RawImageData, RawPhotometricInterpretation, WhiteLevel};
 
-    let xyz_to_cam = xyz_to_cam(&raw).expect("von applies geprüft");
+    let xyz_to_cam = xyz_to_cam(&raw)
+        .ok_or_else(|| crate::error::Error::Raw("Kameramatrix unbrauchbar".into()))?;
 
     // --- rawprepare: Weißpunkt wie darktable (rawspeed)
     let (makes, models) = (
@@ -169,7 +206,8 @@ pub(crate) fn develop(mut raw: rawler::RawImage, exif: Exif) -> Result<ImageF32>
         .unwrap_or(0.0);
     let exposure = SCENE_EXPOSURE - bias;
     let scale = 1.0 / ((-exposure).exp2() - SCENE_BLACK);
-    let cam_to_xyz = color::camera_to_xyz(&xyz_to_cam).expect("von applies geprüft");
+    let cam_to_xyz = color::camera_to_xyz(&xyz_to_cam)
+        .ok_or_else(|| crate::error::Error::Raw("Kameramatrix unbrauchbar".into()))?;
     let xyz_to_work = color::inv(&color::rec2020_to_xyz()).expect("Rec.2020");
     let corr: M3 = [
         [correction[0] as f64, 0.0, 0.0],

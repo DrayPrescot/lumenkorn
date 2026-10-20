@@ -290,9 +290,22 @@ fn render_developed(
     denoise_dir: Option<&Path>,
     repairs: &dyn RepairSource,
 ) -> Result<Vec<u8>> {
+    // Fehlt die Entrauschungsdatei oder ist sie defekt, wird ohne gerendert.
+    // Das Vorschaubild gilt trotzdem als fertig (ein Fehlerzustand ließe es
+    // dauerhaft fehlen, obwohl das Foto selbst lesbar ist) – daher nur warnen.
     let denoised = match (&params.denoise, denoise_dir) {
-        (Some(d), Some(dir)) => lumenkorn_develop::denoised::path(dir, &d.id)
-            .and_then(|p| lumenkorn_develop::denoised::read(&p, Some(max as usize)).ok()),
+        (Some(d), Some(dir)) => {
+            let read = lumenkorn_develop::denoised::path(dir, &d.id)
+                .and_then(|p| lumenkorn_develop::denoised::read(&p, Some(max as usize)).ok());
+            if read.is_none() {
+                log::warn!(
+                    "Foto {}: Entrauschungsdatei {} fehlt oder ist defekt, Vorschau ohne",
+                    job.id,
+                    d.id
+                );
+            }
+            read
+        }
         _ => None,
     };
     let src = Source::load(

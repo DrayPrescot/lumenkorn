@@ -884,7 +884,7 @@ pub async fn semantic_search(
             let mut sq = ImageQuery::new(scope.clone());
             sq.min_rating = min_rating;
             let cat = state.catalog.locked();
-            cat.query_images(&sq)?.into_iter().map(|i| i.id).collect()
+            cat.query_image_ids(&sq)?
         };
         // Kosinus-Werte von CLIP liegen eng beieinander; relativ zum besten
         // Treffer filtern ist robuster als eine feste Schwelle.

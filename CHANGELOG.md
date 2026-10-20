@@ -24,6 +24,28 @@ and the project uses [Semantic Versioning](https://semver.org/).
   disables that part until the app restarts; an export carries on with the next photo.
 - Masks: undoing a refinement of an object mask could show the refined mask or the earlier one,
   depending on what was still cached. Every refinement is now stored as a new mask.
+- Merge: HDR, panorama and focus stacking now say which photos could not be aligned instead of
+  silently stacking them unaligned.
+- RAW: files with unusable color matrix or crop data in their metadata no longer crash the
+  decoder; they fall back to the generic path.
+- AI models are downloaded from fixed versions and checked against SHA-256; cancelling a
+  download keeps the part already loaded and reacts within seconds. Searching in English no
+  longer has words like "an" or "die" translated as German.
+- Robustness: corrupt repair or noise-reduction files, oversized brush data, a source folder
+  that suddenly appears empty (sleeping network drive), impossible dates and huge clock shifts
+  on import are handled instead of crashing or marking all photos missing.
+
+### Changed
+- Performance: removing a large source folder, the daily clean-up and AI search no longer hold
+  the catalog for seconds; scrolling quickly through many photos no longer queues thousands of
+  thumbnail jobs; a photo is decoded once when several views ask for it at the same time; the
+  histogram is computed once per preview; the GPU pipeline reuses buffers better and falls back
+  to the CPU straight away for sizes it could not handle; RAW files are opened once instead of
+  three times.
+- Map: tiles are written atomically, and offline the map and place names back off instead of
+  retrying constantly.
+- AI agents (MCP): the access token comes from the system's random source, and long tool calls
+  are no longer sent twice after a timeout.
 
 ## [1.0.8] – 2026-10-19
 

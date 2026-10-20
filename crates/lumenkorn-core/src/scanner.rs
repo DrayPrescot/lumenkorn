@@ -123,6 +123,10 @@ fn ensure_online(root: &Path) -> Result<()> {
     }
 }
 
+/// Findet ein Scan keine Datei, obwohl mehr als so viele Fotos bekannt sind,
+/// gilt der Ordner als nicht bereit statt als leer.
+const EMPTY_ROOT_GUARD: usize = 20;
+
 fn mtime_secs(m: &std::fs::Metadata) -> i64 {
     m.modified()
         .ok()
@@ -154,6 +158,21 @@ pub fn scan_root(
             total: 0,
         })
     });
+    // Ein Quellordner, der plötzlich leer wirkt (Netzlaufwerk antwortet mit
+    // einer leeren Liste), darf nicht alle Fotos als fehlend markieren
+    let present = known.iter().filter(|k| !k.missing).count();
+    if w.files.is_empty() && present > EMPTY_ROOT_GUARD {
+        log::warn!(
+            "Scan von {} abgebrochen: keine Dateien gefunden, aber {present} Fotos bekannt",
+            root.path
+        );
+        return Err(Error::NotFound(tr!(
+            "Im Quellordner {} wurden keine Fotos gefunden, obwohl {} bekannt sind. Der Abgleich wurde abgebrochen (Laufwerk nicht bereit?).",
+            "No photos were found in source folder {}, although {} are known. The scan was cancelled (drive not ready?).",
+            root.path,
+            present
+        )));
+    }
     let mut known = known;
     w.keep_readable(&mut known);
     let mut report = reconcile(catalog, root_id, w.files, known, progress)?;
@@ -224,7 +243,11 @@ pub fn scan_paths(
                 }
             }
             // Gelöscht oder umbenannt: bekannte Bilder und Ordner darunter betroffen
-            Err(_) => gone.push(p.to_string_lossy().into_owned()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                gone.push(p.to_string_lossy().into_owned())
+            }
+            // Anderer Fehler (Zugriff, Netz): weder gelöscht noch abgleichen
+            Err(_) => w.failed.push(p.to_path_buf()),
             _ => {}
         }
     }

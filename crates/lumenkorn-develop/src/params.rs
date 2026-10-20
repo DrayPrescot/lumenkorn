@@ -590,6 +590,7 @@ impl MaskShape {
                             .iter()
                             .copied()
                             .filter(|p| p[0].is_finite() && p[1].is_finite())
+                            .take(MAX_STROKE_POINTS)
                             .collect(),
                         radius: s.radius.clamp(0.0005, 0.5),
                         feather: if s.feather.is_finite() {
@@ -604,6 +605,7 @@ impl MaskShape {
                         },
                         erase: s.erase,
                     })
+                    .take(MAX_BRUSH_STROKES)
                     .collect(),
                 subtract: *subtract,
             },
@@ -663,6 +665,11 @@ impl Default for DevelopParams {
         }
     }
 }
+
+/// Grenzen gegen entartete oder böswillige Parameter (Speicher, Rechenzeit)
+const MAX_SHAPES_PER_LAYER: usize = 64;
+const MAX_BRUSH_STROKES: usize = 1024;
+const MAX_STROKE_POINTS: usize = 20_000;
 
 impl DevelopParams {
     /// Begrenzt alle Werte auf ihre gültigen Bereiche. Schützt die Pipeline vor
@@ -726,7 +733,12 @@ impl DevelopParams {
                     id: m.id.clone(),
                     name: m.name.clone(),
                     enabled: m.enabled,
-                    shapes: m.shapes.iter().filter_map(MaskShape::sanitized).collect(),
+                    shapes: m
+                        .shapes
+                        .iter()
+                        .take(MAX_SHAPES_PER_LAYER)
+                        .filter_map(MaskShape::sanitized)
+                        .collect(),
                     adjust: m.adjust.sanitized(),
                 })
                 .collect(),
@@ -738,7 +750,12 @@ impl DevelopParams {
                     id: r.id.clone(),
                     name: r.name.clone(),
                     enabled: r.enabled,
-                    shapes: r.shapes.iter().filter_map(MaskShape::sanitized).collect(),
+                    shapes: r
+                        .shapes
+                        .iter()
+                        .take(MAX_SHAPES_PER_LAYER)
+                        .filter_map(MaskShape::sanitized)
+                        .collect(),
                     result: r.result.clone().filter(|id| crate::repair::valid_id(id)),
                     result_key: r.result_key.clone(),
                     lens: r.lens,
@@ -1012,5 +1029,36 @@ mod tests {
         let back: DevelopParams =
             serde_json::from_value(serde_json::to_value(&p).unwrap()).unwrap();
         assert_eq!(back, p);
+    }
+
+    #[test]
+    fn shapes_and_strokes_are_limited() {
+        let stroke = Stroke {
+            points: vec![[0.5, 0.5]; MAX_STROKE_POINTS + 10],
+            radius: 0.05,
+            feather: 0.5,
+            opacity: 1.0,
+            erase: false,
+        };
+        let brush = MaskShape::Brush {
+            strokes: vec![stroke; MAX_BRUSH_STROKES + 10],
+            subtract: false,
+        };
+        let layer = MaskLayer {
+            shapes: vec![brush; MAX_SHAPES_PER_LAYER + 10],
+            ..Default::default()
+        };
+        let p = DevelopParams {
+            masks: vec![layer],
+            ..Default::default()
+        }
+        .sanitized();
+        let shapes = &p.masks[0].shapes;
+        assert_eq!(shapes.len(), MAX_SHAPES_PER_LAYER);
+        let MaskShape::Brush { strokes, .. } = &shapes[0] else {
+            panic!("Pinsel erwartet")
+        };
+        assert_eq!(strokes.len(), MAX_BRUSH_STROKES);
+        assert_eq!(strokes[0].points.len(), MAX_STROKE_POINTS);
     }
 }

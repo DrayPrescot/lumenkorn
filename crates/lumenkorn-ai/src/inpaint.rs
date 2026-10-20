@@ -41,14 +41,8 @@ fn linear(v: f32) -> f32 {
 
 impl Inpainter {
     pub fn load(path: &Path) -> Result<Self> {
-        if !crate::runtime::is_loaded() {
-            return Err(Error::RuntimeMissing);
-        }
-        if !path.is_file() {
-            return Err(Error::ModelMissing(MODEL_FILE.into()));
-        }
         Ok(Self {
-            session: crate::accel::session(path)?,
+            session: crate::accel::open_model(path)?,
         })
     }
 

@@ -21,6 +21,8 @@ pub enum Error {
     Json(#[from] serde_json::Error),
     #[error("{p}: {0}", p = tr_s("Download fehlgeschlagen", "Download failed"))]
     Download(String),
+    #[error("{p}: {0}", p = tr_s("Nicht genug Arbeitsspeicher", "Not enough memory"))]
+    OutOfMemory(String),
     // Die Oberfläche erkennt Abbrüche an „Abgebrochen“/„Canceled“ (isCanceled)
     #[error("{p}", p = tr_s("Abgebrochen", "Canceled"))]
     Cancelled,

@@ -10,6 +10,8 @@ use std::path::Path;
 use std::sync::Mutex;
 
 pub const CONTEXT_LENGTH: usize = 77;
+/// Längere Eingaben werden vor dem Zerlegen gekürzt.
+const MAX_CHARS: usize = 1000;
 
 pub struct ClipTokenizer {
     encoder: HashMap<String, i64>,
@@ -64,13 +66,26 @@ impl ClipTokenizer {
 
     /// Token-IDs ohne Start-/Endmarke (wie `SimpleTokenizer.encode`).
     pub fn encode(&self, text: &str) -> Vec<i64> {
+        self.encode_max(text, usize::MAX)
+    }
+
+    /// Wie [`Self::encode`], hört aber nach `max` Tokens auf. Die Eingabe wird
+    /// auf [`MAX_CHARS`] Zeichen begrenzt: Das Modell sieht ohnehin nur 77 Tokens,
+    /// eine riesige Suchanfrage soll nicht erst vollständig zerlegt werden.
+    fn encode_max(&self, text: &str, max: usize) -> Vec<i64> {
         let cleaned = text
+            .chars()
+            .take(MAX_CHARS)
+            .collect::<String>()
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ")
             .to_lowercase();
         let mut ids = Vec::new();
         for m in self.pattern.find_iter(&cleaned) {
+            if ids.len() >= max {
+                break;
+            }
             let token: String = m
                 .as_str()
                 .bytes()
@@ -89,7 +104,7 @@ impl ClipTokenizer {
     /// Liefert IDs und Aufmerksamkeitsmaske.
     pub fn encode_padded(&self, text: &str) -> (Vec<i64>, Vec<i64>) {
         let mut ids = vec![self.sot];
-        let body = self.encode(text);
+        let body = self.encode_max(text, CONTEXT_LENGTH - 2);
         ids.extend(body.into_iter().take(CONTEXT_LENGTH - 2));
         ids.push(self.eot);
         let mut mask = vec![1i64; ids.len()];
@@ -136,10 +151,12 @@ impl ClipTokenizer {
             }
             word = merged;
         }
-        self.cache
-            .lock()
-            .unwrap()
-            .insert(token.to_string(), word.clone());
+        let mut cache = self.cache.lock().unwrap();
+        // Nicht unbegrenzt wachsen lassen (Suchanfragen mit vielen Fantasiewörtern)
+        if cache.len() >= 50_000 {
+            cache.clear();
+        }
+        cache.insert(token.to_string(), word.clone());
         word
     }
 }

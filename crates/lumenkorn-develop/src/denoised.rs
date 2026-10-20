@@ -45,7 +45,7 @@ pub fn read(path: &Path, max_edge: Option<usize>) -> Result<ImageF32> {
     let mut f = BufReader::with_capacity(1 << 20, file);
     let mut head = [0u8; 16];
     f.read_exact(&mut head)?;
-    if &head[0..4] != MAGIC {
+    if &head[0..4] != MAGIC || u32::from_le_bytes(head[4..8].try_into().unwrap()) != 1 {
         return Err(Error::Params(
             tr_s(
                 "keine entrauschte Lumenkorn-Datei",

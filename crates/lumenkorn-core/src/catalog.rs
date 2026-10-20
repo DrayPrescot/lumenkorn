@@ -1,6 +1,7 @@
 //! Der Katalog: eine SQLite-Datenbank mit Quellordnern, Bildern, Projekten,
 //! Schlagworten und Bearbeitungen. Bilddateien selbst werden nie verändert.
 
+use crate::LockExt;
 use crate::error::{Error, Result};
 use crate::formats::ImageKind;
 use crate::metadata::Metadata;
@@ -10,7 +11,7 @@ use lumenkorn_develop::{DevelopParams, TransferGroups};
 use lumenkorn_develop::{i18n::tr_s, tr};
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, Row, params, params_from_iter};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -698,6 +699,29 @@ impl Catalog {
         Ok(())
     }
 
+    /// Wie [`Catalog::remove_root`], löscht die Fotos aber in Portionen und
+    /// gibt die Katalogsperre dazwischen frei. Bei Katalogen mit Zehntausenden
+    /// Fotos hielte das Löschen in einem Zug die Sperre sonst sehr lange.
+    /// Der Aufrufer darf die Sperre nicht selbst halten.
+    pub fn remove_root_chunked(catalog: &std::sync::Mutex<Catalog>, id: i64) -> Result<()> {
+        const CHUNK: i64 = 2000;
+        catalog.locked().root(id)?;
+        loop {
+            let n = catalog.locked().with_tx(|tx| {
+                Ok(tx.execute(
+                    "DELETE FROM images WHERE id IN
+                       (SELECT id FROM images WHERE root_id = ?1 LIMIT ?2)",
+                    params![id, CHUNK],
+                )?)
+            })?;
+            if n == 0 {
+                break;
+            }
+        }
+        // Rest (z. B. während des Löschens neu gescannt) und der Ordner selbst
+        catalog.locked().remove_root(id)
+    }
+
     pub fn roots(&self) -> Result<Vec<Root>> {
         let mut st = self.conn.prepare(
             "SELECT r.id, r.path, r.last_scan,
@@ -1019,6 +1043,17 @@ impl Catalog {
         }
         let mut st = self.conn.prepare(&sql)?;
         let rows = st.query_map(params_from_iter(args), summary_from_row)?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Nur die IDs der Treffer (gleiche Filter wie [`Catalog::query_images`],
+    /// ohne Sortierung und Limit) – günstig für Mengenprüfungen.
+    pub fn query_image_ids(&self, q: &ImageQuery) -> Result<HashSet<i64>> {
+        let (where_sql, args) = self.where_clause(q)?;
+        let mut st = self
+            .conn
+            .prepare(&format!("SELECT i.id FROM images i WHERE {where_sql}"))?;
+        let rows = st.query_map(params_from_iter(args), |r| r.get(0))?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 

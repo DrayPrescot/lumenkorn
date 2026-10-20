@@ -33,19 +33,21 @@ use std::time::Duration;
 
 pub const ORT_VERSION: &str = "1.28.0";
 pub const MODEL_ID: &str = "clip-vit-b32";
-const HF: &str = "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/main";
+// Alle Hugging-Face- und GitHub-Quellen sind auf eine feste Revision (Commit)
+// gepinnt und tragen die SHA-256-Prüfsumme der Datei: Ein späteres Überschreiben
+// der Quelle ändert nicht stillschweigend, was Lumenkorn lädt.
+const HF: &str = "https://huggingface.co/Xenova/clip-vit-base-patch32/resolve/d15189d7028b43f1d3e65039190477f6af591c2a";
 const REMBG: &str = "https://github.com/danielgatis/rembg/releases/download/v0.0.0";
 /// Himmelserkennung skyseg (U²-Net von xiongzhu666, MIT-Lizenz)
-const SKYSEG: &str = "https://huggingface.co/JianyuanWang/skyseg/resolve/main/skyseg.onnx";
+const SKYSEG: &str = "https://huggingface.co/JianyuanWang/skyseg/resolve/3ba8c6df1d9ba9ff26f637c7ba9568ac11a9aa7f/skyseg.onnx";
 /// Dateiname des Himmelsmodells im Maskenordner
 pub const SKY_MODEL: &str = "sky.onnx";
 /// OWLv2 (Google, Apache 2.0) als ONNX von Xenova; Tokenizer wie CLIP
-const OWLV2: &str = "https://huggingface.co/Xenova/owlv2-base-patch16/resolve/main";
+const OWLV2: &str = "https://huggingface.co/Xenova/owlv2-base-patch16/resolve/7463883add9ec3fbcdfc5493010f5908313d7d32";
 /// MediaPipe Selfie Multiclass (Google, Apache 2.0), unverändert nach ONNX umgewandelt
-const SELFIE_MULTICLASS: &str =
-    "https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX/resolve/main/onnx/model.onnx";
+const SELFIE_MULTICLASS: &str = "https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX/resolve/6db8421a7150ac20558f2c24675078eb3a1a04d0/onnx/model.onnx";
 /// MediaPipe Face Mesh V2 (Google, Apache 2.0), unverändert nach ONNX umgewandelt
-const FACE_MESH: &str = "https://huggingface.co/fernandotonon/QtMeshEditor-facemesh-onnx/resolve/main/face_landmarks.onnx";
+const FACE_MESH: &str = "https://huggingface.co/fernandotonon/QtMeshEditor-facemesh-onnx/resolve/32714088ed9830a98df6ee653ad406a3b83ef014/face_landmarks.onnx";
 
 /// Was heruntergeladen werden soll.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -153,19 +155,20 @@ fn is_main_library(file: &str) -> bool {
 }
 
 const KAIR: &str = "https://github.com/cszn/KAIR/releases/download/v1.0";
-/// OpenCV Model Zoo (Git LFS – daher über media.githubusercontent.com)
-const OPENCV_ZOO: &str = "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models";
+/// OpenCV Model Zoo (Git LFS – daher über media.githubusercontent.com), fester Commit
+const OPENCV_ZOO: &str = "https://media.githubusercontent.com/media/opencv/opencv_zoo/47534e27c9851bb1128ccc0102f1145e27f23f98/models";
 
 pub fn repair_dir(data_dir: &Path) -> PathBuf {
     ai_dir(data_dir).join("reparatur")
 }
 
 fn default_repair() -> Vec<FileSpec> {
-    vec![FileSpec {
-        name: crate::inpaint::MODEL_FILE.into(),
-        url: format!("{OPENCV_ZOO}/inpainting_lama/inpainting_lama_2025jan.onnx"),
-        size: Some(92_591_623),
-    }]
+    vec![FileSpec::pinned(
+        crate::inpaint::MODEL_FILE,
+        format!("{OPENCV_ZOO}/inpainting_lama/inpainting_lama_2025jan.onnx"),
+        92_591_623,
+        "7df918ac3921d3daf0aae1d219776cf0dc4e4935f035af81841b40adcf74fdf2",
+    )]
 }
 
 pub fn faces_dir(data_dir: &Path) -> PathBuf {
@@ -174,16 +177,18 @@ pub fn faces_dir(data_dir: &Path) -> PathBuf {
 
 fn default_faces() -> Vec<FileSpec> {
     vec![
-        FileSpec {
-            name: crate::faces::DETECTOR_FILE.into(),
-            url: format!("{OPENCV_ZOO}/face_detection_yunet/face_detection_yunet_2023mar.onnx"),
-            size: Some(232_589),
-        },
-        FileSpec {
-            name: crate::faces::EMBEDDER_FILE.into(),
-            url: format!("{OPENCV_ZOO}/face_recognition_sface/face_recognition_sface_2021dec.onnx"),
-            size: Some(38_696_353),
-        },
+        FileSpec::pinned(
+            crate::faces::DETECTOR_FILE,
+            format!("{OPENCV_ZOO}/face_detection_yunet/face_detection_yunet_2023mar.onnx"),
+            232_589,
+            "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+        ),
+        FileSpec::pinned(
+            crate::faces::EMBEDDER_FILE,
+            format!("{OPENCV_ZOO}/face_recognition_sface/face_recognition_sface_2021dec.onnx"),
+            38_696_353,
+            "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+        ),
     ]
 }
 /// Fertiges Modell im Entrausch-Ordner; entsteht lokal aus den Original-Gewichten.
@@ -194,11 +199,12 @@ pub fn denoise_dir(data_dir: &Path) -> PathBuf {
 }
 
 fn default_denoise() -> Vec<FileSpec> {
-    vec![FileSpec {
-        name: "drunet_color.pth".into(),
-        url: format!("{KAIR}/drunet_color.pth"),
-        size: Some(130_579_305),
-    }]
+    vec![FileSpec::pinned(
+        "drunet_color.pth",
+        format!("{KAIR}/drunet_color.pth"),
+        130_579_305,
+        "479abe3c5327dfd10ff54a80ec7d4098ca80752a5c9492cdff31cee430bec4b4",
+    )]
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -207,9 +213,24 @@ pub struct FileSpec {
     /// Dateiname im Modellordner
     pub name: String,
     pub url: String,
-    /// Ungefähre Größe in Bytes, nur für die Anzeige
+    /// Größe in Bytes (bei den Standardquellen exakt, sonst ungefähr)
     #[serde(default)]
     pub size: Option<u64>,
+    /// SHA-256 der Datei. Geprüft wird nur beim frischen Download; bereits
+    /// installierte Dateien gelten unabhängig davon als vorhanden.
+    #[serde(default)]
+    pub sha256: Option<String>,
+}
+
+impl FileSpec {
+    fn pinned(name: &str, url: String, size: u64, sha256: &str) -> Self {
+        Self {
+            name: name.into(),
+            url,
+            size: Some(size),
+            sha256: Some(sha256.into()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -244,46 +265,65 @@ pub struct Manifest {
 }
 
 fn default_masks() -> Vec<FileSpec> {
-    let f = |name: &str, file: &str, size: u64| FileSpec {
-        name: name.into(),
-        url: format!("{REMBG}/{file}"),
-        size: Some(size),
+    let f = |name: &str, file: &str, size: u64, sha: &str| {
+        FileSpec::pinned(name, format!("{REMBG}/{file}"), size, sha)
     };
     vec![
-        f("subject.onnx", "isnet-general-use.onnx", 178_648_008),
-        f("sam-encoder.onnx", "vit_b-encoder-quant.onnx", 99_827_815),
-        f("sam-decoder.onnx", "vit_b-decoder-quant.onnx", 8_742_591),
-        FileSpec {
-            name: SKY_MODEL.into(),
-            url: SKYSEG.into(),
-            size: Some(176_000_000),
-        },
-        // Personen und Tiere (alle Apache 2.0); Größen gerundet
-        FileSpec {
-            name: crate::parts::OWL_FILE.into(),
-            url: format!("{OWLV2}/onnx/model_quantized.onnx"),
-            size: Some(155_000_000),
-        },
-        FileSpec {
-            name: crate::parts::OWL_VOCAB.into(),
-            url: format!("{HF}/vocab.json"),
-            size: Some(860_000),
-        },
-        FileSpec {
-            name: crate::parts::OWL_MERGES.into(),
-            url: format!("{HF}/merges.txt"),
-            size: Some(525_000),
-        },
-        FileSpec {
-            name: crate::parts::SEG_FILE.into(),
-            url: SELFIE_MULTICLASS.into(),
-            size: Some(16_500_000),
-        },
-        FileSpec {
-            name: crate::parts::MESH_FILE.into(),
-            url: FACE_MESH.into(),
-            size: Some(4_920_000),
-        },
+        f(
+            "subject.onnx",
+            "isnet-general-use.onnx",
+            178_648_008,
+            "60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a",
+        ),
+        f(
+            "sam-encoder.onnx",
+            "vit_b-encoder-quant.onnx",
+            99_827_815,
+            "cf99a3b79eea0ac4f7c9b06cdce5b2763ff41a3f631213c748d497cba233df6a",
+        ),
+        f(
+            "sam-decoder.onnx",
+            "vit_b-decoder-quant.onnx",
+            8_742_591,
+            "40b02c2f694bb87b8360bb04ad8aaa84eab9673f4092b4911e0513890812b42e",
+        ),
+        FileSpec::pinned(
+            SKY_MODEL,
+            SKYSEG.into(),
+            175_997_079,
+            "ab9c34c64c3d821220a2886a4a06da4642ffa14d5b30e8d5339056a089aa1d39",
+        ),
+        // Personen und Tiere (alle Apache 2.0)
+        FileSpec::pinned(
+            crate::parts::OWL_FILE,
+            format!("{OWLV2}/onnx/model_quantized.onnx"),
+            155_312_754,
+            "279a4827037e076fc62cff27c84258cab4562f14512aa2ba30fda8b156451167",
+        ),
+        FileSpec::pinned(
+            crate::parts::OWL_VOCAB,
+            format!("{HF}/vocab.json"),
+            862_328,
+            "5047b556ce86ccaf6aa22b3ffccfc52d391ea4accdab9c2f2407da5b742d4363",
+        ),
+        FileSpec::pinned(
+            crate::parts::OWL_MERGES,
+            format!("{HF}/merges.txt"),
+            524_619,
+            "9fd691f7c8039210e0fced15865466c65820d09b63988b0174bfe25de299051a",
+        ),
+        FileSpec::pinned(
+            crate::parts::SEG_FILE,
+            SELFIE_MULTICLASS.into(),
+            16_454_560,
+            "35ec1ecd9ee7f85073c99c00020b7f6751b69506eeacf683bc8665f6117f85b0",
+        ),
+        FileSpec::pinned(
+            crate::parts::MESH_FILE,
+            FACE_MESH.into(),
+            4_920_979,
+            "d16e5a55e6a480284d468ee32469692464049518c311662ab3956681de31e3e9",
+        ),
     ]
 }
 
@@ -367,10 +407,8 @@ pub fn default_manifest() -> Manifest {
         sha256: Some(sha.to_string()),
     });
 
-    let f = |name: &str, path: &str, size: u64| FileSpec {
-        name: name.into(),
-        url: format!("{HF}/{path}"),
-        size: Some(size),
+    let f = |name: &str, path: &str, size: u64, sha: &str| {
+        FileSpec::pinned(name, format!("{HF}/{path}"), size, sha)
     };
     Manifest {
         runtime,
@@ -378,11 +416,27 @@ pub fn default_manifest() -> Manifest {
             f(
                 "vision.onnx",
                 "onnx/vision_model_quantized.onnx",
-                88_000_000,
+                89_117_001,
+                "583fd1110a514667812fee7d684952aaf82a99b959760c8d7dca7e0ab9839299",
             ),
-            f("text.onnx", "onnx/text_model_quantized.onnx", 64_000_000),
-            f("vocab.json", "vocab.json", 860_000),
-            f("merges.txt", "merges.txt", 525_000),
+            f(
+                "text.onnx",
+                "onnx/text_model_quantized.onnx",
+                64_504_507,
+                "73baab855d406190da9faa498cfedf65f15cf309f4cc7385b7b032e6d08e5c3a",
+            ),
+            f(
+                "vocab.json",
+                "vocab.json",
+                862_328,
+                "5047b556ce86ccaf6aa22b3ffccfc52d391ea4accdab9c2f2407da5b742d4363",
+            ),
+            f(
+                "merges.txt",
+                "merges.txt",
+                524_619,
+                "9fd691f7c8039210e0fced15865466c65820d09b63988b0174bfe25de299051a",
+            ),
         ],
         masks: default_masks(),
         denoise: default_denoise(),
@@ -397,13 +451,77 @@ pub fn default_manifest() -> Manifest {
 pub fn load_manifest(data_dir: &Path) -> Manifest {
     let p = ai_dir(data_dir).join("quellen.json");
     match std::fs::read_to_string(&p).map(|s| serde_json::from_str::<Manifest>(&s)) {
-        Ok(Ok(m)) => m,
+        Ok(Ok(m)) => match validate_manifest(&m) {
+            Ok(()) => m,
+            Err(why) => {
+                log::warn!(
+                    "{} wird nicht verwendet ({why}), nutze Standardquellen",
+                    p.display()
+                );
+                default_manifest()
+            }
+        },
         Ok(Err(e)) => {
             log::warn!("{} ist ungültig, nutze Standardquellen: {e}", p.display());
             default_manifest()
         }
         Err(_) => default_manifest(),
     }
+}
+
+/// Ist `name` genau eine Pfadkomponente (kein Unterordner, kein `..`, kein
+/// Laufwerk oder Datenstrom)?
+fn is_plain_name(name: &str) -> bool {
+    !name.is_empty()
+        && name != "."
+        && name != ".."
+        && !name.contains(['/', '\\', ':', '\0'])
+        && name.trim() == name
+}
+
+/// Adresse prüfen. Ohne Prüfsumme (`needs_https`) läuft der heruntergeladene
+/// Inhalt unter Umständen als Code (Laufzeit, DLLs): dort nur verschlüsselt,
+/// ausgenommen der eigene Rechner (Tests, lokaler Spiegel).
+fn check_url(url: &str, needs_https: bool) -> std::result::Result<(), String> {
+    let lower = url.to_ascii_lowercase();
+    let loopback = lower.strip_prefix("http://").is_some_and(|r| {
+        ["127.0.0.1", "localhost", "[::1]"].iter().any(|h| {
+            r.strip_prefix(h)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with([':', '/']))
+        })
+    });
+    if lower.starts_with("https://") || (lower.starts_with("http://") && (!needs_https || loopback))
+    {
+        Ok(())
+    } else if needs_https {
+        Err(format!("{url}: ohne Prüfsumme nur https erlaubt"))
+    } else {
+        Err(format!("{url}: nur http(s) erlaubt"))
+    }
+}
+
+/// Schutz vor einer manipulierten oder fehlerhaften `quellen.json`: Dateinamen
+/// dürfen den Modellordner nicht verlassen, Adressen müssen http(s) sein.
+fn validate_manifest(m: &Manifest) -> std::result::Result<(), String> {
+    let lists = [&m.model, &m.masks, &m.denoise, &m.faces, &m.repair];
+    for f in lists.into_iter().flatten() {
+        if !is_plain_name(&f.name) {
+            return Err(format!("Dateiname {:?} ungültig", f.name));
+        }
+        check_url(&f.url, false)?;
+    }
+    if let Some(r) = &m.runtime {
+        check_url(&r.url, r.sha256.is_none())?;
+    }
+    for g in &m.gpu_runtimes {
+        check_url(&g.url, g.sha256.is_none())?;
+        for e in &g.files {
+            if !is_plain_name(e.rsplit('/').next().unwrap_or(e)) {
+                return Err(format!("Archiveintrag {e:?} ungültig"));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -588,8 +706,10 @@ pub fn download_missing(
     if need_runtime && let Some(rt) = &manifest.runtime {
         index += 1;
         let tmp = ai.join("runtime-download.part");
-        download(
+        let expect = rt.sha256.clone().or(rt.size.map(|n| n.to_string()));
+        download_part(
             &rt.url,
+            expect.as_deref(),
             &tmp,
             &|done, total| {
                 progress(Progress {
@@ -610,7 +730,7 @@ pub fn download_missing(
             None => check_length(&tmp, rt.size),
         }
         .and_then(|()| extract_entry(&tmp, &rt.url, &rt.archive_entry, &target));
-        let _ = std::fs::remove_file(&tmp);
+        discard_part(&tmp);
         res?;
     }
 
@@ -618,8 +738,10 @@ pub fn download_missing(
         index += 1;
         let target = dir.join(&f.name);
         let tmp = dir.join(format!("{}.part", f.name));
-        download(
+        let expect = f.sha256.clone().or(f.size.map(|n| n.to_string()));
+        download_part(
             &f.url,
+            expect.as_deref(),
             &tmp,
             &|done, total| {
                 progress(Progress {
@@ -632,11 +754,18 @@ pub fn download_missing(
             },
             cancel,
         )?;
-        if let Err(e) = check_length(&tmp, f.size) {
-            let _ = std::fs::remove_file(&tmp);
+        // Mit Prüfsumme gilt sie (nur für frische Downloads – schon vorhandene
+        // Dateien werden oben übersprungen und nie nachträglich geprüft)
+        let checked = match &f.sha256 {
+            Some(sha) => accel::verify_sha256(&tmp, sha),
+            None => check_length(&tmp, f.size),
+        };
+        if let Err(e) = checked {
+            discard_part(&tmp);
             return Err(e);
         }
         std::fs::rename(&tmp, &target)?;
+        let _ = std::fs::remove_file(part_marker(&tmp));
     }
 
     // DRUNet: Original-Gewichte lokal in ONNX übersetzen, dann aufräumen.
@@ -666,6 +795,44 @@ pub fn download_missing(
     Ok(())
 }
 
+/// Marker neben einem Teil-Download: woher er stammt.
+fn part_marker(tmp: &Path) -> PathBuf {
+    let mut name = tmp.as_os_str().to_owned();
+    name.push(".src");
+    PathBuf::from(name)
+}
+
+/// Löscht einen Teil-Download samt Marker.
+fn discard_part(tmp: &Path) {
+    let _ = std::fs::remove_file(tmp);
+    let _ = std::fs::remove_file(part_marker(tmp));
+}
+
+/// Wie [`download`], setzt aber nur einen Teil fort, der von derselben Quelle
+/// stammt: Neben dem Teil steht Adresse plus erwartete Prüfsumme bzw. Größe.
+/// Weicht sie ab (andere Version, geänderte `quellen.json`) oder fehlt der
+/// Marker (Teil aus einer älteren Version), wird neu begonnen. Nach Abbruch
+/// oder Verbindungsfehler bleibt der Teil liegen; Prüffehler löschen ihn.
+fn download_part(
+    url: &str,
+    expect: Option<&str>,
+    tmp: &Path,
+    progress: &dyn Fn(u64, Option<u64>),
+    cancel: &AtomicBool,
+) -> Result<()> {
+    let id = format!("{url}\n{}", expect.unwrap_or_default());
+    let marker = part_marker(tmp);
+    if std::fs::read_to_string(&marker).ok().as_deref() != Some(id.as_str()) {
+        let _ = std::fs::remove_file(tmp);
+        std::fs::write(&marker, &id)?;
+    }
+    let res = download(url, tmp, progress, cancel);
+    if res.is_err() && !tmp.exists() {
+        let _ = std::fs::remove_file(&marker);
+    }
+    res
+}
+
 /// Schutz vor abgeschnittenen Downloads, falls der Server keine Länge
 /// mitschickt (dann prüft `fetch` nichts): Die Datei muss mindestens 90 % der
 /// bekannten Größe haben. Die Angaben weichen höchstens um ~1 % ab.
@@ -692,8 +859,10 @@ fn install_gpu_runtime(
 ) -> Result<()> {
     let label = format!("{} – ONNX Runtime {}", spec.backend.label(), spec.version);
     let tmp = ai.join(format!("{}-download.part", spec.backend.dir_name()));
-    download(
+    let expect = spec.sha256.clone().or(spec.size.map(|n| n.to_string()));
+    download_part(
         &spec.url,
+        expect.as_deref(),
         &tmp,
         &|done, total| {
             progress(Progress {
@@ -716,19 +885,40 @@ fn install_gpu_runtime(
         let staging = target.with_extension("part");
         let _ = std::fs::remove_dir_all(&staging);
         std::fs::create_dir_all(&staging)?;
-        for entry in &spec.files {
+        let unpacked = spec.files.iter().try_for_each(|entry| {
             let name = if is_main_library(entry) {
                 crate::runtime::library_file_name().to_string()
             } else {
                 entry.rsplit('/').next().unwrap_or(entry).to_string()
             };
-            extract_entry(&tmp, &spec.url, entry, &staging.join(name))?;
+            extract_entry(&tmp, &spec.url, entry, &staging.join(name))
+        });
+        if let Err(e) = unpacked {
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(e);
         }
-        let _ = std::fs::remove_dir_all(&target);
-        std::fs::rename(&staging, &target)?;
+        // Austausch ohne Lücke: die alte Laufzeit erst zur Seite legen, die neue
+        // einsetzen und die alte erst danach löschen; scheitert ein Schritt
+        // (z. B. weil Windows die geladene DLL festhält), bleibt die alte
+        // Laufzeit unverändert erhalten.
+        let old = target.with_extension("old");
+        let _ = std::fs::remove_dir_all(&old);
+        let had_old = target.exists();
+        if had_old && let Err(e) = std::fs::rename(&target, &old) {
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(e.into());
+        }
+        if let Err(e) = std::fs::rename(&staging, &target) {
+            if had_old {
+                let _ = std::fs::rename(&old, &target);
+            }
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(e.into());
+        }
+        let _ = std::fs::remove_dir_all(&old);
         Ok(())
     })();
-    let _ = std::fs::remove_file(&tmp);
+    discard_part(&tmp);
     res
 }
 
@@ -803,7 +993,7 @@ fn fetch(
     if offset > 0 {
         req = req.header("range", format!("bytes={offset}-"));
     }
-    let mut resp = req
+    let resp = req
         .call()
         .map_err(|e| Error::Download(format!("{url}: {e}")))?;
     let header = |name: &str| {
@@ -831,25 +1021,47 @@ fn fetch(
             return Err(Error::Download(format!("{url}: HTTP {status}")));
         }
     };
-    let mut reader = resp.body_mut().with_config().limit(u64::MAX).reader();
-    let mut buf = vec![0u8; 256 * 1024];
+    let (tx, rx) = std::sync::mpsc::sync_channel::<std::result::Result<Vec<u8>, String>>(4);
+    std::thread::spawn(move || {
+        let mut resp = resp;
+        let mut reader = resp.body_mut().with_config().limit(u64::MAX).reader();
+        let mut buf = vec![0u8; 256 * 1024];
+        loop {
+            let msg = match reader.read(&mut buf) {
+                Ok(n) => Ok(buf[..n].to_vec()),
+                Err(e) => Err(e.to_string()),
+            };
+            let end = !matches!(&msg, Ok(c) if !c.is_empty());
+            // Empfänger weg (Abbruch): Thread beenden
+            if tx.send(msg).is_err() || end {
+                break;
+            }
+        }
+    });
     let mut last = done;
     progress(done, total);
     loop {
+        // Bei Abbruch und bei einem Fehler bleibt der Teil liegen – der nächste
+        // Versuch setzt fort (`download_part` prüft, ob er zur Quelle passt).
         if cancel.load(Ordering::Relaxed) {
-            drop(out);
-            let _ = std::fs::remove_file(target);
             return Err(Error::Cancelled);
         }
-        // Bei einem Fehler bleibt der Teil liegen – der nächste Versuch setzt fort.
-        let n = reader
-            .read(&mut buf)
-            .map_err(|e| Error::Download(e.to_string()))?;
-        if n == 0 {
+        // Gelesen wird in einem eigenen Thread, damit „Abbrechen“ auch dann
+        // binnen Sekunden greift, wenn gerade keine Daten kommen (die
+        // Hänger-Frist beträgt 60 s). Der Thread endet mit der Verbindung.
+        let chunk = match rx.recv_timeout(Duration::from_millis(250)) {
+            Ok(c) => c,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(Error::Download(format!("{url}: Verbindung abgebrochen")));
+            }
+        };
+        let chunk = chunk.map_err(Error::Download)?;
+        if chunk.is_empty() {
             break;
         }
-        out.write_all(&buf[..n])?;
-        done += n as u64;
+        out.write_all(&chunk)?;
+        done += chunk.len() as u64;
         if done - last >= 1 << 20 {
             progress(done, total);
             last = done;

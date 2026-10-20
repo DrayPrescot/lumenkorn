@@ -100,8 +100,12 @@
   }
 
   let unlisten: (() => void) | undefined;
+  let destroyed = false;
   onMount(async () => {
-    unlisten = await listen("import-scan-progress", (p) => (found = p.found));
+    // Wurde der Dialog schon geschlossen, bevor `listen` fertig ist: gleich abmelden
+    const u = await listen("import-scan-progress", (p) => (found = p.found));
+    if (destroyed) u();
+    else unlisten = u;
     try {
       const d = await api.importDefaults();
       cards = d.cards;
@@ -183,6 +187,7 @@
   }
 
   onDestroy(() => {
+    destroyed = true;
     unlisten?.();
     observer?.disconnect();
     resetPreviews();

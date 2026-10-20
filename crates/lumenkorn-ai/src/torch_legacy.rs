@@ -65,6 +65,13 @@ impl<'r, 'b> Pickle<'r, 'b> {
         Ok(b[0])
     }
     fn bytes(&mut self, n: usize) -> Result<Vec<u8>> {
+        // Länge gegen den Rest prüfen, bevor Speicher angelegt wird: eine
+        // gefälschte Längenangabe (bis 4 GB) darf keine Allokation auslösen.
+        let rest =
+            self.r.get_ref().len() as u64 - self.r.position().min(self.r.get_ref().len() as u64);
+        if n as u64 > rest {
+            return Err(bad(tr_s("unerwartetes Ende", "unexpected end")));
+        }
         let mut b = vec![0u8; n];
         self.r
             .read_exact(&mut b)
@@ -141,6 +148,10 @@ impl<'r, 'b> Pickle<'r, 'b> {
                 0x8a => {
                     // LONG1
                     let n = p.u8()? as usize;
+                    // Mehr als 15 Bytes passen nicht in i128 (Überlauf beim Schieben)
+                    if n > 15 {
+                        return Err(bad(tr_s("Zahl zu groß", "number too large")));
+                    }
                     let b = p.bytes(n)?;
                     let mut v: i128 = 0;
                     for (i, x) in b.iter().enumerate() {
@@ -286,12 +297,15 @@ impl<'r, 'b> Pickle<'r, 'b> {
                                 )));
                             }
                         };
+                        // Negative oder absurd große Werte (Form, Schritte, Anfang)
+                        // gehören nicht in ein gültiges state_dict
                         let ints = |v: Option<&V>| -> Result<Vec<usize>> {
                             match v {
                                 Some(V::Tuple(x)) => x
                                     .iter()
                                     .map(|i| match i {
-                                        V::Int(n) => Ok(*n as usize),
+                                        V::Int(n) => usize::try_from(*n)
+                                            .map_err(|_| bad(tr_s("Form", "shape"))),
                                         _ => Err(bad(tr_s("Form", "shape"))),
                                     })
                                     .collect(),
@@ -299,7 +313,9 @@ impl<'r, 'b> Pickle<'r, 'b> {
                             }
                         };
                         let offset = match a.get(1) {
-                            Some(V::Int(n)) => *n as usize,
+                            Some(V::Int(n)) => {
+                                usize::try_from(*n).map_err(|_| bad(tr_s("Anfang", "offset")))?
+                            }
                             _ => 0,
                         };
                         V::Tensor {
@@ -360,7 +376,19 @@ pub fn load_state_dict(bytes: &[u8]) -> Result<Vec<(String, Tensor)>> {
         let mut nb = [0u8; 8];
         cur.read_exact(&mut nb)
             .map_err(|_| bad(tr_s("Speichergröße", "storage size")))?;
-        let n = i64::from_le_bytes(nb) as usize;
+        // Anzahl gegen die restlichen Daten prüfen, bevor Speicher angelegt wird
+        let rest = (bytes.len() as u64).saturating_sub(cur.position());
+        let n = usize::try_from(i64::from_le_bytes(nb))
+            .ok()
+            .and_then(|n| n.checked_mul(4).map(|b| (n, b)))
+            .filter(|(_, b)| *b as u64 <= rest)
+            .map(|(n, _)| n)
+            .ok_or_else(|| {
+                bad(tr_s(
+                    "Speicherdaten unvollständig",
+                    "storage data incomplete",
+                ))
+            })?;
         let mut raw = vec![0u8; n * 4];
         cur.read_exact(&mut raw).map_err(|_| {
             bad(tr_s(
@@ -398,11 +426,19 @@ pub fn load_state_dict(bytes: &[u8]) -> Result<Vec<(String, Tensor)>> {
         let st = storages
             .get(&key)
             .ok_or_else(|| bad(tr!("Speicher {key} fehlt", "storage {key} missing")))?;
-        let n: usize = shape.iter().product();
+        // Elementzahl ohne Überlauf; mehr als ein Speicherblock je Tensor
+        // wäre nur mit Schritt 0 möglich und hat in Gewichten nichts verloren
+        let n = shape
+            .iter()
+            .try_fold(1usize, |a, d| a.checked_mul(*d))
+            .filter(|n| *n <= st.len())
+            .ok_or_else(|| bad(tr_s("Form", "shape")))?;
         let mut data = Vec::with_capacity(n);
         let mut idx = vec![0usize; shape.len()];
         for _ in 0..n {
-            let pos = offset + idx.iter().zip(&stride).map(|(i, s)| i * s).sum::<usize>();
+            let pos = idx.iter().zip(&stride).fold(offset, |acc, (i, s)| {
+                acc.saturating_add(i.saturating_mul(*s))
+            });
             data.push(
                 *st.get(pos)
                     .ok_or_else(|| bad(tr_s("Index außerhalb", "index out of range")))?,
@@ -418,4 +454,45 @@ pub fn load_state_dict(bytes: &[u8]) -> Result<Vec<(String, Tensor)>> {
         out.push((name, Tensor { shape, data }));
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn magic_pickles() -> Vec<u8> {
+        let mut b = vec![0x80, 2, 0x8a, 10];
+        b.extend_from_slice(&MAGIC.to_le_bytes()[..10]);
+        b.push(b'.');
+        b.extend_from_slice(b"N.N."); // Protokollversion, Systeminfo
+        b.extend_from_slice(b"}."); // leeres Wörterbuch
+        b.extend_from_slice(&[b']', b'(', 0x8c, 1, b'k', b'e', b'.']); // Schlüssel „k“
+        b
+    }
+
+    #[test]
+    fn rejects_forged_lengths_without_allocating() {
+        // Zeichenkette mit 4-GB-Länge, aber nur wenigen Bytes Daten
+        let mut b = vec![b'X'];
+        b.extend_from_slice(&u32::MAX.to_le_bytes());
+        b.extend_from_slice(b"abc.");
+        assert!(Pickle::run(&mut Cursor::new(b.as_slice())).is_err());
+
+        // LONG1 mit mehr Bytes, als in i128 passen
+        let mut b = vec![0x8a, 255];
+        b.extend_from_slice(&[1u8; 255]);
+        b.push(b'.');
+        assert!(Pickle::run(&mut Cursor::new(b.as_slice())).is_err());
+
+        // Speicherblock mit absurder bzw. negativer Elementzahl
+        for n in [i64::MAX, i64::MAX / 4 + 1, -1] {
+            let mut b = magic_pickles();
+            b.extend_from_slice(&n.to_le_bytes());
+            assert!(load_state_dict(&b).is_err(), "{n}");
+        }
+        // Gutartig: ein leerer Block ist in Ordnung
+        let mut b = magic_pickles();
+        b.extend_from_slice(&0i64.to_le_bytes());
+        assert!(load_state_dict(&b).unwrap().is_empty());
+    }
 }

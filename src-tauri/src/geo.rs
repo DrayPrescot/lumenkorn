@@ -47,6 +47,7 @@ fn agent() -> &'static ureq::Agent {
         ureq::Agent::config_builder()
             .tls_config(tls)
             .user_agent(user_agent())
+            .timeout_connect(Some(Duration::from_secs(5)))
             .timeout_global(Some(Duration::from_secs(20)))
             .build()
             .into()
@@ -66,6 +67,31 @@ fn net_err(e: impl std::fmt::Display) -> Error {
         "OpenStreetMap nicht erreichbar: {e}",
         "OpenStreetMap not reachable: {e}"
     ))
+}
+
+/// Nominatim ruht bis zu diesem Zeitpunkt (nach einem Netzfehler)
+static NOMINATIM_PAUSE: Mutex<Option<Instant>> = Mutex::new(None);
+/// Pause nach einem Netzfehler, nach „zu viele Anfragen“ bzw. „gesperrt“
+const PAUSE_ERROR: Duration = Duration::from_secs(10 * 60);
+const PAUSE_BLOCKED: Duration = Duration::from_secs(60 * 60);
+
+fn nominatim_paused() -> bool {
+    let p = NOMINATIM_PAUSE.lock().unwrap_or_else(|e| e.into_inner());
+    p.is_some_and(|t| Instant::now() < t)
+}
+
+/// Ortsabfragen eine Weile aussetzen; nur der erste Fehler kommt ins Log.
+fn pause_nominatim(e: &ureq::Error) {
+    let blocked = matches!(e, ureq::Error::StatusCode(429 | 403));
+    let wait = if blocked { PAUSE_BLOCKED } else { PAUSE_ERROR };
+    let mut p = NOMINATIM_PAUSE.lock().unwrap_or_else(|e| e.into_inner());
+    if !p.is_some_and(|t| Instant::now() < t) {
+        log::warn!(
+            "Ortsnamen: OpenStreetMap antwortet nicht ({e}), Pause für {} Minuten",
+            wait.as_secs() / 60
+        );
+    }
+    *p = Some(Instant::now() + wait);
 }
 
 /// Nominatim-Anfrage im vorgeschriebenen Tempo (prozessweit)
@@ -88,10 +114,11 @@ fn nominatim(path: &str, query: &[(&str, &str)]) -> CmdResult<serde_json::Value>
     let res = req.call();
     *last = Some(Instant::now());
     drop(last);
+    let mut res = res.inspect_err(pause_nominatim).map_err(net_err)?;
     let text = res
-        .map_err(net_err)?
         .body_mut()
         .read_to_string()
+        .inspect_err(pause_nominatim)
         .map_err(net_err)?;
     serde_json::from_str(&text).map_err(net_err)
 }
@@ -514,6 +541,9 @@ fn run(app: &AppHandle) -> CmdResult<()> {
     // Große Stapel, damit nahe Fotos möglichst in dieselbe Anfrage fallen.
     let (mut named, mut requests) = (0usize, 0usize);
     loop {
+        if nominatim_paused() {
+            break;
+        }
         let pending = state.catalog.locked().place_pending(20_000)?;
         if pending.is_empty() {
             break;
@@ -565,19 +595,40 @@ pub fn tile(state: &AppState, z: u32, x: u32, y: u32) -> Option<Vec<u8>> {
     if fresh && let Ok(b) = std::fs::read(&path) {
         return Some(b);
     }
+    // Nach einem Netzfehler eine Weile nicht fragen (jede Kachel wartete
+    // sonst bis zur Zeitüberschreitung); veraltete Kacheln gibt es weiter
+    if tile_offline() {
+        return std::fs::read(&path).ok();
+    }
     match fetch_tile(z, x, y) {
         Ok(bytes) => {
             if let Some(dir) = path.parent() {
                 let _ = std::fs::create_dir_all(dir);
-                let _ = std::fs::write(&path, &bytes);
+                // Erst in eine eigene Datei, dann umbenennen: Eine halbe Kachel
+                // darf nie unter dem echten Namen liegen
+                let tmp = path.with_extension(format!("tmp{}", std::process::id()));
+                if std::fs::write(&tmp, &bytes).is_ok() && std::fs::rename(&tmp, &path).is_err() {
+                    let _ = std::fs::remove_file(&tmp);
+                }
             }
             Some(bytes)
         }
         Err(e) => {
             log::debug!("Kachel {z}/{x}/{y}: {e}");
+            *TILE_OFFLINE.lock().unwrap_or_else(|e| e.into_inner()) =
+                Some(Instant::now() + TILE_PAUSE);
             std::fs::read(&path).ok()
         }
     }
+}
+
+/// Kacheln werden bis dahin nicht abgerufen (nach einem Netzfehler)
+static TILE_OFFLINE: Mutex<Option<Instant>> = Mutex::new(None);
+const TILE_PAUSE: Duration = Duration::from_secs(60);
+
+fn tile_offline() -> bool {
+    let p = TILE_OFFLINE.lock().unwrap_or_else(|e| e.into_inner());
+    p.is_some_and(|t| Instant::now() < t)
 }
 
 fn fetch_tile(z: u32, x: u32, y: u32) -> std::result::Result<Vec<u8>, String> {

@@ -27,6 +27,7 @@ use crate::params::{Crop, DevelopParams, LocalAdjust};
 use crate::repair::{NoRepairs, RepairSource};
 use crate::source::{Source, SourceKind};
 use rayon::prelude::*;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 // Feste Zahlen der Formeln. Der GPU-Shader bekommt sie beim Laden als
@@ -76,6 +77,15 @@ pub(crate) const SKIN_EDGE: f32 = 0.02;
 pub(crate) const SOFT_CLIP_KNEE: f32 = 0.8;
 /// Stärke von Lichter/Tiefen bei ±100: Exponent der Anhebung bzw. Absenkung.
 pub(crate) const SHADOW_HIGHLIGHT_GAIN: f32 = 1.1;
+/// Lichter/Tiefen: Bereiche (Rand unten, Rand oben) der lokalen Helligkeit,
+/// in denen die Wirkung ausläuft (Tiefen: bis 0,75 abnehmend; Lichter: ab 0,25 zunehmend).
+pub(crate) const SHADOW_RANGE: (f32, f32) = (0.1, 0.75);
+pub(crate) const HIGHLIGHT_RANGE: (f32, f32) = (0.25, 0.9);
+/// Weiß/Schwarz: Bereiche der Tonwerte, in denen der Regler wirkt
+pub(crate) const WHITES_RANGE: (f32, f32) = (0.4, 1.0);
+pub(crate) const BLACKS_RANGE: (f32, f32) = (0.0, 0.6);
+/// Dynamik: Anteil, um den Hauttöne geschont werden
+pub(crate) const SKIN_PROTECT: f32 = 0.5;
 /// Verschiebung von Weiß bzw. Schwarz am Ende der Tonwertskala bei ±100.
 pub(crate) const WHITES_GAIN: f32 = 0.4;
 pub(crate) const BLACKS_GAIN: f32 = 0.35;
@@ -329,36 +339,89 @@ pub fn render(src: &Source, params: &DevelopParams) -> ImageF32 {
 /// schon darin.
 fn try_gpu(
     src: &Source,
-    params: &DevelopParams,
+    p: &DevelopParams,
     opts: &RenderOptions,
     rgb8: bool,
-) -> Option<crate::gpu::Rendered> {
-    let g = crate::gpu::active().filter(|g| g.fits(src.image.width * src.image.height))?;
+) -> Result<crate::gpu::Rendered, Option<Arc<Source>>> {
+    let n = src.image.width * src.image.height;
+    let Some(g) = crate::gpu::active().filter(|g| g.fits(n)) else {
+        return Err(None);
+    };
+    if !gpu_allowed(n) {
+        return Err(None);
+    }
     let original = &src.image;
-    let p = params.sanitized();
-    let result = if needs_prepared(src, &p) {
-        let (prepared, ident) = repaired_source(src, &p, opts);
+    let mut prepared_src = None;
+    let result = if needs_prepared(src, p) {
+        let (prepared, ident) = repaired_source(src, p, opts);
         let local = RenderOptions {
             denoised: None,
             repairs: &NoRepairs,
             ..*opts
         };
-        let mut gp = params.clone();
+        let mut gp = p.clone();
         gp.denoise = None;
         gp.repairs.clear();
-        g.render_masked(&prepared, &gp, &local, rgb8, original, ident)
+        let r = g.render_sanitized(&prepared, &gp, &local, rgb8, original, ident);
+        prepared_src = Some(prepared);
+        r
     } else {
-        g.render_masked(src, params, opts, rgb8, original, 0)
+        g.render_sanitized(src, p, opts, rgb8, original, 0)
     };
-    result.map_err(|e| crate::gpu::note_error(&e)).ok()
+    match result {
+        Ok(r) => {
+            gpu_succeeded(n);
+            Ok(r)
+        }
+        Err(e) => {
+            crate::gpu::note_error(&e);
+            gpu_failed(n);
+            // Die vorbereitete Quelle (Reparaturen, Objektiv) gleich weitergeben
+            Err(prepared_src)
+        }
+    }
+}
+
+/// Ab dieser Pixelzahl scheiterte die GPU zuletzt (`usize::MAX`: noch nicht).
+/// Größere Bilder rechnen dann direkt auf der CPU, statt es jedes Mal erneut
+/// (und womöglich nach langer Wartezeit) zu versuchen.
+static GPU_FAIL_PIXELS: AtomicUsize = AtomicUsize::new(usize::MAX);
+/// Zählt übersprungene Versuche; ab und zu wird trotzdem probiert.
+static GPU_SKIPPED: AtomicUsize = AtomicUsize::new(0);
+/// Jeder wievielte übersprungene Versuch doch auf die GPU geht (der Fehler
+/// kann vorübergehend gewesen sein, z. B. wenig freier Grafikspeicher).
+const GPU_RETRY_EVERY: usize = 16;
+
+fn gpu_allowed(n: usize) -> bool {
+    if n < GPU_FAIL_PIXELS.load(Ordering::Relaxed) {
+        return true;
+    }
+    GPU_SKIPPED.fetch_add(1, Ordering::Relaxed) % GPU_RETRY_EVERY == GPU_RETRY_EVERY - 1
+}
+
+fn gpu_failed(n: usize) {
+    GPU_FAIL_PIXELS.fetch_min(n, Ordering::Relaxed);
+}
+
+fn gpu_succeeded(n: usize) {
+    // Ein Erfolg bei oder über der Grenze hebt sie an
+    GPU_FAIL_PIXELS.fetch_max(n.saturating_add(1), Ordering::Relaxed);
+}
+
+/// Vergisst gemerkte GPU-Fehler (beim Ein- und Ausschalten der GPU).
+pub(crate) fn reset_gpu_failures() {
+    GPU_FAIL_PIXELS.store(usize::MAX, Ordering::Relaxed);
+    GPU_SKIPPED.store(0, Ordering::Relaxed);
 }
 
 /// Entwickelt auf der GPU, wenn eingeschaltet und möglich, sonst auf der CPU.
 /// Das Ergebnis ist (bis auf Rundung) dasselbe.
 pub fn render_auto(src: &Source, params: &DevelopParams, opts: &RenderOptions) -> ImageF32 {
-    match try_gpu(src, params, opts, false) {
-        Some(crate::gpu::Rendered::Float(img)) => img,
-        _ => render_with(src, params, opts),
+    let p = params.sanitized();
+    match try_gpu(src, &p, opts, false) {
+        Ok(crate::gpu::Rendered::Float(img)) => img,
+        Ok(crate::gpu::Rendered::Rgb8(_)) => render_sanitized(src, &p, opts, None),
+        Err(prepared) => render_sanitized(src, &p, opts, prepared),
     }
 }
 
@@ -369,21 +432,36 @@ pub fn render_auto_rgb8(
     params: &DevelopParams,
     opts: &RenderOptions,
 ) -> image::RgbImage {
-    match try_gpu(src, params, opts, true) {
-        Some(crate::gpu::Rendered::Rgb8(img)) => img,
-        _ => crate::output::to_rgb8(&render_with(src, params, opts)),
+    let p = params.sanitized();
+    match try_gpu(src, &p, opts, true) {
+        Ok(crate::gpu::Rendered::Rgb8(img)) => img,
+        Ok(crate::gpu::Rendered::Float(_)) => {
+            crate::output::to_rgb8(&render_sanitized(src, &p, opts, None))
+        }
+        Err(prepared) => crate::output::to_rgb8(&render_sanitized(src, &p, opts, prepared)),
     }
 }
 
 pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -> ImageF32 {
-    let p = params.sanitized();
+    render_sanitized(src, &params.sanitized(), opts, None)
+}
+
+/// Wie [`render_with`] mit bereits bereinigten Parametern (`sanitized`);
+/// `prepared`: schon berechnete vorbereitete Quelle (nach einem GPU-Fehler).
+fn render_sanitized(
+    src: &Source,
+    p: &DevelopParams,
+    opts: &RenderOptions,
+    prepared: Option<Arc<Source>>,
+) -> ImageF32 {
     let raw = src.kind == SourceKind::Raw;
 
     // --- Rauschreduzierung, Objektivkorrektur, Reparaturen (linear) ----------
     // Mit Reparaturen oder Objektivkorrektur aus demselben Zwischenspeicher wie
     // die GPU: Entzerren und Flicken einsetzen kostet sonst bei jedem Rendern
     // (Reglerzug) erneut, obwohl sich an der vorbereiteten Quelle nichts ändert.
-    let repaired = needs_prepared(src, &p).then(|| repaired_source(src, &p, opts).0);
+    let repaired =
+        prepared.or_else(|| needs_prepared(src, p).then(|| repaired_source(src, p, opts).0));
     let (mut img, repaired) = match repaired {
         // Nicht zwischengespeichert (Export) und ohne Dunst, der sie noch
         // braucht: die vorbereitete Fassung übernehmen statt kopieren
@@ -394,7 +472,7 @@ pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -
         Some(r) => (r.image.clone(), Some(r)),
         None => {
             let mut img = src.image.clone();
-            prepare_source(&mut img, &p, opts, None);
+            prepare_source(&mut img, p, opts, None);
             (img, None)
         }
     };
@@ -427,11 +505,11 @@ pub fn render_with(src: &Source, params: &DevelopParams, opts: &RenderOptions) -
     if p.dehaze != 0.0 {
         let est = repaired.as_ref().map_or(&src.image, |r| &r.image);
         let amount = p.dehaze / 100.0;
-        dehaze(&mut img, amount, haze_level(est, &p, raw, amount));
+        dehaze(&mut img, amount, haze_level(est, p, raw, amount));
     }
 
     // --- Tonwerte und Farbe ------------------------------------------------
-    let (contrast, saturation, vibrance) = base_look(&p, raw);
+    let (contrast, saturation, vibrance) = base_look(p, raw);
     tone(
         &mut img,
         &Tone {
@@ -548,6 +626,10 @@ pub(crate) struct Haze {
     pub lift: f32,
 }
 
+fn gcd(a: usize, b: usize) -> usize {
+    if b == 0 { a } else { gcd(b, a % b) }
+}
+
 /// Schätzt [`Haze`] für Dehaze mit Stärke `amount`.
 ///
 /// Die Dunsthelligkeit kommt wie beim Dark-Channel-Prior aus den dunstigsten
@@ -566,8 +648,13 @@ pub(crate) fn haze_level(src: &ImageF32, p: &DevelopParams, raw: bool, amount: f
     }
     let wb = white_balance(p.temperature / 100.0, p.tint / 100.0);
     let gain = 2f32.powf(p.exposure);
-    // Etwa 65 000 gleichmäßig verteilte Stichproben genügen
-    let step = (n / 65_536).max(1);
+    // Etwa 65 000 gleichmäßig verteilte Stichproben genügen. Die Schrittweite
+    // teilerfremd zur Breite, sonst fielen alle Proben auf dieselben Spalten
+    // (z. B. Schrittweite 8 bei durch 8 teilbarer Breite).
+    let mut step = (n / 65_536).max(1);
+    while step > 1 && gcd(step, src.width.max(1)) != 1 {
+        step += 1;
+    }
     let samples: Vec<[f32; 3]> = src
         .data
         .iter()
@@ -619,11 +706,13 @@ pub(crate) fn haze_level(src: &ImageF32, p: &DevelopParams, raw: bool, amount: f
     }
 }
 
-/// Gewicht der Mitteltöne (0 bei Schwarz und Weiß, 1 bei 0,5).
+/// Gewicht der Mitteltöne (0 bei Schwarz und Weiß, 1 bei 0,5). Der Shader
+/// hat dieselbe Formel (`mid_weight`) mit `MID_WEIGHT_K`.
+pub(crate) const MID_WEIGHT_K: f32 = 4.0;
 #[inline]
 fn mid_weight(y: f32) -> f32 {
     let v = y.clamp(0.0, 1.0);
-    4.0 * v * (1.0 - v)
+    MID_WEIGHT_K * v * (1.0 - v)
 }
 
 /// J = (I − A) / t + A auf der Helligkeit, mit neutralem A = `level`.
@@ -675,18 +764,18 @@ fn dehaze_px(c: [f32; 3], d: f32, amount: f32, haze: Haze) -> [f32; 3] {
     fit_gamut([ch(0), ch(1), ch(2)], yn)
 }
 
-/// Tonwert-Parameter, normiert auf −1…1.
-struct Tone {
-    contrast: f32,
-    highlights: f32,
-    shadows: f32,
-    whites: f32,
-    blacks: f32,
-    clarity: f32,
+/// Tonwert-Parameter, normiert auf −1…1 (auch für die GPU).
+pub(crate) struct Tone {
+    pub contrast: f32,
+    pub highlights: f32,
+    pub shadows: f32,
+    pub whites: f32,
+    pub blacks: f32,
+    pub clarity: f32,
 }
 
 impl Tone {
-    fn active(&self) -> bool {
+    pub(crate) fn active(&self) -> bool {
         self.highlights != 0.0
             || self.shadows != 0.0
             || self.whites != 0.0
@@ -742,11 +831,11 @@ fn tone_px(px: [f32; 3], y0: f32, x: usize, yy: usize, t: &Tone, maps: &ToneMaps
     if let Some(m) = &maps.base {
         let b = m.sample(x, yy);
         if sh != 0.0 {
-            let ws = 1.0 - smoothstep(0.1, 0.75, b);
+            let ws = 1.0 - smoothstep(SHADOW_RANGE.0, SHADOW_RANGE.1, b);
             v *= (sh * SHADOW_HIGHLIGHT_GAIN * ws * (1.0 - v).max(0.0)).exp();
         }
         if hi != 0.0 {
-            let wh = smoothstep(0.25, 0.9, b);
+            let wh = smoothstep(HIGHLIGHT_RANGE.0, HIGHLIGHT_RANGE.1, b);
             v = 1.0 - (1.0 - v) * (-hi * SHADOW_HIGHLIGHT_GAIN * wh * v.max(0.0)).exp();
         }
     }
@@ -760,7 +849,7 @@ fn tone_px(px: [f32; 3], y0: f32, x: usize, yy: usize, t: &Tone, maps: &ToneMaps
 
     if let Some(m) = &maps.detail {
         let d = m.sample(x, yy);
-        let mid = 4.0 * v * (1.0 - v);
+        let mid = MID_WEIGHT_K * v * (1.0 - v);
         v += t.clarity * CLARITY_GAIN * (y0 - d) * mid;
     }
 
@@ -785,7 +874,7 @@ fn color_px(px: [f32; 3], sat: f32, vib: f32) -> [f32; 3] {
     // Dynamik wirkt stark auf blasse und schwach auf kräftige Farben.
     // Hauttöne (R > G > B) werden zusätzlich geschont – mit weichem Übergang,
     // ein harter Schalter ergab an R = G bzw. G = B Kanten im Bild.
-    let skin = 1.0 - 0.5 * smoothstep(0.0, SKIN_EDGE, (px[0] - px[1]).min(px[1] - px[2]));
+    let skin = 1.0 - SKIN_PROTECT * smoothstep(0.0, SKIN_EDGE, (px[0] - px[1]).min(px[1] - px[2]));
     let f = 1.0 + sat + vib * (1.0 - chroma).powi(2) * if vib > 0.0 { skin } else { 1.0 };
     let c = [
         y + (px[0] - y) * f,
@@ -1050,11 +1139,11 @@ fn raw_tone(c: [f32; 3]) -> [f32; 3] {
 fn tone_ends(v: f32, whites: f32, blacks: f32) -> f32 {
     let mut v = v;
     if whites != 0.0 {
-        let w = smoothstep(0.4, 1.0, v);
+        let w = smoothstep(WHITES_RANGE.0, WHITES_RANGE.1, v);
         v += whites * WHITES_GAIN * w * w;
     }
     if blacks != 0.0 {
-        let b = 1.0 - smoothstep(0.0, 0.6, v);
+        let b = 1.0 - smoothstep(BLACKS_RANGE.0, BLACKS_RANGE.1, v);
         v += blacks * BLACKS_GAIN * b * b;
     }
     v

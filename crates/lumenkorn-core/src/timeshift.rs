@@ -9,6 +9,8 @@
 //! Verschoben werden nur Zeiten nahe der Aufnahmezeit (± 2 Tage), damit
 //! andere Datumsangaben (Firmware, Urheberrecht) bleiben, wie sie sind.
 //! GPS-Zeiten sind UTC und als Zahlen gespeichert – sie bleiben unberührt.
+//! Ebenso bleiben die Zeitzonenfelder (`OffsetTime*`) unverändert: Sie
+//! beschreiben die Zone der Kamera, nicht den Zeitpunkt.
 
 use crate::geotime::parse_time;
 
@@ -40,7 +42,7 @@ pub fn format_time(secs: i64) -> String {
 
 /// `2024-10-10T12:41:45` um `by` Sekunden verschoben (gleiches Format)
 pub fn shift_iso(s: &str, by: i64) -> Option<String> {
-    Some(format_time(parse_time(s)? + by))
+    Some(format_time(parse_time(s)?.checked_add(by)?))
 }
 
 /// Ersetzt beim Durchlaufen eines Datenstroms alle Zeitangaben nahe
@@ -125,8 +127,13 @@ impl DateShifter {
         if (t - self.around).abs() > NEAR_S {
             return None;
         }
+        let shifted = format_time(t.checked_add(self.by)?);
+        // Jahr außerhalb 0000–9999 ergäbe eine andere Länge
+        if shifted.len() != LEN {
+            return None;
+        }
         let mut new = [0u8; LEN];
-        new.copy_from_slice(format_time(t + self.by).as_bytes());
+        new.copy_from_slice(shifted.as_bytes());
         if exif {
             new[4] = b':';
             new[7] = b':';
@@ -184,6 +191,24 @@ mod tests {
             );
             assert_eq!(n, 2, "Stück {chunk}");
         }
+    }
+
+    #[test]
+    fn rejects_impossible_days_and_overflow() {
+        assert!(parse_time("2023-02-29T00:00:00").is_none());
+        assert!(parse_time("2024-02-29T00:00:00").is_some());
+        assert!(parse_time("2024-04-31T00:00:00").is_none());
+        assert!(parse_time("2100-02-29T00:00:00").is_none());
+        // Ende des Jahres 9999: Ergebnis hätte 5 Stellen, keine Panik
+        let (out, n) = run(b"9999:12:31 23:00:00", 7200, "9999-12-31T23:00:00", 4);
+        assert_eq!(&out[..], b"9999:12:31 23:00:00");
+        assert_eq!(n, 0);
+        let mut s = DateShifter::new(i64::MAX, parse_time("2024-01-01T00:00:00").unwrap());
+        let mut out = Vec::new();
+        s.feed(b"2024:01:01 00:00:00", &mut out);
+        s.finish(&mut out);
+        assert_eq!(s.replaced, 0);
+        assert!(shift_iso("2024-01-01T00:00:00", i64::MAX).is_none());
     }
 
     #[test]
