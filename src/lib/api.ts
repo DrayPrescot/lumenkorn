@@ -911,6 +911,7 @@ export const api = {
   albumSuggest: (request: { scope: Scope; theme: string; customTheme: string | null; count: number; skipUneditedRaw: boolean }) =>
     call<AlbumSuggestion>("album_suggest", { request }),
   albumSuggestCancel: () => call<void>("album_suggest_cancel"),
+  albumPlaces: (ids: number[]) => call<Record<string, string>>("album_places", { ids }),
   albumExport: (doc: AlbumDoc, path: string) => call<void>("album_export", { doc, path }),
   albumExportCancel: () => call<void>("album_export_cancel"),
 };

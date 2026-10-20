@@ -97,6 +97,7 @@ class AlbumStore {
       this.state = saved;
       this.selection = null;
       lib.view = "album";
+      this.#refreshPlaces();
     } else this.dialog = { scope, title };
   }
 
@@ -276,6 +277,48 @@ class AlbumStore {
       else a.pages.push(mapPage());
     });
     this.selection = { page: where === "first" ? 0 : this.state!.pages.length - 1, id: null };
+  }
+
+  /** Stecknadel umbenennen (`name` leer: ohne Namen; gleich dem Vorschlag: zurücksetzen) */
+  renamePin(page: number, key: string, name: string) {
+    this.#edit((a) => {
+      const m = a.pages[page].map;
+      if (!m) return;
+      const names = { ...(m.names ?? {}) };
+      if (name === key) delete names[key];
+      else names[key] = name;
+      m.names = Object.keys(names).length ? names : undefined;
+    });
+  }
+
+  /**
+   * Ortsnamen eines gespeicherten Albums auffrischen: Sie können inzwischen
+   * neu ermittelt worden sein (z. B. lateinisch statt in Landesschrift). Die
+   * automatische Beschriftung folgt, eigene Texte bleiben.
+   */
+  async #refreshPlaces() {
+    const a = this.state;
+    if (!a) return;
+    try {
+      const ids = a.candidates.filter((c) => c.lat != null).map((c) => c.id);
+      if (!ids.length) return;
+      const places = await api.albumPlaces(ids);
+      if (this.state !== a) return;
+      let changed = false;
+      for (const c of a.candidates) {
+        const p = places[c.id];
+        if (p !== undefined && p !== c.place) {
+          c.place = p;
+          changed = true;
+        }
+      }
+      if (changed) {
+        a.pages = autoCaptions(a, this.byId);
+        this.#save();
+      }
+    } catch {
+      // Ohne Antwort bleiben die gespeicherten Namen
+    }
   }
 
   setMapLabels(page: number, labels: boolean) {

@@ -119,4 +119,9 @@ export default {
   "Unsere Reise": "Our trip",
   "Serifenschrift im Fotoalbum": "Serif font in the photo album",
   "Ländergrenzen für die Karte im Fotoalbum": "Country outlines for the photo album map",
+  "Orte auf der Karte": "Places on the map",
+  "Namen ändern; leer lassen blendet den Namen aus.": "Change the names; leave a name empty to hide it.",
+  "ohne Namen": "no name",
+  "Vorschlag: {name}": "Suggested: {name}",
+  "Vorschlag wiederherstellen: {name}": "Restore suggestion: {name}",
 } satisfies Record<string, string>;

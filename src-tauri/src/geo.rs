@@ -14,6 +14,7 @@
 //! gerundeter Koordinate einmal, gemerkt im Katalog.
 
 use crate::AppState;
+use lumenkorn_core::geo::is_latin;
 use lumenkorn_core::{Error, LockExt};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -54,12 +55,44 @@ fn agent() -> &'static ureq::Agent {
     })
 }
 
+/// Gewünschte Sprachen für Ortsnamen: die der Oberfläche, sonst Englisch –
+/// ohne Englisch lieferte OSM für Orte ohne deutschen Namen die Landesschrift
+/// (Japan: Kanji).
 fn lang() -> &'static str {
     if lumenkorn_develop::i18n::is_english() {
         "en"
     } else {
-        "de"
+        "de,en"
     }
+}
+
+/// Lateinische Fassung eines Namens aus den Namensvarianten eines
+/// OSM-Objekts (`namedetails`): deutsch, englisch, international oder
+/// romanisiert (Japanisch, Chinesisch, Koreanisch, Russisch …).
+fn latin_variant(details: &serde_json::Value) -> Option<String> {
+    const KEYS: &[&str] = &[
+        "name:de",
+        "name:en",
+        "int_name",
+        "name:ja-Latn",
+        "name:ja_rm",
+        "name:zh-Latn-pinyin",
+        "name:zh_pinyin",
+        "name:ko-Latn",
+        "name:ko_rm",
+        "name:ru-Latn",
+        "name:uk-Latn",
+        "name:th-Latn",
+        "name:el-Latn",
+        "name:ar-Latn",
+        "name:he-Latn",
+        "name:latin",
+    ];
+    KEYS.iter()
+        .filter_map(|k| details[*k].as_str())
+        .map(str::trim)
+        .find(|n| !n.is_empty() && is_latin(n))
+        .map(str::to_string)
 }
 
 fn net_err(e: impl std::fmt::Display) -> Error {
@@ -128,14 +161,28 @@ fn nominatim(path: &str, query: &[(&str, &str)]) -> CmdResult<serde_json::Value>
 fn short_name(v: &serde_json::Value) -> String {
     let a = &v["address"];
     let get = |keys: &[&str]| keys.iter().find_map(|k| a[*k].as_str()).map(str::to_string);
+    // Name in fremder Schrift: Ist der Ort das abgefragte Objekt selbst, gibt
+    // es meist eine lateinische Variante; sonst den Teil weglassen
+    // („Präfektur Kyoto, Japan“ statt Kanji)
+    let own = v["name"].as_str().unwrap_or("");
+    let latin = |name: String| -> Option<String> {
+        if is_latin(&name) {
+            Some(name)
+        } else if name == own {
+            latin_variant(&v["namedetails"])
+        } else {
+            None
+        }
+    };
     let mut parts: Vec<String> = Vec::new();
     for p in [
         get(LOCALITY),
-        get(&["state", "region", "state_district"]),
+        get(&["state", "province", "region", "state_district"]),
         get(&["country"]),
     ]
     .into_iter()
     .flatten()
+    .filter_map(latin)
     {
         if !parts.contains(&p) {
             parts.push(p);
@@ -143,12 +190,12 @@ fn short_name(v: &serde_json::Value) -> String {
     }
     if parts.is_empty() {
         // Ohne Adresse (Meer, Gebirge): Name des Objekts
-        v["name"]
-            .as_str()
+        [v["name"].as_str(), v["display_name"].as_str()]
+            .into_iter()
+            .flatten()
             .filter(|s| !s.is_empty())
-            .or_else(|| v["display_name"].as_str())
-            .unwrap_or("")
-            .to_string()
+            .find_map(|s| latin(s.to_string()))
+            .unwrap_or_default()
     } else {
         parts.join(", ")
     }
@@ -279,6 +326,8 @@ fn reverse(lat: f64, lon: f64) -> CmdResult<Place> {
             ("lon", &lo),
             ("zoom", "10"),
             ("addressdetails", "1"),
+            // Namensvarianten für Orte ohne lateinischen Namen
+            ("namedetails", "1"),
             ("polygon_geojson", "1"),
             // Umriss leicht vereinfacht (~10 m) – genau genug an Grenzen,
             // die Antwort bleibt klein
@@ -539,6 +588,13 @@ fn run(app: &AppHandle) -> CmdResult<()> {
         log::info!("GPS-Daten von {found} Fotos übernommen");
         let _ = app.emit("geo-changed", ());
     }
+    // Früher in fremder Schrift abgelegte Namen einmal neu abfragen
+    static RESET: std::sync::Once = std::sync::Once::new();
+    RESET.call_once(|| match state.catalog.locked().reset_non_latin_places() {
+        Ok(0) => {}
+        Ok(n) => log::info!("{n} Ortsnamen in fremder Schrift werden neu abgefragt"),
+        Err(e) => log::warn!("Ortsnamen prüfen: {e}"),
+    });
     // 2. Ortsnamen ermitteln (OpenStreetMap, gebündelt – siehe `name_places`).
     // Große Stapel, damit nahe Fotos möglichst in dieselbe Anfrage fallen.
     let (mut named, mut requests) = (0usize, 0usize);
@@ -847,5 +903,31 @@ mod tests {
         // Ohne Adresse
         let sea = serde_json::json!({ "name": "Nordsee" });
         assert_eq!(short_name(&sea), "Nordsee");
+    }
+
+    #[test]
+    fn place_names_are_written_in_latin_script() {
+        // Ort ohne deutschen oder englischen Namen: romanisierte Variante
+        let v = serde_json::json!({
+            "name": "嵐山町",
+            "address": { "town": "嵐山町", "state": "Präfektur Kyoto", "country": "Japan" },
+            "namedetails": { "name": "嵐山町", "name:ja-Latn": "Arashiyama-chō" }
+        });
+        assert_eq!(short_name(&v), "Arashiyama-chō, Präfektur Kyoto, Japan");
+        // Deutscher Name hat Vorrang
+        let v = serde_json::json!({
+            "name": "京都市",
+            "address": { "city": "京都市", "province": "Präfektur Kyōto", "country": "Japan" },
+            "namedetails": { "name:en": "Kyoto", "name:de": "Kyōto" }
+        });
+        // Japan führt die Präfektur als `province`
+        assert_eq!(short_name(&v), "Kyōto, Präfektur Kyōto, Japan");
+        // Keine lateinische Variante: Teil weglassen statt Kanji zeigen
+        let v = serde_json::json!({
+            "name": "某村",
+            "address": { "village": "某村", "state": "Präfektur Nara", "country": "Japan" },
+            "namedetails": { "name": "某村" }
+        });
+        assert_eq!(short_name(&v), "Präfektur Nara, Japan");
     }
 }

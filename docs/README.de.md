@@ -119,7 +119,8 @@ Filmstreifen darunter aus (Strg fügt zur Auswahl hinzu); Gruppen zoomen hinein.
   hierher“. „Ort entfernen“ löscht ihn wieder. Fotos mit Ort zeigen im Filmstreifen eine kleine
   Stecknadel.
 - **Ortsnamen:** Jeder Ort bekommt einen Namen wie „München, Bayern, Deutschland“ (Ort, Region,
-  Land). Die Bibliothekssuche findet ihn, „Ubud“ liefert also die Fotos von dort. Der Infobereich
+  Land), immer in lateinischer Schrift (für Japan etwa der englische oder romanisierte Name statt
+  Kanji). Die Bibliothekssuche findet ihn, „Ubud“ liefert also die Fotos von dort. Der Infobereich
   zeigt den Namen (bis er bekannt ist: die Koordinaten) mit einem Link zur Karte.
 - **Gespeichert** werden selbst gesetzte Orte nur im Katalog. Die Dateien bleiben unverändert, und
   ein erneutes Einlesen überschreibt keinen von Hand gesetzten Ort.
@@ -409,7 +410,8 @@ A3 oder eigene Maße in mm), die Anzahl der Fotos und Seiten und ob mit Rand ode
   Fett, in Instrument Sans oder Lora. Vorschau und Druck zeichnen Texte auf dieselbe Weise.
 - **Karte:** Eine Kartenseite als erste oder letzte Seite zeigt die Ländergrenzen, hebt die
   besuchten Länder hervor und setzt eine Stecknadel für jeden Ort; nahe Orte teilen sich eine
-  Nadel, benannt nach dem Ort oder – für eine ganze Insel – nach der Region. Ohne Internet.
+  Nadel, benannt nach dem Ort oder – für eine ganze Insel – nach der Region. Die Namen lassen sich
+  in der Seitenleiste ändern oder ausblenden. Ohne Internet.
 - **Als PDF speichern** schreibt ein druckfertiges PDF (300 dpi, 3 mm Beschnittzugabe an jedem
   Rand, mit Endformat-Rahmen) und einen Ordner mit jeder Seite als JPG, wie ihn die meisten
   Fotobuch-Druckereien annehmen. Das Album bleibt erhalten und lässt sich später weiter

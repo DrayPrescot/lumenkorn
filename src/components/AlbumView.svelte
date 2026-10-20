@@ -5,6 +5,7 @@
   import { api, imageUrl } from "../lib/api";
   import { alternatives, effectiveDpi, formatName, type AlbumCandidate, type AlbumCell, type AlbumText, type CaptionMode, type PlacedText } from "../lib/album";
   import AlbumPageCanvas from "./AlbumPageCanvas.svelte";
+  import { mapPins } from "../lib/albumDraw";
   import { album } from "../lib/album.svelte";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
@@ -344,6 +345,32 @@
           <input type="checkbox" checked={a.pages[sel.page].map!.labels} onchange={(e) => album.setMapLabels(sel.page, e.currentTarget.checked)} />
           {t("Ortsnamen anzeigen")}
         </label>
+        {#if a.pages[sel.page].map!.labels && album.layouts[sel.page]}
+          {@const pins = mapPins(a, sel.page, album.layouts[sel.page])}
+          {#if pins.length}
+            <h4>{t("Orte auf der Karte")}</h4>
+            <p class="muted small">{t("Namen ändern; leer lassen blendet den Namen aus.")}</p>
+            <div class="pins">
+              {#each pins as pin (pin.key)}
+                <label class="pin">
+                  <input
+                    type="text"
+                    value={pin.name}
+                    placeholder={t("ohne Namen")}
+                    onchange={(e) => album.renamePin(sel.page, pin.key, e.currentTarget.value.trim())}
+                    onkeydown={(e) => e.stopPropagation()}
+                  />
+                  <span class="muted small" title={t("Vorschlag: {name}", { name: pin.key })}>{t(pin.count === 1 ? "{n} Foto" : "{n} Fotos", { n: pin.count })}</span>
+                  {#if pin.name !== pin.key}
+                    <button class="icon-btn" title={t("Vorschlag wiederherstellen: {name}", { name: pin.key })} aria-label={t("Vorschlag wiederherstellen: {name}", { name: pin.key })} onclick={() => album.renamePin(sel.page, pin.key, pin.key)}>
+                      <Icon name="refresh" size={12} />
+                    </button>
+                  {/if}
+                </label>
+              {/each}
+            </div>
+          {/if}
+        {/if}
         <div class="actions">
           <button class="btn quiet" onclick={() => album.addText(sel.page)}><Icon name="plus" size={13} /> {t("Text hinzufügen")}</button>
           <button class="btn quiet danger" disabled={a.pages.length <= 1} onclick={() => album.deletePage(sel.page)}>
@@ -539,6 +566,19 @@
   .seg .on {
     color: var(--accent);
     border-color: var(--accent);
+  }
+  .pins {
+    display: grid;
+    gap: 6px;
+  }
+  .pin {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 6px;
+  }
+  .pin input {
+    min-width: 0;
   }
   .check {
     display: flex;

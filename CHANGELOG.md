@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Photo album: the places on the map can be renamed or their names hidden.
+
+### Fixed
+- Place names are always written in Latin script. For places without a German name OpenStreetMap
+  returned the local script (Japan: kanji); now the English or romanised name is used, or the
+  part is left out. Names already in the catalog are looked up again once, and a saved album takes
+  them over when opened. Japanese prefectures now appear in place names.
+
 ## [1.0.12] – 2026-10-20
 
 ### Added

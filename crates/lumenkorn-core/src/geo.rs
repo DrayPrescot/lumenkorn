@@ -178,16 +178,97 @@ impl Catalog {
         Ok(())
     }
 
+    /// Ortsnamen, die nicht in lateinischer Schrift vorliegen (frühere
+    /// Abfragen lieferten etwa für Japan Kanji), verwerfen – sie werden im
+    /// Hintergrund neu ermittelt. Liefert die Zahl der betroffenen Namen.
+    pub fn reset_non_latin_places(&mut self) -> Result<usize> {
+        let mut names: Vec<String> = Vec::new();
+        for sql in [
+            "SELECT DISTINCT place FROM images WHERE place IS NOT NULL AND place <> ''",
+            "SELECT DISTINCT place FROM geo_names WHERE place <> ''",
+        ] {
+            let mut st = self.conn.prepare(sql)?;
+            let rows = st.query_map([], |r| r.get::<_, String>(0))?;
+            for n in rows {
+                let n = n?;
+                if !is_latin(&n) && !names.contains(&n) {
+                    names.push(n);
+                }
+            }
+        }
+        if names.is_empty() {
+            return Ok(0);
+        }
+        self.with_tx(|tx| {
+            for n in &names {
+                tx.execute("UPDATE images SET place = NULL WHERE place = ?1", [n])?;
+                tx.execute("DELETE FROM geo_names WHERE place = ?1", [n])?;
+            }
+            Ok(())
+        })?;
+        Ok(names.len())
+    }
+
     /// Suchindex nach außerhalb von `with_tx` geänderten Ortsnamen nachführen
     pub fn flush_search_index(&self) -> Result<()> {
         flush_search(&self.conn)
     }
 }
 
+/// Ist der Text in lateinischer Schrift (auch mit Akzenten wie „Reykjavík“,
+/// „Đà Nẵng“)? Ziffern und Satzzeichen zählen nicht. Kanji, Kyrillisch,
+/// Arabisch usw. nicht – in der Oberfläche und im Fotoalbum sollen Namen
+/// lesbar sein.
+pub fn is_latin(s: &str) -> bool {
+    s.chars().filter(|c| c.is_alphabetic()).all(|c| {
+        matches!(c as u32,
+            0x41..=0x5A | 0x61..=0x7A | 0xAA | 0xBA | 0xC0..=0x24F | 0x1E00..=0x1EFF | 0x2C60..=0x2C7F | 0xA720..=0xA7FF)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::{ImageQuery, Scope};
+
+    #[test]
+    fn latin_script_is_recognised() {
+        for ok in [
+            "München, Bayern",
+            "Reykjavík",
+            "Đà Nẵng",
+            "Kyōto",
+            "Saint-Étienne 2",
+            "",
+        ] {
+            assert!(is_latin(ok), "{ok}");
+        }
+        for bad in ["京都市", "Москва", "Kyoto, 京都府", "القاهرة"] {
+            assert!(!is_latin(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn non_latin_places_are_looked_up_again() {
+        let (_tmp, mut cat, id) = catalog_with_image();
+        cat.set_exif_gps(&[(id, Some((35.0, 135.7)))]).unwrap();
+        cat.set_place(&[(id, 35.0, 135.7)], "京都市, 京都府, Japan")
+            .unwrap();
+        cat.cache_place("k", "京都市, 京都府, Japan").unwrap();
+        cat.cache_place("m", "München, Bayern").unwrap();
+        assert_eq!(cat.reset_non_latin_places().unwrap(), 1);
+        assert_eq!(
+            cat.place_pending(10).unwrap().len(),
+            1,
+            "wird neu abgefragt"
+        );
+        assert_eq!(cat.cached_place("k").unwrap(), None);
+        assert_eq!(
+            cat.cached_place("m").unwrap().as_deref(),
+            Some("München, Bayern")
+        );
+        assert_eq!(cat.reset_non_latin_places().unwrap(), 0);
+    }
 
     fn catalog_with_image() -> (tempfile::TempDir, Catalog, i64) {
         let tmp = tempfile::tempdir().unwrap();

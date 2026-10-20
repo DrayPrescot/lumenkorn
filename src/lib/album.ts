@@ -177,8 +177,11 @@ export interface AlbumPage {
    */
   slots?: { x: number; y: number; w: number; h: number }[];
   texts?: AlbumText[];
-  /** Kartenseite (statt Fotos): Karte mit den besuchten Orten */
-  map?: { labels: boolean };
+  /**
+   * Kartenseite (statt Fotos): Karte mit den besuchten Orten. `names`:
+   * umbenannte Stecknadeln (vorgeschlagener Name → eigener, "" = ohne Namen)
+   */
+  map?: { labels: boolean; names?: Record<string, string> };
 }
 
 export interface AlbumState {
@@ -766,7 +769,14 @@ export function validAlbum(x: unknown): x is AlbumState {
         (p.slots === undefined ||
           (Array.isArray(p.slots) && p.slots.every((r) => num(r?.x) && num(r.y) && num(r.w, 0.1) && num(r.h, 0.1)))) &&
         (p.texts === undefined || (Array.isArray(p.texts) && p.texts.length <= 50 && p.texts.every(validText))) &&
-        (p.map === undefined || (typeof p.map === "object" && p.map !== null && typeof p.map.labels === "boolean")),
+        (p.map === undefined ||
+          (typeof p.map === "object" &&
+            p.map !== null &&
+            typeof p.map.labels === "boolean" &&
+            (p.map.names === undefined ||
+              (typeof p.map.names === "object" &&
+                p.map.names !== null &&
+                Object.values(p.map.names).every((n) => typeof n === "string" && n.length <= 200))))),
     ) &&
     typeof a.offsets === "object" &&
     a.offsets !== null &&

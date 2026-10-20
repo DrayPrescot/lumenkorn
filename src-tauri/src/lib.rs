@@ -221,6 +221,7 @@ pub fn run() {
             album::export::album_export_cancel,
             album::select::album_suggest,
             album::select::album_suggest_cancel,
+            album::select::album_places,
             commands::app_info,
             commands::open_url,
             commands::app_exit,

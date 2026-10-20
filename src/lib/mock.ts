@@ -481,6 +481,8 @@ export const mock = {
         for (const c of cands) c.picked = best.has(c.id);
         return out({ candidates: cands, themeUsed: true, unanalyzed: 0 });
       }
+      case "album_places":
+        return out(Object.fromEntries(images.filter((i) => a.ids.includes(i.id) && i.location?.place).map((i) => [i.id, i.location!.place])));
       case "album_suggest_cancel":
       case "album_export_cancel":
         return out(null);

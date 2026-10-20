@@ -133,7 +133,8 @@ photos and pages, with or without margins.
   bold, in Instrument Sans or Lora. Texts are drawn the same way for the preview and the print.
 - **Map:** a map page as first or last page shows the country outlines, highlights the countries
   you visited and puts a pin on every place; places close together share one pin, named after
-  the town or, for a whole island, the region. It needs no internet.
+  the town or, for a whole island, the region. The names can be changed or hidden in the side
+  panel. It needs no internet.
 - **Save as PDF** writes a print-ready PDF (300 dpi, 3 mm bleed on each side, trim box set) and a
   folder with every page as a JPG, which most photo book printers accept. The album is kept and
   can be opened and changed again later.
@@ -156,7 +157,8 @@ clusters zoom in.
   (e.g. “München”), press `Enter`, pick a result and click “Use for N photos”; or drag the photos
   onto the map; or right-click the map and choose “Move N selected photos here”. “Remove
   location” clears it. Photos with a location show a small pin in the filmstrip.
-- Every location gets a name such as “München, Bayern, Deutschland”. The library search covers
+- Every location gets a name such as “München, Bayern, Deutschland”, always in Latin script
+  (for Japan, say, the English or romanised name instead of kanji). The library search covers
   it, so “Ubud” finds the photos taken there. The info panel shows the name (or the coordinates
   until the name is known) with a link to the map.
 - Locations you set are stored only in the catalog. The files are not changed, and a rescan does

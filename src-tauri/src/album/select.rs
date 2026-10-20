@@ -748,6 +748,16 @@ pub fn album_suggest_cancel() {
     CANCEL.store(true, Ordering::Relaxed);
 }
 
+/// Aktuelle Ortsnamen (z. B. für ein gespeichertes Album, dessen Namen
+/// inzwischen neu ermittelt wurden).
+#[tauri::command(async)]
+pub fn album_places(
+    state: tauri::State<AppState>,
+    ids: Vec<i64>,
+) -> Result<HashMap<i64, String>, Error> {
+    state.catalog.locked().places(&ids)
+}
+
 /// Kamera-RAW ohne Bearbeitung.
 fn is_unedited_raw(i: &lumenkorn_core::ImageSummary) -> bool {
     i.kind == lumenkorn_core::formats::ImageKind::Raw && !i.edited

@@ -233,14 +233,36 @@ function drawPin(ctx: CanvasRenderingContext2D, x: number, y: number, h: number)
   ctx.fill();
 }
 
-/** Karte mit allen Aufnahmeorten des Projekts in `rect` (mm). */
-function drawMap(ctx: CanvasRenderingContext2D, a: AlbumState, rect: Rect, countries: Country[], labels: boolean) {
+/** Stecknadeln der Karte in `rect` (mm), mit Ausschnitt */
+function mapView(a: AlbumState, rect: Rect): { view: View; pins: MapPin[]; located: AlbumCandidate[] } | null {
   const located = a.candidates.filter((c) => c.lat != null && c.lon != null);
-  if (!located.length) return;
-  const v = viewFor(
+  if (!located.length) return null;
+  const view = viewFor(
     located.map((c) => ({ lon: c.lon!, lat: c.lat! })),
     rect,
   );
+  const side = Math.min(view.rect.w, view.rect.h);
+  return { view, pins: clusterPins(located, view, side * 0.06), located };
+}
+
+/**
+ * Stecknadeln einer Kartenseite für die Seitenleiste: vorgeschlagener Name
+ * (Schlüssel zum Umbenennen), angezeigter Name und Zahl der Fotos.
+ */
+export function mapPins(a: AlbumState, pageIndex: number, layout: PageLayout): { key: string; name: string; count: number }[] {
+  const m = mapView(a, layout.content);
+  const names = a.pages[pageIndex]?.map?.names ?? {};
+  return (m?.pins ?? [])
+    .filter((p) => p.label)
+    .map((p) => ({ key: p.label, name: names[p.label] ?? p.label, count: p.count }))
+    .sort((x, y) => y.count - x.count);
+}
+
+/** Karte mit allen Aufnahmeorten des Projekts in `rect` (mm). */
+function drawMap(ctx: CanvasRenderingContext2D, a: AlbumState, rect: Rect, countries: Country[], labels: boolean, names: Record<string, string>) {
+  const m = mapView(a, rect);
+  if (!m) return;
+  const { view: v, located } = m;
   rect = v.rect;
   ctx.save();
   ctx.beginPath();
@@ -249,7 +271,8 @@ function drawMap(ctx: CanvasRenderingContext2D, a: AlbumState, rect: Rect, count
   ctx.fillStyle = MAP.sea;
   ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
   const side = Math.min(rect.w, rect.h);
-  const pins = clusterPins(located, v, side * 0.06);
+  // Umbenannte Orte (leer: ohne Namen)
+  const pins = m.pins.map((p) => ({ ...p, label: names[p.label] ?? p.label }));
   // Besuchte Länder aus den einzelnen Aufnahmeorten (auf ~1 km zusammengefasst)
   const spots = new Map(located.map((c) => [`${c.lat!.toFixed(2)},${c.lon!.toFixed(2)}`, c]));
   const visited = new Set([...spots.values()].map((c) => countryAt(countries, c.lon!, c.lat!)?.iso).filter(Boolean));
@@ -331,7 +354,7 @@ export async function countries(): Promise<Country[]> {
  */
 export function drawPage(ctx: CanvasRenderingContext2D, a: AlbumState, pageIndex: number, layout: PageLayout, map: Country[] | null) {
   const page = a.pages[pageIndex];
-  if (page.map && map) drawMap(ctx, a, layout.content, map, page.map.labels);
+  if (page.map && map) drawMap(ctx, a, layout.content, map, page.map.labels, page.map.names ?? {});
   for (const t of layout.texts) drawText(ctx, a, t, layout);
 }
 
