@@ -149,10 +149,15 @@ class AlbumStore {
   }
 
   replace(page: number, oldId: number, newId: number) {
+    // Die jetzige Aufteilung festhalten: Neu angeordnet landete das neue Foto
+    // oft in einem anderen Feld (anderes Seitenverhältnis, andere Wertung)
+    const slots = this.layouts[page]?.cells.map(({ x, y, w, h }) => ({ x, y, w, h }));
     this.#edit((a) => {
-      const ids = a.pages[page].ids;
-      const i = ids.indexOf(oldId);
-      if (i >= 0) ids[i] = newId;
+      const p = a.pages[page];
+      const i = p.ids.indexOf(oldId);
+      if (i < 0) return;
+      p.ids[i] = newId;
+      if (slots?.length === p.ids.length) p.slots = slots;
       delete a.offsets[oldId];
     });
     this.selection = { page, id: newId };
@@ -161,6 +166,7 @@ class AlbumStore {
   remove(page: number, id: number) {
     this.#edit((a) => {
       a.pages[page].ids = a.pages[page].ids.filter((x) => x !== id);
+      delete a.pages[page].slots;
       delete a.offsets[id];
     });
     this.selection = { page, id: null };
@@ -174,6 +180,7 @@ class AlbumStore {
       const order = new Map(a.candidates.map((c, i) => [c.id, i]));
       ids.push(id);
       ids.sort((x, y) => (order.get(x) ?? 0) - (order.get(y) ?? 0));
+      delete a.pages[page].slots;
     });
   }
 
@@ -183,6 +190,8 @@ class AlbumStore {
     if (!this.state || to < 0 || to >= this.state.pages.length || this.state.pages[to].ids.length >= 6) return;
     this.#edit((a) => {
       a.pages[page].ids = a.pages[page].ids.filter((x) => x !== id);
+      delete a.pages[page].slots;
+      delete a.pages[to].slots;
       if (dir < 0) a.pages[to].ids.push(id);
       else a.pages[to].ids.unshift(id);
       delete a.offsets[id];
@@ -193,6 +202,7 @@ class AlbumStore {
   relayout(page: number) {
     this.#edit((a) => {
       a.pages[page].variant++;
+      delete a.pages[page].slots;
       for (const id of a.pages[page].ids) delete a.offsets[id];
     });
   }

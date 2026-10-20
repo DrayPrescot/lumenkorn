@@ -6,6 +6,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Photo album: replacing a photo put the new one into a different spot on the page (often the
+  first), so it looked as if the wrong photo had been replaced. The page now keeps its layout.
+
 ## [1.0.10] – 2026-10-20
 
 ### Added

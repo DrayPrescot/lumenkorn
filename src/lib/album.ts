@@ -127,6 +127,12 @@ export interface AlbumPage {
   ids: number[];
   /** Welche der guten Anordnungen (wechselt mit „Anders anordnen“) */
   variant: number;
+  /**
+   * Festgehaltene Felder (mm, gleiche Reihenfolge wie `ids`): Nach dem
+   * Ersetzen eines Fotos bleibt die Aufteilung der Seite, das neue Foto kommt
+   * genau in das Feld des alten. Jede andere Änderung der Seite ordnet neu.
+   */
+  slots?: { x: number; y: number; w: number; h: number }[];
 }
 
 export interface AlbumState {
@@ -405,8 +411,9 @@ export function pageLayout(a: AlbumState, page: AlbumPage, byId: Map<number, Alb
   );
   if (!all.length) return { cells: [], variants: 0 };
   const rects = all[page.variant % all.length];
-  const cells = page.ids.map((id) => {
-    const r = rects.get(id)!;
+  const fixed = page.slots?.length === page.ids.length ? page.slots : null;
+  const cells = page.ids.map((id, i) => {
+    const r = fixed ? fixed[i] : rects.get(id)!;
     const c = byId.get(id);
     const [ox, oy] = a.offsets[id] ?? focusPosition(c?.aspect ?? 1.5, r.w / r.h, c?.focus);
     return { id, x: r.x, y: r.y, w: r.w, h: r.h, ox, oy };
@@ -470,7 +477,15 @@ export function validAlbum(x: unknown): x is AlbumState {
     a.candidates.every((c) => id(c?.id) && num(c.aspect, 0.01, 100) && num(c.score) && num(c.event, 0) && num(c.group, 0)) &&
     Array.isArray(a.pages) &&
     a.pages.length <= 1000 &&
-    a.pages.every((p) => Array.isArray(p?.ids) && p.ids.length <= MAX_PER_PAGE && p.ids.every(id) && num(p.variant, 0)) &&
+    a.pages.every(
+      (p) =>
+        Array.isArray(p?.ids) &&
+        p.ids.length <= MAX_PER_PAGE &&
+        p.ids.every(id) &&
+        num(p.variant, 0) &&
+        (p.slots === undefined ||
+          (Array.isArray(p.slots) && p.slots.every((r) => num(r?.x) && num(r.y) && num(r.w, 0.1) && num(r.h, 0.1)))),
+    ) &&
     typeof a.offsets === "object" &&
     a.offsets !== null &&
     Object.values(a.offsets).every((o) => Array.isArray(o) && o.length === 2 && num(o[0], 0, 1) && num(o[1], 0, 1)) &&
