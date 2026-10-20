@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Photo album: the **Fotoalbum** button above a project or folder picks the best photos for a
+  theme (vacation, travel, wedding, birthday, family and more, or your own description) and lays
+  them out on pages in the chosen size (30×30, 20×20, A4, A3 or your own). Photos are rated by
+  sharpness, exposure, stars and, with the AI set up, by how well they fit the theme; bursts and
+  near-identical shots count once unless other people are in them, photos with 4 or 5 stars are
+  always included, and the photos are spread over all days. The pages can then be edited:
+  swap, remove or move photos, change a page's layout, drag a photo to change its crop, add or
+  delete pages. The album is saved as a print-ready PDF (300 dpi, 3 mm bleed) plus one JPG per
+  page. By default only edited photos and JPEGs are used, no unedited RAW files.
+
 ## [1.0.9] – 2026-10-20
 
 ### Fixed

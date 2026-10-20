@@ -1,0 +1,250 @@
+// Zustand des Fotoalbums: Erstellen (Auswahl im Backend), Bearbeiten in der
+// Vorschau, Speichern als PDF. Das Album eines Projekts bleibt im Speicher der
+// WebView erhalten und lässt sich später weiterbearbeiten.
+
+import { api, listen, pickPdfTarget, type AlbumExportProgress, type Scope } from "./api";
+import {
+  DEFAULT_SETTINGS,
+  buildAlbum,
+  pageLayout,
+  redistribute,
+  toDoc,
+  type AlbumCandidate,
+  type AlbumSettings,
+  type AlbumState,
+} from "./album";
+import { lib } from "./store.svelte";
+import { t } from "./i18n";
+
+const SETTINGS_KEY = "lumenkorn.album.settings";
+const albumKey = (scope: Scope) => `lumenkorn.album.${JSON.stringify(scope)}`;
+
+function load<T>(key: string): T | null {
+  try {
+    const s = localStorage.getItem(key);
+    return s ? (JSON.parse(s) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+function store(key: string, value: unknown) {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Speicher voll oder gesperrt: dann eben nur für diese Sitzung
+  }
+}
+
+export type AlbumSelection = { page: number; id: number | null };
+
+class AlbumStore {
+  state = $state<AlbumState | null>(null);
+  /** Einstellungsdialog offen (mit dem Bereich, für den erstellt wird) */
+  dialog = $state<{ scope: Scope; title: string } | null>(null);
+  /** Fortschritt beim Auswählen (Vorschauen messen) */
+  progress = $state<{ done: number; total: number } | null>(null);
+  exporting = $state<AlbumExportProgress | null>(null);
+  selection = $state<AlbumSelection | null>(null);
+
+  byId = $derived(new Map<number, AlbumCandidate>((this.state?.candidates ?? []).map((c) => [c.id, c])));
+  /** Layout je Seite (Felder in mm, Zahl der Anordnungen) */
+  layouts = $derived(this.state ? this.state.pages.map((p) => pageLayout(this.state!, p, this.byId)) : []);
+  photoCount = $derived(this.state ? this.state.pages.reduce((n, p) => n + p.ids.length, 0) : 0);
+
+  #listening = false;
+
+  #listen() {
+    if (this.#listening) return;
+    this.#listening = true;
+    listen("album-progress", (p) => {
+      if (this.progress) this.progress = p;
+    });
+    listen("album-export-progress", (p) => {
+      this.exporting = p.finished ? null : p;
+      if (!p.finished) return;
+      if (p.error) lib.notify(t("Album nicht gespeichert: {error}", { error: p.error }), "error");
+      else {
+        lib.notify(t("Album gespeichert: {pdf} und die Seiten als JPG in {dir}", { pdf: p.pdf, dir: p.dir }));
+        if (p.failed.length)
+          lib.notify(t("Nicht alle Fotos ließen sich entwickeln: {list}", { list: p.failed.join("; ") }), "error");
+      }
+    });
+  }
+
+  /** Gespeicherte Einstellungen (zuletzt benutzt) */
+  lastSettings(): AlbumSettings {
+    return { ...DEFAULT_SETTINGS, ...(load<Partial<AlbumSettings>>(SETTINGS_KEY) ?? {}) };
+  }
+
+  /** Album des Bereichs öffnen; gibt es noch keins, die Einstellungen zeigen. */
+  open(scope: Scope, title: string) {
+    this.#listen();
+    const saved = load<AlbumState>(albumKey(scope));
+    if (saved?.version === 1 && saved.pages) {
+      this.state = saved;
+      this.selection = null;
+      lib.view = "album";
+    } else this.dialog = { scope, title };
+  }
+
+  async create(settings: AlbumSettings, scope: Scope, title: string): Promise<boolean> {
+    this.#listen();
+    store(SETTINGS_KEY, settings);
+    this.progress = { done: 0, total: 0 };
+    try {
+      const s = await api.albumSuggest({
+        scope,
+        theme: settings.theme,
+        customTheme: settings.theme === "custom" ? settings.customTheme : null,
+        count: settings.count,
+        skipUneditedRaw: settings.skipUneditedRaw,
+      });
+      if (!this.progress) return false; // abgebrochen
+      this.state = buildAlbum(settings, scope, title, s);
+      this.selection = null;
+      this.#save();
+      lib.view = "album";
+      const picked = s.candidates.filter((c) => c.picked).length;
+      if (picked > settings.count)
+        lib.notify(t("Alle Fotos mit 4 oder 5 Sternen sind dabei – das Album hat deshalb {n} statt {count} Fotos.", { n: picked, count: settings.count }));
+      if (!s.themeUsed && (settings.theme !== "custom" || settings.customTheme.trim()))
+        lib.notify(t("Ohne KI-Analyse wurden die Fotos nur nach Qualität und Bewertung ausgewählt, nicht nach dem Thema."));
+      return true;
+    } catch (e) {
+      if (this.progress) lib.notify(String(e), "error");
+      return false;
+    } finally {
+      this.progress = null;
+    }
+  }
+
+  cancelCreate() {
+    this.progress = null;
+    api.albumSuggestCancel();
+  }
+
+  close() {
+    this.selection = null;
+    lib.view = "grid";
+  }
+
+  /** Album verwerfen (gespeicherte Fassung löschen) */
+  discard() {
+    if (this.state) store(albumKey(this.state.scope), null);
+    this.state = null;
+    this.close();
+  }
+
+  #save() {
+    if (this.state) store(albumKey(this.state.scope), $state.snapshot(this.state));
+  }
+
+  #edit(f: (a: AlbumState) => void) {
+    if (!this.state) return;
+    f(this.state);
+    this.#save();
+  }
+
+  replace(page: number, oldId: number, newId: number) {
+    this.#edit((a) => {
+      const ids = a.pages[page].ids;
+      const i = ids.indexOf(oldId);
+      if (i >= 0) ids[i] = newId;
+      delete a.offsets[oldId];
+    });
+    this.selection = { page, id: newId };
+  }
+
+  remove(page: number, id: number) {
+    this.#edit((a) => {
+      a.pages[page].ids = a.pages[page].ids.filter((x) => x !== id);
+      delete a.offsets[id];
+    });
+    this.selection = { page, id: null };
+  }
+
+  add(page: number, id: number) {
+    this.#edit((a) => {
+      const ids = a.pages[page].ids;
+      if (ids.length >= 6) return;
+      // chronologisch einsortieren
+      const order = new Map(a.candidates.map((c, i) => [c.id, i]));
+      ids.push(id);
+      ids.sort((x, y) => (order.get(x) ?? 0) - (order.get(y) ?? 0));
+    });
+  }
+
+  /** Foto auf die vorige (−1) oder nächste (+1) Seite */
+  move(page: number, id: number, dir: -1 | 1) {
+    const to = page + dir;
+    if (!this.state || to < 0 || to >= this.state.pages.length || this.state.pages[to].ids.length >= 6) return;
+    this.#edit((a) => {
+      a.pages[page].ids = a.pages[page].ids.filter((x) => x !== id);
+      if (dir < 0) a.pages[to].ids.push(id);
+      else a.pages[to].ids.unshift(id);
+      delete a.offsets[id];
+    });
+    this.selection = { page: to, id };
+  }
+
+  relayout(page: number) {
+    this.#edit((a) => {
+      a.pages[page].variant++;
+      for (const id of a.pages[page].ids) delete a.offsets[id];
+    });
+  }
+
+  setOffset(id: number, pos: [number, number]) {
+    if (!this.state) return;
+    this.state.offsets[id] = pos;
+  }
+
+  /** Nach dem Verschieben mit der Maus einmal speichern */
+  commitOffset() {
+    this.#save();
+  }
+
+  resetOffset(id: number) {
+    this.#edit((a) => delete a.offsets[id]);
+  }
+
+  addPage(after: number) {
+    this.#edit((a) => a.pages.splice(after + 1, 0, { ids: [], variant: 0 }));
+    this.selection = { page: after + 1, id: null };
+  }
+
+  deletePage(page: number) {
+    this.#edit((a) => a.pages.splice(page, 1));
+    this.selection = null;
+  }
+
+  redistribute() {
+    this.#edit((a) => {
+      a.pages = redistribute(a);
+      a.offsets = {};
+    });
+    this.selection = null;
+  }
+
+  async exportPdf() {
+    const a = this.state;
+    if (!a || this.exporting) return;
+    this.#listen();
+    const path = await pickPdfTarget(t("Album speichern"), a.title || t("Fotoalbum"));
+    if (!path) return;
+    const doc = toDoc(a, this.byId);
+    doc.pages = doc.pages.filter((p) => p.cells.length);
+    if (!doc.pages.length) return;
+    this.exporting = { done: 0, total: doc.pages.length, finished: false, failed: [], error: null, pdf: path, dir: "" };
+    try {
+      await api.albumExport(doc, path);
+    } catch (e) {
+      this.exporting = null;
+      lib.notify(String(e), "error");
+    }
+  }
+}
+
+export const album = new AlbumStore();

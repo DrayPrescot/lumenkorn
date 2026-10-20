@@ -4,6 +4,7 @@
 import { invoke as tauriInvoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
 import { mock } from "./mock";
+import type { AlbumDoc, AlbumSuggestion } from "./album";
 
 export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -907,6 +908,11 @@ export const api = {
   aiRetagAll: () => call<void>("ai_retag_all"),
   semanticSearch: (query: string, scope: Scope, minRating: number | null) =>
     call<ImageSummary[]>("semantic_search", { query, scope, minRating }),
+  albumSuggest: (request: { scope: Scope; theme: string; customTheme: string | null; count: number; skipUneditedRaw: boolean }) =>
+    call<AlbumSuggestion>("album_suggest", { request }),
+  albumSuggestCancel: () => call<void>("album_suggest_cancel"),
+  albumExport: (doc: AlbumDoc, path: string) => call<void>("album_export", { doc, path }),
+  albumExportCancel: () => call<void>("album_export_cancel"),
 };
 
 // --- Zusammenfügen ------------------------------------------------------------
@@ -952,6 +958,17 @@ export interface UpdateInfo {
   date: string | null;
 }
 
+export interface AlbumExportProgress {
+  /** Seiten */
+  done: number;
+  total: number;
+  finished: boolean;
+  failed: string[];
+  error: string | null;
+  pdf: string;
+  dir: string;
+}
+
 export interface Events {
   "scan-progress": ScanProgress;
   "library-changed": ScanReport;
@@ -976,6 +993,8 @@ export interface Events {
   /** Ein KI-Agent möchte ein Foto zeigen */
   "mcp-show": { id: number; develop: boolean };
   "tags-changed": { ids: number[] };
+  "album-progress": { done: number; total: number };
+  "album-export-progress": AlbumExportProgress;
   "denoise-progress": {
     imageId: number;
     done: number;
@@ -1024,6 +1043,18 @@ export function tileUrlTemplate(): string {
 }
 
 // --- Ordnerauswahl ------------------------------------------------------------
+
+/** Speichern-Dialog für eine PDF-Datei. `null`, wenn abgebrochen oder nicht verfügbar. */
+export async function pickPdfTarget(title: string, name: string): Promise<string | null> {
+  if (!isTauri) return null;
+  try {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const res = await save({ title, defaultPath: `${name}.pdf`, filters: [{ name: "PDF", extensions: ["pdf"] }] });
+    return typeof res === "string" ? res : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Öffnet den Ordnerdialog. Liefert `null`, wenn abgebrochen oder nicht verfügbar (Android). */
 export async function pickFolder(title: string): Promise<string | null> {

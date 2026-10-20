@@ -1,6 +1,7 @@
 //! Tauri-Shell: verbindet den plattformunabhängigen Kern mit der Oberfläche.
 
 mod ai;
+mod album;
 mod busy;
 mod commands;
 mod cull;
@@ -216,6 +217,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            album::export::album_export,
+            album::export::album_export_cancel,
+            album::select::album_suggest,
+            album::select::album_suggest_cancel,
             commands::app_info,
             commands::open_url,
             commands::app_exit,

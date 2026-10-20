@@ -337,7 +337,10 @@ fn load_denoised_full(
 
 /// Render-Optionen mit den Masken- und Reparaturdateien der App;
 /// Überlagerung und Ausschnitt setzen die Aufrufer bei Bedarf selbst.
-fn render_opts<'a>(state: &'a AppState, denoised: Option<&'a ImageF32>) -> RenderOptions<'a> {
+pub(crate) fn render_opts<'a>(
+    state: &'a AppState,
+    denoised: Option<&'a ImageF32>,
+) -> RenderOptions<'a> {
     RenderOptions {
         masks: state.masks.as_ref(),
         overlay: None,

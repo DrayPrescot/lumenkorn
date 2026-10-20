@@ -455,6 +455,34 @@ export const mock = {
         return out(null);
       case "merge_start":
         throw t("Zusammenfügen ist nur in der App verfügbar.");
+      case "album_suggest": {
+        // Wertung aus Bewertung und einer festen Streuung, Ereignisse je Tag
+        await new Promise((r) => setTimeout(r, 400));
+        const list = query({ scope: a.request.scope, sort: "capturedAsc" }).filter(
+          (i) => i.flag !== -1 && !(a.request.skipUneditedRaw && i.kind === "raw" && !i.edited),
+        );
+        const days = [...new Set(list.map((i) => (i.capturedAt ?? "").slice(0, 10)))];
+        const cands = list.map((i) => ({
+          id: i.id,
+          aspect: (i.width ?? 3) / (i.height ?? 2),
+          capturedAt: i.capturedAt,
+          score: i.rating * 0.1 + ((i.id * 37) % 11) / 20,
+          event: days.indexOf((i.capturedAt ?? "").slice(0, 10)),
+          group: i.id,
+          picked: false,
+          sharpness: ((i.id * 53) % 100) / 100,
+          pixels: Math.max(i.width ?? 0, i.height ?? 0) || undefined,
+        }));
+        const best = new Set([...cands].sort((x, y) => y.score - x.score).slice(0, a.request.count).map((c) => c.id));
+        for (const i of list) if (i.rating >= 4) best.add(i.id);
+        for (const c of cands) c.picked = best.has(c.id);
+        return out({ candidates: cands, themeUsed: true, unanalyzed: 0 });
+      }
+      case "album_suggest_cancel":
+      case "album_export_cancel":
+        return out(null);
+      case "album_export":
+        throw t("Das Speichern des Albums ist nur in der App verfügbar.");
       case "import_defaults":
         return out({ settings: { source: null, target: roots[0].path, deleteAfter: false }, cards: ["E:\\DCIM"] });
       case "import_scan": {

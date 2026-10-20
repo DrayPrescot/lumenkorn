@@ -378,6 +378,36 @@ Das Ergebnis ist eine EXR-Datei (lineares 16-Bit-Gleitkomma) neben dem ersten Fo
 RAW entwickelt, Lichter über 1,0 lassen sich also zurückholen. Zusammengefügt werden die
 unbearbeiteten Originale.
 
+## Fotoalbum
+
+Über **Fotoalbum** oberhalb eines Projekts oder Ordners entsteht daraus ein Fotobuch. Man wählt
+das Thema (Urlaub, Reise, Hochzeit, Geburtstag, Familie, Baby und Kind, Natur, Feier, Sport,
+Tiere oder eine eigene Beschreibung), das Format (30 × 30, 20 × 20, A4 hoch oder quer, 28 × 21,
+A3 oder eigene Maße in mm), die Anzahl der Fotos und Seiten und ob mit Rand oder randlos.
+
+- Gemessen werden Schärfe (an der schärfsten Stelle, Porträts mit unscharfem Hintergrund
+  verlieren also nicht) und Belichtung an den Vorschauen, dazu zählen Sterne und Markierungen.
+  Ist die KI eingerichtet, bewertet CLIP, wie gut ein Foto zum Thema passt, und schiebt
+  Bildschirmfotos und abfotografierte Dokumente nach hinten; bei Personenthemen zählen
+  Gesichter. Ohne KI bleibt das Thema unberücksichtigt.
+- Standardmäßig kommen nur bearbeitete Fotos und JPEGs ins Album; unbearbeitete RAW-Dateien,
+  die nur das flaue Kamerabild zeigen, bleiben draußen. Ein Haken im Dialog nimmt sie dazu.
+- Serien und fast gleiche Fotos zählen als ein Motiv, auch wenn andere Fotos dazwischen liegen –
+  außer es sind andere Personen darauf. Fotos mit 4 oder 5 Sternen kommen immer ins Album, auch
+  wenn es dadurch mehr werden als gewünscht. Die Fotos werden über die Tage und Ausflüge
+  verteilt, innerhalb eines Ausflugs gewinnen verschiedene Motive gegenüber ähnlichen.
+- Die Seiten werden chronologisch gefüllt, möglichst ohne Ausflüge zu mischen. Jede Seite bekommt
+  die Anordnung, die die Fotos am wenigsten beschneidet; die besten Fotos stehen auch mal allein.
+- Danach lässt sich alles ändern: Ein Klick auf ein Foto zeigt Ersatzfotos (aus derselben Serie
+  zuerst), Entfernen und Verschieben auf die vorige oder nächste Seite; Ziehen verschiebt den
+  Ausschnitt. Ein Klick auf eine Seite bietet Fotos zum Hinzufügen, eine andere Anordnung und
+  Seiten einfügen oder löschen. Ein rotes Schild zeigt Fotos, deren Auflösung für die Größe im
+  Druck zu gering ist.
+- **Als PDF speichern** schreibt ein druckfertiges PDF (300 dpi, 3 mm Beschnittzugabe an jedem
+  Rand, mit Endformat-Rahmen) und einen Ordner mit jeder Seite als JPG, wie ihn die meisten
+  Fotobuch-Druckereien annehmen. Das Album bleibt erhalten und lässt sich später weiter
+  bearbeiten.
+
 ## Tastenkürzel
 
 | Taste | Aktion |

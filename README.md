@@ -105,6 +105,32 @@ right away and is developed like a RAW file, so highlights above 1.0 can still b
 
 <br clear="right">
 
+### Photo album
+**Fotoalbum** above a project or folder makes a photo book from it. Pick a theme (vacation,
+travel, wedding, birthday, family, baby, nature, party, sports, animals, or describe your own),
+a page size (30×30, 20×20, A4 portrait or landscape, 28×21, A3 or your own in mm), the number of
+photos and pages, with or without margins.
+
+- Lumenkorn measures sharpness (at the sharpest spot, so portraits with a soft background are
+  fine) and exposure on the previews, and adds your stars and picks. With the AI set up, CLIP
+  scores how well a photo fits the theme and pushes screenshots and photos of documents down;
+  for people themes, faces count. Without the AI the theme is left out.
+- By default only edited photos and JPEGs are used; unedited RAW files, which only show the
+  flat camera image, are left out. A checkbox in the dialog lets them in.
+- Bursts and near-identical shots count as one, even with other photos in between, unless
+  different people are in them. Photos with 4 or 5 stars are always included, even if that makes
+  the album larger than asked for. Photos are spread over the days and outings of the project,
+  and within one, varied shots win over similar ones.
+- Pages are filled in time order and try not to mix outings. Each page gets the layout that
+  crops the photos least; the best photos sometimes get a page of their own.
+- Then edit it: click a photo to swap it for another one (shots from the same burst come first),
+  remove it or move it to the next or previous page; drag it to move the crop. Click a page to
+  add photos, try a different layout, or insert and delete pages. A red badge marks photos whose
+  resolution is too low for their size in print.
+- **Save as PDF** writes a print-ready PDF (300 dpi, 3 mm bleed on each side, trim box set) and a
+  folder with every page as a JPG, which most photo book printers accept. The album is kept and
+  can be opened and changed again later.
+
 ### People
 Faces are found in the background, grouped by similarity, and suggested for a name once you
 have named a few. Suggestions can be confirmed or rejected one by one or many at once. Named

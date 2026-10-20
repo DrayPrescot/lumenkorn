@@ -18,6 +18,9 @@
   import UpdateDialog from "./components/UpdateDialog.svelte";
   import CatalogTooNew from "./components/CatalogTooNew.svelte";
   import PresetDialog from "./components/PresetDialog.svelte";
+  import AlbumDialog from "./components/AlbumDialog.svelte";
+  import AlbumView from "./components/AlbumView.svelte";
+  import { album } from "./lib/album.svelte";
   import { api, isTauri, type ImageSummary } from "./lib/api";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { dev } from "./lib/develop.svelte";
@@ -134,7 +137,7 @@
     const k = e.key.toLowerCase();
     // Personenansicht: Kein Foto ist zu sehen – Bewerten oder Ablehnen träfe
     // unbemerkt das zuletzt gewählte
-    if (lib.mode === "library" && lib.view === "people" && k.length === 1 && "012345pxuecd".includes(k)) return;
+    if (lib.mode === "library" && (lib.view === "people" || lib.view === "album") && k.length === 1 && "012345pxuecd".includes(k)) return;
     // Umschalt+X: ablehnen und weiter
     if (k === "x" && e.shiftKey) {
       e.preventDefault();
@@ -161,7 +164,7 @@
 
 <svelte:window {onkeydown} />
 
-<div class="app" class:info={infoOpen || lib.mode === "develop"}>
+<div class="app" class:info={(infoOpen && lib.view !== "album") || lib.mode === "develop"}>
   <div class="sidebar" class:open={sidebarOpen}>
     <Sidebar />
   </div>
@@ -184,6 +187,8 @@
       {#await import("./components/MapView.svelte") then m}
         <m.default />
       {/await}
+    {:else if lib.view === "album" && lib.mode === "library" && album.state}
+      <AlbumView />
     {:else if lib.view === "compare" && lib.compareItems.length >= 2}
       <Compare />
     {:else if lib.view === "loupe" && lib.focused}
@@ -195,7 +200,7 @@
 
   {#if lib.mode === "develop" && lib.focused}
     <div class="info-panel"><DevelopPanel onexport={openExport} /></div>
-  {:else if infoOpen}
+  {:else if infoOpen && lib.view !== "album"}
     <div class="info-panel"><InfoPanel onexport={openExport} /></div>
   {/if}
 </div>
@@ -206,6 +211,10 @@
 
 {#if lib.contextMenu}
   <ContextMenu x={lib.contextMenu.x} y={lib.contextMenu.y} onclose={() => (lib.contextMenu = null)} />
+{/if}
+
+{#if album.dialog}
+  <AlbumDialog scope={album.dialog.scope} title={album.dialog.title} onclose={() => (album.dialog = null)} />
 {/if}
 
 {#if lib.merge}

@@ -53,6 +53,12 @@ impl EmbeddingIndex {
         }
     }
 
+    /// Embedding eines Bildes, falls vorhanden.
+    pub fn get(&self, id: i64) -> Option<&[f32]> {
+        let i = *self.slots.get(&id)?;
+        Some(&self.data[i * self.dim..(i + 1) * self.dim])
+    }
+
     pub fn remove(&mut self, id: i64) {
         if let Some(i) = self.slots.remove(&id) {
             self.ids.swap_remove(i);

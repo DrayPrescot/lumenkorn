@@ -909,6 +909,65 @@ pub async fn semantic_search(
     .await
 }
 
+/// CLIP-Werte für das Fotoalbum (siehe `album::select`).
+pub(crate) struct ThemeScores {
+    /// Kosinus zum Thema (Mittel der Themen-Beschreibungen)
+    pub theme: std::collections::HashMap<i64, f32>,
+    /// Höchster Kosinus zu einer der unerwünschten Beschreibungen
+    /// (Bildschirmfoto, Dokument …)
+    pub negative: std::collections::HashMap<i64, f32>,
+    /// Bild-Embeddings (für Dubletten und Abwechslung)
+    pub vectors: std::collections::HashMap<i64, Vec<f32>>,
+}
+
+/// Thema- und Ausschlusswerte für `ids` aus dem Suchindex. `None`, wenn die
+/// KI nicht eingerichtet ist oder keins der Fotos schon analysiert wurde – das
+/// Album wählt dann nur nach Qualität und Bewertung. Englische Beschreibungen
+/// erwartet (CLIP).
+pub(crate) fn theme_scores(
+    state: &AppState,
+    prompts: &[String],
+    negatives: &[&str],
+    ids: &[i64],
+) -> Result<Option<ThemeScores>, Error> {
+    if ids.is_empty() || !models::status(&state.data_dir).model_ready {
+        return Ok(None);
+    }
+    let vectors: std::collections::HashMap<i64, Vec<f32>> = with_index(state, |idx| {
+        ids.iter()
+            .filter_map(|id| Some((*id, idx.get(*id)?.to_vec())))
+            .collect()
+    })?;
+    if vectors.is_empty() {
+        return Ok(None);
+    }
+    let loaded = ensure_loaded(state)?;
+    let mut texts: Vec<&str> = prompts.iter().map(String::as_str).collect();
+    texts.extend_from_slice(negatives);
+    let emb = loaded.clip.embed_texts(&texts).map_err(err)?;
+    let (pos, neg) = emb.split_at(prompts.len());
+    let theme_vec = (!pos.is_empty()).then(|| lumenkorn_ai::clip::mean_normalized(pos));
+    let mut theme = std::collections::HashMap::new();
+    let mut negative = std::collections::HashMap::new();
+    for (id, v) in &vectors {
+        if let Some(t) = &theme_vec {
+            theme.insert(*id, lumenkorn_ai::clip::dot(t, v));
+        }
+        let n = neg
+            .iter()
+            .map(|q| lumenkorn_ai::clip::dot(q, v))
+            .fold(f32::MIN, f32::max);
+        if !neg.is_empty() {
+            negative.insert(*id, n);
+        }
+    }
+    Ok(Some(ThemeScores {
+        theme,
+        negative,
+        vectors,
+    }))
+}
+
 // --- KI-Masken --------------------------------------------------------------
 
 #[derive(Serialize)]
