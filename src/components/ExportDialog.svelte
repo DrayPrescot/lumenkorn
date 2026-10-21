@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api, isTauri, pickFolder, type ExportOptions } from "../lib/api";
+  import { prefs } from "../lib/prefs.svelte";
   import { dev } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
   import PathDialog from "./PathDialog.svelte";
@@ -12,8 +13,9 @@
   let quality = $state(90);
   let resize = $state(false);
   let longEdge = $state(2560);
-  // null: Unterordner „Export“ neben dem jeweiligen Original
-  let dir = $state<string | null>(null);
+  // null: Unterordner „Export“ neben dem jeweiligen Original; Vorgabe aus den
+  // Einstellungen
+  let dir = $state<string | null>(prefs.exportDir);
   let pathDialog = $state(false);
   let form = $state<HTMLFormElement>();
 

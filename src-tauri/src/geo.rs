@@ -127,8 +127,34 @@ fn pause_nominatim(e: &ureq::Error) {
     *p = Some(Instant::now() + wait);
 }
 
+/// Karte und Ortsnamen über OpenStreetMap erlaubt (Einstellungen →
+/// Allgemein). Aus: keine Anfragen an Nominatim und keine Kartenkacheln.
+static ENABLED: AtomicBool = AtomicBool::new(true);
+
+pub fn set_enabled(on: bool) {
+    ENABLED.store(on, Ordering::SeqCst);
+}
+
+pub fn enabled() -> bool {
+    ENABLED.load(Ordering::SeqCst)
+}
+
+fn disabled_err() -> Error {
+    Error::Invalid(
+        lumenkorn_develop::i18n::tr_s(
+            "Karte und Ortsnamen sind in den Einstellungen ausgeschaltet.",
+            "Map and place names are switched off in the settings.",
+        )
+        .into(),
+    )
+}
+
 /// Nominatim-Anfrage im vorgeschriebenen Tempo (prozessweit)
 fn nominatim(path: &str, query: &[(&str, &str)]) -> CmdResult<serde_json::Value> {
+    // Letzte Sicherung: Ausgeschaltet geht keine Anfrage hinaus
+    if !enabled() {
+        return Err(disabled_err());
+    }
     static LAST: Mutex<Option<Instant>> = Mutex::new(None);
     let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(t) = *last {
@@ -596,6 +622,10 @@ fn run(app: &AppHandle) -> CmdResult<()> {
         Err(e) => log::warn!("Ortsnamen prüfen: {e}"),
     });
     // 2. Ortsnamen ermitteln (OpenStreetMap, gebündelt – siehe `name_places`).
+    // Ausgeschaltet: nichts senden; GPS aus den Fotos (Schritt 1) ist lokal
+    if !enabled() {
+        return Ok(());
+    }
     // Große Stapel, damit nahe Fotos möglichst in dieselbe Anfrage fallen.
     let (mut named, mut requests) = (0usize, 0usize);
     loop {
@@ -635,7 +665,7 @@ fn run(app: &AppHandle) -> CmdResult<()> {
 /// Kachel `z/x/y` aus dem Zwischenspeicher bzw. von OpenStreetMap (PNG).
 /// Veraltete Kacheln werden ohne Netz weiter geliefert.
 pub fn tile(state: &AppState, z: u32, x: u32, y: u32) -> Option<Vec<u8>> {
-    if z > 19 || x >= (1 << z) || y >= (1 << z) {
+    if z > 19 || x >= (1 << z) || y >= (1 << z) || !enabled() {
         return None;
     }
     let path = state

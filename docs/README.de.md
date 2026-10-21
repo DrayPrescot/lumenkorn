@@ -37,9 +37,9 @@ bleiben erhalten. Updates kommen aus den Versions-Releases, nicht aus *nightly*.
 
 ## Sprache
 
-Die Oberfläche gibt es auf Deutsch und Englisch. Lumenkorn folgt der Systemsprache; **DE / EN**
-unten links in der Seitenleiste schaltet um. Auch Meldungen aus dem Hintergrund und neu vergebene
-KI-Schlagworte folgen der Sprache. Schon vergebene Schlagworte bleiben, „KI → Alle neu analysieren“
+Die Oberfläche gibt es auf Deutsch und Englisch. Lumenkorn folgt der Systemsprache; umschalten
+lässt sie sich unter **Einstellungen → Allgemein** (unten links in der Seitenleiste). Auch Meldungen aus dem Hintergrund und neu vergebene
+KI-Schlagworte folgen der Sprache. Schon vergebene Schlagworte bleiben, „Einstellungen → KI → Alle neu analysieren“
 vergibt sie in der neuen Sprache neu.
 
 ## Bibliothek
@@ -144,6 +144,16 @@ Der Reiter **Basis** enthält von oben nach unten:
   echten Pipeline und bringt Regler für Regler auf ein Ziel: mittlere Helligkeit, keine neu
   ausgefressenen Lichter, sichtbare Tiefen, voller Tonwertumfang. Nachtaufnahmen und Motive mit
   großen hellen Flächen (Schnee, Himmel) werden nur wenig aufgehellt. Strg+Z macht es rückgängig.
+- **Auto nach deinem Stil:** Auto lernt aus deinen Bearbeitungen, wie du von seinen Vorschlägen
+  abweichst, getrennt nach Kamera und RAW/JPEG. Für jedes bearbeitete Foto rechnet Lumenkorn im
+  Hintergrund aus, was Auto vorgeschlagen hätte, und merkt sich die Abweichung zu deinem Ergebnis.
+  Ab etwa 10–20 Fotos je Kamera gibt es einen festen Ausgleich (z. B. „Schwarz −12“), ab etwa 50
+  einen, der von der Helligkeit des Fotos abhängt, ab etwa 300 einen nach ähnlichen Motiven
+  (über die CLIP-Bildmerkmale). Ein Regler wird erst angepasst, wenn das nachweislich näher an
+  deinen Ergebnissen liegt: Jedes Foto wird ohne sich selbst vorhergesagt, nur Regler, die besser
+  sind als das normale Auto, werden genutzt. Neuere Bearbeitungen zählen mehr. Alles bleibt auf
+  dem Rechner (`stil.json` im Datenordner); unter **Einstellungen → Entwickeln** siehst du, was gelernt ist,
+  und kannst das Lernen ausschalten oder zurücksetzen.
 - **Schwarzweiß** (V), gleich neben Auto: wandelt das Foto in Graustufen um. Die Umwandlung kommt
   nach HSL und den lokalen Anpassungen. Die HSL-Luminanz wird so zum Grau-Mix (Blau dunkler gibt
   einen dramatischen Himmel), und Masken färben das Bild nicht wieder ein. Color Grading wirkt
@@ -244,7 +254,7 @@ zeigen die Masken.
 
 ## KI-Funktionen
 
-Alle KI-Funktionen sind optional und werden unter **KI** unten links eingerichtet. Jede lädt ihre
+Alle KI-Funktionen sind optional und werden unter **Einstellungen → KI** (unten links) eingerichtet. Jede lädt ihre
 Modelle einmal herunter; danach läuft alles offline.
 
 | Funktion | Modell | Download |
@@ -345,7 +355,7 @@ Im KI-Dialog unter „Grafikkarte“. Zwei Teile, die unabhängig voneinander la
 Lumenkorn bringt einen Server für das [Model Context Protocol](https://modelcontextprotocol.io)
 mit. Damit können KI-Agenten wie Claude oder ChatGPT/Codex das Programm bedienen, etwa „Suche alle
 Fotos vom Strand mit mindestens drei Sternen, mach sie wärmer und exportiere sie als JPEG“. Die
-Schnittstelle ist anfangs aus und wird unter **KI → KI-Agenten (MCP)** eingeschaltet; dort stehen
+Schnittstelle ist anfangs aus und wird unter **Einstellungen → KI-Agenten (MCP)** eingeschaltet; dort stehen
 auch die fertigen Angaben zum Kopieren.
 
 - **stdio** (Claude Desktop, OpenAI Codex und die meisten anderen Agenten): Programm
@@ -419,7 +429,28 @@ A3 oder eigene Maße in mm), die Anzahl der Fotos und Seiten und ob mit Rand ode
   Fotobuch-Druckereien annehmen. Das Album bleibt erhalten und lässt sich später weiter
   bearbeiten.
 
+## Einstellungen
+
+Der Knopf **Einstellungen** unten links öffnet ein Menü mit diesen Bereichen:
+
+- **Allgemein:** Sprache, nach Updates suchen, Karte und Ortsnamen (OpenStreetMap) an/aus,
+  Datenordner.
+- **Ordner:** Standardziel für den Import, den Export (sonst Unterordner „Export“ neben dem
+  Original) und für Fotoalben.
+- **Entwickeln:** Auto nach deinem Stil.
+- **KI:** Modelle für Schlagworte und Suche, Masken, Rauschreduzierung, Personenerkennung.
+- **Grafikkarte:** Bildbearbeitung und KI auf der Grafikkarte.
+- **Tastenkürzel:** Jeder Befehl lässt sich mit einer anderen oder weiteren Taste belegen; ist eine
+  Taste schon vergeben, sagt Lumenkorn das. Einzelne Befehle oder alle lassen sich zurücksetzen.
+  Pfeiltasten, Enter, Leertaste und Escape bleiben für die Bedienung fest. Tooltips zeigen immer
+  die aktuelle Taste.
+- **KI-Agenten (MCP).**
+
+Läuft gerade eine KI-Analyse, steht der Fortschritt klein neben dem Knopf.
+
 ## Tastenkürzel
+
+Das sind die Vorgaben; unter **Einstellungen → Tastenkürzel** lassen sie sich ändern.
 
 | Taste | Aktion |
 |---|---|
@@ -563,7 +594,9 @@ zerlegt jedes Bild in eine Laplace-Pyramide und behält je Stufe das schärfste 
   an Nominatim höchstens eine pro Sekunde, und Kacheln werden 7 Tage im Cache-Ordner
   zwischengespeichert. Die Koordinaten deiner Fotos gehen an Nominatim, damit es Ortsnamen liefert –
   auf etwa 100 m gerundet und gebündelt: Eine Anfrage gilt für alle Fotos im selben Ort.
-  Alles andere bleibt lokal.
+  Alles andere bleibt lokal. **Einstellungen → Allgemein → Karte und Ortsnamen** schaltet das
+  alles ab; dann geht nichts an OpenStreetMap (die Karte im Fotoalbum funktioniert weiter, sie ist
+  im Programm enthalten).
 - **Aufräumen:** 90 Sekunden nach dem Start und danach täglich löscht Lumenkorn verwaiste Dateien im
   Datenordner (alte Entrauschungen, gelöschte Masken und Reparaturen, Vorschauen entfernter Fotos).
   Was eine Bearbeitung oder ein Schnappschuss noch braucht, bleibt.

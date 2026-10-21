@@ -16,6 +16,8 @@ mod merge;
 mod people;
 mod protocol;
 mod repair;
+mod settings;
+mod style;
 mod updater;
 mod worker;
 
@@ -61,6 +63,8 @@ pub struct AppState {
     pub merge: merge::MergeState,
     pub import: import::ImportState,
     pub mcp: mcp::McpState,
+    /// „Auto nach deinem Stil“
+    pub style: style::StyleState,
 }
 
 /// Der Katalog stammt von einer neueren Version: Die App startet ohne
@@ -192,6 +196,9 @@ pub fn run() {
             worker.submit(Job::Thumbs);
 
             let ai_state = ai::AiState::new(&data_dir);
+            let style_state = style::StyleState::new(&data_dir);
+            // Allgemeine Einstellungen wirksam machen (Karte an/aus)
+            settings::load(&data_dir);
             app.manage(AppState {
                 catalog,
                 cache,
@@ -209,7 +216,9 @@ pub fn run() {
                 merge: merge::MergeState::default(),
                 import: import::ImportState::default(),
                 mcp: mcp::McpState::default(),
+                style: style_state,
             });
+            style::start(app.handle());
             mcp::start_if_enabled(app.handle());
             memory::start_janitor(app.handle().clone());
             // GPS aus EXIF nachtragen, fehlende Ortsnamen ermitteln
@@ -222,6 +231,10 @@ pub fn run() {
             album::select::album_suggest,
             album::select::album_suggest_cancel,
             album::select::album_places,
+            style::style_status,
+            settings::app_settings,
+            settings::app_set_settings,
+            style::style_reset,
             commands::app_info,
             commands::open_url,
             commands::app_exit,
@@ -237,6 +250,7 @@ pub fn run() {
             cull::rejected_summary,
             merge::merge_start,
             import::import_defaults,
+            import::import_set_target,
             import::import_scan,
             import::import_preview,
             import::import_start,

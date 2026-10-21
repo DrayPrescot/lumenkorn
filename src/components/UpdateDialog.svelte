@@ -34,6 +34,19 @@
     };
   });
 
+  // Prüfen auf Wunsch (Einstellungen → Allgemein)
+  $effect(() => {
+    if (lib.updateRequest === 0) return;
+    void (async () => {
+      try {
+        info = await api.updateCheck();
+        if (!info) lib.notify(t("Lumenkorn ist auf dem neuesten Stand."));
+      } catch (e) {
+        lib.notify(t("Update-Prüfung fehlgeschlagen: {error}", { error: String(e) }), "error");
+      }
+    })();
+  });
+
   /** Markdown des Releases als schlichter Text (Links ohne Adresse) */
   const notes = $derived(
     (info?.notes ?? "")

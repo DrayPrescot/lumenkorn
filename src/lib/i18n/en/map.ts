@@ -25,7 +25,7 @@ export default {
   "Für {n} Fotos übernehmen": "Use for {n} photos",
   "Ausgewähltes Foto hierher": "Move selected photo here",
   "{n} ausgewählte Fotos hierher": "Move {n} selected photos here",
-  "Karte: Aufnahmeorte ansehen und setzen (M)": "Map: view and set photo locations (M)",
+  "Karte: Aufnahmeorte ansehen und setzen": "Map: view and set photo locations",
   "Karte und gebündelte Fotomarker": "Map and clustered photo markers",
   "Kartenkacheln und Ortssuche (Nominatim), online abgerufen": "Map tiles and place search (Nominatim), fetched online",
   "Daten: ODbL, Kacheln: CC BY-SA 2.0": "Data: ODbL, tiles: CC BY-SA 2.0",

@@ -4,6 +4,7 @@
   import { lib } from "../lib/store.svelte";
   import Icon from "./Icon.svelte";
   import { locale, num, t, tc } from "../lib/i18n";
+  import { withKey } from "../lib/keymap.svelte";
 
   let { onexport }: { onexport: () => void } = $props();
   let detail = $state<ImageDetail | null>(null);
@@ -306,10 +307,10 @@
         {/each}
       </div>
       <div class="flags">
-        <button class="icon-btn" class:pick={lib.focused?.flag === 1} aria-label={t("Markieren (P)")} title={t("Markieren (P)")} onclick={() => lib.flag(1)}>
+        <button class="icon-btn" class:pick={lib.focused?.flag === 1} aria-label={t("Markieren")} title={withKey(t("Markieren"), "pick")} onclick={() => lib.flag(1)}>
           <Icon name="flag" />
         </button>
-        <button class="icon-btn" class:reject={lib.focused?.flag === -1} aria-label={t("Ablehnen (X)")} title={t("Ablehnen (X) – Umschalt+X: ablehnen und weiter")} onclick={() => lib.flag(-1)}>
+        <button class="icon-btn" class:reject={lib.focused?.flag === -1} aria-label={t("Ablehnen")} title={`${withKey(t("Ablehnen"), "reject")} – ${withKey(t("ablehnen und weiter"), "rejectNext")}`} onclick={() => lib.flag(-1)}>
           <Icon name="reject" />
         </button>
       </div>
@@ -338,7 +339,7 @@
           {:else}
             <span class="muted">{t("unbekannt")}</span>
           {/if}
-          {#if lib.view !== "map"}
+          {#if lib.view !== "map" && lib.mapEnabled}
             <button class="link" onclick={() => lib.openMap()}>{d.location ? t("Karte") : t("Ort setzen")}</button>
           {/if}
         </dd>

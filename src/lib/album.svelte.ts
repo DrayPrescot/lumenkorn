@@ -25,6 +25,7 @@ import {
 } from "./album";
 import { renderOverlay } from "./albumDraw";
 import { lib } from "./store.svelte";
+import { prefs } from "./prefs.svelte";
 import { t } from "./i18n";
 
 const SETTINGS_KEY = "lumenkorn.album.settings";
@@ -425,7 +426,7 @@ class AlbumStore {
     const a = this.state;
     if (!a || this.exporting) return;
     this.#listen();
-    const path = await pickPdfTarget(t("Album speichern"), a.title || t("Fotoalbum"));
+    const path = await pickPdfTarget(t("Album speichern"), a.title || t("Fotoalbum"), prefs.albumDir);
     if (!path) return;
     const doc = toDoc(a, this.byId);
     this.exporting = { done: 0, total: doc.pages.length, finished: false, failed: [], error: null, pdf: path, dir: "" };

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { isTyping } from "./lib/keys";
+  import { keymap } from "./lib/keymap.svelte";
   import { onMount } from "svelte";
   import Grid from "./components/Grid.svelte";
   import InfoPanel from "./components/InfoPanel.svelte";
@@ -41,7 +42,7 @@
 
   function openDeleteRejected() {
     if (lib.rejectedCount) deleteImages = lib.rejectedList();
-    else lib.notify(t("In dieser Ansicht sind keine Fotos abgelehnt (X)."));
+    else lib.notify(t("In dieser Ansicht sind keine Fotos abgelehnt ({key}).", { key: keymap.hint("reject") }));
   }
 
   // Beim Verlassen des Entwickeln-Modus offene Änderungen speichern.
@@ -92,73 +93,51 @@
   }
 
   function onkeydown(e: KeyboardEvent) {
-    if (e.key === "F11") {
+    if (keymap.is(e, "fullscreen")) {
       e.preventDefault();
       toggleFullscreen();
       return;
     }
     if (isTyping(e) || exportIds || deleteImages || lib.merge || lib.importOpen) return;
-    // Strg+Umschalt+I: Fotos importieren (wie in Lightroom)
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "i") {
+    // Personen- und Albumansicht: Kein Foto ist zu sehen – Bewerten oder
+    // Ablehnen träfe unbemerkt das zuletzt gewählte
+    const noPhoto = lib.mode === "library" && (lib.view === "people" || lib.view === "album");
+    // Befehl, Wirkung, nur mit sichtbarem Foto (Belegung: Einstellungen → Tastenkürzel)
+    const actions: [string, () => void, boolean?][] = [
+      ["import", () => (lib.importOpen = true)],
+      ["export", openExport],
+      ["deleteRejected", openDeleteRejected],
+      ["copySettings", () => lib.focused && dev.copyBasic(lib.focused.id)],
+      ["pasteSettings", () => dev.pasteBasic(lib.pasteTargets())],
+      ["hdr", () => lib.openMerge("hdr")],
+      ["pano", () => lib.openMerge("pano")],
+      ["focus", () => lib.openMerge("focus")],
+      ["rejectNext", () => lib.rejectAndAdvance(), true],
+      ...[0, 1, 2, 3, 4, 5].map((n) => [`rate${n}`, () => lib.rate(n), true] as [string, () => void, boolean]),
+      ["pick", () => lib.flag(1), true],
+      ["reject", () => lib.flag(-1), true],
+      ["unflag", () => lib.flag(0), true],
+      ["info", () => (infoOpen = !infoOpen)],
+      [
+        "grid",
+        () => {
+          lib.mode = "library";
+          lib.view = "grid";
+        },
+      ],
+      ["large", () => lib.focused && lib.openLarge(), true],
+      // Vergleich auch aus dem Entwickeln (Auswahl im Filmstreifen)
+      ["compare", () => lib.compare(), true],
+      ["develop", () => lib.enterDevelop(), true],
+      ["map", () => lib.openMap()],
+    ];
+    for (const [id, run, needsPhoto] of actions) {
+      if (!keymap.is(e, id)) continue;
+      if (needsPhoto && noPhoto) return;
       e.preventDefault();
-      lib.importOpen = true;
+      run();
       return;
     }
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "e") {
-      e.preventDefault();
-      openExport();
-      return;
-    }
-    // Strg+Entf / Strg+Rücktaste: abgelehnte Fotos löschen
-    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "Delete" || e.key === "Backspace")) {
-      e.preventDefault();
-      openDeleteRejected();
-      return;
-    }
-    // Strg+Umschalt+C / Strg+Umschalt+V: Basis-Einstellungen kopieren / einfügen
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && (e.key.toLowerCase() === "c" || e.key.toLowerCase() === "v")) {
-      e.preventDefault();
-      if (e.key.toLowerCase() === "c") {
-        if (lib.focused) dev.copyBasic(lib.focused.id);
-      } else dev.pasteBasic(lib.pasteTargets());
-      return;
-    }
-    // Zusammenfügen: Strg+H HDR, Strg+M Panorama, Strg+Umschalt+F Focus Stacking
-    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
-      const key = e.key.toLowerCase();
-      const kind = !e.shiftKey && key === "h" ? "hdr" : !e.shiftKey && key === "m" ? "pano" : e.shiftKey && key === "f" ? "focus" : null;
-      if (kind) {
-        e.preventDefault();
-        lib.openMerge(kind);
-        return;
-      }
-    }
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
-    const k = e.key.toLowerCase();
-    // Personenansicht: Kein Foto ist zu sehen – Bewerten oder Ablehnen träfe
-    // unbemerkt das zuletzt gewählte
-    if (lib.mode === "library" && (lib.view === "people" || lib.view === "album") && k.length === 1 && "012345pxuecd".includes(k)) return;
-    // Umschalt+X: ablehnen und weiter
-    if (k === "x" && e.shiftKey) {
-      e.preventDefault();
-      lib.rejectAndAdvance();
-      return;
-    }
-    if (k >= "0" && k <= "5") lib.rate(Number(k));
-    else if (k === "p") lib.flag(1);
-    else if (k === "x") lib.flag(-1);
-    else if (k === "u") lib.flag(0);
-    else if (k === "i") infoOpen = !infoOpen;
-    else if (k === "g") {
-      lib.mode = "library";
-      lib.view = "grid";
-    } else if (k === "e" && lib.focused) lib.openLarge();
-    // Vergleich auch aus dem Entwickeln (Auswahl im Filmstreifen)
-    else if (k === "c") lib.compare();
-    else if (k === "d") lib.enterDevelop();
-    else if (k === "m") lib.openMap();
-    else return;
-    e.preventDefault();
   }
 </script>
 
@@ -182,7 +161,7 @@
       <DevelopView />
     {:else if lib.view === "people" && lib.mode === "library"}
       <PeopleView />
-    {:else if lib.view === "map" && lib.mode === "library"}
+    {:else if lib.view === "map" && lib.mode === "library" && lib.mapEnabled}
       <!-- Karte (mit Leaflet) erst beim Öffnen laden -->
       {#await import("./components/MapView.svelte") then m}
         <m.default />

@@ -1,30 +1,21 @@
 <script lang="ts">
+  // KI und Grafikkarte im Einstellungsmenü (SettingsDialog): `part` wählt den
+  // Abschnitt.
   import { api, type AccelPreference, type Backend, type Benchmark } from "../lib/api";
   import { lib } from "../lib/store.svelte";
   import Icon from "./Icon.svelte";
-  import McpSection from "./McpSection.svelte";
   import { onMount } from "svelte";
   import { t, num } from "../lib/i18n";
 
-  let { onclose }: { onclose: () => void } = $props();
+  let { part }: { part: "ai" | "gpu" } = $props();
 
   const s = $derived(lib.ai);
   // Status beim Öffnen frisch holen (Modelle können inzwischen geladen sein)
-  let dialog = $state<HTMLDivElement>();
   onMount(() => {
     void lib.refreshAi();
     void lib.refreshPeople();
-    dialog?.focus();
   });
 
-  // Solange der Dialog offen ist, erreichen Tasten die Ansichten dahinter nicht
-  // (sonst bewerten/markieren X, P, 0–5 … die Fotos hinter dem Dialog) – auch
-  // wenn der Fokus gerade nicht im Dialog liegt.
-  function onkeydown(e: KeyboardEvent) {
-    if (e.key === "F11") return; // Vollbild bleibt auch bei offenem Dialog erreichbar
-    e.stopPropagation();
-    if (e.key === "Escape") onclose();
-  }
   const d = $derived(lib.aiDownload?.progress);
   const mb = (b: number) => `${num(Math.round(b / 1_000_000))} MB`;
   const pct = $derived(d && d.total ? Math.min(100, (d.done / d.total) * 100) : null);
@@ -132,23 +123,8 @@
   }
 </script>
 
-<svelte:window onkeydowncapture={onkeydown} />
-
-<div class="backdrop" role="presentation" onclick={onclose}>
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_click_events_have_key_events -->
-  <div
-    bind:this={dialog}
-    class="dialog"
-    role="dialog"
-    aria-label={t("KI")}
-    tabindex="-1"
-    onclick={(e) => e.stopPropagation()}
-  >
-    <header>
-      <h3><Icon name="sparkle" size={15} /> {t("Lokale KI")}</h3>
-      <button class="icon-btn" aria-label={t("Schließen")} onclick={onclose}><Icon name="close" size={14} /></button>
-    </header>
-
+<div class="panel">
+  {#if part === "ai"}
     <p class="lead">
       {t("Lumenkorn erkennt Motive, Orte, Licht und Wetter und vergibt passende Schlagworte. Außerdem kannst du nach Bildinhalten suchen, etwa „Hund am Strand“. Alles läuft auf diesem Gerät, kein Foto verlässt den Rechner.")}
     </p>
@@ -278,13 +254,13 @@
       {/if}
     {/if}
 
-    {#if !lib.aiDownload}
-      <McpSection />
-    {/if}
-
-    {#if s && !lib.aiDownload}
-      <div class="sep"></div>
-      <h4>{t("Grafikkarte")}</h4>
+    <p class="note">
+      {t("KI-Schlagworte sind gestrichelt umrandet und lassen sich wie eigene entfernen. Eigene Schlagworte werden nie überschrieben.")}
+    </p>
+  {:else}
+    {#if !s}
+      <p class="muted">{t("Wird geladen …")}</p>
+    {:else}
       {#if deviceLabel}
         <p class="muted">{t("Erkannt: {device}", { device: deviceLabel })}</p>
       {/if}
@@ -376,51 +352,16 @@
       {/if}
     {/if}
 
-    <p class="note">
-      {t("KI-Schlagworte sind gestrichelt umrandet und lassen sich wie eigene entfernen. Eigene Schlagworte werden nie überschrieben.")}
-    </p>
-  </div>
+  {/if}
 </div>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 60;
+  .panel {
     display: grid;
-    place-items: center;
-    background: rgb(0 0 0 / 0.5);
-    padding: 16px;
-  }
-  .dialog {
-    width: min(520px, 100%);
-    max-height: calc(100vh - 32px);
-    overflow-y: auto;
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-m);
-    padding: 18px;
-    display: grid;
-    /* Spalte nie breiter als der Dialog: sonst schiebt ein langer Pfad ohne
+    /* Spalte nie breiter als der Bereich: sonst schiebt ein langer Pfad ohne
        Leerzeichen (z. B. in der Absturzmeldung) alles seitlich heraus. */
     grid-template-columns: minmax(0, 1fr);
     gap: 14px;
-  }
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  h3 {
-    margin: 0;
-    font-size: var(--step-1);
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  h3 :global(svg) {
-    color: var(--accent);
   }
   p {
     margin: 0;

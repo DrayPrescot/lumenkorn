@@ -176,6 +176,10 @@ class Library {
 
     this.refreshAi();
     this.refreshPeople();
+    api
+      .appSettings()
+      .then((s) => (this.mapEnabled = s.mapEnabled))
+      .catch(() => {});
     let peopleTimer: ReturnType<typeof setTimeout> | undefined;
     listen("faces-progress", ({ done, total, faces, ids }) => {
       if (this.peopleStatus) this.peopleStatus = { ...this.peopleStatus, analyzed: done, total, faces };
@@ -585,6 +589,8 @@ class Library {
   /** Offener Dialog: Art und Fotos in Anzeigereihenfolge */
   merge = $state<{ kind: MergeKind; ids: number[] } | null>(null);
   mergeProgress = $state<MergeProgress | null>(null);
+  /** Hochzählen: Update-Prüfung jetzt (Einstellungen → Allgemein) */
+  updateRequest = $state(0);
 
   /** Öffnet den Dialog zum Zusammenfügen der ausgewählten Fotos. */
   openMerge(kind: MergeKind) {
@@ -922,8 +928,18 @@ class Library {
   }
 
   openMap() {
+    if (!this.mapEnabled) return;
     this.mode = "library";
     this.view = "map";
+  }
+
+  /** Karte und Ortsnamen über OpenStreetMap (Einstellungen → Allgemein) */
+  mapEnabled = $state(true);
+
+  async setMapEnabled(on: boolean) {
+    await api.appSetSettings({ mapEnabled: on });
+    this.mapEnabled = on;
+    if (!on && this.view === "map") this.view = "grid";
   }
 
   /** Aufnahmeort für Fotos setzen; ohne `place` ermittelt ihn das Backend. */

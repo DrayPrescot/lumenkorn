@@ -6,6 +6,30 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Settings → General: a switch turns off the map and place names. Then nothing is sent to
+  OpenStreetMap: the Map tab is hidden, no map tiles are loaded, place search and the background
+  look-up of place names stop. GPS data from the photos, place names already known and the map in
+  the photo album (built in) keep working.
+
+### Added
+- Settings: the button at the bottom left is now **Settings** and opens a menu with sections for
+  General (language, check for updates, data folder), Folders (default destinations for import,
+  export and photo albums), Develop (Auto in your style), AI, Graphics card, Keyboard shortcuts and
+  AI agents (MCP). The AI progress is still shown next to the button while it runs.
+- Keyboard shortcuts can be changed: every command (rating, flags, views, develop tools, zoom,
+  import/export, merging) can get other or additional keys; a key already in use is reported, and
+  each command or all of them can be reset. Tooltips show the current key. Arrow keys, Enter,
+  Space and Escape stay fixed.
+
+### Added
+- Auto in your style: Auto learns from your edits how you differ from its suggestions and adapts
+  step by step, separately for each camera and for RAW/JPEG – first a fixed adjustment per camera,
+  then depending on the brightness of the photo (from about 50 edits), later from similar subjects
+  (from about 300). A slider is only changed once that demonstrably gets closer to your own results
+  on your photos (each photo is predicted without itself). Everything stays local in `stil.json`;
+  switch it off or reset it under AI settings.
+
 ## [1.0.15] – 2026-10-21
 
 ### Added

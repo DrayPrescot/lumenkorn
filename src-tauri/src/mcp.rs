@@ -821,13 +821,7 @@ async fn call(app: &AppHandle, name: &str, a: &Value) -> ToolResult {
                 let t = crate::develop::develop_auto(app.clone(), *id, p.clone())
                     .await
                     .map_err(e)?;
-                p.exposure = t.exposure;
-                p.contrast = t.contrast;
-                p.highlights = t.highlights;
-                p.shadows = t.shadows;
-                p.whites = t.whites;
-                p.blacks = t.blacks;
-                p.vibrance = t.vibrance;
+                t.apply(&mut p);
                 crate::develop::develop_save(app.clone(), state.clone(), vec![*id], p)
                     .map_err(e)?;
                 out.push(json!({ "id": id, "values": t }));

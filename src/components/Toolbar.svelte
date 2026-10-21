@@ -4,6 +4,7 @@
   import type { Scope } from "../lib/api";
   import { dev } from "../lib/develop.svelte";
   import { t } from "../lib/i18n";
+  import { withKey } from "../lib/keymap.svelte";
   import Icon from "./Icon.svelte";
   import ProjectFolders from "./ProjectFolders.svelte";
   import PersonName from "./PersonName.svelte";
@@ -28,15 +29,17 @@
   <button class="icon-btn sidebar-toggle" aria-label={t("Seitenleiste")} onclick={ontogglesidebar}><Icon name="menu" /></button>
 
   <div class="modes" role="tablist" aria-label={t("Modus")}>
-    <button role="tab" aria-selected={lib.mode === "library" && lib.view !== "map"} class:on={lib.mode === "library" && lib.view !== "map"} onclick={() => { lib.mode = "library"; lib.view = "grid"; }} title={t("Bibliothek (G)")}>
+    <button role="tab" aria-selected={lib.mode === "library" && lib.view !== "map"} class:on={lib.mode === "library" && lib.view !== "map"} onclick={() => { lib.mode = "library"; lib.view = "grid"; }} title={withKey(t("Bibliothek"), "grid")}>
       {t("Bibliothek")}
     </button>
-    <button role="tab" aria-selected={lib.mode === "develop"} class:on={lib.mode === "develop"} onclick={() => lib.enterDevelop()} disabled={!lib.images.length} title={t("Entwickeln (D)")}>
+    <button role="tab" aria-selected={lib.mode === "develop"} class:on={lib.mode === "develop"} onclick={() => lib.enterDevelop()} disabled={!lib.images.length} title={withKey(t("Entwickeln"), "develop")}>
       {t("Entwickeln")}
     </button>
-    <button role="tab" aria-selected={lib.mode === "library" && lib.view === "map"} class:on={lib.mode === "library" && lib.view === "map"} onclick={() => lib.openMap()} title={t("Karte: Aufnahmeorte ansehen und setzen (M)")}>
+    {#if lib.mapEnabled}
+    <button role="tab" aria-selected={lib.mode === "library" && lib.view === "map"} class:on={lib.mode === "library" && lib.view === "map"} onclick={() => lib.openMap()} title={withKey(t("Karte: Aufnahmeorte ansehen und setzen"), "map")}>
       {t("Karte")}
     </button>
+    {/if}
   </div>
 
   {#if lib.mode === "library" && lib.view === "people" && lib.peopleReviewOpen}
@@ -68,14 +71,14 @@
         // Lang gedrückt: nur kurzer Vergleich, nicht umschalten
         if (performance.now() - holdStart < 300) dev.showBefore = !dev.showBefore;
       }}
-      title={t("Bild ohne Bearbeitung zeigen (Taste \\). Klick schaltet um, gedrückt halten zeigt es kurz.")}
+      title={`${withKey(t("Bild ohne Bearbeitung zeigen"), "before")}. ${t("Klick schaltet um, gedrückt halten zeigt es kurz.")}`}
     >
       <Icon name="develop" size={14} />
       {dev.showBefore ? t("Bearbeitung zeigen") : t("Original zeigen")}
     </button>
   {/if}
   {#if lib.mode === "library" && lib.selection.size > 1 && lib.view !== "compare"}
-    <button class="btn" onclick={() => lib.compare()} title={t("Ausgewählte Fotos groß nebeneinander vergleichen (C)")}>
+    <button class="btn" onclick={() => lib.compare()} title={withKey(t("Ausgewählte Fotos groß nebeneinander vergleichen"), "compare")}>
       {t("Vergleichen ({n})", { n: Math.min(lib.selection.size, 12) })}
     </button>
   {/if}
@@ -114,7 +117,7 @@
   <div class="spacer"></div>
 
   {#if lib.rejectedCount && lib.view !== "people"}
-    <button class="btn reject-btn" onclick={ondeleterejected} title={t("Abgelehnte Fotos dieser Ansicht von der Festplatte löschen (Strg+Entf)")}>
+    <button class="btn reject-btn" onclick={ondeleterejected} title={withKey(t("Abgelehnte Fotos dieser Ansicht von der Festplatte löschen"), "deleteRejected")}>
       <Icon name="trash" size={14} /> {t("{n} abgelehnt", { n: String(lib.rejectedCount) })}
     </button>
   {/if}
@@ -169,7 +172,7 @@
   {/if}
 
   {#if lib.mode === "library"}
-    <button class="icon-btn" aria-label={t("Informationen")} title={t("Informationen (I)")} onclick={ontoggleinfo}><Icon name="info" /></button>
+    <button class="icon-btn" aria-label={t("Informationen")} title={withKey(t("Informationen"), "info")} onclick={ontoggleinfo}><Icon name="info" /></button>
   {/if}
 </div>
 

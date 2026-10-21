@@ -576,6 +576,9 @@ pub(crate) struct NewImage {
     pub meta: Metadata,
 }
 
+/// Bearbeitetes Foto: (Foto, Zeitpunkt der letzten Änderung, Kamera, RAW?)
+pub type EditedPhoto = (i64, i64, Option<String>, bool);
+
 /// Auftrag für den Vorschau-Generator.
 #[derive(Debug, Clone)]
 pub struct ThumbJob {
@@ -1293,6 +1296,18 @@ impl Catalog {
 
     /// Ortsnamen (Spalte `place`) der Fotos; Fotos ohne oder mit leerem Namen
     /// fehlen im Ergebnis.
+    /// Alle aktuellen Bearbeitungen vorhandener Fotos – für „Auto nach deinem
+    /// Stil“.
+    pub fn edited_overview(&self) -> Result<Vec<EditedPhoto>> {
+        let mut st = self.conn.prepare(
+            "SELECT e.image_id, e.updated_at, i.camera, i.kind = 'raw'
+             FROM edits e JOIN images i ON i.id = e.image_id
+             WHERE e.is_current = 1 AND i.missing = 0",
+        )?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
     pub fn places(&self, ids: &[i64]) -> Result<HashMap<i64, String>> {
         let ids = serde_json::to_string(ids)?;
         let mut st = self.conn.prepare(

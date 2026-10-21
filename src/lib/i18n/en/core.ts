@@ -40,7 +40,7 @@ export default {
   "„{old}“ heißt jetzt „{name}“": "“{old}” is now “{name}”",
   "„{name}“ gespeichert": "“{name}” saved",
   "Wähle zuerst Fotos zum Exportieren aus.": "Select photos to export first.",
-  "In dieser Ansicht sind keine Fotos abgelehnt (X).": "No rejected photos (X) in this view.",
+  "In dieser Ansicht sind keine Fotos abgelehnt ({key}).": "No rejected photos ({key}) in this view.",
   "Seitenleiste schließen": "Close sidebar",
   "Exportiere {done} von {total}": "Exporting {done} of {total}",
   "Zusammenfügen: {stage}": "Merging: {stage}",

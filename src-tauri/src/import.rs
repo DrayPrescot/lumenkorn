@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::ipc::Response;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Kantenlänge der Vorschauen im Import-Dialog
 const PREVIEW_EDGE: u32 = 240;
@@ -59,6 +59,16 @@ fn load_settings(state: &AppState) -> ImportSettings {
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default()
+}
+
+/// Standardziel für den Import festlegen (Einstellungen); `None`: das zuletzt
+/// benutzte bzw. der erste Quellordner.
+#[tauri::command]
+pub fn import_set_target(state: State<AppState>, target: Option<String>) -> Result<(), Error> {
+    let mut s = load_settings(&state);
+    s.target = target.filter(|t| !t.trim().is_empty());
+    std::fs::write(settings_path(&state), serde_json::to_string_pretty(&s)?)?;
+    Ok(())
 }
 
 /// Zuletzt benutzte Quelle und Ziel (Ziel ersatzweise der erste

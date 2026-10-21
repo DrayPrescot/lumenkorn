@@ -2,22 +2,23 @@
   import { onMount } from "svelte";
   import { api, faceUrl, isTauri, pickFolder, type FolderNode, type Person, type Root } from "../lib/api";
   import { lib, topFolders } from "../lib/store.svelte";
-  import { lang, setLang, t, tc } from "../lib/i18n";
+  import { t, tc } from "../lib/i18n";
+  import { withKey } from "../lib/keymap.svelte";
   import FolderTree from "./FolderTree.svelte";
   import Icon from "./Icon.svelte";
   import PathDialog from "./PathDialog.svelte";
-  import AiDialog from "./AiDialog.svelte";
+  import SettingsDialog, { type SettingsPage } from "./SettingsDialog.svelte";
   import AboutDialog from "./AboutDialog.svelte";
 
   let platform = $state("");
-  let aiOpen = $state(false);
+  let settingsOpen = $state<SettingsPage | null>(null);
   let aboutOpen = $state(false);
   // Nach einem Absturz beim letzten Start: Dialog mit Erklärung öffnen
   let crashShown = false;
   $effect(() => {
     if (lib.ai?.crashNotice && !crashShown) {
       crashShown = true;
-      aiOpen = true;
+      settingsOpen = "ai";
     }
   });
   let pathDialog = $state(false);
@@ -350,7 +351,7 @@
     <section>
       <header>
         {@render toggle("folders", t("Ordner"), lib.roots.length)}
-        <button class="icon-btn" aria-label={t("Fotos importieren")} title={t("Fotos importieren (Strg+Umschalt+I)")} onclick={() => (lib.importOpen = true)}>
+        <button class="icon-btn" aria-label={t("Fotos importieren")} title={withKey(t("Fotos importieren"), "import")} onclick={() => (lib.importOpen = true)}>
           <Icon name="import" size={14} />
         </button>
         <button class="icon-btn" aria-label={t("Ordner hinzufügen")} title={t("Ordner hinzufügen")} onclick={addFolder}>
@@ -375,26 +376,19 @@
 
   <footer>
     <div class="foot-row">
-      <button class="ai" onclick={() => (aiOpen = true)} title={t("Lokale KI: Verschlagwortung und Inhaltssuche")}>
-        <Icon name="sparkle" size={13} />
+      <button class="ai" onclick={() => (settingsOpen = "general")} title={t("Einstellungen: Sprache, Ordner, KI, Grafikkarte, Tastenkürzel …")}>
+        <Icon name="settings" size={13} />
+        <span>{t("Einstellungen")}</span>
+        <!-- KI-Fortschritt klein daneben, solange etwas läuft -->
         {#if lib.aiDownload}
-          <span>{t("KI wird heruntergeladen …")}</span>
-        {:else if !lib.ai || !lib.ai.modelReady}
-          <span>{t("KI einrichten")}</span>
-        {:else if lib.ai.analyzed < lib.ai.total}
-          <span>{t("KI: {done} von {total} analysiert", { done: String(lib.ai.analyzed), total: String(lib.ai.total) })}</span>
-        {:else}
-          <span>{t("KI: alle Fotos analysiert")}</span>
+          <span class="status">{t("KI lädt …")}</span>
+        {:else if lib.ai?.modelReady && lib.ai.analyzed < lib.ai.total}
+          <span class="status" title={t("KI: {done} von {total} analysiert", { done: String(lib.ai.analyzed), total: String(lib.ai.total) })}>{t("KI {done}/{total}", { done: String(lib.ai.analyzed), total: String(lib.ai.total) })}</span>
         {/if}
       </button>
       <button class="icon-btn about" aria-label={t("Über Lumenkorn")} title={t("Über Lumenkorn")} onclick={() => (aboutOpen = true)}>
         <Icon name="info" size={14} />
       </button>
-      <!-- Sprache der Oberfläche (Wechsel lädt neu) -->
-      <div class="lang" role="group" aria-label="Sprache / Language">
-        <button class:on={lang === "de"} aria-pressed={lang === "de"} title="Deutsch" onclick={() => lang !== "de" && setLang("de")}>DE</button>
-        <button class:on={lang === "en"} aria-pressed={lang === "en"} title="English" onclick={() => lang !== "en" && setLang("en")}>EN</button>
-      </div>
     </div>
     {#if lib.scan}
       <div class="scan">
@@ -440,8 +434,8 @@
   </div>
 {/if}
 
-{#if aiOpen}
-  <AiDialog onclose={() => (aiOpen = false)} />
+{#if settingsOpen}
+  <SettingsDialog page={settingsOpen} onclose={() => (settingsOpen = null)} />
 {/if}
 {#if aboutOpen}
   <AboutDialog onclose={() => (aboutOpen = false)} />
@@ -635,22 +629,6 @@
   .about:hover {
     color: var(--text);
   }
-  .lang {
-    display: flex;
-    flex: none;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-s);
-    overflow: hidden;
-  }
-  .lang button {
-    padding: 2px 6px;
-    font-size: 11px;
-    color: var(--faint);
-  }
-  .lang button.on {
-    background: var(--raised);
-    color: inherit;
-  }
   .ai {
     display: flex;
     align-items: center;
@@ -665,6 +643,15 @@
   }
   .ai:hover {
     color: var(--text);
+  }
+  /* KI-Fortschritt neben „Einstellungen“ */
+  .ai .status {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--faint);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .scan {
     display: grid;

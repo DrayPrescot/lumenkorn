@@ -6,6 +6,7 @@
   import { describeShape, dev, type NewMaskKind } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
+  import { withKey } from "../lib/keymap.svelte";
   import { untrack } from "svelte";
   import Icon from "./Icon.svelte";
   import Slider from "./Slider.svelte";
@@ -163,7 +164,7 @@
           <button class="btn small" disabled={!!dev.repairing || !active.shapes.length} onclick={(e) => { e.stopPropagation(); menu = menu?.mode === "subtract" ? null : { mode: "subtract" }; }}>{t("Abziehen")}</button>
           {#if menu?.mode === "subtract"}{@render kindMenu()}{/if}
         </div>
-        <button class="btn small" class:on={dev.showOverlay} onclick={() => dev.toggleOverlay()} title={t("Auswahl rot anzeigen (O)")}>{t("Auswahl zeigen")}</button>
+        <button class="btn small" class:on={dev.showOverlay} onclick={() => dev.toggleOverlay()} title={withKey(t("Auswahl rot anzeigen"), "maskOverlay")}>{t("Auswahl zeigen")}</button>
       </div>
 
       {#if dev.tool === "brush"}

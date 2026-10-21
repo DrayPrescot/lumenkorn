@@ -14,6 +14,7 @@
   import { api, type LensSource } from "../lib/api";
   import { untrack } from "svelte";
   import { t, locale } from "../lib/i18n";
+  import { withKey } from "../lib/keymap.svelte";
 
   let { onexport }: { onexport: () => void } = $props();
 
@@ -99,7 +100,7 @@
     { id: "basic", label: t("Basis"), title: t("Licht, Farbe, Details, Rauschreduzierung") },
     { id: "masks", label: t("Masken"), title: t("Lokale Anpassungen") },
     { id: "repair", label: t("Reparatur"), title: t("Störendes mit KI entfernen") },
-    { id: "crop", label: t("Zuschnitt"), title: t("Zuschneiden, Geraderichten, Drehen (R)") },
+    { id: "crop", label: t("Zuschnitt"), title: withKey(t("Zuschneiden, Geraderichten, Drehen"), "crop") },
   ];
 
   // Alles verwerfen: Regler, Masken, Reparaturen, Rauschreduzierung, Zuschnitt.
@@ -218,11 +219,11 @@
     {@render cropSection()}
   {:else}
     <section class="auto">
-      <button class="btn wide" disabled={dev.autoBusy || !dev.ready} onclick={() => dev.autoTone()} title={t("Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz und Dynamik automatisch einstellen (Strg+U)")}>
+      <button class="btn wide" disabled={dev.autoBusy || !dev.ready} onclick={() => dev.autoTone()} title={withKey(t("Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz und Dynamik automatisch einstellen"), "auto")}>
         <Icon name="sparkle" size={13} />
         {dev.autoBusy ? t("Wird berechnet …") : t("Auto")}
       </button>
-      <button class="btn wide" class:on={dev.params.monochrome} aria-pressed={!!dev.params.monochrome} disabled={!dev.ready} onclick={() => dev.setMonochrome(!dev.params.monochrome)} title={t("In Schwarzweiß umwandeln – die HSL-Luminanz steuert den Grau-Mix, Color Grading tont (V)")}>
+      <button class="btn wide" class:on={dev.params.monochrome} aria-pressed={!!dev.params.monochrome} disabled={!dev.ready} onclick={() => dev.setMonochrome(!dev.params.monochrome)} title={withKey(t("In Schwarzweiß umwandeln – die HSL-Luminanz steuert den Grau-Mix, Color Grading tont"), "bw")}>
         <Icon name="mono" size={13} />
         {t("Schwarzweiß")}
       </button>
@@ -342,7 +343,7 @@
         <button class="btn primary" onclick={() => dev.applyCrop()} title={t("Übernehmen (Enter)")}>{t("Fertig")}</button>
         <button class="btn quiet" onclick={() => dev.cancelCrop()} title={t("Abbrechen (Esc)")}>{t("Abbrechen")}</button>
       {:else}
-        <button class="btn" onclick={() => dev.enterCrop()} title={t("Zuschneiden (R)")}>{t("Zuschneiden")}</button>
+        <button class="btn" onclick={() => dev.enterCrop()} title={withKey(t("Zuschneiden"), "crop")}>{t("Zuschneiden")}</button>
       {/if}
       <button class="btn quiet" disabled={!dev.params.crop && !dev.params.straighten} onclick={() => dev.resetCrop()}>{t("Zurücksetzen")}</button>
     </div>
@@ -369,8 +370,8 @@
       <button class="btn small" onclick={() => dev.autoStraighten()} title={t("Horizont und Kanten automatisch gerade stellen")}>{t("Auto")}</button>
     </div>
     <div class="row">
-      <button class="btn" onclick={() => dev.rotate(-1)} title={t("Links drehen ([)")}>↺ {t("Links")}</button>
-      <button class="btn" onclick={() => dev.rotate(1)} title={t("Rechts drehen (])")}>↻ {t("Rechts")}</button>
+      <button class="btn" onclick={() => dev.rotate(-1)} title={withKey(t("Links drehen"), "rotateLeft")}>↺ {t("Links")}</button>
+      <button class="btn" onclick={() => dev.rotate(1)} title={withKey(t("Rechts drehen"), "rotateRight")}>↻ {t("Rechts")}</button>
       <button
         class="btn"
         class:on={dev.params.flipHorizontal}

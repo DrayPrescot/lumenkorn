@@ -27,3 +27,6 @@ tempfile = "3.27.0"
 
 [[example]]
 name = "scan"
+
+[[example]]
+name = "style_probe"

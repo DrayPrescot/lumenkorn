@@ -532,11 +532,12 @@ pub async fn develop_auto(
     app: AppHandle,
     id: i64,
     params: DevelopParams,
-) -> Result<lumenkorn_develop::auto::AutoTone, Error> {
+) -> Result<crate::style::AutoResult, Error> {
     blocking(app, move |state| {
         let src = load_proxy(state, id, PROXY_EDGE)?;
         let t = std::time::Instant::now();
-        let a = lumenkorn_develop::auto::auto_tone(&src, &params);
+        // Nach dem gelernten Stil angepasst, falls eingeschaltet
+        let a = crate::style::auto(state, id, &src, &params);
         log::info!("Auto für Bild {id} in {:.2?}: {a:?}", t.elapsed());
         Ok(a)
     })
@@ -568,6 +569,8 @@ pub fn develop_save(
     params: DevelopParams,
 ) -> Result<(), Error> {
     state.catalog.locked().save_develop(&ids, &params)?;
+    // Lernbeispiel für „Auto nach deinem Stil“ (nach einer Pause, im Hintergrund)
+    crate::style::nudge(&state);
     // Das gerade bearbeitete Foto liegt als Proxy im Speicher: Vorschau und
     // Thumbnail daraus rendern statt das RAW erneut in voller Auflösung zu
     // entwickeln (das kostete bei jedem Speichern Sekunden und ~1,5 GB).

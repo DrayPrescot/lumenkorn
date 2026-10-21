@@ -215,6 +215,9 @@ function withCount(p: Project): Project {
   return { ...p, imageCount: query({ scope: { type: "project", id: p.id } }).length };
 }
 
+let mockLearnStyle = true;
+let mockMapEnabled = true;
+
 const delay = <T>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 30));
 
 export const mock = {
@@ -343,7 +346,32 @@ export const mock = {
         return out(img.snapshots);
       }
       case "ai_status":
-        return out({ runtimePath: null, runtimeDownloadable: true, modelReady: false, missing: ["vision.onnx", "text.onnx", "vocab.json", "merges.txt"], downloadSize: 161_000_000, modelDir: "(Mock)", masksReady: true, skyReady: true, partsReady: true, masksDownloadSize: 0, repairReady: false, repairDownloadSize: 92_600_000, denoiseReady: false, denoiseDownloadSize: 131_000_000, gpuRuntimes: [{ backend: "webgpu", label: "WebGPU (Vulkan)", version: "1.27.0", installed: false, downloadSize: 25_163_729 }], accel: { active: { library: null, gpuEnabled: false, gpuError: null, placements: [] }, devices: [{ vendor: "AMD", name: "Radeon RX 7900 XTX / XT / GRE", memory: 25_753_026_560, discrete: true }], restartRequired: false, develop: { enabled: true, available: true, info: { name: "AMD Radeon RX 7900 XTX (RADV NAVI31)", backend: "Vulkan", kind: "discrete", driver: "radv Mesa" }, error: null } }, crashNotice: null, downloading: false, loaded: false, error: null, analyzed: 0, total: images.length, settings: { autoTag: true, accel: "auto", developGpu: true, faces: true } });
+        return out({ runtimePath: null, runtimeDownloadable: true, modelReady: false, missing: ["vision.onnx", "text.onnx", "vocab.json", "merges.txt"], downloadSize: 161_000_000, modelDir: "(Mock)", masksReady: true, skyReady: true, partsReady: true, masksDownloadSize: 0, repairReady: false, repairDownloadSize: 92_600_000, denoiseReady: false, denoiseDownloadSize: 131_000_000, gpuRuntimes: [{ backend: "webgpu", label: "WebGPU (Vulkan)", version: "1.27.0", installed: false, downloadSize: 25_163_729 }], accel: { active: { library: null, gpuEnabled: false, gpuError: null, placements: [] }, devices: [{ vendor: "AMD", name: "Radeon RX 7900 XTX / XT / GRE", memory: 25_753_026_560, discrete: true }], restartRequired: false, develop: { enabled: true, available: true, info: { name: "AMD Radeon RX 7900 XTX (RADV NAVI31)", backend: "Vulkan", kind: "discrete", driver: "radv Mesa" }, error: null } }, crashNotice: null, downloading: false, loaded: false, error: null, analyzed: 0, total: images.length, settings: { autoTag: true, accel: "auto", developGpu: true, faces: true, learnStyle: mockLearnStyle } });
+      case "style_status":
+        // Beispielhafter Lernstand für die Vorschau
+        return out({
+          enabled: mockLearnStyle,
+          samples: 71,
+          toneSamples: 64,
+          pending: 3,
+          summary: {
+            samples: 71,
+            stage2: true,
+            stage3: true,
+            stage4: false,
+            groups: [
+              { group: "ILCE-7M4 (RAW)", samples: 37, tone: [0.1, 0, 0, 0, 0, -12, 8], extra: [null, 18, null, null], adaptive: [false, false, false, false, false, false, true] },
+              { group: "Pixel 8 (JPEG)", samples: 28, tone: [0, -9, 0, 0, 0, 0, 0], extra: [null, null, null, null], adaptive: [false, false, false, false, false, false, false] },
+            ],
+          },
+        });
+      case "app_settings":
+        return out({ mapEnabled: mockMapEnabled });
+      case "app_set_settings":
+        mockMapEnabled = a.settings?.mapEnabled ?? mockMapEnabled;
+        return out(null);
+      case "style_reset":
+        return out(null);
       case "people_status":
         return out({ ready: true, downloadSize: 38_929_000, enabled: true, analyzed: images.length, total: images.length, faces: 12, error: null });
       case "people_list":
@@ -523,6 +551,8 @@ export const mock = {
       case "import_cancel":
         return out(null);
       case "ai_set_settings":
+        mockLearnStyle = a.settings?.learnStyle ?? mockLearnStyle;
+        return out(null);
       case "ai_retag_all":
       case "ai_cancel_download":
         return out(null);

@@ -27,7 +27,7 @@ downloaded once and then run offline on your CPU or GPU. Only the map view needs
 
 Lumenkorn has reached version 1.0. It is mainly used on Windows and is also built and tested
 on Linux. The interface is in German and English and follows
-the system language; **DE / EN** at the bottom left of the sidebar switches it.
+the system language; **Settings → General** (bottom left of the sidebar) switches it.
 
 **Built with AI:** A large part of Lumenkorn's code was written with an AI assistant. A person
 decides what the program should do and whether a change is good enough, and every release is
@@ -64,7 +64,8 @@ the catalog before you let Lumenkorn loose on your whole collection.
 ### Develop (non-destructive)
 - White balance, exposure, contrast, highlights, shadows, whites, blacks, clarity, dehaze,
   vibrance, saturation and sharpening. **Auto** (`Ctrl+U`) sets the tone sliders for a
-  balanced result. **Black & White** (`V`) converts the photo; the HSL luminance sliders
+  balanced result and learns your style from your edits (see below). **Black & White** (`V`)
+  converts the photo; the HSL luminance sliders
   then act as the gray mix and color grading tones it.
   Highlights and shadows work on the bright and dark half of the image, whites and blacks
   only on the ends of the scale.
@@ -89,6 +90,23 @@ the catalog before you let Lumenkorn loose on your whole collection.
 - History with undo/redo, snapshots, copy and paste of settings to many photos, and a
   "reset to original" button that asks before discarding everything.
 - Export to JPEG, 16-bit TIFF or PNG, by default into an `Export` folder next to each original.
+
+### Auto in your style
+Auto learns from your edits how you differ from its suggestions and adapts step by step,
+separately for each camera and for RAW/JPEG:
+
+1. For every edited photo Lumenkorn works out in the background what Auto would have suggested
+   (with your other settings such as crop and colour) and keeps the difference to your result,
+   together with a few brightness figures of the photo.
+2. From about 10–20 edits per camera: a fixed adjustment per camera, e.g. “blacks −12”.
+3. From about 50: depending on the photo's brightness, e.g. “dark photos a bit brighter”.
+4. From about 300: from photos with similar subjects (using the CLIP image features).
+
+A slider is only adjusted when that demonstrably gets closer to your results: each edited photo is
+predicted without itself, and only sliders that beat the plain Auto are used. Newer edits count
+more, so a changing style is followed. Everything stays on your computer (`stil.json` in the data
+folder). Under **Settings → Develop** you see what has been learned and can switch learning off or reset
+it.
 
 ### Merge
 <img src="docs/screenshots/merge.png" alt="Panorama merge dialog" width="560" align="right">
@@ -194,7 +212,7 @@ The installers are not code-signed yet. Windows SmartScreen will ask once
 ### AI agents (MCP)
 Lumenkorn has a built-in [Model Context Protocol](https://modelcontextprotocol.io) server, so
 AI agents such as Claude or ChatGPT/Codex can operate it. It is off by default; switch it on
-under **AI → AI agents (MCP)**, where the dialog also shows the exact settings to copy.
+under **Settings → AI agents (MCP)**, where the dialog also shows the exact settings to copy.
 
 - **stdio** (Claude Desktop, OpenAI Codex and most other agents): command `lumenkorn.exe`
   (full path) with the argument `--mcp`. This small bridge starts Lumenkorn if needed and passes
@@ -214,9 +232,12 @@ photo open in Develop they can be undone with `Ctrl+Z`.
 ### First steps
 1. Click **+** next to *Ordner* and choose a folder with photos.
 2. Rate with `0`–`5`, flag with `P` / `X`, and press `D` to develop the selected photo.
-3. Optional: **KI** at the bottom left downloads the AI models. Everything else works without them.
+3. Optional: **Settings → AI** (bottom left) downloads the AI models. Everything else works without them.
 
 ### Keyboard shortcuts
+
+These are the defaults. Under **Settings → Keyboard shortcuts** every command can get other or
+additional keys (a key already in use is reported); arrow keys, Enter, Space and Escape stay fixed.
 
 | Key | Action |
 |---|---|
@@ -394,7 +415,8 @@ RANSAC.
   at most one Nominatim request per second, and tiles are cached on disk for 7 days. The
   coordinates of your photos are sent to Nominatim to look up place names, rounded to about
   100 m and bundled: one request covers all photos inside the same town or village. Everything else
-  stays local.
+  stays local. **Settings → General → Map and place names** switches all of this off; then nothing
+  is sent to OpenStreetMap (the map in the photo album still works, it is built in).
 - A log file (`lumenkorn.log`) in the data folder records errors and what the AI did.
   Before risky native steps (loading a GPU runtime, opening a model) Lumenkorn leaves a marker
   file. If the app crashes there, the next start switches the cause off and explains why.

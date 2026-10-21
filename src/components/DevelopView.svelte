@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { keymap } from "../lib/keymap.svelte";
   import { isTyping } from "../lib/keys";
   import { imageUrl } from "../lib/api";
   import { dev } from "../lib/develop.svelte";
@@ -61,25 +62,25 @@
   function onkeydown(e: KeyboardEvent) {
     if (isTyping(e)) return;
     if (!dev.cropMode && zoomKey(e, zoom)) return;
-    const mod = e.ctrlKey || e.metaKey;
+    // Pfeile, Enter und Escape sind fest; der Rest folgt der Belegung
+    // (Einstellungen → Tastenkürzel)
     if (e.key === "ArrowRight") lib.move(1);
     else if (e.key === "ArrowLeft") lib.move(-1);
-    else if (e.key === "\\") dev.showBefore = !dev.showBefore;
-    else if (e.key.toLowerCase() === "o" && !mod && dev.activeMask !== null) dev.toggleOverlay();
-    else if (e.key.toLowerCase() === "v" && !mod && !e.altKey) dev.setMonochrome(!dev.params.monochrome);
-    else if (e.key.toLowerCase() === "r" && !mod) dev.cropMode ? dev.applyCrop() : dev.enterCrop();
+    else if (keymap.is(e, "before")) dev.showBefore = !dev.showBefore;
+    else if (keymap.is(e, "maskOverlay") && dev.activeMask !== null) dev.toggleOverlay();
+    else if (keymap.is(e, "bw")) dev.setMonochrome(!dev.params.monochrome);
+    else if (keymap.is(e, "crop")) dev.cropMode ? dev.applyCrop() : dev.enterCrop();
     else if (e.key === "Enter" && dev.cropMode) dev.applyCrop();
     else if (e.key === "Escape" && dev.cropMode) dev.cancelCrop();
     else if (e.key === "Escape" && (dev.tool || dev.activeMask !== null)) {
       if (dev.tool) dev.tool = null;
       else dev.selectMask(null);
     }
-    else if (e.key === "[") dev.rotate(-1);
-    else if (e.key === "]") dev.rotate(1);
-    else if (mod && e.key.toLowerCase() === "z" && e.shiftKey) dev.redo();
-    else if (mod && e.key.toLowerCase() === "z") dev.undo();
-    else if (mod && e.key.toLowerCase() === "y") dev.redo();
-    else if (mod && e.key.toLowerCase() === "u") dev.autoTone();
+    else if (keymap.is(e, "rotateLeft")) dev.rotate(-1);
+    else if (keymap.is(e, "rotateRight")) dev.rotate(1);
+    else if (keymap.is(e, "redo")) dev.redo();
+    else if (keymap.is(e, "undo")) dev.undo();
+    else if (keymap.is(e, "auto")) dev.autoTone();
     else return;
     e.preventDefault();
   }

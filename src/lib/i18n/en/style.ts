@@ -1,0 +1,22 @@
+// English texts: Auto in your style (learning from edits)
+export default {
+  "Der gelernte Stil ist gelöscht. Auto verhält sich wieder wie ab Werk und lernt ab jetzt neu.": "The learned style has been deleted. Auto behaves as it did originally and starts learning again from now on.",
+  "Auto nach deinem Stil": "Auto in your style",
+  "„Auto“ beim Entwickeln lernt aus deinen Bearbeitungen, wie du von seinen Vorschlägen abweichst, und passt sich nach und nach an – getrennt nach Kamera und RAW/JPEG. Ein Regler wird erst angepasst, wenn das an deinen eigenen Fotos nachweislich näher an deinem Ergebnis liegt. Alles bleibt auf diesem Rechner.": "“Auto” in Develop learns from your edits how you differ from its suggestions and adapts step by step – separately for each camera and for RAW/JPEG. A slider is only adjusted once that demonstrably gets closer to your own results on your photos. Everything stays on this computer.",
+  "Auto lernt aus meinen Bearbeitungen": "Auto learns from my edits",
+  "Ausgewertet": "Evaluated",
+  "{n} bearbeitete Fotos, davon {tone} mit Änderungen an den Tonreglern": "{n} edited photos, {tone} of them with changes to the tone sliders",
+  "{n} werden noch ausgewertet": "{n} still being evaluated",
+  "Stufen": "Stages",
+  "Ab etwa 10–20 Fotos": "From about 10–20 photos",
+  "Ausgleich je Kamera": "adjustment per camera",
+  "Ab etwa 50 Fotos je Kamera": "From about 50 photos per camera",
+  "abhängig von der Bildhelligkeit": "depending on the brightness of the photo",
+  "Ab etwa 300 Fotos": "From about 300 photos",
+  "ähnliche Motive": "similar subjects",
+  "noch kein deutlicher Unterschied zu Auto": "no clear difference from Auto yet",
+  "Noch nichts gelernt – dafür braucht es etwa 10 bis 20 bearbeitete Fotos.": "Nothing learned yet – that takes about 10 to 20 edited photos.",
+  "Gelernten Stil wirklich löschen?": "Really delete the learned style?",
+  "Gelernten Stil zurücksetzen": "Reset learned style",
+  "je nach Foto angepasst: {list}": "adjusted per photo: {list}",
+} satisfies Record<string, string>;

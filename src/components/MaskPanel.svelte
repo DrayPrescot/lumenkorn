@@ -6,6 +6,7 @@
   import { ANIMAL_KINDS, describeShape, dev, PERSON_PARTS, type NewMaskKind } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
+  import { withKey } from "../lib/keymap.svelte";
   import Icon from "./Icon.svelte";
   import Slider from "./Slider.svelte";
 
@@ -173,7 +174,7 @@
           <button class="btn small" onclick={(e) => { e.stopPropagation(); menu = menu?.mode === "subtract" ? null : { mode: "subtract" }; }}>{t("Abziehen")}</button>
           {#if menu?.mode === "subtract"}{@render kindMenu()}{/if}
         </div>
-        <button class="btn small" class:on={dev.showOverlay} onclick={() => dev.toggleOverlay()} title={t("Maske rot anzeigen (O)")}>{t("Maske zeigen")}</button>
+        <button class="btn small" class:on={dev.showOverlay} onclick={() => dev.toggleOverlay()} title={withKey(t("Maske rot anzeigen"), "maskOverlay")}>{t("Maske zeigen")}</button>
       </div>
 
       {#if dev.tool === "brush"}

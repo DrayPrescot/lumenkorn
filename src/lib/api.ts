@@ -634,6 +634,13 @@ export interface AutoTone {
   whites: number;
   blacks: number;
   vibrance: number;
+  /** nur nach gelerntem Stil gesetzt */
+  saturation?: number;
+  clarity?: number;
+  dehaze?: number;
+  sharpen?: number;
+  /** Auto wurde nach dem gelernten Stil angepasst */
+  style?: { stage: number; samples: number; group: string };
 }
 
 /** Was die Korrekturdaten eines RAWs abdecken */
@@ -668,6 +675,30 @@ export interface AiSettings {
   accel: AccelPreference;
   developGpu: boolean;
   faces: boolean;
+  /** „Auto“ lernt aus den Bearbeitungen */
+  learnStyle: boolean;
+}
+
+/** Allgemeine Einstellungen (einstellungen.json) */
+export interface AppSettings {
+  /** Karte, Ortssuche und Ortsnamen über OpenStreetMap */
+  mapEnabled: boolean;
+}
+
+/** Stand von „Auto nach deinem Stil“ */
+export interface StyleStatus {
+  enabled: boolean;
+  samples: number;
+  toneSamples: number;
+  pending: number;
+  summary: {
+    samples: number;
+    stage2: boolean;
+    stage3: boolean;
+    stage4: boolean;
+    /** je Kamera: gelernter Ausgleich der sieben Tonregler und Werte der weiteren Regler */
+    groups: { group: string; samples: number; tone: number[]; extra: (number | null)[]; adaptive: boolean[] }[];
+  };
 }
 export interface DevelopGpuStatus {
   enabled: boolean;
@@ -911,6 +942,11 @@ export const api = {
   albumSuggest: (request: { scope: Scope; theme: string; customTheme: string | null; count: number; skipUneditedRaw: boolean }) =>
     call<AlbumSuggestion>("album_suggest", { request }),
   albumSuggestCancel: () => call<void>("album_suggest_cancel"),
+  styleStatus: () => call<StyleStatus>("style_status"),
+  appSettings: () => call<AppSettings>("app_settings"),
+  appSetSettings: (settings: AppSettings) => call<void>("app_set_settings", { settings }),
+  importSetTarget: (target: string | null) => call<void>("import_set_target", { target }),
+  styleReset: () => call<void>("style_reset"),
   albumPlaces: (ids: number[]) => call<Record<string, string>>("album_places", { ids }),
   albumExport: (doc: AlbumDoc, path: string) => call<void>("album_export", { doc, path }),
   albumExportCancel: () => call<void>("album_export_cancel"),
@@ -1046,11 +1082,14 @@ export function tileUrlTemplate(): string {
 // --- Ordnerauswahl ------------------------------------------------------------
 
 /** Speichern-Dialog für eine PDF-Datei. `null`, wenn abgebrochen oder nicht verfügbar. */
-export async function pickPdfTarget(title: string, name: string): Promise<string | null> {
+export async function pickPdfTarget(title: string, name: string, dir: string | null = null): Promise<string | null> {
   if (!isTauri) return null;
   try {
     const { save } = await import("@tauri-apps/plugin-dialog");
-    const res = await save({ title, defaultPath: `${name}.pdf`, filters: [{ name: "PDF", extensions: ["pdf"] }] });
+    // Mit Standardordner (Einstellungen) dort vorschlagen
+    const sep = dir && dir.includes("/") && !dir.includes("\\") ? "/" : "\\";
+    const defaultPath = dir ? `${dir.replace(/[\\/]+$/, "")}${sep}${name}.pdf` : `${name}.pdf`;
+    const res = await save({ title, defaultPath, filters: [{ name: "PDF", extensions: ["pdf"] }] });
     return typeof res === "string" ? res : null;
   } catch {
     return null;

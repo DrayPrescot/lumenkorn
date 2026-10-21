@@ -4,6 +4,7 @@
   import { dev } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
+  import { keymap } from "../lib/keymap.svelte";
   import type { Preset, TransferGroups } from "../lib/api";
 
   let { x, y, onclose }: { x: number; y: number; onclose: () => void } = $props();
@@ -62,14 +63,14 @@
     onclick={() => run(() => lib.focused && dev.copyBasic(lib.focused.id))}
   >
     <span>{t("Basis-Einstellungen kopieren")}</span>
-    <kbd>{t("Strg+Umschalt+C")}</kbd>
+    <kbd>{keymap.hint("copySettings")}</kbd>
   </button>
   <button role="menuitem" disabled={!dev.clipboard || !targets.length} onclick={() => run(() => dev.pasteBasic(targets))}>
     <span>
       {targets.length > 1 ? t("Basis-Einstellungen einfügen ({n} Fotos)", { n: targets.length }) : t("Basis-Einstellungen einfügen")}
       {#if dev.clipboard}<small>{t("von {name}", { name: dev.clipboard.name })}</small>{/if}
     </span>
-    <kbd>{t("Strg+Umschalt+V")}</kbd>
+    <kbd>{keymap.hint("pasteSettings")}</kbd>
   </button>
   <div
     class="sub"
@@ -123,21 +124,21 @@
   <hr />
   <button role="menuitem" disabled={!many} onclick={() => run(() => lib.compare())}>
     <span>{many ? t("Groß nebeneinander vergleichen ({n} Fotos)", { n: Math.min(lib.selection.size, 12) }) : t("Groß nebeneinander vergleichen")}</span>
-    <kbd>C</kbd>
+    <kbd>{keymap.hint("compare")}</kbd>
   </button>
   <hr />
   <div class="label">{many ? t("Zusammenfügen ({n} Fotos)", { n: lib.selection.size }) : t("Zusammenfügen")}</div>
   <button role="menuitem" disabled={!many || busy} onclick={() => run(() => lib.openMerge("hdr"))}>
     <span>{t("HDR aus Belichtungsreihe …")}</span>
-    <kbd>{t("Strg+H")}</kbd>
+    <kbd>{keymap.hint("hdr")}</kbd>
   </button>
   <button role="menuitem" disabled={!many || busy} onclick={() => run(() => lib.openMerge("pano"))}>
     <span>{t("Panorama …")}</span>
-    <kbd>{t("Strg+M")}</kbd>
+    <kbd>{keymap.hint("pano")}</kbd>
   </button>
   <button role="menuitem" disabled={!many || busy} onclick={() => run(() => lib.openMerge("focus"))}>
     <span>{t("Focus Stacking …")}</span>
-    <kbd>{t("Strg+Umschalt+F")}</kbd>
+    <kbd>{keymap.hint("focus")}</kbd>
   </button>
 </div>
 

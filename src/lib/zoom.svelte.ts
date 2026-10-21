@@ -4,6 +4,8 @@
 // `zoom` ist das Verhältnis Bildschirmpixel (Gerätepixel) zu Originalpixeln:
 // 1 = 100 %, also jedes Bildpixel ein Bildschirmpixel.
 
+import { keymap } from "./keymap.svelte";
+
 export const ZOOM_STEPS = [0.0625, 0.125, 0.25, 1 / 3, 0.5, 2 / 3, 1, 1.5, 2, 3, 4, 8];
 export const MAX_ZOOM = 8;
 
@@ -59,13 +61,12 @@ export class ZoomState {
   }
 }
 
-/** Gemeinsame Tastenkürzel: Strg + / Strg − / Strg 0 / Z. `true`, wenn verarbeitet. */
+/** Gemeinsame Zoom-Kürzel (Standard Strg + / Strg − / Strg 0 / Z, anpassbar). `true`, wenn verarbeitet. */
 export function zoomKey(e: KeyboardEvent, z: ZoomState): boolean {
-  const mod = e.ctrlKey || e.metaKey;
-  if (mod && (e.key === "+" || e.key === "=" || e.code === "NumpadAdd")) z.stepIn();
-  else if (mod && (e.key === "-" || e.code === "NumpadSubtract")) z.stepOut();
-  else if (mod && (e.key === "0" || e.code === "Numpad0")) z.reset();
-  else if (!mod && !e.altKey && e.key.toLowerCase() === "z") z.toggle(z.cx, z.cy);
+  if (keymap.is(e, "zoomIn")) z.stepIn();
+  else if (keymap.is(e, "zoomOut")) z.stepOut();
+  else if (keymap.is(e, "zoomFit")) z.reset();
+  else if (keymap.is(e, "zoomToggle")) z.toggle(z.cx, z.cy);
   else return false;
   e.preventDefault();
   return true;

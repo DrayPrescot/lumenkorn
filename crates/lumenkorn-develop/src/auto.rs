@@ -178,6 +178,17 @@ fn solve(
 /// Berechnet die automatischen Tonwerte für `src` auf Basis der aktuellen
 /// Einstellungen `base` (deren Tonregler werden dabei ignoriert).
 pub fn auto_tone(src: &Source, base: &DevelopParams) -> AutoTone {
+    auto_tone_with_features(src, base).0
+}
+
+/// Anzahl der Bildmerkmale aus [`auto_tone_with_features`]
+pub const FEATURES: usize = 8;
+
+/// Wie [`auto_tone`], dazu Bildmerkmale des Fotos vor den Tonreglern (für
+/// „Auto nach deinem Stil“, siehe `style`): Helligkeit an den Perzentilen
+/// 5, 25, 50, 75, 95, Anteil ausgefressener Pixel, mittlere Sättigung,
+/// Anteil sehr dunkler Pixel – alles 0…1.
+pub fn auto_tone_with_features(src: &Source, base: &DevelopParams) -> (AutoTone, [f32; FEATURES]) {
     let mut small = src.downscaled(EDGE);
     let mut p = base.sanitized();
     // Objektivkorrektur einmal vorab statt in jedem der rund 80 Messdurchläufe
@@ -203,6 +214,16 @@ pub fn auto_tone(src: &Source, base: &DevelopParams) -> AutoTone {
     // Sehr dunkle Szenen (viel echtes Schwarz) nur teilweise anheben
     let dark_share = start.sorted.iter().take_while(|v| **v < 0.10).count() as f32
         / start.sorted.len().max(1) as f32;
+    let features = [
+        start.pct(0.05),
+        start.pct(0.25),
+        start.pct(0.5),
+        start.pct(0.75),
+        start.pct(0.95),
+        start.clipped,
+        start.saturation,
+        dark_share,
+    ];
     // Nachtbild: dunkel im Mittel, aber mit hellen Lichtern – gewollt dunkel
     let night = start.pct(0.5) < 0.12 && start.pct(0.99) > 0.5;
     let dark = if night {
@@ -299,7 +320,7 @@ pub fn auto_tone(src: &Source, base: &DevelopParams) -> AutoTone {
         });
         a.exposure = (ev.clamp(-2.0, max_ev) / 0.05).round() * 0.05;
     }
-    a
+    (a, features)
 }
 
 #[cfg(test)]

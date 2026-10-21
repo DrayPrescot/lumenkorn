@@ -83,6 +83,8 @@ pub struct AiSettings {
     pub develop_gpu: bool,
     /// Gesichter finden und Personen gruppieren
     pub faces: bool,
+    /// „Auto“ lernt aus den Bearbeitungen (siehe `style`)
+    pub learn_style: bool,
 }
 
 impl Default for AiSettings {
@@ -92,6 +94,7 @@ impl Default for AiSettings {
             accel: Preference::Auto,
             develop_gpu: true,
             faces: true,
+            learn_style: true,
         }
     }
 }
@@ -674,6 +677,7 @@ pub fn ai_set_settings(state: State<AppState>, settings: AiSettings) -> Result<(
         state.worker.submit(Job::Ai);
     }
     state.worker.submit(Job::Faces);
+    crate::style::settings_changed(&state);
     Ok(())
 }
 
@@ -907,6 +911,20 @@ pub async fn semantic_search(
             .images_in_order(&ids, &scope, min_rating)
     })
     .await
+}
+
+/// CLIP-Vektoren einzelner Fotos aus dem Suchindex (für „Auto nach deinem
+/// Stil“, Stufe 4: ähnliche Motive). Fehlende fehlen einfach.
+pub(crate) fn embeddings_for(
+    state: &AppState,
+    ids: &[i64],
+) -> std::collections::HashMap<i64, Vec<f32>> {
+    with_index(state, |idx| {
+        ids.iter()
+            .filter_map(|id| Some((*id, idx.get(*id)?.to_vec())))
+            .collect()
+    })
+    .unwrap_or_default()
 }
 
 /// CLIP-Werte für das Fotoalbum (siehe `album::select`).

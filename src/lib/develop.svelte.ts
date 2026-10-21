@@ -27,6 +27,7 @@ import {
 } from "./api";
 import { lib } from "./store.svelte";
 import { isCanceled, t } from "./i18n";
+import { keymap } from "./keymap.svelte";
 import type { HslMode } from "./hsl";
 import { isIdentity, type CurveChannel, type CurvePoint } from "./curve";
 
@@ -1002,7 +1003,7 @@ class Develop {
   async pasteBasic(ids: number[]) {
     const clip = this.clipboard;
     if (!clip) {
-      lib.notify(t("Zuerst Basis-Einstellungen kopieren (Strg+Umschalt+C)."));
+      lib.notify(t("Zuerst Basis-Einstellungen kopieren ({key}).", { key: keymap.hint("copySettings") }));
       return;
     }
     if (!ids.length) return;
@@ -1048,7 +1049,10 @@ class Develop {
     try {
       const a = await api.developAuto(id, $state.snapshot(this.params) as DevelopParams);
       if (this.imageId !== id) return;
-      Object.assign(this.params, a);
+      // `style` ist nur ein Hinweis, kein Regler
+      const { style, ...values } = a;
+      void style;
+      Object.assign(this.params, values);
       this.schedule();
       this.commit();
     } catch (e) {

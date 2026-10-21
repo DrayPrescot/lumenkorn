@@ -45,6 +45,7 @@ pub mod pipeline;
 pub mod raster;
 pub mod repair;
 pub mod source;
+pub mod style;
 
 pub use error::{Error, Result};
 

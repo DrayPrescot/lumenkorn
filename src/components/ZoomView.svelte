@@ -9,6 +9,7 @@
   import type { Snippet } from "svelte";
   import { onDestroy, untrack } from "svelte";
   import { t } from "../lib/i18n";
+  import { withKey } from "../lib/keymap.svelte";
   import { MAX_ZOOM, ZoomState, loadHi } from "../lib/zoom.svelte";
 
   type Region = { x: number; y: number; w: number; h: number };
@@ -269,11 +270,11 @@
 
   {#if showBadge && fitZoom > 0}
     <div class="badge" class:busy={!!hiLoading || (detPending && needDetail)}>
-      <button title={t("Verkleinern (Strg −)")} onclick={(e) => { e.stopPropagation(); zoom.stepOut(); }}>−</button>
-      <button class="pct" title={t("Einpassen ↔ 100 % (Z, Doppelklick)")} onclick={(e) => { e.stopPropagation(); zoom.toggle(cx, cy); }}>
+      <button title={withKey(t("Verkleinern"), "zoomOut")} onclick={(e) => { e.stopPropagation(); zoom.stepOut(); }}>−</button>
+      <button class="pct" title={`${withKey(t("Einpassen ↔ 100 %"), "zoomToggle")} · ${t("Doppelklick")}`} onclick={(e) => { e.stopPropagation(); zoom.toggle(cx, cy); }}>
         {zoom.fit ? t("Einpassen · {n} %", { n: String(Math.round(fitZoom * 100)) }) : `${Math.round(zoom.zoom * 100)} %`}
       </button>
-      <button title={t("Vergrößern (Strg +, Scrollrad)")} onclick={(e) => { e.stopPropagation(); zoom.stepIn(); }}>+</button>
+      <button title={`${withKey(t("Vergrößern"), "zoomIn")} · ${t("Scrollrad")}`} onclick={(e) => { e.stopPropagation(); zoom.stepIn(); }}>+</button>
       {#if hiLoading || (detPending && needDetail)}<span class="spin" aria-label={t("Lädt hohe Auflösung")}></span>{/if}
     </div>
   {/if}
