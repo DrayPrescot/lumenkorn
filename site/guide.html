@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Getting started – Lumenkorn</title>
+  <meta name="description" content="Install Lumenkorn, add your photos, set up the AI features and learn the keyboard shortcuts.">
+  <link rel="canonical" href="https://lumenkorn.com/guide">
+  <link rel="alternate" hreflang="en" href="https://lumenkorn.com/guide">
+  <link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/anleitung">
+  <link rel="icon" href="/favicon-32.png" type="image/png">
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/img/icon-128.png" alt="" width="28" height="28">Lumenkorn</a>
+    <nav class="nav" aria-label="Main">
+      <a href="/features">Features</a>
+      <a href="/guide" aria-current="page">Guide</a>
+      <a href="/privacy">Privacy</a>
+      <a class="lang push" href="/de/anleitung" hreflang="de" lang="de" title="Deutsch">DE</a>
+      <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
+      <a class="btn primary small" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="page">
+  <div class="wrap narrow">
+    <h1>Getting started</h1>
+    <ul class="toc">
+      <li><a href="#install">Install</a></li>
+      <li><a href="#first-steps">First steps</a></li>
+      <li><a href="#ai">Set up AI</a></li>
+      <li><a href="#updates">Updates</a></li>
+      <li><a href="#keys">Keyboard shortcuts</a></li>
+      <li><a href="#data">Your data and backups</a></li>
+      <li><a href="#help">Help</a></li>
+    </ul>
+
+    <h2 id="install">Install</h2>
+    <ol>
+      <li>Open the <a href="https://github.com/DrayPrescot/lumenkorn/releases/latest">latest release on GitHub</a>.</li>
+      <li>Download one of the two <code>.msi</code> files. They differ only in the language of the
+        installer (<code>en-US</code> or <code>de-DE</code>); the app itself follows your system
+        language and can be switched later.</li>
+      <li>Run the file. The installers are not code-signed yet, so Windows SmartScreen asks once:
+        click <strong>More info</strong>, then <strong>Run anyway</strong>.</li>
+    </ol>
+    <p>Lumenkorn runs on 64-bit Windows 10 and 11. A graphics card is not required but makes editing
+      and the AI much faster. On Linux, Lumenkorn can be
+      <a href="https://github.com/DrayPrescot/lumenkorn#building-from-source">built from source</a>.</p>
+
+    <h2 id="first-steps">First steps</h2>
+    <figure class="wide-figure shot">
+      <img src="/img/library-winter.webp" width="1800" height="1045" loading="lazy" alt="Library with winter photos of a river, in the English interface">
+    </figure>
+    <ol>
+      <li>Click <strong>+</strong> next to <em>Folders</em> in the sidebar and choose a folder with photos.
+        Lumenkorn reads it in place and builds previews in the background.</li>
+      <li>Browse with the arrow keys, rate with <kbd>1</kbd>–<kbd>5</kbd>, pick with <kbd>P</kbd> and
+        reject with <kbd>X</kbd>.</li>
+      <li>Press <kbd>D</kbd> to develop the selected photo. <kbd>Ctrl</kbd>+<kbd>U</kbd> applies Auto, a good
+        starting point.</li>
+      <li>Export with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>. By default the files go into an
+        <code>Export</code> folder next to the originals.</li>
+    </ol>
+    <p>To copy photos from a memory card, use <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>I</kbd> or the arrow
+      next to <em>Folders</em>. Projects (above the folders) gather folders that belong together, such
+      as all days of a trip.</p>
+
+    <h2 id="ai">Set up AI</h2>
+    <p>Open <strong>Settings → AI</strong> at the bottom left and download the models you want. Each
+      feature can be set up on its own: keywords and search, AI masks, noise reduction and face
+      recognition. After that Lumenkorn analyzes your photos in the background; the progress is shown
+      next to the Settings button.</p>
+    <p>Under <strong>Settings → Graphics card</strong> you choose whether editing and AI use the GPU.
+      For the AI on the GPU, Windows needs the Microsoft Visual C++ Redistributable; Lumenkorn tells
+      you if it is missing.</p>
+
+    <h2 id="updates">Updates</h2>
+    <p>Shortly after starting, Lumenkorn checks once whether a new version is out. If there is one, it
+      shows what changed and asks. <strong>Install now</strong> downloads it, checks its signature,
+      installs it and restarts. Your catalog and edits are kept.</p>
+
+    <h2 id="keys">Keyboard shortcuts</h2>
+    <p>The most important defaults. Under <strong>Settings → Keyboard shortcuts</strong> every command
+      can get a different or an additional key.</p>
+    <table>
+      <thead><tr><th>Key</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>0</kbd>–<kbd>5</kbd></td><td>Rating</td></tr>
+        <tr><td><kbd>P</kbd> / <kbd>X</kbd> / <kbd>U</kbd></td><td>Pick / reject / clear flag</td></tr>
+        <tr><td><kbd>Shift</kbd>+<kbd>X</kbd></td><td>Reject and go to the next photo</td></tr>
+        <tr><td><kbd>Enter</kbd> / <kbd>E</kbd></td><td>Show large; several selected: compare</td></tr>
+        <tr><td><kbd>D</kbd> / <kbd>G</kbd></td><td>Develop / back to the grid</td></tr>
+        <tr><td><kbd>M</kbd></td><td>Map</td></tr>
+        <tr><td><kbd>Z</kbd>, mouse wheel</td><td>Zoom (fit ↔ 100 %)</td></tr>
+        <tr><td><kbd>\</kbd></td><td>Before / after</td></tr>
+        <tr><td><kbd>R</kbd></td><td>Crop</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>U</kbd></td><td>Auto</td></tr>
+        <tr><td><kbd>V</kbd></td><td>Black &amp; white</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></td><td>Undo / redo</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> / <kbd>V</kbd></td><td>Copy / paste settings</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd></td><td>Export</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>I</kbd></td><td>Import from a memory card</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>H</kbd> / <kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>HDR / panorama</td></tr>
+      </tbody>
+    </table>
+
+    <h2 id="data">Your data and backups</h2>
+    <p>Lumenkorn never changes your original photos. Your ratings, keywords and edits live in the
+      catalog in the data folder:</p>
+    <p><code>%APPDATA%\io.github.drayprescot.lumenkorn\</code></p>
+    <p>Back up this folder together with your photos. The folder also holds the AI models and AI
+      results, which can be downloaded and computed again if lost.</p>
+    <div class="note">
+      <p><strong>How Lumenkorn is made:</strong> a large part of the code was written with an AI
+        assistant. A person decides what the program should do and whether a change is good enough,
+        and every release is tried on real photos before it goes out. Bugs can still slip through,
+        so keep a backup of your photos and the catalog.</p>
+    </div>
+
+    <h2 id="help">Help</h2>
+    <p>Found a bug or missing something? Please open an
+      <a href="https://github.com/DrayPrescot/lumenkorn/issues">issue on GitHub</a>. The
+      <a href="https://github.com/DrayPrescot/lumenkorn/blob/main/CHANGELOG.md">changelog</a> lists
+      what changed in each version.</p>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span>Lumenkorn · GPL-3.0-or-later</span>
+    <nav aria-label="Footer">
+      <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
+      <a href="https://github.com/DrayPrescot/lumenkorn/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/imprint">Legal notice</a>
+      <a href="/de/anleitung" hreflang="de" lang="de">Deutsch</a>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>

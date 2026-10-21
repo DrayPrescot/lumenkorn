@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy – Lumenkorn</title>
+  <meta name="description" content="What the Lumenkorn app sends over the internet, and how this website handles your data.">
+  <link rel="canonical" href="https://lumenkorn.com/privacy">
+  <link rel="alternate" hreflang="en" href="https://lumenkorn.com/privacy">
+  <link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/datenschutz">
+  <link rel="icon" href="/favicon-32.png" type="image/png">
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/img/icon-128.png" alt="" width="28" height="28">Lumenkorn</a>
+    <nav class="nav" aria-label="Main">
+      <a href="/features">Features</a>
+      <a href="/guide">Guide</a>
+      <a href="/privacy" aria-current="page">Privacy</a>
+      <a class="lang push" href="/de/datenschutz" hreflang="de" lang="de" title="Deutsch">DE</a>
+      <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
+      <a class="btn primary small" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="page">
+  <div class="wrap narrow">
+    <h1>Privacy</h1>
+    <p class="lead">This page has two parts: what the Lumenkorn app does with your data, and the
+      privacy policy of this website.</p>
+    <ul class="toc">
+      <li><a href="#app">The app</a></li>
+      <li><a href="#website">This website</a></li>
+    </ul>
+
+    <h2 id="app">The app</h2>
+    <p>Lumenkorn has no account, no cloud and no usage statistics. Your photos, the catalog, your
+      edits and all AI results stay on your computer. Lumenkorn only writes to your photo folders
+      when you ask it to (export, merge results, deleting rejected photos).</p>
+    <p>The app connects to the internet only in these cases:</p>
+    <ul>
+      <li><strong>Update check:</strong> shortly after starting, Lumenkorn asks GitHub once whether a new
+        version is out. Like any web request, this tells GitHub your IP address.</li>
+      <li><strong>AI downloads:</strong> only when you click the button for it, the AI runtime and models
+        are downloaded from the sources named in the
+        <a href="https://github.com/DrayPrescot/lumenkorn#ai-models-downloaded-on-demand-not-shipped-with-the-app">README</a>
+        (GitHub, Hugging Face, OpenCV). Nothing about your photos is sent.</li>
+      <li><strong>Map and place names:</strong> map images come from OpenStreetMap
+        (<code>tile.openstreetmap.org</code>), place search and place names from Nominatim
+        (<code>nominatim.openstreetmap.org</code>). To find place names, the coordinates of your
+        photos are sent, rounded to about 100 m and bundled per town. <strong>Settings → General → Map
+        and place names</strong> switches this off completely; the map in the photo album still works
+        because it is built in.</li>
+    </ul>
+    <p>The interface for AI agents (MCP) is off by default. When switched on, only programs on your
+      own computer can connect.</p>
+
+    <h2 id="website">This website</h2>
+    <h3>Controller</h3>
+    <p>The person named in the <a href="/imprint">legal notice</a> is responsible for this website.</p>
+
+    <h3>Hosting</h3>
+    <p>This website is hosted by Cloudflare, Inc., 101 Townsend St, San Francisco, CA 94107, USA
+      (Cloudflare Pages). When you open a page, your browser sends technical data that Cloudflare
+      processes to deliver the page and to protect it against attacks: IP address, date and time,
+      the page requested, browser type and the referring page. The legal basis is our legitimate
+      interest in a secure and reliable website (Art. 6(1)(f) GDPR). We have a data processing
+      agreement with Cloudflare. Cloudflare is certified under the EU–US Data Privacy Framework.
+      Details: <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare privacy policy</a>.</p>
+
+    <h3>No cookies, no tracking</h3>
+    <p>This website sets no cookies, uses no analytics or tracking and loads nothing from other
+      servers; fonts and images come from this website itself. If you switch the language, your
+      choice is stored in your browser's local storage (<code>lang</code>) so the start page does not
+      switch back. It never leaves your browser and you can delete it at any time.</p>
+
+    <h3>Links</h3>
+    <p>Downloads and the source code are on GitHub. When you follow such a link, GitHub's privacy
+      policy applies.</p>
+
+    <h3>Your rights</h3>
+    <p>You have the right to access, rectification, erasure and restriction of processing of your
+      personal data, the right to data portability and the right to object to processing based on
+      legitimate interests. You can also lodge a complaint with a data protection supervisory
+      authority.</p>
+    <p class="muted">The German version of this privacy policy is authoritative.</p>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span>Lumenkorn · GPL-3.0-or-later</span>
+    <nav aria-label="Footer">
+      <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
+      <a href="https://github.com/DrayPrescot/lumenkorn/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="/privacy" aria-current="page">Privacy</a>
+      <a href="/imprint">Legal notice</a>
+      <a href="/de/datenschutz" hreflang="de" lang="de">Deutsch</a>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>
