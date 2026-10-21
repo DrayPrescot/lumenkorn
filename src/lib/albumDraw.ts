@@ -20,7 +20,8 @@ import {
   type Rect,
 } from "./album";
 import { countryAt, loadCountries, type Country } from "./countries";
-import { lang } from "./i18n";
+import { lang, locale } from "./i18n";
+import { loadMapDetails, type MapDetails } from "./mapdetails";
 
 /** Schriften laden, bevor auf Canvas gezeichnet wird (sonst Ersatzschrift) */
 export async function ensureFonts(font: AlbumFont): Promise<void> {
@@ -198,8 +199,11 @@ const MAP = {
   land: "#f4f1ea",
   visited: "#e6d9bd",
   border: "#b7b0a2",
+  river: "#9fc0d4",
   pin: "#c2412d",
   text: "#2b2b2b",
+  city: "#55524c",
+  peak: "#6b5a45",
 };
 
 function ringPath(ctx: CanvasRenderingContext2D, v: View, ring: [number, number][]) {
@@ -258,11 +262,48 @@ export function mapPins(a: AlbumState, pageIndex: number, layout: PageLayout): {
     .sort((x, y) => y.count - x.count);
 }
 
+/** Kartendaten: Länder und (falls geladen) Städte, Berge, Gewässer */
+export interface MapData {
+  countries: Country[];
+  details: MapDetails | null;
+}
+
+/** Was die Kartenseite zeigen soll (fehlende Angaben: an) */
+export interface MapOptions {
+  labels: boolean;
+  names: Record<string, string>;
+  cities: boolean;
+  peaks: boolean;
+  water: boolean;
+}
+
+type Box = Rect;
+const overlaps = (b: Box, list: Box[]) => list.some((q) => b.x < q.x + q.w && q.x < b.x + b.w && b.y < q.y + q.h && q.y < b.y + b.h);
+const inside = (b: Box, r: Rect) => b.x >= r.x && b.y >= r.y && b.x + b.w <= r.x + r.w && b.y + b.h <= r.y + r.h;
+
+function haloText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size: number, color: string) {
+  ctx.lineWidth = size * 0.28;
+  ctx.strokeStyle = "rgba(255,255,255,0.9)";
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+}
+
+/** Linie in Kartenkoordinaten */
+function linePath(ctx: CanvasRenderingContext2D, v: View, line: [number, number][]) {
+  line.forEach(([lon, lat], i) => {
+    const [x, y] = project(v, lon, lat);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+}
+
 /** Karte mit allen Aufnahmeorten des Projekts in `rect` (mm). */
-function drawMap(ctx: CanvasRenderingContext2D, a: AlbumState, rect: Rect, countries: Country[], labels: boolean, names: Record<string, string>) {
+function drawMap(ctx: CanvasRenderingContext2D, a: AlbumState, rect: Rect, data: MapData, opt: MapOptions) {
   const m = mapView(a, rect);
   if (!m) return;
   const { view: v, located } = m;
+  const { countries } = data;
   rect = v.rect;
   ctx.save();
   ctx.beginPath();
@@ -272,20 +313,24 @@ function drawMap(ctx: CanvasRenderingContext2D, a: AlbumState, rect: Rect, count
   ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
   const side = Math.min(rect.w, rect.h);
   // Umbenannte Orte (leer: ohne Namen)
-  const pins = m.pins.map((p) => ({ ...p, label: names[p.label] ?? p.label }));
+  const pins = m.pins.map((p) => ({ ...p, label: opt.names[p.label] ?? p.label }));
   // Besuchte Länder aus den einzelnen Aufnahmeorten (auf ~1 km zusammengefasst)
   const spots = new Map(located.map((c) => [`${c.lat!.toFixed(2)},${c.lon!.toFixed(2)}`, c]));
   const visited = new Set([...spots.values()].map((c) => countryAt(countries, c.lon!, c.lat!)?.iso).filter(Boolean));
-  // Länder im Ausschnitt (BBox grob prüfen)
-  const lonMin = (v.x0 * 180) / Math.PI - 5;
-  const lonMax = (v.x1 * 180) / Math.PI + 5;
+  // Ausschnitt in Grad (für den groben Vorfilter)
   const latOf = (y: number) => (Math.atan(Math.sinh(y)) * 180) / Math.PI;
-  const latMin = latOf(v.y0) - 5;
-  const latMax = latOf(v.y1) + 5;
+  const lon0 = (v.x0 * 180) / Math.PI;
+  const lon1 = (v.x1 * 180) / Math.PI;
+  const lat0 = latOf(v.y0);
+  const lat1 = latOf(v.y1);
+  const near = ([a0, b0, a1, b1]: [number, number, number, number], pad = 0) =>
+    !(a1 < lon0 - pad || a0 > lon1 + pad || b1 < lat0 - pad || b0 > lat1 + pad);
+  // Wie viele Grad entspricht 1 mm? (Breite des Ausschnitts / Kartenbreite)
+  const degPerMm = (lon1 - lon0) / rect.w;
   ctx.lineJoin = "round";
+  ctx.lineCap = "round";
   for (const c of countries) {
-    const [a0, b0, a1, b1] = c.bbox;
-    if (a1 < lonMin || a0 > lonMax || b1 < latMin || b0 > latMax) continue;
+    if (!near(c.bbox, 5)) continue;
     ctx.beginPath();
     for (const poly of c.polygons) for (const ring of poly) ringPath(ctx, v, ring);
     ctx.fillStyle = visited.has(c.iso) ? MAP.visited : MAP.land;
@@ -294,19 +339,40 @@ function drawMap(ctx: CanvasRenderingContext2D, a: AlbumState, rect: Rect, count
     ctx.lineWidth = Math.max(0.15, side * 0.0012);
     ctx.stroke();
   }
-  // Stecknadeln, dann Namen (ohne Überlappung)
-  const pinH = side * 0.035;
-  const placed: Rect[] = [];
-  const xy = pins.map((p) => project(v, p.lon, p.lat));
-  for (const [x, y] of xy) {
-    drawPin(ctx, x, y, pinH);
-    placed.push({ x: x - pinH * 0.35, y: y - pinH, w: pinH * 0.7, h: pinH });
+  const d = data.details;
+  // Seen und Flüsse: je größer der Ausschnitt, desto nur die wichtigeren
+  if (d && opt.water) {
+    const maxRank = detailRank(degPerMm);
+    ctx.fillStyle = MAP.sea;
+    ctx.strokeStyle = MAP.river;
+    ctx.lineWidth = Math.max(0.12, side * 0.0008);
+    for (const l of d.lakes) {
+      if (l.rank > maxRank || !near(l.bbox)) continue;
+      ctx.beginPath();
+      for (const poly of l.polygons) for (const ring of poly) ringPath(ctx, v, ring);
+      ctx.fill("evenodd");
+      ctx.stroke();
+    }
+    ctx.strokeStyle = MAP.river;
+    for (const r of d.rivers) {
+      if (r.rank > maxRank || !near(r.bbox)) continue;
+      // Wichtige Flüsse etwas breiter
+      ctx.lineWidth = Math.max(0.15, side * (0.0028 - Math.min(r.rank, 10) * 0.00018));
+      ctx.beginPath();
+      for (const line of r.lines) linePath(ctx, v, line);
+      ctx.stroke();
+    }
   }
-  if (labels) {
-    const size = Math.max(2.2, side * 0.012);
+  // Platz für die Stecknadeln und ihre Namen zuerst reservieren: Städte und
+  // Berge kommen nur dorthin, wo danach noch Platz ist
+  const pinH = side * 0.035;
+  const placed: Box[] = [];
+  const xy = pins.map((p) => project(v, p.lon, p.lat));
+  for (const [x, y] of xy) placed.push({ x: x - pinH * 0.4, y: y - pinH, w: pinH * 0.8, h: pinH });
+  const size = Math.max(2.2, side * 0.012);
+  const pinLabels: { text: string; box: Box }[] = [];
+  if (opt.labels) {
     ctx.font = canvasFont(a.settings.font, size, true);
-    ctx.textBaseline = "middle";
-    ctx.textAlign = "left";
     // Große Orte zuerst beschriften
     const order = pins.map((_, i) => i).sort((i, j) => pins[j].count - pins[i].count);
     for (const i of order) {
@@ -316,22 +382,83 @@ function drawMap(ctx: CanvasRenderingContext2D, a: AlbumState, rect: Rect, count
       const w = ctx.measureText(p.label).width;
       // rechts der Nadel, sonst links
       const cy = y - pinH * 0.68;
-      const tries = [
-        { x: x + pinH * 0.45, y: cy - size * 0.6 },
-        { x: x - pinH * 0.45 - w, y: cy - size * 0.6 },
-      ];
-      const box = tries
-        .map((t) => ({ x: t.x, y: t.y, w, h: size * 1.2 }))
-        .find((b) => b.x >= rect.x && b.x + b.w <= rect.x + rect.w && !placed.some((q) => b.x < q.x + q.w && q.x < b.x + b.w && b.y < q.y + q.h && q.y < b.y + b.h));
+      const box = [x + pinH * 0.45, x - pinH * 0.45 - w]
+        .map((bx) => ({ x: bx, y: cy - size * 0.6, w, h: size * 1.2 }))
+        .find((b) => inside(b, rect) && !overlaps(b, placed));
       if (!box) continue;
       placed.push(box);
-      ctx.lineWidth = size * 0.28;
-      ctx.strokeStyle = "rgba(255,255,255,0.9)";
-      ctx.strokeText(p.label, box.x, box.y + box.h / 2);
-      ctx.fillStyle = MAP.text;
-      ctx.fillText(p.label, box.x, box.y + box.h / 2);
+      pinLabels.push({ text: p.label, box });
     }
   }
+  const small = size * 0.8;
+  const pinNames = new Set(pins.map((p) => p.label.toLowerCase()));
+  // Berge: die höchsten im Ausschnitt, Dreieck mit Name und Höhe
+  if (d && opt.peaks) {
+    ctx.font = canvasFont(a.settings.font, small);
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    const tri = small * 0.75;
+    let shown = 0;
+    const peaks = d.peaks.filter((p) => p.lon >= lon0 && p.lon <= lon1 && p.lat >= lat0 && p.lat <= lat1).sort((p, q) => q.elevation - p.elevation);
+    for (const p of peaks) {
+      if (shown >= 8) break;
+      const [x, y] = project(v, p.lon, p.lat);
+      const text = `${p.name} ${p.elevation.toLocaleString(locale)} m`;
+      const w = ctx.measureText(text).width;
+      const mark: Box = { x: x - tri / 2, y: y - tri / 2, w: tri, h: tri };
+      const label: Box = { x: x + tri * 0.8, y: y - small * 0.6, w, h: small * 1.2 };
+      if (!inside(label, rect) || overlaps(mark, placed) || overlaps(label, placed)) continue;
+      placed.push(mark, label);
+      shown++;
+      ctx.beginPath();
+      ctx.moveTo(x, y - tri * 0.55);
+      ctx.lineTo(x + tri * 0.55, y + tri * 0.4);
+      ctx.lineTo(x - tri * 0.55, y + tri * 0.4);
+      ctx.closePath();
+      ctx.fillStyle = MAP.peak;
+      ctx.fill();
+      haloText(ctx, text, label.x, y, small, MAP.peak);
+    }
+  }
+  // Städte: nach Wichtigkeit, so viele wie Platz haben (höchstens ~25)
+  if (d && opt.cities) {
+    ctx.font = canvasFont(a.settings.font, small);
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    const dot = small * 0.32;
+    let shown = 0;
+    const cities = d.cities
+      .filter((c) => c.lon >= lon0 && c.lon <= lon1 && c.lat >= lat0 && c.lat <= lat1)
+      .sort((p, q) => p.rank - q.rank);
+    for (const c of cities) {
+      if (shown >= 25) break;
+      const name = (lang === "de" && c.de) || c.en;
+      // Nicht doppelt (Daten enthalten manche Städte zweimal) und nicht, wenn
+      // eine Stecknadel schon so heißt
+      if (!name || pinNames.has(name.toLowerCase())) continue;
+      pinNames.add(name.toLowerCase());
+      const [x, y] = project(v, c.lon, c.lat);
+      const w = ctx.measureText(name).width;
+      const mark: Box = { x: x - dot * 2, y: y - dot * 2, w: dot * 4, h: dot * 4 };
+      const label = [x + dot * 2, x - dot * 2 - w]
+        .map((bx) => ({ x: bx, y: y - small * 0.6, w, h: small * 1.2 }))
+        .find((b) => inside(b, rect) && !overlaps(b, placed));
+      if (!label || overlaps(mark, placed)) continue;
+      placed.push(mark, label);
+      shown++;
+      ctx.beginPath();
+      ctx.arc(x, y, dot, 0, Math.PI * 2);
+      ctx.fillStyle = MAP.city;
+      ctx.fill();
+      haloText(ctx, name, label.x, y, small, MAP.city);
+    }
+  }
+  // Stecknadeln und ihre Namen obenauf
+  for (const [x, y] of xy) drawPin(ctx, x, y, pinH);
+  ctx.font = canvasFont(a.settings.font, size, true);
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  for (const l of pinLabels) haloText(ctx, l.text, l.box.x, l.box.y + l.box.h / 2, size, MAP.text);
   ctx.restore();
   // Feiner Rahmen
   ctx.strokeStyle = MAP.border;
@@ -339,12 +466,27 @@ function drawMap(ctx: CanvasRenderingContext2D, a: AlbumState, rect: Rect, count
   ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
 }
 
-let countriesCache: Country[] | null = null;
+/**
+ * Bis zu welchem Rang Flüsse und Seen gezeigt werden: Auf einer Weltkarte
+ * nur die großen, auf einer Inselkarte auch kleinere (Rang wie Natural
+ * Earth: klein = wichtig).
+ */
+function detailRank(degPerMm: number): number {
+  if (degPerMm > 0.5) return 3;
+  if (degPerMm > 0.15) return 5;
+  if (degPerMm > 0.05) return 7;
+  return 10;
+}
+
+let mapCache: MapData | null = null;
 
 /** Kartendaten (beim ersten Mal nachladen) */
-export async function countries(): Promise<Country[]> {
-  countriesCache ??= await loadCountries();
-  return countriesCache;
+export async function mapData(): Promise<MapData> {
+  if (!mapCache) {
+    const [countries, details] = await Promise.all([loadCountries(), loadMapDetails().catch(() => null)]);
+    mapCache = { countries, details };
+  }
+  return mapCache;
 }
 
 /**
@@ -352,9 +494,16 @@ export async function countries(): Promise<Country[]> {
  * so skaliert sein, dass 1 Einheit = 1 mm ist und (0,0) die beschnittene
  * Seitenecke (beim Export also um die Beschnittzugabe verschoben).
  */
-export function drawPage(ctx: CanvasRenderingContext2D, a: AlbumState, pageIndex: number, layout: PageLayout, map: Country[] | null) {
+export function drawPage(ctx: CanvasRenderingContext2D, a: AlbumState, pageIndex: number, layout: PageLayout, map: MapData | null) {
   const page = a.pages[pageIndex];
-  if (page.map && map) drawMap(ctx, a, layout.content, map, page.map.labels, page.map.names ?? {});
+  if (page.map && map)
+    drawMap(ctx, a, layout.content, map, {
+      labels: page.map.labels,
+      names: page.map.names ?? {},
+      cities: page.map.cities ?? true,
+      peaks: page.map.peaks ?? true,
+      water: page.map.water ?? true,
+    });
   for (const t of layout.texts) drawText(ctx, a, t, layout);
 }
 
@@ -368,7 +517,7 @@ export function hasOverlay(a: AlbumState, pageIndex: number): boolean {
 export async function renderOverlay(a: AlbumState, pageIndex: number, layout: PageLayout): Promise<string | undefined> {
   if (!hasOverlay(a, pageIndex)) return undefined;
   await ensureFonts(a.settings.font);
-  const map = a.pages[pageIndex].map ? await countries() : null;
+  const map = a.pages[pageIndex].map ? await mapData() : null;
   const pxPerMm = DPI / 25.4;
   // Gleiche Rundung wie das Backend (export.rs, page_pixels)
   const w = Math.round((a.settings.widthMm + 2 * BLEED_MM) * pxPerMm);

@@ -118,7 +118,7 @@ export default {
   "Karte als letzte Seite": "Map as last page",
   "Unsere Reise": "Our trip",
   "Serifenschrift im Fotoalbum": "Serif font in the photo album",
-  "Ländergrenzen für die Karte im Fotoalbum": "Country outlines for the photo album map",
+  "Kartendaten im Fotoalbum: Länder, Städte, Berge, Flüsse und Seen": "Map data in the photo album: countries, cities, mountains, rivers and lakes",
   "Orte auf der Karte": "Places on the map",
   "Namen ändern; leer lassen blendet den Namen aus.": "Change the names; leave a name empty to hide it.",
   "ohne Namen": "no name",
@@ -126,4 +126,9 @@ export default {
   "Vorschlag wiederherstellen: {name}": "Restore suggestion: {name}",
   "Schriftgröße": "Font size",
   "Schriftstil für Datum und Ort und als Vorgabe für eigene Texte – einzelne Texte lassen sich später anpassen.": "Text style for date and place and the default for your own texts – single texts can be adjusted later.",
+  "{n} Seiten, davon eine Karte": "{n} pages, one of them a map",
+  "Mit Karte braucht das Album mindestens 2 Seiten.": "With a map the album needs at least 2 pages.",
+  "Städte": "Cities",
+  "Berge": "Mountains",
+  "Flüsse und Seen": "Rivers and lakes",
 } satisfies Record<string, string>;

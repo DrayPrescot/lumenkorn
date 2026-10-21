@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Photo album map: larger cities, major mountains with their height, rivers and lakes (Natural Earth,
+  built in, works offline). How many appear depends on the area shown; your own places come first.
+  Each layer can be switched off on the map page.
+
+### Fixed
+- Photo album: the map page now counts towards the chosen number of pages instead of being added on
+  top, so the album keeps an even number of pages.
+
 ## [1.0.14] – 2026-10-20
 
 ### Added

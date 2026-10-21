@@ -135,7 +135,8 @@ photos and pages, with or without margins.
 - **Map:** a map page as first or last page shows the country outlines, highlights the countries
   you visited and puts a pin on every place; places close together share one pin, named after
   the town or, for a whole island, the region. The names can be changed or hidden in the side
-  panel. It needs no internet.
+  panel. Larger cities, major mountains with their height, rivers and lakes are added where there
+  is room (each can be switched off). It needs no internet.
 - **Save as PDF** writes a print-ready PDF (300 dpi, 3 mm bleed on each side, trim box set) and a
   folder with every page as a JPG, which most photo book printers accept. The album is kept and
   can be opened and changed again later.
@@ -530,7 +531,7 @@ The same list is shown in the app: click ⓘ (**About Lumenkorn**) at the bottom
 | [Lensfun](https://github.com/lensfun/lensfun) database (bundled, converted to JSON by `tools/lensfun_db.py`) | lens profiles for lens correction | CC BY-SA 3.0 |
 | [Instrument Sans](https://github.com/Instrument/instrument-sans) via [Fontsource](https://fontsource.org) | interface font, photo album | OFL-1.1 |
 | [Lora](https://github.com/cyrealtype/Lora-Cyrillic) via [Fontsource](https://fontsource.org) | serif font for the photo album | OFL-1.1 |
-| [Natural Earth](https://www.naturalearthdata.com) Admin 0 countries, 1:50m (built into the app, made with `tools/build_countries.mjs`) | country outlines for the album map | Public domain |
+| [Natural Earth](https://www.naturalearthdata.com) countries 1:50m, populated places, elevation points, rivers and lakes 1:10m (built into the app, made with `tools/build_countries.mjs` and `tools/build_mapdetails.mjs`) | map in the photo album | Public domain |
 | [Leaflet](https://github.com/Leaflet/Leaflet) | map display | BSD-2-Clause |
 | [Leaflet.markercluster](https://github.com/Leaflet/Leaflet.markercluster) | clustered markers on the map | MIT |
 

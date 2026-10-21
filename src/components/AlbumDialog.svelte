@@ -44,8 +44,12 @@
   let manualPages = $state(untrack(() => (s.pages > 0 ? s.pages : autoPages(s.count))));
 
   const pages = $derived(autoPagesOn ? autoPages(s.count) : manualPages);
-  const tooMany = $derived(s.count > pages * MAX_PER_PAGE);
-  const tooFew = $derived(s.count < pages);
+  // Die Kartenseite zählt mit (nur wenn Fotos einen Aufnahmeort haben)
+  const hasLocations = $derived(lib.images.some((i) => i.lat != null && i.lon != null));
+  const mapPages = $derived(s.map !== "none" && hasLocations ? 1 : 0);
+  const photoPages = $derived(pages - mapPages);
+  const tooMany = $derived(s.count > photoPages * MAX_PER_PAGE);
+  const tooFew = $derived(s.count < photoPages || photoPages < 1);
   const sizeOk = $derived(s.widthMm >= 50 && s.heightMm >= 50 && s.widthMm <= 600 && s.heightMm <= 600);
   const canStart = $derived(
     !running && sizeOk && s.count >= 1 && s.count <= available && !tooMany && !tooFew && (s.theme !== "custom" || s.customTheme.trim().length > 0),
@@ -157,7 +161,7 @@
         <span class="dims">
           <label><input type="checkbox" bind:checked={autoPagesOn} /> {t("automatisch")}</label>
           {#if autoPagesOn}
-            <span class="muted">{t("{n} Seiten", { n: pages })}</span>
+            <span class="muted">{mapPages ? t("{n} Seiten, davon eine Karte", { n: pages }) : t("{n} Seiten", { n: pages })}</span>
           {:else}
             <input type="number" min="1" max="400" step="1" bind:value={manualPages} aria-label={t("Seitenzahl")} />
           {/if}
@@ -214,9 +218,11 @@
     {:else if !sizeOk}
       <p class="warn">{t("Die Seitengröße muss zwischen 50 und 600 mm liegen.")}</p>
     {:else if tooMany}
-      <p class="warn">{t("Auf {pages} Seiten passen höchstens {max} Fotos.", { pages, max: pages * MAX_PER_PAGE })}</p>
+      <p class="warn">{t("Auf {pages} Seiten passen höchstens {max} Fotos.", { pages: photoPages, max: photoPages * MAX_PER_PAGE })}</p>
+    {:else if photoPages < 1}
+      <p class="warn">{t("Mit Karte braucht das Album mindestens 2 Seiten.")}</p>
     {:else if tooFew}
-      <p class="warn">{t("Für {pages} Seiten braucht es mindestens {pages} Fotos.", { pages })}</p>
+      <p class="warn">{t("Für {pages} Seiten braucht es mindestens {pages} Fotos.", { pages: photoPages })}</p>
     {/if}
     {#if !lib.ai?.modelReady}
       <p class="meta small">{t("Die KI ist nicht eingerichtet: Die Fotos werden nur nach Schärfe, Belichtung und Bewertung gewählt, das Thema bleibt unberücksichtigt.")}</p>

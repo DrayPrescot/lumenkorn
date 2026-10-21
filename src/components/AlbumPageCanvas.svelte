@@ -4,15 +4,14 @@
   import { untrack } from "svelte";
   import type { PageLayout } from "../lib/album";
   import { album } from "../lib/album.svelte";
-  import { countries, drawPage, ensureFonts, hasOverlay } from "../lib/albumDraw";
-  import type { Country } from "../lib/countries";
+  import { drawPage, ensureFonts, hasOverlay, mapData, type MapData } from "../lib/albumDraw";
 
   let { page, layout }: { page: number; layout: PageLayout } = $props();
 
   let canvas = $state<HTMLCanvasElement>();
   let width = $state(0);
   let height = $state(0);
-  let map = $state<Country[] | null>(null);
+  let map = $state<MapData | null>(null);
   let fontsReady = $state(0);
 
   const a = $derived(album.state!);
@@ -30,7 +29,7 @@
 
   // Kartendaten und Schriften einmal nachladen, dann neu zeichnen
   $effect(() => {
-    if (a.pages[page]?.map && !map) countries().then((c) => (map = c));
+    if (a.pages[page]?.map && !map) mapData().then((d) => (map = d));
   });
   $effect(() => {
     const font = a.settings.font;

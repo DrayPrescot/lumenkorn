@@ -346,6 +346,18 @@
           <input type="checkbox" checked={a.pages[sel.page].map!.labels} onchange={(e) => album.setMapLabels(sel.page, e.currentTarget.checked)} />
           {t("Ortsnamen anzeigen")}
         </label>
+        <label class="check">
+          <input type="checkbox" checked={a.pages[sel.page].map!.cities ?? true} onchange={(e) => album.setMapLayer(sel.page, "cities", e.currentTarget.checked)} />
+          {t("Städte")}
+        </label>
+        <label class="check">
+          <input type="checkbox" checked={a.pages[sel.page].map!.peaks ?? true} onchange={(e) => album.setMapLayer(sel.page, "peaks", e.currentTarget.checked)} />
+          {t("Berge")}
+        </label>
+        <label class="check">
+          <input type="checkbox" checked={a.pages[sel.page].map!.water ?? true} onchange={(e) => album.setMapLayer(sel.page, "water", e.currentTarget.checked)} />
+          {t("Flüsse und Seen")}
+        </label>
         {#if a.pages[sel.page].map!.labels && album.layouts[sel.page]}
           {@const pins = mapPins(a, sel.page, album.layouts[sel.page])}
           {#if pins.length}

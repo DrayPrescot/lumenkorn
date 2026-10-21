@@ -201,7 +201,7 @@ export interface AlbumPage {
    * Kartenseite (statt Fotos): Karte mit den besuchten Orten. `names`:
    * umbenannte Stecknadeln (vorgeschlagener Name → eigener, "" = ohne Namen)
    */
-  map?: { labels: boolean; names?: Record<string, string> };
+  map?: { labels: boolean; names?: Record<string, string>; cities?: boolean; peaks?: boolean; water?: boolean };
 }
 
 export interface AlbumState {
@@ -476,10 +476,14 @@ export function pickHighlights(picked: AlbumCandidate[], pages: number): Set<num
 /** Neues Album aus dem Vorschlag des Backends. */
 export function buildAlbum(settings: AlbumSettings, scope: Scope, title: string, s: AlbumSuggestion): AlbumState {
   const picked = s.candidates.filter((c) => c.picked);
+  // Die Kartenseite zählt zur gewählten Seitenzahl (sonst wird sie ungerade);
+  // sie kommt nur, wenn es Aufnahmeorte gibt
+  const map = settings.map !== "none" && s.candidates.some((c) => c.lat != null && c.lon != null) ? 1 : 0;
   // Feste Seitenzahl: Reicht sie nicht (mehr Fotos mit 4–5 Sternen als
   // gewünscht), kommen Seiten dazu – gerade Zahl
-  const needed = 2 * Math.ceil(picked.length / MAX_PER_PAGE / 2);
-  const pages = settings.pages > 0 ? Math.max(settings.pages, needed) : autoPages(picked.length);
+  const needed = 2 * Math.ceil((Math.ceil(picked.length / MAX_PER_PAGE) + map) / 2);
+  const total = settings.pages > 0 ? Math.max(settings.pages, needed) : autoPages(picked.length);
+  const pages = Math.max(1, total - map);
   const groups = paginate(picked, pages, pickHighlights(picked, pages));
   const a: AlbumState = {
     version: 1,
@@ -492,8 +496,7 @@ export function buildAlbum(settings: AlbumSettings, scope: Scope, title: string,
     themeUsed: s.themeUsed,
     unanalyzed: s.unanalyzed,
   };
-  // Karte nur, wenn es Aufnahmeorte gibt
-  if (settings.map !== "none" && s.candidates.some((c) => c.lat != null && c.lon != null)) {
+  if (map) {
     if (settings.map === "first") a.pages.unshift(mapPage());
     else a.pages.push(mapPage());
   }

@@ -374,6 +374,14 @@ class AlbumStore {
     }
   }
 
+  /** Städte, Berge, Gewässer auf der Karte ein-/ausblenden */
+  setMapLayer(page: number, layer: "cities" | "peaks" | "water", on: boolean) {
+    this.#edit((a) => {
+      const m = a.pages[page].map;
+      if (m) m[layer] = on;
+    });
+  }
+
   setMapLabels(page: number, labels: boolean) {
     this.#edit((a) => {
       const p = a.pages[page];
