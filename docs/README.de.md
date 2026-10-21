@@ -1,6 +1,6 @@
 # Lumenkorn
 
-*[English version](../README.md)*
+*[English version](../README.md) · Website: [lumenkorn.com](https://lumenkorn.com/de/)*
 
 Lumenkorn ist eine Fotoverwaltung mit RAW-Entwicklung, die komplett auf dem eigenen Rechner läuft.
 Gedacht ist es als Ersatz für Lightroom Classic: Fotos und Bearbeitungen bleiben auf der eigenen
