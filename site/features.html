@@ -8,7 +8,21 @@
   <link rel="canonical" href="https://lumenkorn.com/features">
   <link rel="alternate" hreflang="en" href="https://lumenkorn.com/features">
   <link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/funktionen">
-  <link rel="icon" href="/favicon-32.png" type="image/png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Lumenkorn">
+  <meta property="og:title" content="Features – Lumenkorn">
+  <meta property="og:description" content="Library, RAW development, AI masks, noise reduction, search by content, map, photo album, HDR and panorama: what Lumenkorn can do.">
+  <meta property="og:url" content="https://lumenkorn.com/features">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:image" content="https://lumenkorn.com/img/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Lumenkorn: photo library and RAW developer, Develop view with a sunset">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/img/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="preload" href="/fonts/instrument-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/assets/style.css">
   <script src="/assets/site.js" defer></script>
 </head>
@@ -45,7 +59,7 @@
 
     <h2 id="library">Library</h2>
     <figure class="wide-figure shot">
-      <img src="/img/library.webp" width="1800" height="1043" loading="lazy" alt="Library with animal photos from a zoo, a penguin selected, its camera data on the right">
+      <img src="/img/library.webp" srcset="/img/library-900.webp 900w, /img/library.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1043" loading="lazy" alt="Library with animal photos from a zoo, a penguin selected, its camera data on the right">
     </figure>
     <ul>
       <li>Folders are read where they are. Nothing is copied or moved unless you import from a memory card.</li>
@@ -65,7 +79,7 @@
 
     <h2 id="develop">Develop</h2>
     <figure class="wide-figure shot">
-      <img src="/img/develop.webp" width="1800" height="1043" loading="lazy" alt="Develop view with a sunset over a lake and the sliders on the right">
+      <img src="/img/develop.webp" srcset="/img/develop-900.webp 900w, /img/develop.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1043" loading="lazy" alt="Develop view with a sunset over a lake and the sliders on the right">
     </figure>
     <p>RAW files are developed following darktable's scene-referred workflow, translated to Rust:
       highlight reconstruction, demosaicing, color calibration and sigmoid tone mapping. Every
@@ -87,8 +101,8 @@
     </ul>
     <figure class="wide-figure">
       <div class="shot compare">
-        <img src="/img/after.webp" width="1600" height="1067" loading="lazy" alt="Kingfisher on a branch, after editing">
-        <div class="over"><img src="/img/before.webp" width="1600" height="1067" loading="lazy" alt="The same photo before editing"></div>
+        <img src="/img/after.webp" srcset="/img/after-900.webp 900w, /img/after.webp 1600w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1600" height="1067" loading="lazy" alt="Kingfisher on a branch, after editing">
+        <div class="over"><img src="/img/before.webp" srcset="/img/before-900.webp 900w, /img/before.webp 1600w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1600" height="1067" loading="lazy" alt="The same photo before editing"></div>
         <input type="range" min="0" max="100" value="50" aria-label="Compare before and after">
         <div class="handle"></div>
         <span class="tag l">Before</span><span class="tag r">After</span>
@@ -114,15 +128,15 @@
       without them.</p>
     <h3>Masks</h3>
     <figure class="wide-figure shot">
-      <img src="/img/ai-mask.webp" width="1800" height="1046" loading="lazy" alt="Kingfisher selected with an AI mask, shown in red">
+      <img src="/img/ai-mask.webp" srcset="/img/ai-mask-900.webp 900w, /img/ai-mask.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1046" loading="lazy" alt="Kingfisher selected with an AI mask, shown in red">
     </figure>
     <p>Masks for the main subject, the sky, people (whole, or parts such as hair, eyes, lips or skin),
       animals and any object you click on. Masks can be added to and subtracted from each other.</p>
     <h3>Noise reduction</h3>
     <figure class="wide-figure">
       <div class="shot compare">
-        <img src="/img/denoise-after.webp" width="1400" height="985" loading="lazy" alt="Kingfisher at 100 percent after AI noise reduction">
-        <div class="over"><img src="/img/denoise-before.webp" width="1400" height="985" loading="lazy" alt="The same detail before, with strong noise"></div>
+        <img src="/img/denoise-after.webp" srcset="/img/denoise-after-900.webp 900w, /img/denoise-after.webp 1400w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1400" height="985" loading="lazy" alt="Kingfisher at 100 percent after AI noise reduction">
+        <div class="over"><img src="/img/denoise-before.webp" srcset="/img/denoise-before-900.webp 900w, /img/denoise-before.webp 1400w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1400" height="985" loading="lazy" alt="The same detail before, with strong noise"></div>
         <input type="range" min="0" max="100" value="50" aria-label="Compare noise before and after">
         <div class="handle"></div>
         <span class="tag l">Before</span><span class="tag r">After</span>
@@ -133,7 +147,7 @@
       repair removes dust spots, power lines, signs or people.</p>
     <h3>Keywords and search by content</h3>
     <figure class="wide-figure shot">
-      <img src="/img/ai-search.webp" width="1800" height="1253" loading="lazy" alt="Search for “mountains” finds photos of Mount Fuji at sunset">
+      <img src="/img/ai-search.webp" srcset="/img/ai-search-900.webp 900w, /img/ai-search.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1253" loading="lazy" alt="Search for “mountains” finds photos of Mount Fuji at sunset">
     </figure>
     <p>Lumenkorn suggests keywords for place, subject, light, weather and style, and finds photos by
       what is in them: type “mountains” and you get mountains, whether or not anyone tagged them.</p>
@@ -143,7 +157,7 @@
 
     <h2 id="map">Map</h2>
     <figure class="wide-figure shot">
-      <img src="/img/map.webp" width="1800" height="1163" loading="lazy" alt="Map of Japan with clustered markers for the photos of a trip">
+      <img src="/img/map.webp" srcset="/img/map-900.webp 900w, /img/map.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1163" loading="lazy" alt="Map of Japan with clustered markers for the photos of a trip">
     </figure>
     <ul>
       <li>Shows the photos of the current folder, project or search on an OpenStreetMap map.</li>
@@ -156,7 +170,7 @@
 
     <h2 id="album">Photo album</h2>
     <figure class="wide-figure shot">
-      <img src="/img/album.webp" width="1800" height="1045" loading="lazy" alt="Photo album with autumn photos from Japan and the text options on the right">
+      <img src="/img/album.webp" srcset="/img/album-900.webp 900w, /img/album.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1045" loading="lazy" alt="Photo album with autumn photos from Japan and the text options on the right">
     </figure>
     <p>Turns a project or folder into a photo book. Pick a theme (travel, wedding, family, nature and
       more, or describe your own), a page size and the number of photos.</p>

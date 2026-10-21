@@ -8,7 +8,21 @@
   <link rel="canonical" href="https://lumenkorn.com/de/funktionen">
   <link rel="alternate" hreflang="en" href="https://lumenkorn.com/features">
   <link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/funktionen">
-  <link rel="icon" href="/favicon-32.png" type="image/png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Lumenkorn">
+  <meta property="og:title" content="Funktionen – Lumenkorn">
+  <meta property="og:description" content="Bibliothek, RAW-Entwicklung, KI-Masken, Rauschreduzierung, Inhaltssuche, Karte, Fotoalbum, HDR und Panorama: was Lumenkorn kann.">
+  <meta property="og:url" content="https://lumenkorn.com/de/funktionen">
+  <meta property="og:locale" content="de_DE">
+  <meta property="og:image" content="https://lumenkorn.com/img/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Lumenkorn: Fotoverwaltung und RAW-Entwicklung, Entwickeln-Ansicht mit Sonnenuntergang">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/img/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="preload" href="/fonts/instrument-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/assets/style.css">
   <script src="/assets/site.js" defer></script>
 </head>
@@ -45,7 +59,7 @@
 
     <h2 id="bibliothek">Bibliothek</h2>
     <figure class="wide-figure shot">
-      <img src="/img/library.webp" width="1800" height="1043" loading="lazy" alt="Bibliothek mit Tierfotos aus einem Zoo, ausgewählt ist ein Pinguin, rechts seine Aufnahmedaten">
+      <img src="/img/library.webp" srcset="/img/library-900.webp 900w, /img/library.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1043" loading="lazy" alt="Bibliothek mit Tierfotos aus einem Zoo, ausgewählt ist ein Pinguin, rechts seine Aufnahmedaten">
     </figure>
     <ul>
       <li>Ordner werden dort gelesen, wo sie liegen. Nichts wird kopiert oder verschoben, außer du
@@ -68,7 +82,7 @@
 
     <h2 id="entwickeln">Entwickeln</h2>
     <figure class="wide-figure shot">
-      <img src="/img/develop.webp" width="1800" height="1043" loading="lazy" alt="Entwickeln-Ansicht mit einem Sonnenuntergang über einem See und den Reglern rechts">
+      <img src="/img/develop.webp" srcset="/img/develop-900.webp 900w, /img/develop.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1043" loading="lazy" alt="Entwickeln-Ansicht mit einem Sonnenuntergang über einem See und den Reglern rechts">
     </figure>
     <p>RAW-Dateien werden nach dem szenenbezogenen Ablauf von darktable entwickelt, übertragen nach
       Rust: Lichterrekonstruktion, Demosaicing, Farbkalibrierung und Sigmoid-Tonwertabbildung. Jede
@@ -90,8 +104,8 @@
     </ul>
     <figure class="wide-figure">
       <div class="shot compare">
-        <img src="/img/after.webp" width="1600" height="1067" loading="lazy" alt="Eisvogel auf einem Ast nach der Bearbeitung">
-        <div class="over"><img src="/img/before.webp" width="1600" height="1067" loading="lazy" alt="Dasselbe Foto vor der Bearbeitung"></div>
+        <img src="/img/after.webp" srcset="/img/after-900.webp 900w, /img/after.webp 1600w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1600" height="1067" loading="lazy" alt="Eisvogel auf einem Ast nach der Bearbeitung">
+        <div class="over"><img src="/img/before.webp" srcset="/img/before-900.webp 900w, /img/before.webp 1600w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1600" height="1067" loading="lazy" alt="Dasselbe Foto vor der Bearbeitung"></div>
         <input type="range" min="0" max="100" value="50" aria-label="Vorher und nachher vergleichen">
         <div class="handle"></div>
         <span class="tag l">Vorher</span><span class="tag r">Nachher</span>
@@ -118,7 +132,7 @@
       Lumenkorn funktioniert auch ohne sie.</p>
     <h3>Masken</h3>
     <figure class="wide-figure shot">
-      <img src="/img/ai-mask.webp" width="1800" height="1046" loading="lazy" alt="Eisvogel mit einer KI-Maske ausgewählt, rot angezeigt">
+      <img src="/img/ai-mask.webp" srcset="/img/ai-mask-900.webp 900w, /img/ai-mask.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1046" loading="lazy" alt="Eisvogel mit einer KI-Maske ausgewählt, rot angezeigt">
     </figure>
     <p>Masken für das Hauptmotiv, den Himmel, Personen (ganz oder Teile wie Haare, Augen, Lippen oder
       Haut), Tiere und jedes Objekt, das du anklickst. Masken lassen sich addieren und voneinander
@@ -126,8 +140,8 @@
     <h3>Rauschreduzierung</h3>
     <figure class="wide-figure">
       <div class="shot compare">
-        <img src="/img/denoise-after.webp" width="1400" height="985" loading="lazy" alt="Eisvogel in 100-Prozent-Ansicht nach der KI-Rauschreduzierung">
-        <div class="over"><img src="/img/denoise-before.webp" width="1400" height="985" loading="lazy" alt="Derselbe Ausschnitt vorher, mit starkem Rauschen"></div>
+        <img src="/img/denoise-after.webp" srcset="/img/denoise-after-900.webp 900w, /img/denoise-after.webp 1400w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1400" height="985" loading="lazy" alt="Eisvogel in 100-Prozent-Ansicht nach der KI-Rauschreduzierung">
+        <div class="over"><img src="/img/denoise-before.webp" srcset="/img/denoise-before-900.webp 900w, /img/denoise-before.webp 1400w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1400" height="985" loading="lazy" alt="Derselbe Ausschnitt vorher, mit starkem Rauschen"></div>
         <input type="range" min="0" max="100" value="50" aria-label="Rauschen vorher und nachher vergleichen">
         <div class="handle"></div>
         <span class="tag l">Vorher</span><span class="tag r">Nachher</span>
@@ -138,7 +152,7 @@
       Durchgang. Die KI-Reparatur entfernt Staubflecken, Stromleitungen, Schilder oder Personen.</p>
     <h3>Schlagworte und Inhaltssuche</h3>
     <figure class="wide-figure shot">
-      <img src="/img/ai-search.webp" width="1800" height="1253" loading="lazy" alt="Die Suche nach „Berge“ findet Fotos vom Fuji im Abendlicht">
+      <img src="/img/ai-search.webp" srcset="/img/ai-search-900.webp 900w, /img/ai-search.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1253" loading="lazy" alt="Die Suche nach „Berge“ findet Fotos vom Fuji im Abendlicht">
     </figure>
     <p>Lumenkorn schlägt Schlagworte für Ort, Motiv, Licht, Wetter und Stil vor und findet Fotos nach
       ihrem Inhalt: Gib „Berge“ ein, und du bekommst Berge, auch wenn sie niemand verschlagwortet hat.</p>
@@ -149,7 +163,7 @@
 
     <h2 id="karte">Karte</h2>
     <figure class="wide-figure shot">
-      <img src="/img/map.webp" width="1800" height="1163" loading="lazy" alt="Karte von Japan mit gebündelten Markierungen für die Fotos einer Reise">
+      <img src="/img/map.webp" srcset="/img/map-900.webp 900w, /img/map.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1163" loading="lazy" alt="Karte von Japan mit gebündelten Markierungen für die Fotos einer Reise">
     </figure>
     <ul>
       <li>Zeigt die Fotos des aktuellen Ordners, Projekts oder der Suche auf einer OpenStreetMap-Karte.</li>
@@ -163,7 +177,7 @@
 
     <h2 id="fotoalbum">Fotoalbum</h2>
     <figure class="wide-figure shot">
-      <img src="/img/album.webp" width="1800" height="1045" loading="lazy" alt="Fotoalbum mit Herbstfotos aus Japan und den Schriftoptionen rechts">
+      <img src="/img/album.webp" srcset="/img/album-900.webp 900w, /img/album.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1045" loading="lazy" alt="Fotoalbum mit Herbstfotos aus Japan und den Schriftoptionen rechts">
     </figure>
     <p>Macht aus einem Projekt oder Ordner ein Fotobuch. Wähle ein Thema (Reise, Hochzeit, Familie,
       Natur und mehr, oder beschreibe ein eigenes), ein Format und die Zahl der Fotos.</p>

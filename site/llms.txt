@@ -1,0 +1,34 @@
+# Lumenkorn
+
+> Free, open-source photo library and RAW developer that runs entirely on your own computer
+> (Windows; Linux from source). No account, no cloud, no subscription. AI features use open
+> models that are downloaded once and then run offline. License: GPL-3.0-or-later.
+
+Lumenkorn is meant as a replacement for Lightroom Classic for people who want to keep their
+photos and edits on their own disk. It reads photo folders in place, builds a local SQLite
+catalog and never changes the original files. Interface in English and German.
+
+## Main features
+
+- Library: folders read in place, projects across drives, stars, flags, keywords, search,
+  import from memory cards with byte-by-byte verification, compare up to 12 photos.
+- Develop: non-destructive RAW development following darktable's scene-referred workflow
+  (translated to Rust), lens correction (camera data or Lensfun), HSL, color grading, tone
+  curve, local masks, export to JPEG, TIFF or PNG. Runs on the GPU (DirectX 12, Vulkan) or CPU.
+- Auto in your style: Auto tone that learns from the user's own edits, per camera.
+- AI (optional, offline): keywords and search by content (CLIP), masks for subject, sky,
+  people and animals, noise reduction (DRUNet), object removal (LaMa), face grouping.
+- Map: photos on an OpenStreetMap map, place names; can be switched off completely.
+- Photo album: automatic photo book from a project, print-ready PDF.
+- HDR, panorama and focus stacking.
+- Built-in MCP server so AI agents can operate the app (off by default, local only).
+
+## Links
+
+- [Features](https://lumenkorn.com/features): all features with screenshots
+- [Getting started](https://lumenkorn.com/guide): installation, first steps, keyboard shortcuts
+- [Privacy](https://lumenkorn.com/privacy): what the app sends over the internet
+- [Download (latest release)](https://github.com/DrayPrescot/lumenkorn/releases/latest)
+- [Source code and full documentation](https://github.com/DrayPrescot/lumenkorn)
+- [Changelog](https://github.com/DrayPrescot/lumenkorn/blob/main/CHANGELOG.md)
+- German version of the website: https://lumenkorn.com/de/

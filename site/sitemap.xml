@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://lumenkorn.com/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://lumenkorn.com/"/>
+    <xhtml:link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/"/>
+  </url>
+  <url>
+    <loc>https://lumenkorn.com/de/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://lumenkorn.com/"/>
+    <xhtml:link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/"/>
+  </url>
+  <url>
+    <loc>https://lumenkorn.com/features</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://lumenkorn.com/features"/>
+    <xhtml:link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/funktionen"/>
+  </url>
+  <url>
+    <loc>https://lumenkorn.com/de/funktionen</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://lumenkorn.com/features"/>
+    <xhtml:link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/funktionen"/>
+  </url>
+  <url>
+    <loc>https://lumenkorn.com/guide</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://lumenkorn.com/guide"/>
+    <xhtml:link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/anleitung"/>
+  </url>
+  <url>
+    <loc>https://lumenkorn.com/de/anleitung</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://lumenkorn.com/guide"/>
+    <xhtml:link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/anleitung"/>
+  </url>
+  <url>
+    <loc>https://lumenkorn.com/privacy</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://lumenkorn.com/privacy"/>
+    <xhtml:link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/datenschutz"/>
+  </url>
+  <url>
+    <loc>https://lumenkorn.com/de/datenschutz</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://lumenkorn.com/privacy"/>
+    <xhtml:link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/datenschutz"/>
+  </url>
+</urlset>

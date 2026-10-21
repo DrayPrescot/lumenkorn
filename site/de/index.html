@@ -9,10 +9,21 @@
   <link rel="alternate" hreflang="en" href="https://lumenkorn.com/">
   <link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/">
   <link rel="alternate" hreflang="x-default" href="https://lumenkorn.com/">
-  <meta property="og:title" content="Lumenkorn">
-  <meta property="og:description" content="Fotoverwaltung und RAW-Entwicklung, die ganz auf deinem Rechner läuft.">
-  <meta property="og:image" content="https://lumenkorn.com/img/develop.webp">
-  <link rel="icon" href="/favicon-32.png" type="image/png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Lumenkorn">
+  <meta property="og:title" content="Lumenkorn – Fotoverwaltung und RAW-Entwicklung">
+  <meta property="og:description" content="Kostenlose Fotoverwaltung und RAW-Entwicklung, die ganz auf deinem Rechner läuft. KI für Schlagworte, Masken und Rauschreduzierung, offline. Ohne Konto, Cloud und Abo.">
+  <meta property="og:url" content="https://lumenkorn.com/de/">
+  <meta property="og:locale" content="de_DE">
+  <meta property="og:image" content="https://lumenkorn.com/img/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Lumenkorn: Fotoverwaltung und RAW-Entwicklung, Entwickeln-Ansicht mit Sonnenuntergang">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/img/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="preload" href="/fonts/instrument-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/assets/style.css">
   <script src="/assets/site.js" defer></script>
 </head>
@@ -43,9 +54,9 @@
         <a class="btn primary" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Für Windows herunterladen</a>
         <a class="btn" href="/de/funktionen">Was es kann</a>
       </div>
-      <p class="meta">Kostenlos und quelloffen (GPL-3.0) · Windows, Linux aus dem Quellcode · Deutsch und Englisch</p>
+      <p class="meta">Windows-Installer (.msi), deutsch oder englisch · Kostenlos und quelloffen (GPL-3.0) · Linux aus dem Quellcode</p>
       <figure class="shot">
-        <img src="/img/develop.webp" width="1800" height="1043" alt="Entwickeln-Ansicht von Lumenkorn mit einem Sonnenuntergang über einem See und den Reglern für Weißabgleich, Licht und Farbe">
+        <img src="/img/develop.webp" srcset="/img/develop-900.webp 900w, /img/develop.webp 1800w" sizes="(max-width: 1228px) calc(100vw - 48px), 1180px" fetchpriority="high" width="1800" height="1043" alt="Entwickeln-Ansicht von Lumenkorn mit einem Sonnenuntergang über einem See und den Reglern für Weißabgleich, Licht und Farbe">
       </figure>
     </div>
   </section>
@@ -83,7 +94,7 @@
           und prüft jede Kopie Byte für Byte.</p>
       </div>
       <figure class="shot">
-        <img src="/img/library.webp" width="1800" height="1043" loading="lazy" alt="Bibliothek mit Tierfotos aus einem Zoo, ausgewählt ist ein Pinguin, rechts seine Aufnahmedaten">
+        <img src="/img/library.webp" srcset="/img/library-900.webp 900w, /img/library.webp 1800w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1800" height="1043" loading="lazy" alt="Bibliothek mit Tierfotos aus einem Zoo, ausgewählt ist ein Pinguin, rechts seine Aufnahmedaten">
       </figure>
     </div>
   </section>
@@ -99,8 +110,8 @@
         <p>Alles bleibt jederzeit änderbar. Zieh den Regler, um zu vergleichen.</p>
       </div>
       <div class="shot compare">
-        <img src="/img/after.webp" width="1600" height="1067" loading="lazy" alt="Eisvogel auf einem Ast nach der Bearbeitung: warme, klare Farben">
-        <div class="over"><img src="/img/before.webp" width="1600" height="1067" loading="lazy" alt="Dasselbe Foto vor der Bearbeitung: flau und matt"></div>
+        <img src="/img/after.webp" srcset="/img/after-900.webp 900w, /img/after.webp 1600w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1600" height="1067" loading="lazy" alt="Eisvogel auf einem Ast nach der Bearbeitung: warme, klare Farben">
+        <div class="over"><img src="/img/before.webp" srcset="/img/before-900.webp 900w, /img/before.webp 1600w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1600" height="1067" loading="lazy" alt="Dasselbe Foto vor der Bearbeitung: flau und matt"></div>
         <input type="range" min="0" max="100" value="50" aria-label="Vorher und nachher vergleichen">
         <div class="handle"></div>
         <span class="tag l">Vorher</span><span class="tag r">Nachher</span>
@@ -119,7 +130,7 @@
         <p>Verläufe, Pinsel und Farbbereich gibt es auch, für alles, was die KI nicht erraten kann.</p>
       </div>
       <figure class="shot">
-        <img src="/img/ai-mask.webp" width="1800" height="1046" loading="lazy" alt="Eisvogel mit einer KI-Maske ausgewählt, rot angezeigt">
+        <img src="/img/ai-mask.webp" srcset="/img/ai-mask-900.webp 900w, /img/ai-mask.webp 1800w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1800" height="1046" loading="lazy" alt="Eisvogel mit einer KI-Maske ausgewählt, rot angezeigt">
       </figure>
     </div>
   </section>
@@ -135,7 +146,7 @@
         <p>Danach kannst du alles ändern und ein druckfertiges PDF speichern.</p>
       </div>
       <figure class="shot">
-        <img src="/img/album.webp" width="1800" height="1045" loading="lazy" alt="Fotoalbum mit Herbstfotos aus Japan, zwei Doppelseiten und die Schriftoptionen">
+        <img src="/img/album.webp" srcset="/img/album-900.webp 900w, /img/album.webp 1800w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1800" height="1045" loading="lazy" alt="Fotoalbum mit Herbstfotos aus Japan, zwei Doppelseiten und die Schriftoptionen">
       </figure>
     </div>
   </section>
