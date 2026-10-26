@@ -25,6 +25,18 @@
   let newProject = $state<string | null>(null);
   // `paths`: mehrere gewählte Ordner (Strg-/Umschalt-Klick), sonst nur `node`
   let menu = $state<{ x: number; y: number; node: FolderNode; root?: Root; paths: string[] } | null>(null);
+  let menuEl = $state<HTMLDivElement | undefined>();
+  // Im Fenster halten: nach dem Öffnen ausmessen (die Höhe hängt von der
+  // Zahl der Projekte ab), unten zu wenig Platz → nach oben schieben
+  const menuPos = $derived.by(() => {
+    if (!menu) return { left: 0, top: 0 };
+    const w = menuEl?.offsetWidth ?? 260;
+    const h = menuEl?.offsetHeight ?? 280;
+    return {
+      left: Math.max(8, Math.min(menu.x, window.innerWidth - w - 8)),
+      top: Math.max(8, Math.min(menu.y, window.innerHeight - h - 8)),
+    };
+  });
   let renaming = $state<number | null>(null);
   let renamingPerson = $state<number | null>(null);
 
@@ -77,7 +89,7 @@
     const many = lib.folderSel.size > 1 && lib.folderSel.has(node.path);
     if (!many) lib.clearFolderSel();
     const paths = many ? topFolders([...lib.folderSel]) : [node.path];
-    menu = { x: Math.max(8, Math.min(x, window.innerWidth - 330)), y: Math.max(8, Math.min(y, window.innerHeight - 280)), node, root, paths };
+    menu = { x, y, node, root, paths };
   }
 
   async function createProjectFromMenu() {
@@ -407,7 +419,7 @@
 {#if menu}
   {@const m = menu}
   {@const many = m.paths.length > 1}
-  <div class="menu" role="menu" tabindex="-1" style:left="{m.x}px" style:top="{m.y}px" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
+  <div class="menu" role="menu" tabindex="-1" bind:this={menuEl} style:left="{menuPos.left}px" style:top="{menuPos.top}px" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
     <div class="menu-title">{many ? t("{n} Ordner", { n: String(m.paths.length) }) : m.node.name}</div>
     {#each lib.projects as p (p.id)}
       {@const already = m.paths.every((path) => p.folders.some((f) => f.path === path))}
@@ -684,6 +696,9 @@
     border-radius: var(--radius-m);
     box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
     padding: 5px;
+    /* Sehr viele Projekte: im Menü scrollen statt aus dem Fenster laufen */
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
   }
   .menu-title {
     padding: 6px 9px 4px;
