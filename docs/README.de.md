@@ -79,6 +79,16 @@ vergibt sie in der neuen Sprache neu.
 - **Suche** über Dateiname, Ordner, Kamera, Objektiv, Schlagworte, Personen und Ortsnamen, oder nach Bildinhalt
   (KI). Teilwörter genügen („sonnen“ findet „Sonnenuntergang“), Groß- und Kleinschreibung und
   Akzente spielen keine Rolle. Dazu Filter nach Mindestbewertung und Sortierung.
+- **Dateityp:** Der Knopf „Dateityp“ in der Werkzeugleiste listet die Formate der Ansicht (ARW,
+  CR3, JPEG, PNG …) mit ihrer Anzahl, getrennt nach RAW und anderen Formaten; JPG und JPEG zählen
+  als ein Typ. Der Filter gilt in der Bibliothek und beim Entwickeln (Filmstreifen), zusammen mit
+  Suche und Sternen.
+- **Statistik:** Der Knopf „Statistik“ über dem Raster wertet die Fotos der Ansicht aus (Ordner,
+  Projekt, Person, mit allen Filtern): Kameras, Objektive, Brennweite, Blende, Belichtungszeit,
+  ISO, Aufnahmen je Monat oder Jahr, Tageszeit, Schlagworte, Personen, Länder, Dateitypen und
+  Bewertung, dazu der Anteil von RAW, bearbeiteten, markierten Fotos und Fotos mit Ort. Ein Klick
+  auf eine Kamera, ein Objektiv, Schlagwort, eine Person, ein Land oder einen Dateityp filtert
+  danach, und die Statistik rechnet für diese Fotos neu.
 - **Seitenleiste:** „Projekte“, „Personen“ und „Ordner“ lassen sich per Klick auf die Überschrift
   einklappen.
 
@@ -366,7 +376,7 @@ auch die fertigen Angaben zum Kopieren.
   verbinden kann sich nur dieser Rechner, Anfragen von Webseiten werden abgewiesen.
 
 Werkzeuge: `list_library`, `search_photos` (Text, Inhaltssuche, Ordner, Projekt, Person,
-Bewertung, Markierung), `get_photo`, `view_photo` (das Foto als Bild mit seinen Bearbeitungen),
+Bewertung, Markierung, Dateityp), `get_photo`, `view_photo` (das Foto als Bild mit seinen Bearbeitungen),
 `rate_photos`, `flag_photos`, `tag_photos`, `get_develop_settings`, `set_develop_settings`
 (beliebige Entwicklungswerte ändern), `auto_tone`, `reset_photos`, `apply_preset`,
 `copy_settings`, `add_mask` (KI-Maske wie Himmel, `person:eyes` oder `animal:bird` mit lokalen

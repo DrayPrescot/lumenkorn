@@ -1114,6 +1114,13 @@ impl Catalog {
             parts.push("i.rating >= ?".into());
             args.push(Value::Integer(min));
         }
+        if let Some(exts) = q.exts.as_ref().filter(|e| !e.is_empty()) {
+            let exts: Vec<String> = exts.iter().map(|e| e.to_ascii_lowercase()).collect();
+            parts.push("i.ext IN (SELECT value FROM json_each(?))".into());
+            args.push(Value::Text(
+                serde_json::to_string(&exts).unwrap_or_else(|_| "[]".into()),
+            ));
+        }
         if let Some(ids) = &q.ids {
             parts.push("i.id IN (SELECT value FROM json_each(?))".into());
             args.push(Value::Text(
@@ -1811,15 +1818,12 @@ impl Catalog {
 
     /// Bilder in der angegebenen Reihenfolge (z. B. nach Ähnlichkeit sortiert),
     /// beschränkt auf einen Bereich.
-    pub fn images_in_order(
-        &self,
-        ids: &[i64],
-        scope: &Scope,
-        min_rating: Option<i64>,
-    ) -> Result<Vec<ImageSummary>> {
-        // Nur die Treffer lesen, nicht alle Fotos des Bereichs (bis 100 000)
-        let mut q = ImageQuery::new(scope.clone());
-        q.min_rating = min_rating;
+    pub fn images_in_order(&self, ids: &[i64], filter: &ImageQuery) -> Result<Vec<ImageSummary>> {
+        // Nur die Treffer lesen, nicht alle Fotos des Bereichs (bis 100 000).
+        // Von `filter` zählen Bereich, Mindestbewertung und Dateitypen.
+        let mut q = ImageQuery::new(filter.scope.clone());
+        q.min_rating = filter.min_rating;
+        q.exts = filter.exts.clone();
         q.ids = Some(ids.to_vec());
         let all = self.query_images(&q)?;
         let by_id: std::collections::HashMap<i64, ImageSummary> =

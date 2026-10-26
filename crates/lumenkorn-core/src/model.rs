@@ -183,6 +183,10 @@ pub struct ImageQuery {
     pub search: Option<String>,
     #[serde(default)]
     pub min_rating: Option<i64>,
+    /// Nur diese Dateitypen: Endungen klein und ohne Punkt („arw“, „jpg“).
+    /// Leer oder fehlend: alle.
+    #[serde(default)]
+    pub exts: Option<Vec<String>>,
     #[serde(default)]
     pub limit: Option<i64>,
     #[serde(default)]
@@ -200,6 +204,7 @@ impl ImageQuery {
             search: None,
             ids: None,
             min_rating: None,
+            exts: None,
             limit: None,
             offset: None,
         }

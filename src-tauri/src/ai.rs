@@ -870,6 +870,7 @@ pub async fn semantic_search(
     query: String,
     scope: Scope,
     min_rating: Option<i64>,
+    exts: Option<Vec<String>>,
 ) -> Result<Vec<ImageSummary>, Error> {
     blocking(app, move |state| {
         let loaded = ensure_loaded(state)?;
@@ -879,17 +880,15 @@ pub async fn semantic_search(
             .embed_texts(&[english.as_str()])
             .map_err(err)?
             .remove(0);
-        // Erst den Bereich (Ordner/Projekt/Person, Mindestbewertung) bestimmen
+        // Erst den Bereich (Ordner/Projekt/Person, Mindestbewertung, Dateityp) bestimmen
         // und nur darin suchen: Sonst füllen Treffer aus dem übrigen Katalog
         // die SEARCH_MAX_HITS Plätze und setzen `best`, und ein kleiner Ordner findet
         // nichts. Nebenbei fallen gelöschte oder fehlende Fotos heraus, die
         // noch im Index stehen.
-        let allowed: HashSet<i64> = {
-            let mut sq = ImageQuery::new(scope.clone());
-            sq.min_rating = min_rating;
-            let cat = state.catalog.locked();
-            cat.query_image_ids(&sq)?
-        };
+        let mut sq = ImageQuery::new(scope);
+        sq.min_rating = min_rating;
+        sq.exts = exts;
+        let allowed: HashSet<i64> = state.catalog.locked().query_image_ids(&sq)?;
         // Kosinus-Werte von CLIP liegen eng beieinander; relativ zum besten
         // Treffer filtern ist robuster als eine feste Schwelle.
         let hits = with_index(state, |idx| {
@@ -905,10 +904,7 @@ pub async fn semantic_search(
             "Semantische Suche „{query}“ → „{english}“: {} Treffer",
             ids.len()
         );
-        state
-            .catalog
-            .locked()
-            .images_in_order(&ids, &scope, min_rating)
+        state.catalog.locked().images_in_order(&ids, &sq)
     })
     .await
 }

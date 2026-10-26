@@ -359,7 +359,7 @@ fn ai_results_replace_ai_tags_but_keep_manual_ones() {
     // Ähnlichkeitsreihenfolge bleibt erhalten und respektiert den Bereich
     let other = ids[1];
     let ordered = c
-        .images_in_order(&[other, id, 9999], &Scope::All, None)
+        .images_in_order(&[other, id, 9999], &ImageQuery::new(Scope::All))
         .unwrap();
     assert_eq!(
         ordered.iter().map(|i| i.id).collect::<Vec<_>>(),

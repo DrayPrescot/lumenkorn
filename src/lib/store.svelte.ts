@@ -14,6 +14,8 @@ class Library {
   semantic = $state(false);
   sort = $state<SortOrder>("capturedAsc");
   minRating = $state(0);
+  /** Dateityp-Filter: Endungen (klein), leer = alle */
+  fileTypes = $state<string[]>([]);
 
   /** Flach (`raw`): Bei 50 000 Fotos kein Proxy je Bild; geändert wird nur durch Ersetzen. */
   images = $state.raw<ImageSummary[]>([]);
@@ -22,7 +24,7 @@ class Library {
   focus = $state(-1);
   /** Mehrfachauswahl (IDs). */
   selection = $state<Set<number>>(new Set());
-  view = $state<"grid" | "loupe" | "compare" | "people" | "map" | "album">("grid");
+  view = $state<"grid" | "loupe" | "compare" | "people" | "map" | "album" | "stats">("grid");
   /** Zählt Änderungen an Aufnahmeorten (Infobereich lädt neu) */
   geoVersion = $state(0);
   #geoTimer: ReturnType<typeof setTimeout> | undefined;
@@ -299,12 +301,11 @@ class Library {
       // noch den alten Stand und überschreibt die gerade gesetzte Bewertung
       await this.#writes;
       const startSeq = this.#patchSeq;
-      const scope = $state.snapshot(this.scope) as Scope;
-      const text = this.search.trim();
+      const query = this.currentQuery();
       let images =
-        this.semantic && text
-          ? await api.semanticSearch(text, scope, this.minRating || null)
-          : await api.queryImages({ scope, sort: this.sort, search: text || null, minRating: this.minRating || null });
+        this.semantic && query.search
+          ? await api.semanticSearch(query.search, query.scope, query.minRating ?? null, query.exts ?? null)
+          : await api.queryImages(query);
       if (token !== this.#loadToken) return;
       // Während der Abfrage Bewertetes/Markiertes erneut anwenden
       const later = this.#patchLog.filter((p) => p.seq > startSeq);
@@ -375,6 +376,7 @@ class Library {
     if (index < 0) {
       this.search = "";
       this.minRating = 0;
+      this.fileTypes = [];
       this.scope = { type: "all" };
       await this.loadImages();
       index = this.images.findIndex((i) => i.id === id);
@@ -950,10 +952,29 @@ class Library {
     this.geoVersion++;
   }
 
-  /** Abfrage der aktuellen Ansicht (Ordner, Projekt, Suche, Bewertung) */
+  /** Abfrage der aktuellen Ansicht (Ordner, Projekt, Suche, Bewertung, Dateityp) */
   currentQuery(): ImageQuery {
     const text = this.search.trim();
-    return { scope: $state.snapshot(this.scope) as Scope, sort: this.sort, search: text || null, minRating: this.minRating || null };
+    return {
+      scope: $state.snapshot(this.scope) as Scope,
+      sort: this.sort,
+      search: text || null,
+      minRating: this.minRating || null,
+      exts: this.fileTypes.length ? [...this.fileTypes] : null,
+    };
+  }
+
+  /** Ein Filter (Suche, Sterne, Dateityp) ist gesetzt */
+  get filtered(): boolean {
+    return !!(this.search.trim() || this.minRating || this.fileTypes.length);
+  }
+
+  /** Suche, Mindestbewertung und Dateityp zurücksetzen */
+  resetFilters() {
+    this.search = "";
+    this.minRating = 0;
+    this.fileTypes = [];
+    void this.loadImages();
   }
 
   /** Vorschläge übernehmen: je Foto eigener Ort */

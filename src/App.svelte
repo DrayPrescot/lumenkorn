@@ -21,6 +21,7 @@
   import PresetDialog from "./components/PresetDialog.svelte";
   import AlbumDialog from "./components/AlbumDialog.svelte";
   import AlbumView from "./components/AlbumView.svelte";
+  import StatsView from "./components/StatsView.svelte";
   import { album } from "./lib/album.svelte";
   import { api, isTauri, type ImageSummary } from "./lib/api";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -101,7 +102,7 @@
     if (isTyping(e) || exportIds || deleteImages || lib.merge || lib.importOpen) return;
     // Personen- und Albumansicht: Kein Foto ist zu sehen – Bewerten oder
     // Ablehnen träfe unbemerkt das zuletzt gewählte
-    const noPhoto = lib.mode === "library" && (lib.view === "people" || lib.view === "album");
+    const noPhoto = lib.mode === "library" && (lib.view === "people" || lib.view === "album" || lib.view === "stats");
     // Befehl, Wirkung, nur mit sichtbarem Foto (Belegung: Einstellungen → Tastenkürzel)
     const actions: [string, () => void, boolean?][] = [
       ["import", () => (lib.importOpen = true)],
@@ -143,7 +144,7 @@
 
 <svelte:window {onkeydown} />
 
-<div class="app" class:info={(infoOpen && lib.view !== "album") || lib.mode === "develop"}>
+<div class="app" class:info={(infoOpen && lib.view !== "album" && lib.view !== "stats") || lib.mode === "develop"}>
   <div class="sidebar" class:open={sidebarOpen}>
     <Sidebar />
   </div>
@@ -168,6 +169,8 @@
       {/await}
     {:else if lib.view === "album" && lib.mode === "library" && album.state}
       <AlbumView />
+    {:else if lib.view === "stats" && lib.mode === "library"}
+      <StatsView />
     {:else if lib.view === "compare" && lib.compareItems.length >= 2}
       <Compare />
     {:else if lib.view === "loupe" && lib.focused}
@@ -179,7 +182,7 @@
 
   {#if lib.mode === "develop" && lib.focused}
     <div class="info-panel"><DevelopPanel onexport={openExport} /></div>
-  {:else if infoOpen && lib.view !== "album"}
+  {:else if infoOpen && lib.view !== "album" && lib.view !== "stats"}
     <div class="info-panel"><InfoPanel onexport={openExport} /></div>
   {/if}
 </div>

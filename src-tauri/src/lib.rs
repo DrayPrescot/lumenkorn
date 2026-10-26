@@ -262,6 +262,8 @@ pub fn run() {
             commands::rescan_root,
             commands::folder_tree,
             commands::query_images,
+            commands::photo_stats,
+            commands::file_types,
             commands::image_detail,
             commands::set_rating,
             commands::set_flag,

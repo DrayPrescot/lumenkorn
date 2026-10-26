@@ -19,6 +19,7 @@ pub mod model;
 pub mod paths;
 pub mod people;
 pub mod scanner;
+pub mod stats;
 pub mod thumbs;
 pub mod timeshift;
 pub mod watcher;

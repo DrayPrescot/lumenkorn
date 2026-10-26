@@ -111,9 +111,9 @@
 >
   {#if !lib.images.length && !lib.loading}
     <div class="empty">
-      {#if lib.search || lib.minRating}
+      {#if lib.filtered}
         <p>{t("Keine Fotos passen zu diesem Filter.")}</p>
-        <button class="btn" onclick={() => { lib.search = ""; lib.minRating = 0; lib.loadImages(); }}>{t("Filter zurücksetzen")}</button>
+        <button class="btn" onclick={() => lib.resetFilters()}>{t("Filter zurücksetzen")}</button>
       {:else if lib.scope.type === "project"}
         <p>{t("Dieses Projekt hat noch keine Fotos. Füge oben über „Ordner“ einen Ordner hinzu.")}</p>
       {:else if lib.scope.type === "person"}

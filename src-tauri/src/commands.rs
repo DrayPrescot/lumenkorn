@@ -127,6 +127,24 @@ pub fn query_images(state: State<AppState>, query: ImageQuery) -> CmdResult<Vec<
     state.catalog.locked().query_images(&query)
 }
 
+/// Statistik der Fotos einer Ansicht (gleiche Filter wie die Liste)
+#[tauri::command(async)]
+pub fn photo_stats(
+    state: State<AppState>,
+    query: ImageQuery,
+) -> CmdResult<lumenkorn_core::stats::PhotoStats> {
+    state.catalog.locked().photo_stats(&query)
+}
+
+/// Vorhandene Dateitypen einer Ansicht (für den Dateityp-Filter)
+#[tauri::command(async)]
+pub fn file_types(
+    state: State<AppState>,
+    query: ImageQuery,
+) -> CmdResult<Vec<lumenkorn_core::stats::FileTypeCount>> {
+    state.catalog.locked().file_types(&query)
+}
+
 #[tauri::command(async)]
 pub fn image_detail(state: State<AppState>, id: i64) -> CmdResult<ImageDetail> {
     state.catalog.locked().image(id)

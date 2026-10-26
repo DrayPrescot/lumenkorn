@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- File type filter: **File type** in the toolbar lists the types in the current view (ARW, CR3,
+  JPEG, PNG …) with their number, grouped into RAW and other formats; JPG and JPEG count as one.
+  The filter works in the library and in Develop (filmstrip), together with search and stars,
+  and also for the content search and the AI agent tool `search_photos` (`file_types`).
+- Statistics: **Statistics** above the grid shows the photos of the current view (folder,
+  project, person, with all filters): cameras, lenses, focal length, aperture, shutter speed,
+  ISO, photos per month or year, time of day, keywords, people, countries, file types and
+  ratings, plus totals for RAW, edited, picked and located photos. Clicking a camera, lens,
+  keyword, person, country or file type filters by it, and the statistics follow.
+
 ## [1.0.16] – 2026-10-21
 
 ### Added

@@ -156,16 +156,78 @@ function inScope(img: Img, q: ImageQuery): boolean {
   return true;
 }
 
-function query(q: ImageQuery): ImageSummary[] {
+/** Fotos der Abfrage, ohne Sortierung (`withTypes`: Dateityp-Filter anwenden) */
+function matching(q: ImageQuery, withTypes = true): Img[] {
   const words = (q.search ?? "").toLowerCase().split(/\s+/).filter(Boolean);
-  let list = images.filter(
+  const exts = withTypes && q.exts?.length ? q.exts : null;
+  return images.filter(
     (i) =>
       inScope(i, q) &&
       i.rating >= (q.minRating ?? 0) &&
+      (!exts || exts.includes(i.ext)) &&
       words.every((w) =>
         [i.fileName, i.camera ?? "", i.lens ?? "", i.location?.place ?? "", ...i.tags.map((tag) => tag.name)].some((s) => s.toLowerCase().includes(w)),
       ),
   );
+}
+
+function countBy<T>(list: Img[], key: (i: Img) => T | null | undefined): [T, number][] {
+  const m = new Map<T, number>();
+  for (const i of list) {
+    const k = key(i);
+    if (k !== null && k !== undefined && k !== "") m.set(k, (m.get(k) ?? 0) + 1);
+  }
+  return [...m.entries()];
+}
+
+function fileTypes(list: Img[]) {
+  return countBy(list, (i) => i.ext)
+    .map(([ext, count]) => ({ ext, kind: ext === "jpg" ? "raster" : "raw", count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function stats(q: ImageQuery) {
+  const list = matching(q);
+  const labels = (key: (i: Img) => string | null | undefined) =>
+    countBy(list, key)
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  const values = (key: (i: Img) => number | null | undefined) =>
+    countBy(list, key)
+      .map(([value, count]) => ({ value, count }))
+      .sort((a, b) => a.value - b.value);
+  const hours = Array<number>(24).fill(0);
+  for (const i of list) if (i.capturedAt) hours[Number(i.capturedAt.slice(11, 13))]++;
+  const dates = list.map((i) => i.capturedAt).filter((d): d is string => !!d).sort();
+  const tagCount = new Map<string, number>();
+  for (const i of list) for (const tag of i.tags) tagCount.set(tag.name, (tagCount.get(tag.name) ?? 0) + 1);
+  return {
+    total: list.length,
+    raw: list.filter((i) => i.ext !== "jpg").length,
+    edited: list.filter((i) => i.edit).length,
+    picked: list.filter((i) => i.flag === 1).length,
+    rejected: list.filter((i) => i.flag === -1).length,
+    withLocation: list.filter((i) => i.location).length,
+    first: dates[0] ?? null,
+    last: dates[dates.length - 1] ?? null,
+    ratings: [0, 1, 2, 3, 4, 5].map((r) => list.filter((i) => i.rating === r).length),
+    cameras: labels((i) => i.camera),
+    lenses: labels((i) => i.lens),
+    focalLengths: values((i) => i.focalLength),
+    apertures: values((i) => i.aperture),
+    isos: values((i) => i.iso),
+    exposures: labels((i) => i.exposure),
+    fileTypes: fileTypes(list),
+    months: labels((i) => i.capturedAt?.slice(0, 7)).sort((a, b) => a.label.localeCompare(b.label)),
+    hours,
+    keywords: [...tagCount.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count).slice(0, 40),
+    people: [],
+    countries: labels((i) => i.location?.place?.split(",").pop()?.trim()),
+  };
+}
+
+function query(q: ImageQuery): ImageSummary[] {
+  let list = matching(q);
   const by = q.sort ?? "capturedAsc";
   list = [...list].sort((a, b) => {
     if (by === "nameAsc") return a.fileName.localeCompare(b.fileName);
@@ -252,6 +314,10 @@ export const mock = {
         return out(tree(roots.find((r) => r.id === a.rootId)!));
       case "query_images":
         return out(query(a.query));
+      case "photo_stats":
+        return out(stats(a.query));
+      case "file_types":
+        return out(fileTypes(matching(a.query, false)));
       case "geo_search": {
         await new Promise((r) => setTimeout(r, 300));
         const q = String(a.query).toLowerCase();
@@ -559,7 +625,7 @@ export const mock = {
       case "ai_download":
         throw t("Downloads sind nur in der App verfügbar.");
       case "semantic_search":
-        return out(query({ scope: a.scope, search: a.query, minRating: a.minRating }));
+        return out(query({ scope: a.scope, search: a.query, minRating: a.minRating, exts: a.exts }));
       case "export_images":
         throw t("Export ist nur in der App verfügbar.");
       case "set_rating":

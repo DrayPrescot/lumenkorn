@@ -54,6 +54,11 @@ the catalog before you let Lumenkorn loose on your whole collection.
 - Projects collect any number of folders, also across drives.
 - Ratings (`0`–`5`), pick and reject flags (`P` / `X`), keywords, and a search over file name,
   folder, camera, lens, keywords, people and place names.
+- **File type** in the toolbar filters by format (ARW, CR3, JPEG, PNG …, or all RAW files at once),
+  in the library and in Develop.
+- **Statistics** shows the photos of the current view by camera, lens, focal length, aperture,
+  shutter speed, ISO, month or year, time of day, keyword, person, country, file type and rating.
+  Clicking an entry filters by it.
 - Culling: `Shift+X` rejects and moves on. Rejected photos can be sent to the system trash in
   one step, together with their sidecar files and Lumenkorn's own data for them.
 - Compare up to 12 photos side by side with linked zoom, with a filmstrip below to swap photos
@@ -222,7 +227,7 @@ under **Settings → AI agents (MCP)**, where the dialog also shows the exact se
   only this computer can connect, and requests from websites are refused.
 
 Tools: `list_library`, `search_photos` (text, content search, folder, project, person,
-rating, flag), `get_photo`, `view_photo` (the photo as an image with its edits), `rate_photos`,
+rating, flag, file type), `get_photo`, `view_photo` (the photo as an image with its edits), `rate_photos`,
 `flag_photos`, `tag_photos`, `get_develop_settings`, `set_develop_settings` (merge any develop
 values), `auto_tone`, `reset_photos`, `apply_preset`, `copy_settings`, `add_mask` (AI mask such
 as sky, person:eyes or animal:bird with local adjustments), `export_photos` and `show_photo`.

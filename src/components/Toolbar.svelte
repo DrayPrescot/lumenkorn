@@ -6,6 +6,7 @@
   import { t } from "../lib/i18n";
   import { withKey } from "../lib/keymap.svelte";
   import Icon from "./Icon.svelte";
+  import FileTypeFilter from "./FileTypeFilter.svelte";
   import ProjectFolders from "./ProjectFolders.svelte";
   import PersonName from "./PersonName.svelte";
 
@@ -47,7 +48,7 @@
     <button class="btn quiet" onclick={() => lib.peopleBack++} title={t("Zurück zur Übersicht aller Personen")}>
       <Icon name="back" size={14} /> {t("Personen")}
     </button>
-  {:else if lib.mode === "library" && (lib.view === "loupe" || lib.view === "compare" || lib.view === "people" || lib.view === "album")}
+  {:else if lib.mode === "library" && (lib.view === "loupe" || lib.view === "compare" || lib.view === "people" || lib.view === "album" || lib.view === "stats")}
     <button class="btn quiet" onclick={() => (lib.view = "grid")}><Icon name="back" size={14} /> {t("Raster")}</button>
   {/if}
   {#if lib.scope.type === "person" && lib.view !== "people"}
@@ -114,6 +115,12 @@
     </button>
   {/if}
 
+  {#if lib.mode === "library" && lib.view === "grid" && lib.images.length}
+    <button class="btn" onclick={() => (lib.view = "stats")} title={t("Auswertung der angezeigten Fotos: Kameras, Objektive, Brennweiten, Blenden, Schlagworte …")}>
+      <Icon name="chart" size={14} /> {t("Statistik")}
+    </button>
+  {/if}
+
   <div class="spacer"></div>
 
   {#if lib.rejectedCount && lib.view !== "people"}
@@ -159,6 +166,10 @@
       </button>
     {/each}
   </div>
+
+  {#if lib.view !== "people"}
+    <FileTypeFilter />
+  {/if}
 
   <select bind:value={lib.sort} onchange={() => lib.loadImages(true)} aria-label={t("Sortierung")}>
     <option value="capturedAsc">{t("Älteste zuerst")}</option>
@@ -331,7 +342,8 @@
       display: inline-grid;
     }
     .stars,
-    .title span {
+    .title span,
+    .bar > :global(.ftf) {
       display: none;
     }
     .search {

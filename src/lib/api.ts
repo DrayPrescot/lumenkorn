@@ -264,6 +264,50 @@ export interface ImageQuery {
   sort?: SortOrder;
   search?: string | null;
   minRating?: number | null;
+  /** Nur diese Endungen (klein, ohne Punkt) */
+  exts?: string[] | null;
+}
+
+/** Anzahl Fotos je Eintrag */
+export interface LabelCount {
+  label: string;
+  count: number;
+}
+export interface ValueCount {
+  value: number;
+  count: number;
+}
+export interface FileTypeCount {
+  ext: string;
+  kind: "raw" | "raster";
+  count: number;
+}
+/** Statistik der Fotos einer Ansicht */
+export interface PhotoStats {
+  total: number;
+  raw: number;
+  edited: number;
+  picked: number;
+  rejected: number;
+  withLocation: number;
+  first: string | null;
+  last: string | null;
+  /** Fotos mit 0 bis 5 Sternen */
+  ratings: number[];
+  cameras: LabelCount[];
+  lenses: LabelCount[];
+  focalLengths: ValueCount[];
+  apertures: ValueCount[];
+  isos: ValueCount[];
+  exposures: LabelCount[];
+  fileTypes: FileTypeCount[];
+  /** „JJJJ-MM“ */
+  months: LabelCount[];
+  /** 24 Werte, Stunde 0–23 */
+  hours: number[];
+  keywords: LabelCount[];
+  people: LabelCount[];
+  countries: LabelCount[];
 }
 
 export interface ScanReport {
@@ -822,6 +866,8 @@ export const api = {
 
   queryImages: (query: ImageQuery) => call<ImageSummary[]>("query_images", { query }),
   imageDetail: (id: number) => call<ImageDetail>("image_detail", { id }),
+  photoStats: (query: ImageQuery) => call<PhotoStats>("photo_stats", { query }),
+  fileTypes: (query: ImageQuery) => call<FileTypeCount[]>("file_types", { query }),
   setRating: (ids: number[], rating: number) => call<void>("set_rating", { ids, rating }),
   setFlag: (ids: number[], flag: number) => call<void>("set_flag", { ids, flag }),
   rejectedSummary: (ids: number[]) => call<RejectedSummary>("rejected_summary", { ids }),
@@ -937,8 +983,8 @@ export const api = {
     call<MaskResult>("mask_object", { id, points, maskId }),
   aiCancelDownload: () => call<void>("ai_cancel_download"),
   aiRetagAll: () => call<void>("ai_retag_all"),
-  semanticSearch: (query: string, scope: Scope, minRating: number | null) =>
-    call<ImageSummary[]>("semantic_search", { query, scope, minRating }),
+  semanticSearch: (query: string, scope: Scope, minRating: number | null, exts: string[] | null) =>
+    call<ImageSummary[]>("semantic_search", { query, scope, minRating, exts }),
   albumSuggest: (request: { scope: Scope; theme: string; customTheme: string | null; count: number; skipUneditedRaw: boolean }) =>
     call<AlbumSuggestion>("album_suggest", { request }),
   albumSuggestCancel: () => call<void>("album_suggest_cancel"),

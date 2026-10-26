@@ -476,6 +476,7 @@ fn tools() -> Vec<Value> {
                 "project_id": { "type": "integer" },
                 "person_id": { "type": "integer" },
                 "min_rating": { "type": "integer", "minimum": 0, "maximum": 5 },
+                "file_types": { "type": "array", "items": { "type": "string" }, "description": "Only these file types, e.g. [\"arw\", \"jpeg\"]; \"raw\" means every RAW format" },
                 "flag": { "type": "string", "enum": ["pick", "rejected", "none"] },
                 "edited": { "type": "boolean" },
                 "sort": { "type": "string", "enum": ["oldest", "newest", "name", "rating"], "default": "oldest" },
@@ -1031,6 +1032,13 @@ async fn search(app: &AppHandle, a: &Value) -> ToolResult {
     let min_rating = arg(a, "min_rating")
         .and_then(Value::as_i64)
         .filter(|r| *r > 0);
+    let exts = arg(a, "file_types")
+        .and_then(Value::as_array)
+        .map(|v| {
+            let types: Vec<&str> = v.iter().filter_map(Value::as_str).collect();
+            lumenkorn_core::formats::expand_file_types(&types)
+        })
+        .filter(|e| !e.is_empty());
     let text_q = arg(a, "text")
         .and_then(Value::as_str)
         .map(str::trim)
@@ -1039,7 +1047,7 @@ async fn search(app: &AppHandle, a: &Value) -> ToolResult {
         .and_then(Value::as_bool)
         .unwrap_or(false);
     let mut list = if let (Some(q), true) = (text_q, by_content) {
-        crate::ai::semantic_search(app.clone(), q.to_string(), scope, min_rating)
+        crate::ai::semantic_search(app.clone(), q.to_string(), scope, min_rating, exts)
             .await
             .map_err(e)?
     } else {
@@ -1052,6 +1060,7 @@ async fn search(app: &AppHandle, a: &Value) -> ToolResult {
         };
         q.search = text_q.map(str::to_string);
         q.min_rating = min_rating;
+        q.exts = exts;
         crate::commands::query_images(state.clone(), q).map_err(e)?
     };
     if let Some(f) = arg(a, "flag").and_then(Value::as_str) {

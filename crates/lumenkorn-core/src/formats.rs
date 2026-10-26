@@ -63,9 +63,49 @@ pub(crate) fn classify(path: &Path) -> Option<(String, ImageKind)> {
     }
 }
 
+/// Endungen, die als ein Dateityp gelten (Filter „JPEG“ trifft auch .jpg).
+const SAME_TYPE: &[&[&str]] = &[&["jpg", "jpeg", "jpe", "jfif"], &["tif", "tiff"]];
+
+/// Dateitypen eines Filters als Endungen: Groß-/Kleinschreibung und Punkt
+/// egal, „jpeg“ und „jpg“ sind derselbe Typ, „raw“ steht für alle RAW-Formate.
+pub fn expand_file_types<S: AsRef<str>>(types: &[S]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for t in types {
+        let t = t
+            .as_ref()
+            .trim()
+            .trim_start_matches('.')
+            .to_ascii_lowercase();
+        let group: Vec<&str> = if t == "raw" {
+            RAW.to_vec()
+        } else if let Some(g) = SAME_TYPE.iter().find(|g| g.contains(&t.as_str())) {
+            g.to_vec()
+        } else {
+            vec![t.as_str()]
+        };
+        for e in group {
+            if !e.is_empty() && !out.iter().any(|o| o == e) {
+                out.push(e.to_string());
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn expands_file_types() {
+        assert_eq!(
+            expand_file_types(&["JPEG", ".arw", "jpg"]),
+            ["jpg", "jpeg", "jpe", "jfif", "arw"]
+        );
+        assert_eq!(expand_file_types(&["Tif"]), ["tif", "tiff"]);
+        assert!(expand_file_types(&["raw"]).contains(&"cr3".to_string()));
+        assert!(expand_file_types::<&str>(&[]).is_empty());
+    }
 
     #[test]
     fn classifies_case_insensitively() {
