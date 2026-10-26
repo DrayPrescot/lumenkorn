@@ -47,36 +47,38 @@
 <main id="main">
   <section class="hero">
     <div class="wrap">
-      <h1>Your photos stay on your computer.</h1>
-      <p class="lead">Lumenkorn is a photo library and RAW developer. It catalogs your folders, develops
-        RAW files and uses AI for keywords, masks and noise reduction, all on your own machine.
-        No account, no cloud, no subscription.</p>
+      <h1>Your photos. On your own computer.</h1>
+      <p class="lead">Lumenkorn manages your photo collection and develops RAW files. It runs
+        entirely on your computer, so there is no account and no subscription. The AI features run on
+        your machine too, not in someone else's cloud.</p>
       <div class="actions">
         <a class="btn primary" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Download for Windows</a>
-        <a class="btn" href="/features">See what it does</a>
+        <a class="btn" href="/features">See the features</a>
       </div>
       <p class="meta">Windows installer (.msi), in English or German · Free and open source (GPL-3.0) · Linux from source</p>
-      <figure class="shot">
-        <img src="/img/develop.webp" srcset="/img/develop-900.webp 900w, /img/develop.webp 1800w" sizes="(max-width: 1228px) calc(100vw - 48px), 1180px" fetchpriority="high" width="1800" height="1043" alt="Lumenkorn's Develop view with a sunset over a lake and the sliders for white balance, light and color">
+      <figure class="shot video">
+        <video controls preload="none" playsinline width="1920" height="1080" poster="/img/trailer-en.webp" aria-label="Trailer: Lumenkorn in one minute">
+          <source src="/video/lumenkorn-trailer-en.mp4" type="video/mp4">
+        </video>
       </figure>
     </div>
   </section>
 
   <section class="wrap points" aria-label="In short">
     <div class="point">
-      <h3>Nothing leaves your disk</h3>
-      <p>Lumenkorn reads your folders where they are and never changes the originals. Catalog and
-        edits are a local file. There is no account and nothing to sync.</p>
+      <h3>Your files stay where they are</h3>
+      <p>Lumenkorn reads your folders directly and never changes the originals. Ratings and edits go
+        into a catalog file on your computer.</p>
     </div>
     <div class="point">
-      <h3>RAW development with depth</h3>
-      <p>Scene-referred processing based on darktable, lens correction, tone curve, color grading
-        and local masks. On the graphics card it reacts within milliseconds.</p>
+      <h3>RAW development</h3>
+      <p>The processing follows darktable. With a graphics card the sliders respond without a
+        noticeable delay; without one, the processor does the work.</p>
     </div>
     <div class="point">
-      <h3>AI that works offline</h3>
-      <p>Open models are downloaded once and then run on your CPU or GPU: keywords, search by
-        content, masks for sky, people and animals, noise reduction and object removal.</p>
+      <h3>AI without a cloud</h3>
+      <p>Keywords, search by content, masks and noise reduction use open models. You download them
+        once and everything works offline after that.</p>
     </div>
   </section>
 
@@ -84,12 +86,13 @@
     <div class="wrap row">
       <div class="text">
         <span class="eyebrow">Library</span>
-        <h2>Tens of thousands of photos, quickly sorted</h2>
-        <p>Add your photo folders and Lumenkorn builds a catalog. Rate with stars, pick and reject,
-          add keywords and gather folders into projects, also across drives.</p>
-        <p>Moved or renamed files are recognized by their content, so ratings and edits stay with
-          the photo. Importing from a memory card sorts photos into dated folders and checks every
-          copy byte by byte.</p>
+        <h2>Your folder structure stays</h2>
+        <p>Add your photo folders and Lumenkorn builds a catalog from them. Rate, flag and tag your
+          photos the way you are used to. Folders that belong together can be grouped into projects,
+          even if they are on different drives.</p>
+        <p>If you rename or move files, Lumenkorn recognizes them by their content, so ratings and
+          edits are not lost. The file type filter shows, for example, only your RAW files or only
+          the JPEGs.</p>
       </div>
       <figure class="shot">
         <img src="/img/library.webp" srcset="/img/library-900.webp 900w, /img/library.webp 1800w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1800" height="1043" loading="lazy" alt="Library with animal photos from a zoo, a penguin selected, its camera data on the right">
@@ -100,12 +103,12 @@
   <section class="block">
     <div class="wrap row flip">
       <div class="text">
-        <span class="eyebrow">Develop</span>
-        <h2>From a flat RAW to a finished photo</h2>
-        <p>White balance, exposure, highlights and shadows, clarity, dehaze, HSL, color grading and a
-          tone curve. <strong>Auto</strong> gives a balanced starting point and learns from your edits how you like
-          your photos.</p>
-        <p>Edits are non-destructive. Drag the slider to compare.</p>
+        <span class="eyebrow">RAW development</span>
+        <h2>Non-destructive, the way you know it</h2>
+        <p>White balance, exposure, highlights and shadows, dehaze, HSL, color grading and a tone
+          curve. Every change can be undone later, and the original file is never touched.</p>
+        <p><strong>Auto</strong> gives you a first suggestion. Over time it picks up how you like to edit
+          and adjusts to that. Drag the slider in the picture to compare before and after.</p>
       </div>
       <div class="shot compare">
         <img src="/img/after.webp" srcset="/img/after-900.webp 900w, /img/after.webp 1600w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1600" height="1067" loading="lazy" alt="Kingfisher on a branch, after editing: warm, clear colors">
@@ -120,12 +123,13 @@
   <section class="block">
     <div class="wrap row">
       <div class="text">
-        <span class="eyebrow">AI masks</span>
-        <h2>Select the bird, not the brush</h2>
-        <p>One click selects the subject, the sky, people (or just their hair, eyes or skin) or
-          animals. Masks can be combined, such as “sky minus church tower”, and each gets its own
-          sliders.</p>
-        <p>Gradients, brush and color range are there too, for everything AI cannot guess.</p>
+        <span class="eyebrow">Masking</span>
+        <h2>Masks with one click</h2>
+        <p>Lumenkorn finds the sky, the main subject, people and animals. For people you can also
+          select just the hair, eyes or skin. Masks can be combined, for example the sky without the
+          church tower in front of it.</p>
+        <p>Gradients, brush and color range are there as well, for anything you would rather draw
+          yourself.</p>
       </div>
       <figure class="shot">
         <img src="/img/ai-mask.webp" srcset="/img/ai-mask-900.webp 900w, /img/ai-mask.webp 1800w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1800" height="1046" loading="lazy" alt="Kingfisher selected with an AI mask, shown in red">
@@ -137,11 +141,11 @@
     <div class="wrap row flip">
       <div class="text">
         <span class="eyebrow">Photo album</span>
-        <h2>A photo book from a trip, in minutes</h2>
-        <p>Pick a theme and a page size. Lumenkorn chooses sharp, well-exposed photos, leaves out
-          near-duplicates, always includes your 4 and 5 star photos and lays out the pages in time
-          order, with place names and an optional map page.</p>
-        <p>Then change anything you like and save a print-ready PDF.</p>
+        <h2>From a trip to a photo book</h2>
+        <p>Pick a theme and a page size. Lumenkorn chooses the photos and lays them out in the order
+          they were taken. Blurry shots and near-duplicates are left out, and photos with four or
+          five stars are always included. If you like, a map page shows every place of the trip.</p>
+        <p>Then change whatever you don't like and save a print-ready PDF.</p>
       </div>
       <figure class="shot">
         <img src="/img/album.webp" srcset="/img/album-900.webp 900w, /img/album.webp 1800w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1800" height="1045" loading="lazy" alt="Photo album with autumn photos from Japan, two double pages and the text options">
@@ -151,9 +155,9 @@
 
   <section class="cta">
     <div class="wrap">
-      <h2>Try it on your own photos</h2>
-      <p>Lumenkorn is free. Install it, add a folder and start. The AI models are optional and only
-        downloaded when you ask for them.</p>
+      <h2>Try it yourself</h2>
+      <p>Lumenkorn is free and the source code is on GitHub. You only download the AI models if you
+        need them.</p>
       <div class="actions">
         <a class="btn primary" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Download for Windows</a>
         <a class="btn" href="/guide">Getting started</a>

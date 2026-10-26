@@ -46,6 +46,8 @@
 
 html {
   scroll-behavior: smooth;
+  /* Sprungziele nicht unter der festen Kopfzeile */
+  scroll-padding-top: 80px;
 }
 
 body {
@@ -290,6 +292,14 @@ kbd {
 
 .hero .shot {
   margin-top: 48px;
+}
+
+.video video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  background: #000;
 }
 
 figure {

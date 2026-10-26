@@ -11,13 +11,16 @@ catalog and never changes the original files. Interface in English and German.
 ## Main features
 
 - Library: folders read in place, projects across drives, stars, flags, keywords, search,
-  import from memory cards with byte-by-byte verification, compare up to 12 photos.
+  file type filter (e.g. only RAW), import from memory cards with byte-by-byte verification,
+  compare up to 12 photos.
 - Develop: non-destructive RAW development following darktable's scene-referred workflow
   (translated to Rust), lens correction (camera data or Lensfun), HSL, color grading, tone
   curve, local masks, export to JPEG, TIFF or PNG. Runs on the GPU (DirectX 12, Vulkan) or CPU.
 - Auto in your style: Auto tone that learns from the user's own edits, per camera.
 - AI (optional, offline): keywords and search by content (CLIP), masks for subject, sky,
   people and animals, noise reduction (DRUNet), object removal (LaMa), face grouping.
+- Statistics: cameras, lenses, focal lengths, apertures, shutter speeds, ISO, keywords, people,
+  countries, file types and ratings of the photos in the current view; click an entry to filter.
 - Map: photos on an OpenStreetMap map, place names; can be switched off completely.
 - Photo album: automatic photo book from a project, print-ready PDF.
 - HDR, panorama and focus stacking.

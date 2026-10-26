@@ -46,38 +46,38 @@
 <main id="main">
   <section class="hero">
     <div class="wrap">
-      <h1>Deine Fotos bleiben auf deinem Rechner.</h1>
-      <p class="lead">Lumenkorn ist Fotoverwaltung und RAW-Entwicklung in einem. Es katalogisiert
-        deine Ordner, entwickelt RAW-Dateien und nutzt KI für Schlagworte, Masken und
-        Rauschreduzierung, alles auf deinem eigenen Rechner. Ohne Konto, ohne Cloud, ohne Abo.</p>
+      <h1>Deine Fotos. Lokal auf deinem Rechner.</h1>
+      <p class="lead">Lumenkorn verwaltet deine Fotosammlung und entwickelt RAW-Dateien. Das Programm
+        läuft komplett auf deinem Computer, du brauchst kein Konto und kein Abo. Auch die
+        KI-Funktionen rechnen bei dir und nicht in einer Cloud.</p>
       <div class="actions">
         <a class="btn primary" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Für Windows herunterladen</a>
-        <a class="btn" href="/de/funktionen">Was es kann</a>
+        <a class="btn" href="/de/funktionen">Funktionen ansehen</a>
       </div>
       <p class="meta">Windows-Installer (.msi), deutsch oder englisch · Kostenlos und quelloffen (GPL-3.0) · Linux aus dem Quellcode</p>
-      <figure class="shot">
-        <img src="/img/develop.webp" srcset="/img/develop-900.webp 900w, /img/develop.webp 1800w" sizes="(max-width: 1228px) calc(100vw - 48px), 1180px" fetchpriority="high" width="1800" height="1043" alt="Entwickeln-Ansicht von Lumenkorn mit einem Sonnenuntergang über einem See und den Reglern für Weißabgleich, Licht und Farbe">
+      <figure class="shot video">
+        <video controls preload="none" playsinline width="1920" height="1080" poster="/img/trailer-de.webp" aria-label="Trailer: Lumenkorn in einer Minute">
+          <source src="/video/lumenkorn-trailer-de.mp4" type="video/mp4">
+        </video>
       </figure>
     </div>
   </section>
 
   <section class="wrap points" aria-label="Kurz gesagt">
     <div class="point">
-      <h3>Nichts verlässt die Festplatte</h3>
-      <p>Lumenkorn liest deine Ordner dort, wo sie liegen, und verändert die Originale nie. Katalog
-        und Bearbeitungen sind eine Datei auf deinem Rechner. Es gibt kein Konto und nichts zu
-        synchronisieren.</p>
+      <h3>Deine Dateien bleiben, wo sie sind</h3>
+      <p>Lumenkorn liest deine Ordner direkt und ändert an den Originalen nichts. Bewertungen und
+        Bearbeitungen landen in einer Katalogdatei auf deinem Rechner.</p>
     </div>
     <div class="point">
-      <h3>RAW-Entwicklung mit Tiefe</h3>
-      <p>Szenenbezogene Verarbeitung nach dem Vorbild von darktable, Objektivkorrektur, Gradationskurve,
-        Color Grading und lokale Masken. Auf der Grafikkarte reagiert alles in Millisekunden.</p>
+      <h3>RAW-Entwicklung</h3>
+      <p>Die Verarbeitung orientiert sich an darktable. Mit Grafikkarte reagieren die Regler ohne
+        spürbare Verzögerung, ohne Grafikkarte rechnet der Prozessor.</p>
     </div>
     <div class="point">
-      <h3>KI, die offline arbeitet</h3>
-      <p>Offene Modelle werden einmal geladen und laufen dann auf Prozessor oder Grafikkarte:
-        Schlagworte, Inhaltssuche, Masken für Himmel, Personen und Tiere, Rauschreduzierung und
-        Retusche.</p>
+      <h3>KI ohne Cloud</h3>
+      <p>Schlagworte, Suche nach Bildinhalt, Masken und Rauschreduzierung nutzen offene Modelle. Du
+        lädst sie einmal herunter, danach funktioniert alles offline.</p>
     </div>
   </section>
 
@@ -85,13 +85,13 @@
     <div class="wrap row">
       <div class="text">
         <span class="eyebrow">Bibliothek</span>
-        <h2>Zehntausende Fotos, schnell sortiert</h2>
-        <p>Füge deine Fotoordner hinzu, und Lumenkorn legt einen Katalog an. Vergib Sterne, markiere
-          und lehne ab, ergänze Schlagworte und fasse Ordner zu Projekten zusammen, auch über
-          mehrere Laufwerke.</p>
-        <p>Verschobene oder umbenannte Dateien erkennt Lumenkorn am Inhalt, Bewertungen und
-          Bearbeitungen bleiben also beim Foto. Der Import von der Speicherkarte sortiert nach Datum
-          und prüft jede Kopie Byte für Byte.</p>
+        <h2>Deine Ordnerstruktur bleibt</h2>
+        <p>Du fügst deine Fotoordner hinzu und Lumenkorn baut daraus einen Katalog. Sterne,
+          Markierungen und Schlagworte vergibst du wie gewohnt. Ordner, die zusammengehören, fasst du
+          zu Projekten zusammen, auch wenn sie auf verschiedenen Laufwerken liegen.</p>
+        <p>Benennst du Dateien um oder verschiebst sie, erkennt Lumenkorn sie am Inhalt wieder.
+          Bewertungen und Bearbeitungen gehen dabei nicht verloren. Über den Dateityp-Filter zeigst du
+          zum Beispiel nur die RAW-Dateien oder nur die JPEGs an.</p>
       </div>
       <figure class="shot">
         <img src="/img/library.webp" srcset="/img/library-900.webp 900w, /img/library.webp 1800w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1800" height="1043" loading="lazy" alt="Bibliothek mit Tierfotos aus einem Zoo, ausgewählt ist ein Pinguin, rechts seine Aufnahmedaten">
@@ -102,12 +102,13 @@
   <section class="block">
     <div class="wrap row flip">
       <div class="text">
-        <span class="eyebrow">Entwickeln</span>
-        <h2>Vom flauen RAW zum fertigen Foto</h2>
-        <p>Weißabgleich, Belichtung, Lichter und Tiefen, Klarheit, Dunst entfernen, HSL, Color
-          Grading und Gradationskurve. <strong>Auto</strong> liefert einen ausgewogenen Ausgangspunkt
-          und lernt aus deinen Bearbeitungen, wie dir deine Fotos gefallen.</p>
-        <p>Alles bleibt jederzeit änderbar. Zieh den Regler, um zu vergleichen.</p>
+        <span class="eyebrow">RAW-Entwicklung</span>
+        <h2>Nichtdestruktiv, wie du es kennst</h2>
+        <p>Weißabgleich, Belichtung, Lichter und Tiefen, Dunst, HSL, Color Grading und eine
+          Gradationskurve. Alles bleibt jederzeit änderbar, die Originaldatei wird nie angefasst.</p>
+        <p><strong>Auto</strong> macht einen ersten Vorschlag. Mit der Zeit merkt es sich, wie du deine
+          Fotos bearbeitest, und passt sich daran an. Zieh den Regler im Bild, um vorher und nachher
+          zu vergleichen.</p>
       </div>
       <div class="shot compare">
         <img src="/img/after.webp" srcset="/img/after-900.webp 900w, /img/after.webp 1600w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1600" height="1067" loading="lazy" alt="Eisvogel auf einem Ast nach der Bearbeitung: warme, klare Farben">
@@ -122,12 +123,13 @@
   <section class="block">
     <div class="wrap row">
       <div class="text">
-        <span class="eyebrow">KI-Masken</span>
-        <h2>Den Vogel auswählen, nicht den Pinsel</h2>
-        <p>Ein Klick wählt das Motiv, den Himmel, Personen (oder nur Haare, Augen oder Haut) oder
-          Tiere aus. Masken lassen sich kombinieren, etwa „Himmel ohne Kirchturm“, und jede bekommt
-          ihre eigenen Regler.</p>
-        <p>Verläufe, Pinsel und Farbbereich gibt es auch, für alles, was die KI nicht erraten kann.</p>
+        <span class="eyebrow">Maskierung</span>
+        <h2>Masken per Klick</h2>
+        <p>Lumenkorn erkennt Himmel, Hauptmotiv, Personen und Tiere. Bei Personen kannst du auch nur
+          Haare, Augen oder Haut auswählen. Masken lassen sich kombinieren, etwa der Himmel ohne den
+          Kirchturm davor.</p>
+        <p>Verläufe, Pinsel und Farbbereich gibt es natürlich auch, für alles, was du lieber selbst
+          einzeichnest.</p>
       </div>
       <figure class="shot">
         <img src="/img/ai-mask.webp" srcset="/img/ai-mask-900.webp 900w, /img/ai-mask.webp 1800w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1800" height="1046" loading="lazy" alt="Eisvogel mit einer KI-Maske ausgewählt, rot angezeigt">
@@ -139,11 +141,12 @@
     <div class="wrap row flip">
       <div class="text">
         <span class="eyebrow">Fotoalbum</span>
-        <h2>Ein Fotobuch von der Reise, in wenigen Minuten</h2>
-        <p>Wähle ein Thema und ein Format. Lumenkorn sucht scharfe, gut belichtete Fotos aus, lässt
-          fast gleiche weg, nimmt deine Fotos mit 4 und 5 Sternen immer auf und verteilt alles in
-          zeitlicher Reihenfolge auf die Seiten, mit Ortsnamen und auf Wunsch einer Kartenseite.</p>
-        <p>Danach kannst du alles ändern und ein druckfertiges PDF speichern.</p>
+        <h2>Vom Urlaub zum Fotobuch</h2>
+        <p>Du wählst ein Thema und ein Format, Lumenkorn sucht die Fotos aus und verteilt sie in
+          zeitlicher Reihenfolge auf die Seiten. Unscharfe Bilder und fast gleiche Aufnahmen bleiben
+          draußen, Fotos mit vier oder fünf Sternen sind immer dabei. Auf Wunsch gibt es eine
+          Kartenseite mit allen Orten der Reise.</p>
+        <p>Danach änderst du, was dir nicht gefällt, und speicherst ein druckfertiges PDF.</p>
       </div>
       <figure class="shot">
         <img src="/img/album.webp" srcset="/img/album-900.webp 900w, /img/album.webp 1800w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1800" height="1045" loading="lazy" alt="Fotoalbum mit Herbstfotos aus Japan, zwei Doppelseiten und die Schriftoptionen">
@@ -153,9 +156,9 @@
 
   <section class="cta">
     <div class="wrap">
-      <h2>Probier es mit deinen eigenen Fotos</h2>
-      <p>Lumenkorn ist kostenlos. Installieren, Ordner hinzufügen, loslegen. Die KI-Modelle sind
-        optional und werden erst geladen, wenn du es möchtest.</p>
+      <h2>Selbst ausprobieren</h2>
+      <p>Lumenkorn kostet nichts, der Quellcode liegt offen auf GitHub. Die KI-Modelle lädst du nur
+        herunter, wenn du sie brauchst.</p>
       <div class="actions">
         <a class="btn primary" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Für Windows herunterladen</a>
         <a class="btn" href="/de/anleitung">Erste Schritte</a>
