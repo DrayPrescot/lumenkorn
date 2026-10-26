@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.18] – 2026-10-26
+
 ### Fixed
 - The folder menu (right-click in the folder list) no longer runs off the bottom of the window for
   folders near the end of the list; it moves up, and scrolls if there are very many projects.
