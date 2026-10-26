@@ -13,8 +13,13 @@
 //!    bleiben gerade, nur für mäßige Bildwinkel).
 //! 5. Helligkeitsausgleich: je Bild ein Faktor, damit Überlappungen gleich hell
 //!    sind (Belichtung schwankt bei Automatik).
-//! 6. Überblenden mit zur Bildmitte hin steigendem Gewicht, optional auf das
-//!    größte vollständig gefüllte Rechteck zuschneiden.
+//! 6. Nähte: Auf einer verkleinerten Fassung bekommt jedes Pixel genau ein
+//!    Bild. Die Naht zwischen zwei Bildern läuft dort, wo sie sich am wenigsten
+//!    unterscheiden, nicht quer durch nahe Gegenstände, die sich zwischen den
+//!    Aufnahmen verschieben (Parallaxe) – sonst entstünden Geisterbilder.
+//! 7. Zusammensetzen in voller Größe, nur entlang der Nähte schmal
+//!    überblendet; optional auf das größte vollständig gefüllte Rechteck
+//!    zuschneiden.
 
 use super::align::{self, Features, Mat3};
 use super::{FrameCache, Loader, Merged, Progress, check};
@@ -513,7 +518,21 @@ pub fn merge_report(
     progress(tr_s("Helligkeit angleichen", "Matching brightness"), 0, 1);
     gain_compensation(&mut cams, &smalls, &fits, f);
 
-    // --- 6. Überblenden ------------------------------------------------------------
+    // --- 6. Nähte ------------------------------------------------------------------
+    progress(tr_s("Nähte suchen", "Finding seams"), 0, 1);
+    let order = tree_order(&tree, reference);
+    let seams = Seams::find(
+        &cams,
+        &smalls,
+        f,
+        &proj,
+        (u0, v0),
+        (out_w, out_h),
+        &order,
+        cancel,
+    )?;
+
+    // --- 7. Zusammensetzen ----------------------------------------------------------
     let mut acc = vec![[0f32; 3]; out_w * out_h];
     let mut wsum = vec![0f32; out_w * out_h];
     let cols: Vec<(f64, f64)> = (0..out_w).map(|x| proj.column(x as f64 + u0)).collect();
@@ -532,6 +551,7 @@ pub fn merge_report(
         let y1 = (((bv1 - v0).ceil() + 1.0) as usize).min(out_h);
         let (iw, ih) = (cam.w as f64, cam.h as f64);
         let gain = cam.gain;
+        let mask = seams.masks[i].as_ref();
         acc[y0 * out_w..y1 * out_w]
             .par_chunks_mut(out_w)
             .zip(wsum[y0 * out_w..y1 * out_w].par_chunks_mut(out_w))
@@ -546,10 +566,17 @@ pub fn merge_report(
                     let Some(p) = align::sample(&img, px, py) else {
                         continue;
                     };
-                    // Gewicht steigt zur Bildmitte (weiche, schmale Übergänge)
+                    // Gewicht: Anteil dieses Bildes laut Nahtmaske. Dazu sehr
+                    // schwach ein zur Bildmitte steigendes Gewicht; es zählt
+                    // nur, wo die gröbere Maske auf ein Bild zeigt, das hier in
+                    // voller Auflösung knapp nicht mehr hinreicht.
                     let wx = (px.min(iw - 1.0 - px) / (iw * 0.5)).clamp(0.0, 1.0);
                     let wy = (py.min(ih - 1.0 - py) / (ih * 0.5)).clamp(0.0, 1.0);
-                    let wt = ((wx * wy) as f32).powi(2) + 1e-6;
+                    let center = ((wx * wy) as f32).powi(2) + 1e-6;
+                    let m = mask.map_or(0.0, |m| {
+                        m.at(x as f64 * seams.scale, (y0 + r) as f64 * seams.scale)
+                    });
+                    let wt = m + 1e-4 * center;
                     for c in 0..3 {
                         arow[x][c] += wt * p[c] * gain;
                     }
@@ -558,6 +585,7 @@ pub fn merge_report(
             });
     }
     progress(tr_s("Zusammenfügen", "Stitching"), n, n);
+    drop(seams);
     drop(cache);
     drop(smalls);
     // Im Puffer selbst normieren – bei 150 MP spart das 1,8 GB
@@ -845,6 +873,372 @@ fn candidate_pairs(feats: &[Features], cancel: &AtomicBool) -> Vec<(usize, usize
     keep.into_iter().collect()
 }
 
+/// Reihenfolge zum Einsetzen der Bilder: Breitensuche ab der Referenz, damit
+/// jedes neue Bild an schon eingesetzte anschließt.
+fn tree_order(tree: &Tree, reference: usize) -> Vec<usize> {
+    let mut seen = vec![false; tree.len()];
+    seen[reference] = true;
+    let mut order = vec![reference];
+    let mut k = 0;
+    while k < order.len() {
+        for &(c, _) in &tree[order[k]] {
+            if !seen[c] {
+                seen[c] = true;
+                order.push(c);
+            }
+        }
+        k += 1;
+    }
+    order
+}
+
+/// Weiche Maske eines Bildes auf dem verkleinerten Panorama (Ausschnitt).
+struct SeamMask {
+    x0: usize,
+    y0: usize,
+    w: usize,
+    h: usize,
+    data: Vec<f32>,
+}
+
+impl SeamMask {
+    /// Bilinear an (x, y) in Koordinaten des verkleinerten Panoramas
+    fn at(&self, x: f64, y: f64) -> f32 {
+        let (x, y) = (x - self.x0 as f64, y - self.y0 as f64);
+        if !(x >= 0.0 && y >= 0.0 && x <= (self.w - 1) as f64 && y <= (self.h - 1) as f64) {
+            return 0.0;
+        }
+        let (xa, ya) = (x.floor() as usize, y.floor() as usize);
+        let (xb, yb) = ((xa + 1).min(self.w - 1), (ya + 1).min(self.h - 1));
+        let (tx, ty) = ((x - xa as f64) as f32, (y - ya as f64) as f32);
+        let p = |xx: usize, yy: usize| self.data[yy * self.w + xx];
+        let top = p(xa, ya) + (p(xb, ya) - p(xa, ya)) * tx;
+        let bot = p(xa, yb) + (p(xb, yb) - p(xa, yb)) * tx;
+        top + (bot - top) * ty
+    }
+}
+
+/// Nähte zwischen den Bildern: je Bild eine weiche Maske, welche Pixel es
+/// beiträgt. `scale`: Panoramapixel → Pixel der verkleinerten Fassung.
+struct Seams {
+    scale: f64,
+    masks: Vec<Option<SeamMask>>,
+}
+
+/// Höchstens so viele Pixel hat die verkleinerte Fassung für die Nahtsuche
+const SEAM_PIXELS: f64 = 12e6;
+
+/// Abbild eines Bildes auf der verkleinerten Fassung (Ausschnitt `x0..x1`,
+/// `y0..y1`; `None` außerhalb des Bildes).
+struct Warped {
+    x0: usize,
+    x1: usize,
+    y0: usize,
+    y1: usize,
+    data: Vec<Option<[f32; 3]>>,
+}
+
+impl Warped {
+    fn at(&self, x: usize, y: usize) -> Option<[f32; 3]> {
+        self.data[(y - self.y0) * (self.x1 - self.x0) + (x - self.x0)]
+    }
+}
+
+/// Naht durch eine Überlappung (Rechteck `ox0..=ox1`, `oy0..=oy1`): je Zeile
+/// (senkrechte Naht) bzw. Spalte die Stelle des Schnitts.
+struct Cut {
+    vertical: bool,
+    /// Das neue Bild liegt hinter dem Schnitt (rechts bzw. unten)
+    after: bool,
+    ox0: usize,
+    oy0: usize,
+    path: Vec<usize>,
+}
+
+impl Cut {
+    /// Pixel der Überlappung geht an das neue Bild
+    fn take(&self, x: usize, y: usize) -> bool {
+        let (along, across, origin) = if self.vertical {
+            (y - self.oy0, x, self.ox0)
+        } else {
+            (x - self.ox0, y, self.oy0)
+        };
+        let cut = origin + self.path[along];
+        if self.after {
+            across > cut
+        } else {
+            across <= cut
+        }
+    }
+}
+
+impl Seams {
+    #[allow(clippy::too_many_arguments)]
+    fn find(
+        cams: &[Cam],
+        smalls: &[ImageF32],
+        f: f64,
+        proj: &Proj,
+        (u0, v0): (f64, f64),
+        (out_w, out_h): (usize, usize),
+        order: &[usize],
+        cancel: &AtomicBool,
+    ) -> Result<Seams> {
+        // Auflösung der verkleinerten Bilder: ein kleines Pixel ≈ ein Pixel hier
+        let k = smalls
+            .iter()
+            .zip(cams)
+            .map(|(s, c)| s.width as f64 / c.w as f64)
+            .fold(0.0, f64::max);
+        let mut scale = (k * f / proj.f).min(1.0);
+        let area = out_w as f64 * out_h as f64 * scale * scale;
+        if area > SEAM_PIXELS {
+            scale *= (SEAM_PIXELS / area).sqrt();
+        }
+        let lw = ((out_w as f64 * scale).ceil() as usize).max(1);
+        let lh = ((out_h as f64 * scale).ceil() as usize).max(1);
+        let cols: Vec<(f64, f64)> = (0..lw)
+            .map(|x| proj.column(x as f64 / scale + u0))
+            .collect();
+        let rows: Vec<(f64, f64)> = (0..lh).map(|y| proj.row(y as f64 / scale + v0)).collect();
+
+        // Zusammengesetztes Bild und Zuordnung (Bildnummer, −1 = leer)
+        let mut comp = vec![[0f32; 3]; lw * lh];
+        let mut label = vec![-1i32; lw * lh];
+        for &i in order {
+            check(cancel)?;
+            let cam = &cams[i];
+            let small = &smalls[i];
+            let fs = small.width as f64 / cam.w as f64;
+            let Some((bu0, bv0, bu1, bv1)) = cam.bounds(f, proj) else {
+                continue;
+            };
+            let x0 = (((bu0 - u0) * scale).floor().max(0.0)) as usize;
+            let x1 = ((((bu1 - u0) * scale).ceil() + 1.0) as usize).min(lw);
+            let y0 = (((bv0 - v0) * scale).floor().max(0.0)) as usize;
+            let y1 = ((((bv1 - v0) * scale).ceil() + 1.0) as usize).min(lh);
+            if x0 >= x1 || y0 >= y1 {
+                continue;
+            }
+            let data = (y0..y1)
+                .into_par_iter()
+                .flat_map_iter(|y| {
+                    let (cols, rows) = (&cols, &rows);
+                    (x0..x1).map(move |x| {
+                        let ray = proj.inverse(cols[x], rows[y]);
+                        let (px, py) = cam.to_pixel(f, ray)?;
+                        align::sample(small, px * fs, py * fs).map(|p| p.map(|c| c * cam.gain))
+                    })
+                })
+                .collect();
+            let warped = Warped {
+                x0,
+                x1,
+                y0,
+                y1,
+                data,
+            };
+            let cut = Self::cut(&warped, &comp, &label, lw);
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    let Some(p) = warped.at(x, y) else {
+                        continue;
+                    };
+                    let idx = y * lw + x;
+                    let take = label[idx] < 0 || cut.as_ref().is_some_and(|c| c.take(x, y));
+                    if take {
+                        label[idx] = i as i32;
+                        comp[idx] = p;
+                    }
+                }
+            }
+        }
+        drop(comp);
+
+        // Je Bild eine weiche Maske: schmal weichgezeichnet (zweimal Kastenfilter)
+        let radius = 2usize;
+        let pad = 2 * radius + 1;
+        let masks = (0..cams.len())
+            .into_par_iter()
+            .map(|i| {
+                let me = i as i32;
+                let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0, 0);
+                for y in 0..lh {
+                    for x in 0..lw {
+                        if label[y * lw + x] == me {
+                            x0 = x0.min(x);
+                            y0 = y0.min(y);
+                            x1 = x1.max(x);
+                            y1 = y1.max(y);
+                        }
+                    }
+                }
+                if x0 > x1 {
+                    return None;
+                }
+                let (x0, y0) = (x0.saturating_sub(pad), y0.saturating_sub(pad));
+                let (x1, y1) = ((x1 + pad).min(lw - 1), (y1 + pad).min(lh - 1));
+                let (w, h) = (x1 - x0 + 1, y1 - y0 + 1);
+                let mut data: Vec<f32> = (0..w * h)
+                    .map(|k| f32::from(u8::from(label[(y0 + k / w) * lw + x0 + k % w] == me)))
+                    .collect();
+                for _ in 0..2 {
+                    data = box_blur(&data, w, h, radius);
+                }
+                Some(SeamMask { x0, y0, w, h, data })
+            })
+            .collect();
+        Ok(Seams { scale, masks })
+    }
+
+    /// Naht zwischen dem neuen Bild und dem schon Eingesetzten; `None` ohne
+    /// Überlappung. Senkrecht bei hoher, waagerecht bei breiter Überlappung.
+    fn cut(warped: &Warped, comp: &[[f32; 3]], label: &[i32], lw: usize) -> Option<Cut> {
+        let (mut ox0, mut oy0, mut ox1, mut oy1) = (usize::MAX, usize::MAX, 0, 0);
+        let (mut sx, mut sy, mut cnt) = (0.0, 0.0, 0.0);
+        for y in warped.y0..warped.y1 {
+            for x in warped.x0..warped.x1 {
+                if warped.at(x, y).is_none() {
+                    continue;
+                }
+                sx += x as f64;
+                sy += y as f64;
+                cnt += 1.0;
+                if label[y * lw + x] >= 0 {
+                    ox0 = ox0.min(x);
+                    oy0 = oy0.min(y);
+                    ox1 = ox1.max(x);
+                    oy1 = oy1.max(y);
+                }
+            }
+        }
+        if ox0 > ox1 {
+            return None;
+        }
+        let (ow, oh) = (ox1 - ox0 + 1, oy1 - oy0 + 1);
+        let vertical = oh >= ow;
+        // Auf welcher Seite das neue Bild liegt: sein Schwerpunkt
+        let after = if vertical {
+            sx / cnt > (ox0 + ox1) as f64 / 2.0
+        } else {
+            sy / cnt > (oy0 + oy1) as f64 / 2.0
+        };
+        // Kosten: Unterschied beider Bilder (Wurzel, grob wie wahrgenommen),
+        // auf die Nachbarn ausgedehnt, damit die Naht Abstand zu Kanten hält.
+        // Außerhalb der Überlappung teuer.
+        let mut cost = vec![0f32; ow * oh];
+        for y in oy0..=oy1 {
+            for x in ox0..=ox1 {
+                let idx = y * lw + x;
+                cost[(y - oy0) * ow + (x - ox0)] = match (warped.at(x, y), label[idx] >= 0) {
+                    (Some(p), true) => {
+                        let q = comp[idx];
+                        0.01 + (0..3)
+                            .map(|k| (p[k].max(0.0).sqrt() - q[k].max(0.0).sqrt()).abs())
+                            .sum::<f32>()
+                    }
+                    _ => 4.0,
+                };
+            }
+        }
+        let cost = dilate(&cost, ow, oh, 2);
+        let path = if vertical {
+            min_path(&cost, ow, oh)
+        } else {
+            min_path(&transpose(&cost, ow, oh), oh, ow)
+        };
+        Some(Cut {
+            vertical,
+            after,
+            ox0,
+            oy0,
+            path,
+        })
+    }
+}
+
+/// Größter Wert im Umkreis `r` (Quadrat)
+fn dilate(v: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
+    let mut tmp = vec![0f32; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let (a, b) = (x.saturating_sub(r), (x + r).min(w - 1));
+            tmp[y * w + x] = v[y * w + a..=y * w + b].iter().copied().fold(0.0, f32::max);
+        }
+    }
+    let mut out = vec![0f32; w * h];
+    for y in 0..h {
+        let (a, b) = (y.saturating_sub(r), (y + r).min(h - 1));
+        for x in 0..w {
+            out[y * w + x] = (a..=b).map(|yy| tmp[yy * w + x]).fold(0.0, f32::max);
+        }
+    }
+    out
+}
+
+fn transpose(v: &[f32], w: usize, h: usize) -> Vec<f32> {
+    let mut out = vec![0f32; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            out[x * h + y] = v[y * w + x];
+        }
+    }
+    out
+}
+
+/// Günstigster Weg von oben nach unten (je Zeile eine Spalte, benachbarte
+/// Zeilen höchstens eine Spalte versetzt): Spalte je Zeile.
+fn min_path(cost: &[f32], w: usize, h: usize) -> Vec<usize> {
+    let mut acc = cost[..w].to_vec();
+    let mut from = vec![0u32; w * h];
+    let mut next = vec![0f32; w];
+    for y in 1..h {
+        for x in 0..w {
+            let mut best = (acc[x], x);
+            if x > 0 && acc[x - 1] < best.0 {
+                best = (acc[x - 1], x - 1);
+            }
+            if x + 1 < w && acc[x + 1] < best.0 {
+                best = (acc[x + 1], x + 1);
+            }
+            next[x] = best.0 + cost[y * w + x];
+            from[y * w + x] = best.1 as u32;
+        }
+        std::mem::swap(&mut acc, &mut next);
+    }
+    let mut x = (0..w)
+        .min_by(|&a, &b| acc[a].total_cmp(&acc[b]))
+        .unwrap_or(0);
+    let mut path = vec![0usize; h];
+    for y in (0..h).rev() {
+        path[y] = x;
+        if y > 0 {
+            x = from[y * w + x] as usize;
+        }
+    }
+    path
+}
+
+/// Kastenfilter mit Radius `r` (getrennt waagerecht und senkrecht)
+fn box_blur(v: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
+    let n = (2 * r + 1) as f32;
+    let mut tmp = vec![0f32; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let (a, b) = (x.saturating_sub(r), (x + r).min(w - 1));
+            tmp[y * w + x] = v[y * w + a..=y * w + b].iter().sum::<f32>() / n;
+        }
+    }
+    let mut out = vec![0f32; w * h];
+    for y in 0..h {
+        let (a, b) = (y.saturating_sub(r), (y + r).min(h - 1));
+        for x in 0..w {
+            out[y * w + x] = (a..=b).map(|yy| tmp[yy * w + x]).sum::<f32>() / n;
+        }
+    }
+    out
+}
+
 /// Zuschneiden ohne zweiten Puffer: Zeilen nach vorn schieben, Rest abschneiden.
 fn crop_in_place(img: &mut ImageF32, x: usize, y: usize, w: usize, h: usize) {
     let stride = img.width;
@@ -1037,6 +1431,57 @@ mod tests {
         assert!(
             (l / m - 1.0).abs() < 0.1,
             "Helligkeitssprung: links {l:.3}, Mitte {m:.3}"
+        );
+    }
+
+    /// Naher Gegenstand (Parallaxe): Ein roter Pfahl steht in zwei
+    /// benachbarten Aufnahmen an verschiedenen Stellen der Szene. Mit Nähten
+    /// erscheint er höchstens einmal deckend, nicht als halbdurchsichtiger
+    /// Doppelgänger (früher: gewichtetes Mittel in der Überlappung).
+    #[test]
+    fn no_ghosts_from_parallax() {
+        let scene = texture(2000, 700, 31);
+        let (w, h, f) = (640usize, 480usize, 700.0f64);
+        let mut shots = [
+            shoot(&scene, f, -0.55, w, h, 1.0),
+            shoot(&scene, f, 0.0, w, h, 1.0),
+            shoot(&scene, f, 0.55, w, h, 1.0),
+        ];
+        // In der Überlappung von Aufnahme 0 und 1 (rechter Rand von 0, linker
+        // von 1), im Panorama um ~40 px gegeneinander versetzt
+        let post = |img: &mut ImageF32, x0: usize| {
+            for y in 60..420 {
+                for x in x0..x0 + 30 {
+                    img.data[y * img.width + x] = [1.0, 0.0, 0.0];
+                }
+            }
+        };
+        post(&mut shots[0], 560);
+        post(&mut shots[1], 150);
+        let cancel = AtomicBool::new(false);
+        let out = merge(
+            3,
+            &|i| Ok(shots[i].clone()),
+            PanoOptions::default(),
+            &|_, _, _| {},
+            &cancel,
+        )
+        .unwrap();
+        // „Rötung“: Hintergrund ≤ 0,15, Pfahl ≈ 1. Halb rot = Geisterbild
+        let ghost = out
+            .data
+            .iter()
+            .filter(|p| (0.3..0.75).contains(&(p[0] - (p[1] + p[2]) / 2.0)))
+            .count();
+        let solid = out
+            .data
+            .iter()
+            .filter(|p| p[0] - (p[1] + p[2]) / 2.0 >= 0.75)
+            .count();
+        assert!(solid > 5000, "Pfahl fehlt ({solid} Pixel)");
+        assert!(
+            ghost < solid / 20,
+            "Geisterbild: {ghost} halb rote Pixel neben {solid} deckenden"
         );
     }
 

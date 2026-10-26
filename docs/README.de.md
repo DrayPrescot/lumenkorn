@@ -391,7 +391,7 @@ läuft im Hintergrund und lässt sich abbrechen.
 | | Kürzel | Was passiert |
 |---|---|---|
 | **HDR** | Strg+H | Ausrichten (auch Freihand), Belichtungsverhältnisse aus den Pixeln gemessen, gewichtetes Zusammenführen, optional Geisterbilder unterdrücken. Bis ±6 EV. |
-| **Panorama** | Strg+M | Reihenfolge egal, auch mehrzeilig. Brennweite und Kameradrehungen werden geschätzt, der Horizont ausgerichtet. Projektion zylindrisch, Kugel oder perspektivisch, Helligkeit angeglichen, optional automatisch zugeschnitten. |
+| **Panorama** | Strg+M | Reihenfolge egal, auch mehrzeilig. Brennweite und Kameradrehungen werden geschätzt, der Horizont ausgerichtet. Projektion zylindrisch, Kugel oder perspektivisch, Helligkeit angeglichen, optional automatisch zugeschnitten. Nahe Gegenstände wie ein Baum im Vordergrund erscheinen nicht doppelt. |
 | **Focus Stacking** | Strg+Umschalt+F | Ausrichten einschließlich Objektiv-Atmen, dann gewinnt je Pixel und Größenordnung das schärfste Bild. |
 
 Das Ergebnis ist eine EXR-Datei (lineares 16-Bit-Gleitkomma) neben dem ersten Foto, z. B.
@@ -585,7 +585,9 @@ sicherem Himmel und sicherem Vordergrund in der Nähe.
 Alle drei Verfahren richten die Bilder zuerst aus: Harris-Ecken auf einem helligkeitsnormierten
 Graubild, BRIEF-Beschreiber, Zuordnung über den Hamming-Abstand und eine Homografie per RANSAC.
 HDR misst danach die Belichtungsverhältnisse und führt zur linearen Strahldichte zusammen. Das
-Panorama schätzt aus allen Bildpaaren Brennweite und Drehungen und projiziert. Focus Stacking
+Panorama schätzt aus allen Bildpaaren Brennweite und Drehungen und projiziert. Danach kommt jedes
+Pixel aus genau einem Bild: Die Naht zwischen zwei Aufnahmen verläuft dort, wo sie sich am
+wenigsten unterscheiden, und nur entlang der Naht wird schmal überblendet. Focus Stacking
 zerlegt jedes Bild in eine Laplace-Pyramide und behält je Stufe das schärfste Detail.
 
 ### Daten und Arbeitsspeicher

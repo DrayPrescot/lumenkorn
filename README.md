@@ -402,7 +402,10 @@ RANSAC.
   pixels, and merges to linear radiance with weights that favor well-exposed and less noisy
   values. Deghosting falls back to the reference where something moved.
 - **Panorama** builds a graph of all overlapping pairs, estimates the focal length and the
-  rotation of each shot, levels the horizon, projects, equalizes brightness and blends.
+  rotation of each shot, levels the horizon, projects and equalizes brightness. Each pixel then
+  comes from one shot: the seam between two shots runs where they differ least, so objects close
+  to the camera, which shift between shots, are not doubled. Only a narrow strip along the
+  seams is blended.
 - **Focus stacking** splits each frame into a Laplacian pyramid and keeps, per level and pixel,
   the sharpest detail.
 
