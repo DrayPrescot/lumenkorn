@@ -287,8 +287,6 @@ export interface PhotoStats {
   total: number;
   raw: number;
   edited: number;
-  picked: number;
-  rejected: number;
   withLocation: number;
   first: string | null;
   last: string | null;

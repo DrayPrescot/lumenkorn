@@ -205,8 +205,6 @@ function stats(q: ImageQuery) {
     total: list.length,
     raw: list.filter((i) => i.ext !== "jpg").length,
     edited: list.filter((i) => i.edit).length,
-    picked: list.filter((i) => i.flag === 1).length,
-    rejected: list.filter((i) => i.flag === -1).length,
     withLocation: list.filter((i) => i.location).length,
     first: dates[0] ?? null,
     last: dates[dates.length - 1] ?? null,

@@ -42,8 +42,6 @@ pub struct PhotoStats {
     pub total: i64,
     pub raw: i64,
     pub edited: i64,
-    pub picked: i64,
-    pub rejected: i64,
     pub with_location: i64,
     /// Erste und letzte Aufnahme (ISO-Zeit)
     pub first: Option<String>,
@@ -129,7 +127,6 @@ impl Catalog {
             "SELECT COUNT(*),
                     SUM(i.kind = 'raw'),
                     SUM(EXISTS (SELECT 1 FROM edits e WHERE e.image_id = i.id AND e.is_current = 1)),
-                    SUM(i.flag = 1), SUM(i.flag = -1),
                     SUM(i.gps_lat IS NOT NULL),
                     MIN(i.captured_at), MAX(i.captured_at)
              FROM images i WHERE {where}",
@@ -139,11 +136,9 @@ impl Catalog {
             s.total = int(&r[0]);
             s.raw = int(&r[1]);
             s.edited = int(&r[2]);
-            s.picked = int(&r[3]);
-            s.rejected = int(&r[4]);
-            s.with_location = int(&r[5]);
-            s.first = Some(text(&r[6])).filter(|t| !t.is_empty());
-            s.last = Some(text(&r[7])).filter(|t| !t.is_empty());
+            s.with_location = int(&r[3]);
+            s.first = Some(text(&r[4])).filter(|t| !t.is_empty());
+            s.last = Some(text(&r[5])).filter(|t| !t.is_empty());
         }
         if s.total == 0 {
             return Ok(s);

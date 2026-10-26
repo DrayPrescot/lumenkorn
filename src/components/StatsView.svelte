@@ -205,7 +205,6 @@
       <div class="tile"><span class="big">{num(s.total)}</span><span>{t("Fotos")}</span></div>
       <div class="tile"><span class="big">{pct(s.raw, s.total)} %</span><span>{t("RAW ({n})", { n: num(s.raw) })}</span></div>
       <div class="tile"><span class="big">{pct(s.edited, s.total)} %</span><span>{t("bearbeitet ({n})", { n: num(s.edited) })}</span></div>
-      <div class="tile"><span class="big">{num(s.picked)}</span><span>{t("markiert, {n} abgelehnt", { n: num(s.rejected) })}</span></div>
       <div class="tile"><span class="big">{pct(s.withLocation, s.total)} %</span><span>{t("mit Aufnahmeort")}</span></div>
       <div class="tile wide"><span class="big date">{day(s.first)} – {day(s.last)}</span><span>{t("Zeitraum")}</span></div>
     </section>

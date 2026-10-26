@@ -14,7 +14,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Statistics: **Statistics** above the grid shows the photos of the current view (folder,
   project, person, with all filters): cameras, lenses, focal length, aperture, shutter speed,
   ISO, photos per month or year, time of day, keywords, people, countries, file types and
-  ratings, plus totals for RAW, edited, picked and located photos. Clicking a camera, lens,
+  ratings, plus the share of RAW, edited and located photos. Clicking a camera, lens,
   keyword, person, country or file type filters by it, and the statistics follow.
 
 ## [1.0.16] – 2026-10-21

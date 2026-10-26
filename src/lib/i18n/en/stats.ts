@@ -25,7 +25,6 @@ export default {
   "Fotos": "Photos",
   "RAW ({n})": "RAW ({n})",
   "bearbeitet ({n})": "edited ({n})",
-  "markiert, {n} abgelehnt": "picked, {n} rejected",
   "mit Aufnahmeort": "with location",
   "Zeitraum": "Period",
   "Kameras": "Cameras",

@@ -86,7 +86,7 @@ vergibt sie in der neuen Sprache neu.
 - **Statistik:** Der Knopf „Statistik“ über dem Raster wertet die Fotos der Ansicht aus (Ordner,
   Projekt, Person, mit allen Filtern): Kameras, Objektive, Brennweite, Blende, Belichtungszeit,
   ISO, Aufnahmen je Monat oder Jahr, Tageszeit, Schlagworte, Personen, Länder, Dateitypen und
-  Bewertung, dazu der Anteil von RAW, bearbeiteten, markierten Fotos und Fotos mit Ort. Ein Klick
+  Bewertung, dazu der Anteil von RAW, bearbeiteten Fotos und Fotos mit Ort. Ein Klick
   auf eine Kamera, ein Objektiv, Schlagwort, eine Person, ein Land oder einen Dateityp filtert
   danach, und die Statistik rechnet für diese Fotos neu.
 - **Seitenleiste:** „Projekte“, „Personen“ und „Ordner“ lassen sich per Klick auf die Überschrift
