@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.17] – 2026-10-26
+
 ### Added
 - File type filter: **File type** in the toolbar lists the types in the current view (ARW, CR3,
   JPEG, PNG …) with their number, grouped into RAW and other formats; JPG and JPEG count as one.
