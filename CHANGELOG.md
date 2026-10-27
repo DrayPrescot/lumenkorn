@@ -6,6 +6,29 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Smoother work with large catalogs and masks:
+  - Thumbnail generation no longer holds the catalog lock while writing files, so the library
+    stays responsive during imports.
+  - Develop serializes the settings once per change instead of about eight times, and the undo
+    history is stored compactly. Brush painting no longer gets slower as strokes pile up.
+  - Saving in Develop renders its thumbnails on one background thread, newest state wins,
+    instead of a new thread per save competing with the live preview.
+  - On network drives, Develop checks the original file at most every 1.5 s instead of on every
+    slider move.
+- AI:
+  - Person and animal masks reuse the detection for the same photo, so every part after the
+    first appears almost at once.
+  - Tagging prepares images in parallel.
+  - Repair handles nearby dust spots in one pass instead of one model run per spot.
+- Panorama, HDR and focus stacking decode the next photo while the current one is processed.
+
+### Fixed
+- After a crash inside the AI index, semantic search and tagging stayed broken until restart,
+  and the background chain thumbnails → AI → faces stopped. Both now recover.
+- The edited badge and the new tile shape could be undone by a library reload that ran at the
+  same moment.
+
 ## [1.0.22] – 2026-10-27
 
 ### Added
