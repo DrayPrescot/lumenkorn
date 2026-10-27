@@ -402,7 +402,7 @@
         step={0.05}
         decimals={2}
         unit="°"
-        oninput={(v) => dev.set("straighten", v)}
+        oninput={(v) => { dev.set("straighten", v); dev.straightenFeedback(); }}
         oncommit={() => { if (!dev.cropMode) dev.commit(); }}
       />
       <button class="btn small" onclick={() => dev.autoStraighten()} title={t("Horizont und Kanten automatisch gerade stellen")}>{t("Auto")}</button>

@@ -6,6 +6,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- While straightening, the crop shows a fine grid (about 30 px squares) for lining up edges and
+  the horizon. It fades back to the thirds shortly after the last change.
+
 ### Changed
 - White balance for RAW files is set in **Kelvin** (2000–25000 K), starting from the camera's
   white balance, instead of a relative −100…100 that often ran out of range. The slider moves

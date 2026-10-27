@@ -665,6 +665,7 @@ class Develop {
       if (fix === null) lib.notify(t("Keine eindeutigen geraden Kanten gefunden."));
       else {
         this.params.straighten = Math.round(fix * 100) / 100;
+        this.straightenFeedback();
         this.schedule();
         if (!this.cropMode) this.commit();
       }
@@ -1058,6 +1059,15 @@ class Develop {
 
   /** „Auto“ rechnet gerade */
   autoBusy = $state(false);
+
+  /** Beim Geraderichten: feines Raster im Zuschnitt, bis kurz nach der letzten Änderung */
+  straightening = $state(false);
+  #straightenTimer: ReturnType<typeof setTimeout> | undefined;
+  straightenFeedback() {
+    this.straightening = true;
+    clearTimeout(this.#straightenTimer);
+    this.#straightenTimer = setTimeout(() => (this.straightening = false), 1200);
+  }
 
   /** „Auto“: Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz und Dynamik
    *  vorschlagen lassen und übernehmen (mit Rückgängig). */

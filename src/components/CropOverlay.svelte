@@ -1,7 +1,7 @@
 <script lang="ts">
   // Zuschnittrahmen über dem ungeschnittenen Bild: Ecken und Kanten ziehen,
   // innen verschieben, optional mit festem Seitenverhältnis. Drittel-Raster
-  // hilft beim Bildaufbau.
+  // hilft beim Bildaufbau, beim Geraderichten ein feines Raster beim Ausrichten.
   import { dev } from "../lib/develop.svelte";
   import { containRect, frameSize } from "../lib/frame";
   import { t } from "../lib/i18n";
@@ -26,6 +26,18 @@
   const c = $derived(dev.params.crop ?? { x: 0, y: 0, w: 1, h: 1 });
   const frame = $derived(frameSize(dev.params, [dev.fullSize[0] || 1, dev.fullSize[1] || 1]));
   const box = $derived({ x: rect.x + c.x * rect.w, y: rect.y + c.y * rect.h, w: c.w * rect.w, h: c.h * rect.h });
+
+  // Feines Raster: quadratische Felder von etwa 30 px, am Ausschnitt ausgerichtet
+  const FINE = 30;
+  const fine = $derived.by(() => {
+    if (!dev.straightening || box.w < 1 || box.h < 1) return { xs: [] as number[], ys: [] as number[] };
+    const nx = Math.max(2, Math.round(box.w / FINE));
+    const ny = Math.max(2, Math.round(box.h / FINE));
+    return {
+      xs: Array.from({ length: nx - 1 }, (_, i) => box.x + (box.w * (i + 1)) / nx),
+      ys: Array.from({ length: ny - 1 }, (_, i) => box.y + (box.h * (i + 1)) / ny),
+    };
+  });
 
   type Handle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "move";
   let svg: SVGSVGElement;
@@ -137,6 +149,12 @@
     d="M{rect.x} {rect.y}h{rect.w}v{rect.h}h{-rect.w}z M{box.x} {box.y}h{box.w}v{box.h}h{-box.w}z"
   />
   <rect class="inner" x={box.x} y={box.y} width={box.w} height={box.h} style:cursor="move" onpointerdown={(e) => start(e, "move")} role="presentation" />
+  {#each fine.xs as x (x)}
+    <line class="fine" x1={x} y1={box.y} x2={x} y2={box.y + box.h} />
+  {/each}
+  {#each fine.ys as y (y)}
+    <line class="fine" x1={box.x} y1={y} x2={box.x + box.w} y2={y} />
+  {/each}
   {#each [1, 2] as i}
     <line class="third" x1={box.x + (box.w * i) / 3} y1={box.y} x2={box.x + (box.w * i) / 3} y2={box.y + box.h} />
     <line class="third" x1={box.x} y1={box.y + (box.h * i) / 3} x2={box.x + box.w} y2={box.y + (box.h * i) / 3} />
@@ -174,6 +192,12 @@
   }
   .inner {
     fill: transparent;
+  }
+  .fine {
+    stroke: rgb(255 255 255 / 0.28);
+    stroke-width: 1;
+    pointer-events: none;
+    shape-rendering: crispEdges;
   }
   .third {
     stroke: rgb(255 255 255 / 0.35);
