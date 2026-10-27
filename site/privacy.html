@@ -45,34 +45,12 @@
 <main id="main" class="page">
   <div class="wrap narrow">
     <h1>Privacy</h1>
-    <p class="lead">This page has two parts: what the Lumenkorn app does with your data, and the
-      privacy policy of this website.</p>
+    <p class="lead">This page has two parts: the privacy policy of this website, and what the
+      Lumenkorn app does with your data.</p>
     <ul class="toc">
-      <li><a href="#app">The app</a></li>
       <li><a href="#website">This website</a></li>
+      <li><a href="#app">The app</a></li>
     </ul>
-
-    <h2 id="app">The app</h2>
-    <p>Lumenkorn has no account, no cloud and no usage statistics. Your photos, the catalog, your
-      edits and all AI results stay on your computer. Lumenkorn only writes to your photo folders
-      when you ask it to (export, merge results, deleting rejected photos).</p>
-    <p>The app connects to the internet only in these cases:</p>
-    <ul>
-      <li><strong>Update check:</strong> shortly after starting, Lumenkorn asks GitHub once whether a new
-        version is out. Like any web request, this tells GitHub your IP address.</li>
-      <li><strong>AI downloads:</strong> only when you click the button for it, the AI runtime and models
-        are downloaded from the sources named in the
-        <a href="https://github.com/DrayPrescot/lumenkorn#ai-models-downloaded-on-demand-not-shipped-with-the-app">README</a>
-        (GitHub, Hugging Face, OpenCV). Nothing about your photos is sent.</li>
-      <li><strong>Map and place names:</strong> map images come from OpenStreetMap
-        (<code>tile.openstreetmap.org</code>), place search and place names from Nominatim
-        (<code>nominatim.openstreetmap.org</code>). To find place names, the coordinates of your
-        photos are sent, rounded to about 100 m and bundled per town. <strong>Settings → General → Map
-        and place names</strong> switches this off completely; the map in the photo album still works
-        because it is built in.</li>
-    </ul>
-    <p>The interface for AI agents (MCP) is off by default. When switched on, only programs on your
-      own computer can connect.</p>
 
     <h2 id="website">This website</h2>
     <h3>Controller</h3>
@@ -138,6 +116,28 @@
       authority is the Bavarian Data Protection Authority (Bayerisches Landesamt für
       Datenschutzaufsicht), Promenade 18, 91522 Ansbach, Germany,
       <a href="https://www.lda.bayern.de/en/">www.lda.bayern.de</a>.</p>
+
+    <h2 id="app">The app</h2>
+    <p>Lumenkorn has no account, no cloud and no usage statistics. Your photos, the catalog, your
+      edits and all AI results stay on your computer. Lumenkorn only writes to your photo folders
+      when you ask it to (export, merge results, deleting rejected photos).</p>
+    <p>The app connects to the internet only in these cases:</p>
+    <ul>
+      <li><strong>Update check:</strong> shortly after starting, Lumenkorn asks GitHub once whether a new
+        version is out. Like any web request, this tells GitHub your IP address.</li>
+      <li><strong>AI downloads:</strong> only when you click the button for it, the AI runtime and models
+        are downloaded from the sources named in the
+        <a href="https://github.com/DrayPrescot/lumenkorn#ai-models-downloaded-on-demand-not-shipped-with-the-app">README</a>
+        (GitHub, Hugging Face, OpenCV). Nothing about your photos is sent.</li>
+      <li><strong>Map and place names:</strong> map images come from OpenStreetMap
+        (<code>tile.openstreetmap.org</code>), place search and place names from Nominatim
+        (<code>nominatim.openstreetmap.org</code>). To find place names, the coordinates of your
+        photos are sent, rounded to about 100 m and bundled per town. <strong>Settings → General → Map
+        and place names</strong> switches this off completely; the map in the photo album still works
+        because it is built in.</li>
+    </ul>
+    <p>The interface for AI agents (MCP) is off by default. When switched on, only programs on your
+      own computer can connect.</p>
 
     <p class="muted">The German version of this privacy policy is authoritative. Last updated: October 2026.</p>
   </div>
