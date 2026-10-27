@@ -13,6 +13,7 @@
   import DevelopPanel from "./components/DevelopPanel.svelte";
   import ExportDialog from "./components/ExportDialog.svelte";
   import DeleteRejectedDialog from "./components/DeleteRejectedDialog.svelte";
+  import RenameDialog from "./components/RenameDialog.svelte";
   import ContextMenu from "./components/ContextMenu.svelte";
   import MergeDialog from "./components/MergeDialog.svelte";
   import ImportDialog from "./components/ImportDialog.svelte";
@@ -37,6 +38,16 @@
     const ids = lib.targets();
     if (ids.length) exportIds = ids;
     else lib.notify(t("Wähle zuerst Fotos zum Exportieren aus."));
+  }
+
+  let renameIds = $state<number[] | null>(null);
+
+  function openRename() {
+    // Reihenfolge wie in der Ansicht (für die Nummerierung „nach Ansicht“)
+    const want = new Set(lib.targets());
+    const ids = lib.images.filter((i) => want.has(i.id)).map((i) => i.id);
+    if (ids.length) renameIds = ids;
+    else lib.notify(t("Wähle zuerst Fotos zum Umbenennen aus."));
   }
 
   let deleteImages = $state<ImageSummary[] | null>(null);
@@ -99,7 +110,7 @@
       toggleFullscreen();
       return;
     }
-    if (isTyping(e) || exportIds || deleteImages || lib.merge || lib.importOpen) return;
+    if (isTyping(e) || exportIds || renameIds || deleteImages || lib.merge || lib.importOpen) return;
     // Personen- und Albumansicht: Kein Foto ist zu sehen – Bewerten oder
     // Ablehnen träfe unbemerkt das zuletzt gewählte
     const noPhoto = lib.mode === "library" && (lib.view === "people" || lib.view === "album" || lib.view === "stats");
@@ -107,6 +118,7 @@
     const actions: [string, () => void, boolean?][] = [
       ["import", () => (lib.importOpen = true)],
       ["export", openExport],
+      ["rename", openRename],
       ["deleteRejected", openDeleteRejected],
       ["copySettings", () => lib.focused && dev.copyBasic(lib.focused.id)],
       ["pasteSettings", () => dev.pasteBasic(lib.pasteTargets())],
@@ -191,8 +203,12 @@
   <ExportDialog ids={exportIds} onclose={() => (exportIds = null)} />
 {/if}
 
+{#if renameIds}
+  <RenameDialog ids={renameIds} onclose={() => (renameIds = null)} />
+{/if}
+
 {#if lib.contextMenu}
-  <ContextMenu x={lib.contextMenu.x} y={lib.contextMenu.y} onclose={() => (lib.contextMenu = null)} />
+  <ContextMenu x={lib.contextMenu.x} y={lib.contextMenu.y} onclose={() => (lib.contextMenu = null)} onrename={openRename} />
 {/if}
 
 {#if album.dialog}

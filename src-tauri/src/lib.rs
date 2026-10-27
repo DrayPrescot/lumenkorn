@@ -15,6 +15,7 @@ mod memory;
 mod merge;
 mod people;
 mod protocol;
+mod rename;
 mod repair;
 mod settings;
 mod style;
@@ -258,6 +259,8 @@ pub fn run() {
             import::import_cancel,
             merge::merge_cancel,
             cull::delete_rejected,
+            rename::rename_preview,
+            rename::rename_apply,
             memory::develop_release,
             commands::rescan_root,
             commands::folder_tree,

@@ -563,6 +563,21 @@ pub struct Catalog {
     pub(crate) people_gen: std::cell::Cell<u64>,
 }
 
+/// Angaben eines Fotos für die Stapel-Umbenennung.
+#[derive(Debug, Clone)]
+pub struct RenameInfo {
+    pub id: i64,
+    pub path: String,
+    pub dir: String,
+    pub file_name: String,
+    pub captured_at: Option<String>,
+    pub camera: Option<String>,
+    pub lens: Option<String>,
+    /// Änderungszeit der Datei (Sekunden seit 1970)
+    pub mtime: i64,
+    pub missing: bool,
+}
+
 /// Bekannter Datensatz, wie ihn der Scanner zum Abgleich braucht.
 #[derive(Debug, Clone)]
 pub(crate) struct KnownImage {
@@ -1014,6 +1029,60 @@ impl Catalog {
             params![id, img.path, img.dir, img.file_name, img.ext, img.mtime],
         )?;
         Ok(())
+    }
+
+    /// Angaben zu Fotos, die umbenannt werden sollen (in der Reihenfolge von
+    /// `ids`; unbekannte IDs fehlen im Ergebnis).
+    pub fn rename_infos(&self, ids: &[i64]) -> Result<Vec<RenameInfo>> {
+        let mut st = self.conn.prepare_cached(
+            "SELECT id, path, dir, file_name, captured_at, camera, lens, mtime, missing
+             FROM images WHERE id = ?1",
+        )?;
+        let mut out = Vec::new();
+        for id in ids {
+            if let Some(r) = st
+                .query_row([id], |r| {
+                    Ok(RenameInfo {
+                        id: r.get(0)?,
+                        path: r.get(1)?,
+                        dir: r.get(2)?,
+                        file_name: r.get(3)?,
+                        captured_at: r.get(4)?,
+                        camera: r.get(5)?,
+                        lens: r.get(6)?,
+                        mtime: r.get(7)?,
+                        missing: r.get(8)?,
+                    })
+                })
+                .optional()?
+            {
+                out.push(r);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Nach dem Umbenennen der Dateien: neuer Pfad und Dateiname je Foto
+    /// (`(id, path, file_name)`). Ordner und Endung bleiben. Alles in einer
+    /// Transaktion; ID, Bewertung, Schlagworte, Bearbeitungen und Gesichter
+    /// bleiben beim Foto, der Suchindex wird nachgeführt.
+    pub fn rename_images(&mut self, items: &[(i64, String, String)]) -> Result<()> {
+        self.with_tx(|tx| {
+            // `path` ist eindeutig: bei Tausch zweier Namen kurz Platzhalter
+            for (id, _, _) in items {
+                tx.execute(
+                    "UPDATE images SET path = '?rename' || id WHERE id = ?1",
+                    [id],
+                )?;
+            }
+            for (id, path, name) in items {
+                tx.execute(
+                    "UPDATE images SET path = ?2, file_name = ?3, missing = 0 WHERE id = ?1",
+                    params![id, path, name],
+                )?;
+            }
+            Ok(())
+        })
     }
 
     pub(crate) fn set_missing(tx: &rusqlite::Transaction, id: i64, missing: bool) -> Result<()> {
@@ -2110,6 +2179,31 @@ pub(crate) mod tests_support {
 #[cfg(test)]
 mod content_update_tests {
     use super::*;
+
+    #[test]
+    fn rename_swaps_names_and_updates_search() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let ids = tests_support::insert_dummy_images(&mut cat, 2);
+        let d = "/tmp/lumenkorn-test";
+        cat.rename_images(&[
+            (ids[0], format!("{d}/bild1.jpg"), "bild1.jpg".into()),
+            (ids[1], format!("{d}/bild0.jpg"), "bild0.jpg".into()),
+        ])
+        .unwrap();
+        let infos = cat.rename_infos(&ids).unwrap();
+        assert_eq!(infos[0].file_name, "bild1.jpg");
+        assert_eq!(infos[1].path, format!("{d}/bild0.jpg"));
+        // Suchindex folgt dem neuen Namen
+        let n: i64 = cat
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM search WHERE rowid = ?1 AND body LIKE '%bild1.jpg%'",
+                [ids[0]],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 1);
+    }
 
     fn changed(id_path: &str, root_id: i64, mtime: i64, hash: &str) -> NewImage {
         NewImage {

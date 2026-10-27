@@ -1,7 +1,7 @@
 // Zentraler Oberflächenzustand (Svelte-5-Runes).
 
 import { isCanceled, lang, num, t, tc } from "./i18n";
-import { api, listen, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type AiComponent, type DeleteReport, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress, type ImportProgress, type ImportDone, type ImageQuery, type LocationItem } from "./api";
+import { api, listen, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type AiComponent, type DeleteReport, type RenameOptions, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress, type ImportProgress, type ImportDone, type ImageQuery, type LocationItem } from "./api";
 
 class Library {
   roots = $state<Root[]>([]);
@@ -846,6 +846,30 @@ class Library {
     if (gone.size) this.loadRoots(unknownRoot ? undefined : affected).catch(() => {});
     this.refreshPeople();
     return report;
+  }
+
+  /** Fotos umbenennen (der Dialog hat Vorschau und Konflikte schon gezeigt;
+   *  das Backend prüft erneut). `true`, wenn umbenannt wurde. */
+  async renameImages(ids: number[], options: RenameOptions): Promise<boolean> {
+    await this.#writes; // eben gedrückte Markierungen zuerst speichern
+    let report;
+    try {
+      report = await api.renameApply(ids, options);
+    } catch (e) {
+      this.notify(String(e), "error");
+      return false;
+    }
+    const changes = new Map(report.renamed.map((r) => [r.id, { path: r.path, fileName: r.fileName }]));
+    if (changes.size) {
+      this.#patch([...changes.keys()], changes);
+      this.layoutVersion++;
+      this.listVersion++; // Informationen (Dateiname, Pfad) neu laden
+      // Reihenfolge nach Name und Suche nach dem Dateinamen ändern sich
+      this.loadImages(true).catch(() => {});
+    }
+    const k = changes.size;
+    this.notify(k ? t(k === 1 ? "{n} Foto umbenannt" : "{n} Fotos umbenannt", { n: k }) : t("Die Namen waren schon so."));
+    return true;
   }
 
   // --- Ordner & Projekte ----------------------------------------------------
