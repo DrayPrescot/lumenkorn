@@ -74,7 +74,8 @@ pub enum ExportFormat {
     Jpeg,
     Tiff16,
     Png,
-    /// Rohdaten des Originals als DNG (nur RAWs, ohne Bearbeitung), siehe [`write_dng`]
+    /// Leicht verlustbehaftetes DNG, bearbeitet oder als Original (siehe
+    /// [`ExportOptions::dng_edited`] und [`crate::dng`])
     Dng,
 }
 
@@ -102,10 +103,18 @@ pub struct ExportOptions {
     /// Längste Kante in Pixeln; `None` = volle Auflösung
     #[serde(default)]
     pub long_edge: Option<usize>,
+    /// DNG mit allen Bearbeitungen; sonst die Daten des Originals ohne
+    /// Bearbeitung (zum Weiterentwickeln in anderen Programmen)
+    #[serde(default = "yes")]
+    pub dng_edited: bool,
 }
 
 fn default_quality() -> u8 {
     90
+}
+
+fn yes() -> bool {
+    true
 }
 
 impl ExportOptions {
@@ -129,6 +138,20 @@ impl ExportOptions {
 /// Schreibt das entwickelte Bild. Schreibt zuerst in eine temporäre Datei, damit
 /// nie eine halbe Datei am Ziel liegt.
 pub fn write(img: &ImageF32, path: &Path, opts: &ExportOptions) -> Result<()> {
+    write_as(img, path, opts, false)
+}
+
+/// DNG aus dem unbearbeiteten Original (`scene`: lineares Rec.709 aus
+/// [`crate::Source`]).
+pub fn write_original_dng(scene: &ImageF32, path: &Path, opts: &ExportOptions) -> Result<()> {
+    let opts = ExportOptions {
+        format: ExportFormat::Dng,
+        ..opts.clone()
+    };
+    write_as(scene, path, &opts, true)
+}
+
+fn write_as(img: &ImageF32, path: &Path, opts: &ExportOptions, scene: bool) -> Result<()> {
     // Ohne Verkleinern keine Kopie (bei 60 MP 720 MB)
     let img: std::borrow::Cow<ImageF32> = match opts.long_edge {
         Some(m) if m > 0 && m < img.long_edge() => std::borrow::Cow::Owned(img.downscale_to(m)),
@@ -159,9 +182,12 @@ pub fn write(img: &ImageF32, path: &Path, opts: &ExportOptions) -> Result<()> {
                 std::io::Write::flush(&mut f)?;
             }
             ExportFormat::Dng => {
-                return Err(Error::Params(
-                    "DNG entsteht aus dem Original, nicht aus dem entwickelten Bild".into(),
-                ));
+                let content = if scene {
+                    crate::dng::DngContent::Scene(&img)
+                } else {
+                    crate::dng::DngContent::Developed(&img)
+                };
+                std::fs::write(&tmp, crate::dng::encode_lossy(content)?)?
             }
         }
         Ok(())
@@ -174,95 +200,27 @@ pub fn write(img: &ImageF32, path: &Path, opts: &ExportOptions) -> Result<()> {
     Ok(())
 }
 
-/// Rohdaten eines RAWs verlustfrei als DNG, mit Vorschaubild, aber ohne die
-/// Bearbeitung – zum Archivieren oder für andere Programme. `orientation`
-/// ist die EXIF-Ausrichtung aus dem Katalog; nicht jeder Decoder kennt sie
-/// (Panasonic RW2), das DNG soll trotzdem richtig herum stehen.
-pub fn write_dng(raw: &Path, path: &Path, orientation: Option<u16>) -> Result<()> {
-    let params = rawler::dng::convert::ConvertParams::default()
-        .with_embedded(false)
-        .with_software(format!("Lumenkorn {}", env!("CARGO_PKG_VERSION")));
-    let mut buf = std::io::Cursor::new(Vec::new());
-    rawler::dng::convert::convert_raw_file(raw, &mut buf, &params)?;
-    let mut data = buf.into_inner();
-    if let Some(o) = orientation.filter(|o| (1..=8).contains(o)) {
-        set_tiff_orientation(&mut data, o);
-    }
-    let tmp = path.with_extension("dng.tmp");
-    if let Err(e) = std::fs::write(&tmp, &data) {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(e.into());
-    }
-    std::fs::rename(&tmp, path)?;
-    Ok(())
-}
-
-/// Überschreibt die Ausrichtung (Tag 0x0112) in IFD0 einer TIFF-Datei. Der
-/// DNG-Schreiber legt den Eintrag immer an; fehlt er doch, bleibt alles, wie
-/// es ist.
-fn set_tiff_orientation(d: &mut [u8], o: u16) -> bool {
-    let le = match d.get(0..2) {
-        Some(b"II") => true,
-        Some(b"MM") => false,
-        _ => return false,
-    };
-    let u16_at = |d: &[u8], i: usize| -> Option<u16> {
-        let b: [u8; 2] = d.get(i..i + 2)?.try_into().ok()?;
-        Some(if le {
-            u16::from_le_bytes(b)
-        } else {
-            u16::from_be_bytes(b)
-        })
-    };
-    let Some(ifd) = d
-        .get(4..8)
-        .and_then(|b| <[u8; 4]>::try_from(b).ok())
-        .map(|b| if le { u32::from_le_bytes(b) } else { u32::from_be_bytes(b) } as usize)
-    else {
-        return false;
-    };
-    let n = u16_at(d, ifd).unwrap_or(0) as usize;
-    for i in 0..n {
-        let e = ifd + 2 + i * 12;
-        if u16_at(d, e) == Some(0x0112) && u16_at(d, e + 2) == Some(3) {
-            let v = if le { o.to_le_bytes() } else { o.to_be_bytes() };
-            if let Some(slot) = d.get_mut(e + 8..e + 10) {
-                slot.copy_from_slice(&v);
-                return true;
-            }
-        }
-    }
-    false
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// Echte RAWs aus `LUMENKORN_TEST_RAW`: Das Original-DNG liest Lumenkorn
+    /// wieder ein, Größe und Farben stimmen
     #[test]
-    fn orientation_is_patched_in_ifd0() {
-        // TIFF (LE) mit IFD0 bei 8: ein Eintrag Orientation = 1
-        let mut d = b"II*\0".to_vec();
-        d.extend(8u32.to_le_bytes());
-        d.extend(1u16.to_le_bytes());
-        d.extend(0x0112u16.to_le_bytes());
-        d.extend(3u16.to_le_bytes());
-        d.extend(1u32.to_le_bytes());
-        d.extend([1, 0, 0, 0]);
-        d.extend(0u32.to_le_bytes());
-        assert!(set_tiff_orientation(&mut d, 6));
-        assert_eq!(&d[18..20], &[6, 0]);
-        assert!(!set_tiff_orientation(&mut b"kein tiff".to_vec(), 6));
-    }
-
-    /// Echte RAWs aus `LUMENKORN_TEST_RAW`: DNG lässt sich wieder öffnen
-    #[test]
-    fn dng_from_real_raws() {
+    fn original_dng_from_real_raws() {
         let Ok(dir) = std::env::var("LUMENKORN_TEST_RAW") else {
             return;
         };
         let out = std::env::temp_dir().join(format!("lw-dng-{}", std::process::id()));
         std::fs::create_dir_all(&out).unwrap();
+        let mean = |img: &ImageF32| -> [f32; 3] {
+            let n = img.data.len() as f32;
+            let s = img
+                .data
+                .iter()
+                .fold([0.0f32; 3], |a, c| [0, 1, 2].map(|k| a[k] + c[k].max(0.0)));
+            s.map(|v| v / n)
+        };
         for e in std::fs::read_dir(&dir).unwrap().flatten() {
             let p = e.path();
             let ext = p.extension().and_then(|x| x.to_str()).unwrap_or("");
@@ -273,11 +231,30 @@ mod tests {
             {
                 continue;
             }
+            let src = crate::Source::load(&p, true, None, Some(1024)).unwrap();
             let target = out.join(p.file_stem().unwrap()).with_extension("dng");
-            write_dng(&p, &target, Some(6)).unwrap();
-            let raw = rawler::decode_file(&target).unwrap();
-            assert!(raw.width > 0, "{}", p.display());
-            assert_eq!(raw.orientation.to_u16(), 6, "{}", p.display());
+            let opts = ExportOptions {
+                format: ExportFormat::Dng,
+                formats: Vec::new(),
+                quality: 90,
+                long_edge: None,
+                dng_edited: false,
+            };
+            write_original_dng(&src.image, &target, &opts).unwrap();
+            let back = crate::Source::load(&target, true, None, None).unwrap();
+            assert_eq!(
+                (back.image.width, back.image.height),
+                (src.image.width, src.image.height),
+                "{}",
+                p.display()
+            );
+            // Gleiche Farben; die Helligkeit trägt `BaselineExposure`, das
+            // Lumenkorns eigener DNG-Leser (anders als Adobe) nicht anwendet
+            let (a, b) = (mean(&src.image), mean(&back.image));
+            for k in [0, 2] {
+                let (ra, rb) = (a[k] / a[1], b[k] / b[1]);
+                assert!((ra - rb).abs() < 0.03, "{}: {a:?} vs {b:?}", p.display());
+            }
         }
         std::fs::remove_dir_all(&out).unwrap();
     }
@@ -301,6 +278,7 @@ mod tests {
                     formats: Vec::new(),
                     quality: 90,
                     long_edge: Some(150),
+                    dng_edited: true,
                 },
             )
             .unwrap();

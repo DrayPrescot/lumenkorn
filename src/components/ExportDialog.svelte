@@ -17,7 +17,8 @@
     { id: "dng", label: "DNG" },
   ];
   let formats = $state<ExportFormat[]>(["jpeg"]);
-  const developed = $derived(formats.some((f) => f !== "dng"));
+  // DNG: fertig bearbeitet oder die Daten des Originals zum Weiterentwickeln
+  let dngEdited = $state(true);
   function toggleFormat(f: ExportFormat, on: boolean) {
     formats = on ? FORMATS.map((x) => x.id).filter((x) => x === f || formats.includes(x)) : formats.filter((x) => x !== f);
   }
@@ -51,7 +52,7 @@
     if (!formats.length) return;
     await dev.flush();
     try {
-      await api.exportImages(ids, dir, { format: formats[0], formats, quality, longEdge: resize ? longEdge : null });
+      await api.exportImages(ids, dir, { format: formats[0], formats, dngEdited, quality, longEdge: resize ? longEdge : null });
       lib.notify(t(ids.length === 1 ? "Export von {n} Foto gestartet" : "Export von {n} Fotos gestartet", { n: ids.length }));
       onclose();
     } catch (e) {
@@ -83,7 +84,16 @@
     </fieldset>
 
     {#if formats.includes("dng")}
-      <p class="hint">{t("DNG enthält die Rohdaten des Originals ohne Bearbeitung und entsteht nur aus RAW-Dateien.")}</p>
+      <fieldset class="dng">
+        <legend>DNG</legend>
+        <label><input type="radio" name="dng" bind:group={dngEdited} value={true} /> {t("Mit Bearbeitung")}</label>
+        <label><input type="radio" name="dng" bind:group={dngEdited} value={false} /> {t("Original ohne Bearbeitung")}</label>
+      </fieldset>
+      <p class="hint">
+        {dngEdited
+          ? t("Leicht verlustbehaftet wie in Lightroom: das fertige Bild, in anderen RAW-Programmen weiter bearbeitbar.")
+          : t("Leicht verlustbehaftet wie in Lightroom: die Bilddaten vor jeder Bearbeitung, mit den Reserven in den Lichtern, zum Weiterentwickeln in anderen Programmen.")}
+      </p>
     {/if}
 
     {#if formats.includes("jpeg")}
@@ -94,13 +104,11 @@
       </label>
     {/if}
 
-    {#if developed}
-      <label class="line">
-        <input type="checkbox" bind:checked={resize} />
-        {t("Längste Kante begrenzen auf")}
-        <input type="number" min="256" max="20000" step="1" bind:value={longEdge} disabled={!resize} /> px
-      </label>
-    {/if}
+    <label class="line">
+      <input type="checkbox" bind:checked={resize} />
+      {t("Längste Kante begrenzen auf")}
+      <input type="number" min="256" max="20000" step="1" bind:value={longEdge} disabled={!resize} /> px
+    </label>
 
     <div class="line">
       <span class="label">{t("Ziel")}</span>
@@ -188,6 +196,7 @@
     flex: 1;
     accent-color: var(--accent);
   }
+  input[type="radio"],
   input[type="checkbox"] {
     accent-color: var(--accent);
   }

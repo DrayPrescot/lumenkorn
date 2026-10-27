@@ -906,24 +906,23 @@ pub fn export_images(
                         };
                         used.insert(target_dir.clone());
                         let orientation = job.orientation.map(|o| o as u16);
-                        // Entwickelt wird einmal für alle Bildformate (nicht für DNG)
+                        // Entwickelt wird einmal für alle Formate (außer dem Original-DNG)
                         let mut developed = None;
                         let mut errors = Vec::new();
                         for format in &formats {
                             let target = unique_path(&target_dir, &name, format.extension());
-                            let res = if *format == ExportFormat::Dng {
-                                if job.kind == ImageKind::Raw {
-                                    output::write_dng(Path::new(&job.path), &target, orientation)
-                                        .map_err(Error::from)
-                                } else {
-                                    Err(Error::Invalid(
-                                        tr_s(
-                                            "DNG gibt es nur für RAW-Dateien",
-                                            "DNG is only available for RAW files",
-                                        )
-                                        .into(),
-                                    ))
-                                }
+                            let res = if *format == ExportFormat::Dng && !options.dng_edited {
+                                // Original ohne Bearbeitung: die Szenendaten der Quelle
+                                Source::load(
+                                    Path::new(&job.path),
+                                    job.kind == ImageKind::Raw,
+                                    orientation,
+                                    options.long_edge.filter(|m| *m > 0),
+                                )
+                                .and_then(|src| {
+                                    output::write_original_dng(&src.image, &target, &options)
+                                })
+                                .map_err(Error::from)
                             } else {
                                 let img = developed.get_or_insert_with(|| {
                                     develop_for_export(&state, &job, &params, options.long_edge)

@@ -27,6 +27,7 @@ pub mod capture_sharpen;
 pub mod color;
 pub mod curve;
 pub mod denoised;
+pub mod dng;
 pub(crate) mod dt;
 mod error;
 pub mod exr_io;

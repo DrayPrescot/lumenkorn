@@ -705,6 +705,8 @@ export interface ExportOptions {
   format: ExportFormat;
   /** Mehrere Formate auf einmal (z. B. DNG und JPEG) */
   formats?: ExportFormat[];
+  /** DNG mit Bearbeitung (sonst das unbearbeitete Original) */
+  dngEdited?: boolean;
   quality: number;
   longEdge: number | null;
 }

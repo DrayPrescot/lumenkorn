@@ -7,8 +7,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- Export to **DNG**: the original raw data, losslessly, with a preview but without edits. Only for
-  RAW files.
+- Export to **DNG**, slightly lossy like Lightroom's lossy compression (linear data in JPEG tiles,
+  a quarter to a third of the RAW's size). Either the finished photo with all edits, or the
+  original image data without edits for developing in other programs.
 - Export several formats at once, for example DNG to archive and JPEG to share.
 - AI downloads queue up: clicking a second download while one is running starts it afterwards
   instead of doing nothing. **Download all AI components** gets everything in one go.

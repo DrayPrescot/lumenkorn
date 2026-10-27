@@ -606,12 +606,13 @@ fn tools() -> Vec<Value> {
         tool(
             "export_photos",
             "Export photos",
-            "Export developed photos in the background. Without `folder`, each goes into an \"Export\" subfolder next to its original. `folder` must be an existing absolute path inside one of the library folders (or the user's Pictures folder); at most 500 photos per call. format jpeg (quality 1–100), png, tiff or dng (the original RAW data without edits, RAW files only); several formats at once with `formats`, e.g. [\"dng\", \"jpeg\"]; long_edge limits the size in pixels.",
+            "Export developed photos in the background. Without `folder`, each goes into an \"Export\" subfolder next to its original. `folder` must be an existing absolute path inside one of the library folders (or the user's Pictures folder); at most 500 photos per call. format jpeg (quality 1–100), png, tiff or dng (slightly lossy linear DNG with all edits; with dng_original the unedited data for developing elsewhere); several formats at once with `formats`, e.g. [\"dng\", \"jpeg\"]; long_edge limits the size in pixels.",
             json!({ "type": "object", "properties": {
                 "ids": ids_schema(),
                 "folder": { "type": "string" },
                 "format": { "type": "string", "enum": ["jpeg", "png", "tiff", "dng"], "default": "jpeg" },
                 "formats": { "type": "array", "items": { "type": "string", "enum": ["jpeg", "png", "tiff", "dng"] } },
+                "dng_original": { "type": "boolean", "default": false },
                 "quality": { "type": "integer", "minimum": 1, "maximum": 100, "default": 90 },
                 "long_edge": { "type": "integer", "minimum": 64 }
             }, "required": ["ids"] }),
@@ -920,6 +921,7 @@ async fn call(app: &AppHandle, name: &str, a: &Value) -> ToolResult {
             let options: lumenkorn_develop::output::ExportOptions = serde_json::from_value(json!({
                 "format": formats.first().copied().unwrap_or(format),
                 "formats": formats,
+                "dngEdited": !arg(a, "dng_original").and_then(Value::as_bool).unwrap_or(false),
                 "quality": arg(a, "quality").and_then(Value::as_u64).unwrap_or(90).clamp(1, 100),
                 "longEdge": arg(a, "long_edge").and_then(Value::as_u64),
             }))

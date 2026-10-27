@@ -235,8 +235,9 @@ Außerdem:
   fügt sie auf alle ausgewählten Fotos ein (auch per Rechtsklick). Masken, Reparaturen,
   Rauschreduzierung und Zuschnitt des Zielfotos bleiben unberührt.
 - **Export** als JPEG, 16-Bit-TIFF, PNG oder DNG, auch mehrere Formate auf einmal, optional
-  verkleinert, im Hintergrund. DNG enthält die Rohdaten des Originals ohne Bearbeitung und
-  entsteht nur aus RAW-Dateien. Standardziel ist der Unterordner `Export` neben dem Original.
+  verkleinert, im Hintergrund. DNG wird wie in Lightroom leicht verlustbehaftet gespeichert
+  (linear, JPEG-komprimiert) und enthält wahlweise das bearbeitete Foto oder die Bilddaten des
+  Originals ohne Bearbeitung. Standardziel ist der Unterordner `Export` neben dem Original.
   Von Lumenkorn angelegte Export-Ordner tragen eine versteckte Markierung (`.lumenkorn-export`) und erscheinen nicht in der Bibliothek. Vorhandene
   Dateien werden nie überschrieben.
 
