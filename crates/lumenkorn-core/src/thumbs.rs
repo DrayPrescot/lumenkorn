@@ -130,6 +130,35 @@ impl ThumbCache {
         Ok(())
     }
 
+    /// Erster Teil von [`Self::write`]: Verzeichnis anlegen und die Bytes in
+    /// eine eindeutig benannte Temp-Datei neben dem Ziel schreiben. Langsam,
+    /// darf deshalb ohne Katalogsperre laufen. Danach [`Self::commit_staged`]
+    /// oder [`Self::discard_staged`].
+    fn stage(&self, variant: Variant, id: i64, jpeg: &[u8]) -> Result<PathBuf> {
+        let p = self.path_for(variant, id);
+        if let Some(dir) = p.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = p.with_extension(format!("{}.{n}.tmp", std::process::id()));
+        if let Err(e) = std::fs::write(&tmp, jpeg) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e.into());
+        }
+        Ok(tmp)
+    }
+
+    /// Zweiter Teil: Temp-Datei an ihren Platz umbenennen (schnell).
+    fn commit_staged(&self, variant: Variant, id: i64, tmp: &Path) -> Result<()> {
+        std::fs::rename(tmp, self.path_for(variant, id))?;
+        Ok(())
+    }
+
+    fn discard_staged(tmp: &Path) {
+        let _ = std::fs::remove_file(tmp);
+    }
+
     pub fn remove(&self, id: i64) {
         for v in [Variant::Thumb, Variant::Preview] {
             let _ = std::fs::remove_file(self.path_for(v, id));
@@ -741,28 +770,76 @@ pub fn generate_some(
             results.extend(pair.par_iter().map(|j| (*j, one(j))).collect::<Vec<_>>());
         }
 
-        // Schreiben und Zustand setzen unter der Sperre: Wurde das Bild während
-        // des Renderns bearbeitet (Entwickeln speichert eigene Thumbnails), ist
-        // dieses Ergebnis veraltet und darf das neue nicht überschreiben – es
-        // bleibt ausstehend und wird mit der neuen Bearbeitung erzeugt.
-        let cat = catalog.locked();
-        for (job, res) in results {
-            processed += 1;
-            let current = match cat.thumb_job(job.id) {
-                Ok(c) => c,
-                Err(_) => continue, // inzwischen gelöscht
-            };
-            if current.edit != job.edit || current.path != job.path {
-                continue;
+        processed += results.len();
+
+        // Langsamer Teil ohne Katalogsperre: Verzeichnis anlegen und Bytes in
+        // Temp-Dateien neben dem Ziel schreiben, sonst friert die Oberfläche
+        // (teilt sich die Sperre) während der Datei-E/A ein.
+        let staged: Vec<(&ThumbJob, Result<PathBuf>)> = results
+            .into_iter()
+            .map(|(job, res)| {
+                let res = res.and_then(|bytes| cache.stage(Variant::Thumb, job.id, &bytes));
+                (job, res)
+            })
+            .collect();
+
+        // Kurze Sperre: Veraltung für alle prüfen, die Temp-Dateien umbenennen
+        // und alle Zustände in einer Transaktion setzen. Wurde das Bild während
+        // des Renderns bearbeitet (Entwickeln speichert eigene Thumbnails, und
+        // zwar prüfend und schreibend unter derselben Sperre), ist dieses
+        // Ergebnis veraltet und darf das neue nicht überschreiben – es bleibt
+        // ausstehend und wird mit der neuen Bearbeitung erzeugt. Das Umbenennen
+        // gehört noch unter die Sperre: Danach käme Entwickeln dazwischen und
+        // würde von uns überschrieben. Es ist billig, weil die Bytes schon
+        // geschrieben sind.
+        let ids: Vec<i64> = staged.iter().map(|(j, _)| j.id).collect();
+        let outcome = {
+            let mut cat = catalog.locked();
+            match cat.thumb_jobs(&ids) {
+                Err(e) => Err(e),
+                Ok(current) => {
+                    let mut states = Vec::new();
+                    for (job, res) in &staged {
+                        // Nicht im Ergebnis: inzwischen gelöscht
+                        let Some(cur) = current.get(&job.id) else {
+                            continue;
+                        };
+                        if cur.edit != job.edit || cur.path != job.path {
+                            continue;
+                        }
+                        let ok = match res {
+                            Ok(tmp) => cache
+                                .commit_staged(Variant::Thumb, job.id, tmp)
+                                .map_err(|e| {
+                                    log::warn!("Thumbnail für {} fehlgeschlagen: {e}", job.path)
+                                })
+                                .is_ok(),
+                            Err(e) => {
+                                log::warn!("Thumbnail für {} fehlgeschlagen: {e}", job.path);
+                                false
+                            }
+                        };
+                        states.push((job.id, ok));
+                    }
+                    cat.set_thumb_states(&states).map(|()| states)
+                }
             }
-            let res = res.and_then(|bytes| cache.write(Variant::Thumb, job.id, &bytes));
-            if let Err(e) = &res {
-                log::warn!("Thumbnail für {} fehlgeschlagen: {e}", job.path);
+        };
+
+        // Aufräumen außerhalb der Sperre: übrig gebliebene Temp-Dateien
+        // (veraltet, gelöscht, Fehler) entfernen; nach dem Umbenennen existiert
+        // der Pfad nicht mehr, das Löschen ist dann wirkungslos.
+        for (_, res) in &staged {
+            if let Ok(tmp) = res {
+                ThumbCache::discard_staged(tmp);
             }
+        }
+        // Echte Datenbankfehler (nicht „gelöscht“) melden und weitergeben
+        let done = outcome.inspect_err(|e| log::warn!("Thumbnail-Zustand nicht gesetzt: {e}"))?;
+        for (id, ok) in done {
             // Alte Vorschau verwerfen, falls sich die Datei geändert hat.
-            let _ = std::fs::remove_file(cache.path_for(Variant::Preview, job.id));
-            cat.set_thumb_state(job.id, res.is_ok())?;
-            on_done(job.id, res.is_ok());
+            let _ = std::fs::remove_file(cache.path_for(Variant::Preview, id));
+            on_done(id, ok);
         }
     }
     Ok((processed, true))
