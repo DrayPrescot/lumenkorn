@@ -6,6 +6,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- White balance **Automatic** stayed disabled after opening a photo, so it did nothing. Buttons that
+  wait for the photo's settings to load now become active as soon as they are loaded.
+
 ## [1.0.20] – 2026-10-27
 
 ### Added

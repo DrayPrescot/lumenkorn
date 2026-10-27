@@ -193,7 +193,9 @@ class Develop {
   #target: number | null = null;
   /** Für welches Bild `params` geladen sind. Während ein neues Bild lädt,
    *  stehen dort noch die Werte des vorigen – nie speichern oder rendern. */
-  #paramsFor: number | null = null;
+  // Reaktiv: Knöpfe mit `disabled={!dev.ready …}` müssen freigeschaltet
+  // werden, sobald die Parameter geladen sind
+  #paramsFor = $state<number | null>(null);
   #beforeSeq = 0;
 
   /** Parameter des geöffneten Bildes sind geladen. */
