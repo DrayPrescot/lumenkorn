@@ -9,7 +9,7 @@ use crate::AppState;
 use lumenkorn_core::Error;
 use lumenkorn_core::LockExt;
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tauri::State;
 
 #[derive(Serialize)]
@@ -89,7 +89,7 @@ fn delete_rejected_blocking(
             Ok(()) => {
                 deleted.push(*id);
                 bytes += size;
-                for sidecar in sidecars(p) {
+                for sidecar in lumenkorn_core::xmp::sidecars(p) {
                     if let Err(e) = remove(&sidecar, to_trash) {
                         log::warn!("XMP {} nicht gelöscht: {e}", sidecar.display());
                     }
@@ -142,11 +142,6 @@ fn remove(path: &Path, to_trash: bool) -> Result<(), String> {
         return trash::delete(path).map_err(|e| e.to_string());
     }
     std::fs::remove_file(path).map_err(|e| e.to_string())
-}
-
-/// XMP-Begleitdateien eines Fotos (siehe `lumenkorn_core::rename::sidecars_of`).
-fn sidecars(photo: &Path) -> Vec<PathBuf> {
-    lumenkorn_core::rename::sidecars_of(&[photo])
 }
 
 /// Zwischenspeicher und Zusatzdateien gelöschter Bilder entfernen.
@@ -223,7 +218,7 @@ mod tests {
             std::fs::write(dir.join(n), b"x").unwrap();
         }
         let names = |p: &str| -> Vec<String> {
-            let mut v: Vec<String> = sidecars(&dir.join(p))
+            let mut v: Vec<String> = lumenkorn_core::xmp::sidecars(&dir.join(p))
                 .iter()
                 .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
                 .collect();

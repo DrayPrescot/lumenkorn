@@ -1,7 +1,7 @@
 // Zentraler Oberflächenzustand (Svelte-5-Runes).
 
 import { isCanceled, lang, num, t, tc } from "./i18n";
-import { api, listen, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type AiComponent, type DeleteReport, type RenameOptions, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress, type ImportProgress, type ImportDone, type ImageQuery, type LocationItem } from "./api";
+import { api, listen, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type AiComponent, type DeleteReport, type RenameOptions, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress, type ImportProgress, type ImportDone, type ImageQuery, type LocationItem, type MetaPatch, type MetaReport } from "./api";
 
 class Library {
   roots = $state<Root[]>([]);
@@ -995,6 +995,29 @@ class Library {
     this.#patch(ids, { lat, lon });
     await this.#write(() => api.geoSetLocation(ids, lat, lon, place)).catch((e) => this.#writeFailed(e));
     this.geoVersion++;
+  }
+
+  /** Metadaten (Titel, Aufnahmezeit, Kamera …) ändern: im Katalog und in der
+   *  XMP-Begleitdatei. `shiftSeconds`: Aufnahmezeit zusätzlich verschieben.
+   *  Fotos, bei denen es nicht ging, meldet das Ergebnis; die übrigen sind
+   *  gespeichert und werden in Liste, Info und Statistik aktualisiert. */
+  async editMeta(ids: number[], patch: MetaPatch, shiftSeconds = 0): Promise<MetaReport> {
+    const report: MetaReport = { changed: [], failed: [] };
+    try {
+      await this.#write(async () => {
+        const parts: MetaReport[] = [];
+        if (Object.keys(patch).length) parts.push(await api.metaSet(ids, patch));
+        if (shiftSeconds) parts.push(await api.metaShiftTime(ids, shiftSeconds));
+        for (const p of parts) {
+          report.changed.push(...p.changed.filter((id) => !report.changed.includes(id)));
+          report.failed.push(...p.failed);
+        }
+      });
+    } catch (e) {
+      this.notify(String(e), "error");
+    }
+    if (report.changed.length) await this.loadImages(true);
+    return report;
   }
 
   /** Abfrage der aktuellen Ansicht (Ordner, Projekt, Suche, Bewertung, Dateityp) */

@@ -100,6 +100,13 @@ pub struct ImageDetail {
     pub tags: Vec<ImageTag>,
     /// Aufnahmeort, falls bekannt
     pub location: Option<Location>,
+    /// Vom Nutzer eingegebene Texte (`imagemeta.rs`)
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub creator: Option<String>,
+    pub copyright: Option<String>,
+    /// Mindestens ein Feld wurde vom Nutzer geändert
+    pub meta_edited: bool,
 }
 
 /// Aufnahmeort eines Fotos

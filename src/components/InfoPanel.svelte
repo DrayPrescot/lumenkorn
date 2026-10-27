@@ -3,12 +3,22 @@
   import { shortPath } from "../lib/format";
   import { lib } from "../lib/store.svelte";
   import Icon from "./Icon.svelte";
+  import MetaEditor from "./MetaEditor.svelte";
   import { locale, num, t, tc } from "../lib/i18n";
   import { withKey } from "../lib/keymap.svelte";
 
   let { onexport }: { onexport: () => void } = $props();
   let detail = $state<ImageDetail | null>(null);
   let newTag = $state("");
+
+  // --- Metadaten bearbeiten ---------------------------------------------------
+  let editing = $state(false);
+  const metaIds = $derived(lib.targets());
+  // Anderes Foto oder andere Auswahl: Bearbeiten beenden
+  $effect(() => {
+    void metaIds.join(",");
+    editing = false;
+  });
 
   // --- Personen ---------------------------------------------------------------
   let faces = $state<FaceInfo[]>([]);
@@ -317,7 +327,34 @@
     </section>
 
     <section>
+      <div class="mhead">
+        <h4>{t("Metadaten")}</h4>
+        {#if !editing}
+          <button class="link" onclick={() => (editing = true)}>
+            {lib.selection.size > 1 ? t("Bearbeiten ({n} Fotos)", { n: lib.selection.size }) : t("Bearbeiten")}
+          </button>
+        {/if}
+      </div>
+      {#if editing}
+        <MetaEditor ids={metaIds} onclose={() => (editing = false)} />
+      {:else}
       <dl>
+        {#if d.title}
+          <dt>{t("Titel")}</dt>
+          <dd>{d.title}</dd>
+        {/if}
+        {#if d.description}
+          <dt>{t("Beschreibung")}</dt>
+          <dd class="long">{d.description}</dd>
+        {/if}
+        {#if d.creator}
+          <dt>{t("Autor")}</dt>
+          <dd>{d.creator}</dd>
+        {/if}
+        {#if d.copyright}
+          <dt>{t("Urheberrecht")}</dt>
+          <dd>{d.copyright}</dd>
+        {/if}
         {#if date}
           <dt>{t("Aufnahme")}</dt>
           <dd>{t("{day}, {time} Uhr", { day: date.day, time: date.time })}</dd>
@@ -359,6 +396,7 @@
         <dt>{t("Datei")}</dt>
         <dd>{d.ext.toUpperCase()}, {mb(d.size)}</dd>
       </dl>
+      {/if}
     </section>
 
     {#if faces.length}
@@ -499,6 +537,25 @@
   dd {
     margin: 0;
     user-select: text;
+  }
+  .mhead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .mhead h4 {
+    margin: 0;
+  }
+  .mhead .link {
+    color: var(--accent);
+    font-size: var(--step--1);
+  }
+  .mhead .link:hover {
+    text-decoration: underline;
+  }
+  .long {
+    white-space: pre-wrap;
   }
   .place {
     display: flex;

@@ -297,7 +297,70 @@ const MIGRATIONS: &[&str] = &[
     // Datum, Kamera). Ungültige Änderungszeit: Der nächste Abgleich liest die
     // Metadaten neu, Bewertungen und Bearbeitungen bleiben.
     "UPDATE images SET mtime = -1 WHERE lower(ext) IN ('rw2', 'orf');",
+    // v24: Vom Nutzer bearbeitete Metadaten (siehe `IMAGE_META`)
+    IMAGE_META,
 ];
+
+/// v24: Metadaten, die der Nutzer geändert hat (`imagemeta.rs`). Ein Eintrag
+/// besteht nur, solange mindestens ein Feld überschrieben ist. NULL heißt
+/// „nicht überschrieben“. Titel, Beschreibung, Autor und Urheberrecht gibt es
+/// nur hier; die übrigen Felder stehen zusätzlich in `images` (damit Suche,
+/// Sortierung und Statistik sie sofort nutzen), `f_*` merkt sich den Wert
+/// aus der Datei, um ihn beim Zurücksetzen wiederherzustellen. Ein erneutes
+/// Einlesen der Datei aktualisiert `f_*` und lässt die Überschreibung gelten.
+/// Titel, Beschreibung und Autor sind durchsuchbar.
+const IMAGE_META: &str = r#"
+    CREATE TABLE image_meta (
+        image_id        INTEGER PRIMARY KEY REFERENCES images(id) ON DELETE CASCADE,
+        title           TEXT,
+        description     TEXT,
+        creator         TEXT,
+        copyright       TEXT,
+        captured_at     TEXT,
+        camera          TEXT,
+        lens            TEXT,
+        iso             INTEGER,
+        exposure        TEXT,
+        aperture        REAL,
+        focal_length    REAL,
+        f_captured_at   TEXT,
+        f_camera        TEXT,
+        f_lens          TEXT,
+        f_iso           INTEGER,
+        f_exposure      TEXT,
+        f_aperture      REAL,
+        f_focal_length  REAL
+    );
+
+    DROP VIEW search_source;
+    CREATE VIEW search_source(id, body) AS
+    SELECT i.id,
+           i.file_name
+           || ' ' || COALESCE((SELECT substr(i.dir, length(r.path)
+                                   + CASE WHEN substr(r.path, -1) IN ('/', '\') THEN 1 ELSE 2 END)
+                               FROM roots r WHERE r.id = i.root_id), '')
+           || ' ' || COALESCE(i.camera, '') || ' ' || COALESCE(i.lens, '')
+           || ' ' || COALESCE((SELECT group_concat(t.name, ' ') FROM image_tags it
+                               JOIN tags t ON t.id = it.tag_id WHERE it.image_id = i.id), '')
+           || ' ' || COALESCE((SELECT group_concat(p.name, ' ') FROM faces f
+                               JOIN persons p ON p.id = f.person_id
+                               WHERE f.image_id = i.id AND f.hidden = 0 AND p.name IS NOT NULL), '')
+           || COALESCE(' ' || NULLIF(i.place, ''), '')
+           || COALESCE((SELECT ' ' || COALESCE(m.title, '') || ' ' || COALESCE(m.description, '')
+                               || ' ' || COALESCE(m.creator, '')
+                        FROM image_meta m WHERE m.image_id = i.id), '')
+    FROM images i;
+
+    CREATE TRIGGER search_meta_ins AFTER INSERT ON image_meta BEGIN
+        INSERT OR IGNORE INTO search_dirty (id) VALUES (NEW.image_id);
+    END;
+    CREATE TRIGGER search_meta_upd AFTER UPDATE OF title, description, creator ON image_meta BEGIN
+        INSERT OR IGNORE INTO search_dirty (id) VALUES (NEW.image_id);
+    END;
+    CREATE TRIGGER search_meta_del AFTER DELETE ON image_meta BEGIN
+        INSERT OR IGNORE INTO search_dirty (id) VALUES (OLD.image_id);
+    END;
+"#;
 
 /// v21: Aufnahmeort je Foto – Koordinaten (aus EXIF oder vom Nutzer gesetzt)
 /// und Ortsname für die Suche. `geo_state = 0`: GPS aus EXIF noch nicht
@@ -1017,6 +1080,8 @@ impl Catalog {
                 m.gps.map(|g| g.1)
             ],
         )?;
+        // Vom Nutzer geänderte Metadaten gelten weiter
+        crate::imagemeta::reapply(tx, id)?;
         Ok(())
     }
 
@@ -1289,6 +1354,7 @@ impl Catalog {
                         flag: r.get(16)?,
                         tags: vec![],
                         location: None,
+                        ..Default::default()
                     })
                 },
             )
@@ -1296,6 +1362,19 @@ impl Catalog {
             .ok_or_else(|| Error::NotFound(tr!("Bild {id}", "Photo {id}")))?;
         d.tags = self.image_tags(id)?;
         d.location = self.location(id)?;
+        if let Some((title, description, creator, copyright)) = self
+            .conn
+            .query_row(
+                "SELECT title, description, creator, copyright FROM image_meta WHERE image_id = ?1",
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .optional()?
+        {
+            (d.title, d.description, d.creator, d.copyright) =
+                (title, description, creator, copyright);
+            d.meta_edited = true;
+        }
         Ok(d)
     }
 
@@ -1496,6 +1575,7 @@ impl Catalog {
                  WHERE id = ?1",
                 params![id, from],
             )?;
+            crate::imagemeta::reapply(&self.conn, id)?;
             flush_search(&self.conn)?; // Kamera und Objektiv sind durchsuchbar
         }
         Ok(id)
@@ -2581,6 +2661,13 @@ mod search_tests {
 mod migration_tests {
     use super::*;
 
+    /// Stand vor v24 nachstellen: Tabelle und Trigger für bearbeitete
+    /// Metadaten weg. Die Suchansicht bleibt als Platzhalter, damit `UNDO_V21`
+    /// sie ersetzen kann.
+    const UNDO_V24: &str = "DROP TRIGGER search_meta_ins; DROP TRIGGER search_meta_upd;
+        DROP TRIGGER search_meta_del; DROP VIEW search_source; DROP TABLE image_meta;
+        CREATE VIEW search_source(id, body) AS SELECT 0, '';";
+
     /// Stand vor v22 nachstellen: der Index für `has_content` fehlt wieder. Vor
     /// `UNDO_V11` einsetzen, das den alten `images_hash` neu anlegt.
     const UNDO_V22: &str = "DROP INDEX images_hash;";
@@ -2661,7 +2748,7 @@ mod migration_tests {
             cat.conn
                 .execute_batch(&format!(
                     // Stand vor v9 (und damit auch vor v10, v11) nachstellen
-                    "UPDATE images SET thumb_state = 1; {UNDO_V22} {UNDO_V21} {UNDO_V11}
+                    "UPDATE images SET thumb_state = 1; {UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11}
                      DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
                      PRAGMA user_version = 8;"
                 ))
@@ -2808,7 +2895,7 @@ mod migration_tests {
             // Zustand vor v10 nachstellen: höchste ID bereits im Bestand
             cat.conn
                 .execute_batch(&format!(
-                    "{UNDO_V22} {UNDO_V21} {UNDO_V11} DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
+                    "{UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11} DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
                      PRAGMA user_version = 9;"
                 ))
                 .unwrap();
