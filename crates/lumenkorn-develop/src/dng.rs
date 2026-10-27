@@ -14,6 +14,10 @@ const TILE: usize = 256;
 const QUALITY: u8 = 92;
 /// Kantenlänge des eingebetteten Vorschaubilds (IFD0)
 const THUMB: usize = 256;
+/// Große JPEG-Vorschau wie bei Adobe: Viele Programme (Windows, Bildbetrachter)
+/// zeigen von einem DNG nur sie
+const PREVIEW: usize = 2560;
+const PREVIEW_QUALITY: u8 = 85;
 
 /// XYZ (D65) → lineares sRGB bzw. Rec.2020: `ColorMatrix1` der DNG-Datei. Der
 /// „Kamera-Farbraum“ ist hier der Farbraum der gespeicherten Daten.
@@ -102,17 +106,26 @@ pub fn encode_lossy(content: DngContent) -> Result<Vec<u8>> {
         })
         .collect::<Result<_>>()?;
 
-    // Vorschaubild für Dateimanager (unkomprimiertes RGB)
-    let small = img.downscale_to(THUMB);
-    let thumb: Vec<u8> = if developed {
-        to_rgb8(&small).into_raw()
+    // Vorschauen (sRGB): das fertige Bild bzw. beim Original Lumenkorns
+    // Standardentwicklung – lineare Daten sähen flau aus
+    let preview = if developed {
+        img.downscale_to(PREVIEW)
     } else {
-        small
-            .data
-            .iter()
-            .flat_map(|c| c.map(|v| (linear_to_srgb(v) * 255.0 + 0.5) as u8))
-            .collect()
+        let small = img.downscale_to(PREVIEW);
+        let src = crate::Source {
+            kind: crate::SourceKind::Raw,
+            full_width: small.width,
+            full_height: small.height,
+            image: small,
+            lens: None,
+            as_shot_kelvin: None,
+        };
+        crate::render(&src, &crate::DevelopParams::default())
     };
+    let preview_jpeg = crate::output::encode_jpeg(&preview, PREVIEW_QUALITY)?;
+    // Kleines Vorschaubild für Dateimanager (unkomprimiertes RGB, IFD0)
+    let small = preview.downscale_to(THUMB);
+    let thumb = to_rgb8(&small).into_raw();
 
     let mut out = b"II*\0\0\0\0\0".to_vec();
     let thumb_off = out.len() as u32;
@@ -127,6 +140,11 @@ pub fn encode_lossy(content: DngContent) -> Result<Vec<u8>> {
         counts.push(t.len() as u32);
         out.extend(t);
     }
+    if out.len() % 2 == 1 {
+        out.push(0);
+    }
+    let preview_off = out.len() as u32;
+    out.extend(&preview_jpeg);
 
     // Hauptbild (SubIFD)
     let table: Vec<u16> = (0..256)
@@ -148,6 +166,22 @@ pub fn encode_lossy(content: DngContent) -> Result<Vec<u8>> {
     raw.short(50712, &table);
     raw.long(50717, &[65535, 65535, 65535]);
     let sub_off = raw.write(&mut out);
+
+    // Große Vorschau (zweites SubIFD), aufgebaut wie bei Adobe
+    let mut prev = Ifd::default();
+    prev.long(254, &[1]);
+    prev.long(256, &[preview.width as u32]);
+    prev.long(257, &[preview.height as u32]);
+    prev.short(258, &[8, 8, 8]);
+    prev.short(259, &[7]); // JPEG
+    prev.short(262, &[6]); // YCbCr
+    prev.long(273, &[preview_off]);
+    prev.short(277, &[3]);
+    prev.long(278, &[preview.height as u32]);
+    prev.long(279, &[preview_jpeg.len() as u32]);
+    prev.short(284, &[1]);
+    prev.long(50970, &[2]); // PreviewColorSpace: sRGB
+    let prev_off = prev.write(&mut out);
 
     // IFD0: Vorschaubild und DNG-Angaben
     let (tw, th) = (small.width as u32, small.height as u32);
@@ -172,7 +206,7 @@ pub fn encode_lossy(content: DngContent) -> Result<Vec<u8>> {
     ifd0.long(279, &[thumb.len() as u32]);
     ifd0.short(284, &[1]);
     ifd0.ascii(305, &format!("Lumenkorn {}", env!("CARGO_PKG_VERSION")));
-    ifd0.long(330, &[sub_off]);
+    ifd0.long(330, &[sub_off, prev_off]);
     ifd0.bytes(50706, &[1, 4, 0, 0]);
     ifd0.bytes(50707, &[1, 4, 0, 0]);
     ifd0.ascii(50708, "Lumenkorn");

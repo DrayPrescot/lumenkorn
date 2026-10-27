@@ -12,6 +12,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
   evenly in mired. **Automatic** suggests a Kelvin value too. Older edits are shown in Kelvin
   and look the same. JPEGs and other finished images keep the relative temperature.
 
+### Fixed
+- Exported DNGs now carry a large JPEG preview (2560 px) like Adobe's DNGs. Windows and image
+  viewers that only show the embedded preview showed a tiny 256-px picture before.
+
 ## [1.0.21] – 2026-10-27
 
 ### Added
