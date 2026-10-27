@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.23] – 2026-10-27
+
 ### Changed
 - Smoother work with large catalogs and masks:
   - Thumbnail generation no longer holds the catalog lock while writing files, so the library
