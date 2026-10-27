@@ -6,7 +6,7 @@
   import { oklabToCss, type MaskShape, type Stroke } from "../lib/api";
   import { dev } from "../lib/develop.svelte";
   import { t } from "../lib/i18n";
-  import { containRect, cropToFrame, frameSize, frameToCrop, frameToSource, sourceToFrame, straightenScale } from "../lib/frame";
+  import { containRect, cropToFrame, frameToCrop, frameToSource, sourceToFrame, warpZoom } from "../lib/frame";
 
   let {
     stageW,
@@ -30,10 +30,7 @@
   const crop = $derived(dev.params.crop ?? { x: 0, y: 0, w: 1, h: 1 });
   const src = $derived({ w: dev.fullSize[0] || 1, h: dev.fullSize[1] || 1 });
   const long = $derived(Math.max(src.w, src.h));
-  const zoom = $derived.by(() => {
-    const [fw, fh] = frameSize(dev.params, [src.w, src.h]);
-    return dev.params.straighten ? straightenScale(fw, fh, dev.params.straighten) : 1;
-  });
+  const zoom = $derived(warpZoom(dev.params, [src.w, src.h]));
   /** Anzeigepixel pro Originalpixel */
   const scale = $derived((rect.w / ((q % 2 ? src.h : src.w) * crop.w)) * zoom);
 

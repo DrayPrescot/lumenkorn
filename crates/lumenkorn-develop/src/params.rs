@@ -64,6 +64,12 @@ pub struct DevelopParams {
     /// Geraderichten in Grad, im Uhrzeigersinn positiv, −45…45. Das Bild wird so
     /// weit vergrößert, dass keine leeren Ecken entstehen.
     pub straighten: f32,
+    /// Perspektive senkrecht, −100…100: positiv macht den oberen Bildrand
+    /// breiter (stürzende Linien bei nach oben gerichteter Kamera). Wie beim
+    /// Geraderichten wird so weit vergrößert, dass keine leeren Ecken entstehen.
+    pub perspective_vertical: f32,
+    /// Perspektive waagerecht, −100…100: positiv macht den rechten Rand höher.
+    pub perspective_horizontal: f32,
     /// Zuschnitt in normierten Koordinaten des gedrehten Bildes
     pub crop: Option<Crop>,
     /// Objektivkorrektur (Verzeichnung, Farbsäume, Vignettierung) aus den
@@ -662,6 +668,8 @@ impl Default for DevelopParams {
             rotate: 0,
             flip_horizontal: false,
             straighten: 0.0,
+            perspective_vertical: 0.0,
+            perspective_horizontal: 0.0,
             crop: None,
             lens_correction: true,
             masks: vec![],
@@ -721,6 +729,8 @@ impl DevelopParams {
             rotate: self.rotate % 4,
             flip_horizontal: self.flip_horizontal,
             straighten: c(self.straighten, -45.0, 45.0),
+            perspective_vertical: c(self.perspective_vertical, -100.0, 100.0),
+            perspective_horizontal: c(self.perspective_horizontal, -100.0, 100.0),
             crop,
             lens_correction: self.lens_correction,
             denoise: self.denoise.as_ref().and_then(|d| {
@@ -854,6 +864,8 @@ impl DevelopParams {
             out.rotate = src.rotate;
             out.flip_horizontal = src.flip_horizontal;
             out.straighten = src.straighten;
+            out.perspective_vertical = src.perspective_vertical;
+            out.perspective_horizontal = src.perspective_horizontal;
             out.crop = src.crop;
         }
         out.sanitized()

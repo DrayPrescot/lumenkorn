@@ -173,9 +173,9 @@ struct U {
     oh: u32,
     crop_x: u32,
     crop_y: u32,
-    st_s: f32,
-    st_c: f32,
-    st_k: f32,
+    _p0: f32,
+    _p1: f32,
+    _p2: f32,
     /// Dehaze −1…1, Dunsthelligkeit und Aufhellung (`pipeline::Haze`)
     dehaze: f32,
     haze: f32,
@@ -189,6 +189,8 @@ struct U {
     grade: [[f32; 4]; 4],
     /// Grenze, Übergangsbreite, ungenutzt
     grade_pw: [f32; 4],
+    /// Geraderichten und Perspektive (`geometry::Warp::m`), je Zeile xyz
+    warp: [[f32; 4]; 3],
 }
 
 const F_RAW: u32 = 1;
@@ -196,7 +198,7 @@ const F_DENOISE: u32 = 2;
 const F_BASE: u32 = 4;
 const F_DETAIL: u32 = 8;
 const F_PACK: u32 = 16;
-const F_STRAIGHTEN: u32 = 32;
+const F_WARP: u32 = 32;
 
 #[derive(Clone, Copy)]
 enum P {
@@ -1457,12 +1459,9 @@ impl Gpu {
                 crop_y: crop_y as u32,
                 ..cx.base_u()
             };
-            if p.straighten != 0.0 {
-                let (s, c) = p.straighten.to_radians().sin_cos();
-                u.flags |= F_STRAIGHTEN;
-                u.st_s = s;
-                u.st_c = c;
-                u.st_k = geometry::straighten_scale(ow as f32, oh as f32, p.straighten);
+            if let Some(w) = geometry::Warp::new(ow, oh, p) {
+                u.flags |= F_WARP;
+                u.warp = std::array::from_fn(|r| [w.m[r * 3], w.m[r * 3 + 1], w.m[r * 3 + 2], 0.0]);
             }
             let out_px = out_w * out_h;
             let (result, out_bytes) = if pack {

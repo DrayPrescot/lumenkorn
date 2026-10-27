@@ -921,7 +921,7 @@ fn develop_for_export(
 ) -> Result<ImageF32, Error> {
     let load_edge = long_edge.filter(|m| *m > 0).map(|m| {
         let crop = params.crop.map_or(1.0, |c| c.w.min(c.h)).max(0.05);
-        let tilt = if params.straighten != 0.0 { 1.5 } else { 1.0 };
+        let tilt = lumenkorn_develop::geometry::load_margin(params);
         (m as f32 / crop * tilt).ceil() as usize
     });
     let src = Source::load(

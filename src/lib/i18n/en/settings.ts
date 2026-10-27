@@ -57,6 +57,7 @@ export default {
   "Einpassen": "Fit",
   "Einpassen ↔ 100 %": "Fit ↔ 100 %",
   "Vorher/Nachher": "Before/after",
+  "Clipping anzeigen": "Show clipping",
   "Maske anzeigen": "Show mask",
   "Nach links drehen": "Rotate left",
   "Nach rechts drehen": "Rotate right",

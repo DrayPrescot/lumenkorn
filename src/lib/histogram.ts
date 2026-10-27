@@ -64,14 +64,38 @@ async function compute(src: string): Promise<Bins> {
       bins[2][b]++;
       bins[3][Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b))]++;
       const m = Math.max(r, g, b);
-      if (m >= 254) hi++;
-      if (m <= 1) lo++;
+      if (m >= CLIP_HIGH) hi++;
+      if (m <= CLIP_LOW) lo++;
     }
     const n = px.length / 4;
     return { bins, clipLow: lo / n, clipHigh: hi / n };
   } finally {
     img.close();
   }
+}
+
+/** Schwellen für „abgeschnitten“ – Histogramm und Clipping-Warnung gleich */
+const CLIP_HIGH = 254;
+const CLIP_LOW = 1;
+
+/** Clipping-Warnung in voller Größe der Vorschau: ausgebrannte Lichter rot,
+ *  reines Schwarz blau, alles andere durchsichtig. */
+export async function clipMask(src: string): Promise<ImageData> {
+  const el = await loadImage(src);
+  const c = document.createElement("canvas");
+  c.width = el.naturalWidth;
+  c.height = el.naturalHeight;
+  const ctx = c.getContext("2d", { willReadFrequently: true })!;
+  ctx.drawImage(el, 0, 0);
+  const img = ctx.getImageData(0, 0, c.width, c.height);
+  const px = img.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const m = Math.max(px[i], px[i + 1], px[i + 2]);
+    if (m >= CLIP_HIGH) px.set([255, 40, 40, 255], i);
+    else if (m <= CLIP_LOW) px.set([40, 110, 255, 255], i);
+    else px[i + 3] = 0;
+  }
+  return img;
 }
 
 /** Höchster Wert ohne die Ränder (Ausgebranntes drückt die Skala sonst platt). */

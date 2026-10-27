@@ -237,4 +237,11 @@ export default {
   "Die RGB-Kurve wirkt auf die Helligkeit; Farbton und Sättigung bleiben. Aus: auf jeden Kanal einzeln, mehr Kontrast macht dann auch die Farben kräftiger.": "The RGB curve acts on brightness; hue and saturation stay. Off: on each channel separately, so more contrast also makes colors stronger.",
   "Farben erhalten": "Preserve colors",
   "Klicken setzt einen Punkt, Ziehen verschiebt ihn, Doppelklick entfernt ihn.": "Click to add a point, drag to move it, double-click to remove it.",
+  "Linie entlang des Horizonts oder einer Kante ziehen": "Drag a line along the horizon or an edge",
+  "Eine Linie entlang des Horizonts oder einer Kante ziehen, die dann gerade gestellt wird": "Drag a line along the horizon or an edge to make it straight",
+  "Linie": "Line",
+  "Perspektive": "Perspective",
+  "Senkrecht": "Vertical",
+  "Waagerecht": "Horizontal",
+  "Abgeschnittene Bereiche im Bild zeigen (J)": "Show clipped areas in the photo (J)",
 } satisfies Record<string, string>;

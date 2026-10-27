@@ -2,6 +2,7 @@
   // Zuschnittrahmen über dem ungeschnittenen Bild: Ecken und Kanten ziehen,
   // innen verschieben, optional mit festem Seitenverhältnis. Drittel-Raster
   // hilft beim Bildaufbau, beim Geraderichten ein feines Raster beim Ausrichten.
+  // Im Linienmodus zieht man eine Linie entlang von Horizont oder Kante.
   import { dev } from "../lib/develop.svelte";
   import { containRect, frameSize } from "../lib/frame";
   import { t } from "../lib/i18n";
@@ -56,7 +57,28 @@
     svg.setPointerCapture(e.pointerId);
   }
 
+  /** Gezogene Linie in Bühnenpixeln */
+  let line = $state<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+
+  function stagePoint(e: PointerEvent): [number, number] {
+    const r = svg.getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top];
+  }
+
+  function lineStart(e: PointerEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    const [x, y] = stagePoint(e);
+    line = { x1: x, y1: y, x2: x, y2: y };
+    svg.setPointerCapture(e.pointerId);
+  }
+
   function onmove(e: PointerEvent) {
+    if (line) {
+      const [x, y] = stagePoint(e);
+      line = { ...line, x2: x, y2: y };
+      return;
+    }
     if (!drag) return;
     const [px, py] = norm(e);
     const dx = px - drag.start[0];
@@ -100,6 +122,13 @@
   }
 
   function onup(e: PointerEvent) {
+    if (line) {
+      const l = line;
+      line = null;
+      if (svg.hasPointerCapture(e.pointerId)) svg.releasePointerCapture(e.pointerId);
+      if (e.type === "pointerup") dev.straightenAlong(l.x2 - l.x1, l.y2 - l.y1);
+      return;
+    }
     if (!drag) return;
     drag = null;
     if (svg.hasPointerCapture(e.pointerId)) svg.releasePointerCapture(e.pointerId);
@@ -178,6 +207,16 @@
       <rect class="edge" x={hx - 4} y={hy - 4} width="8" height="8" />
     {/if}
   {/each}
+  {#if dev.lineMode}
+    <!-- Über allem: Ziehen zeichnet die Linie statt den Rahmen zu verändern -->
+    <rect class="catch" x={rect.x} y={rect.y} width={rect.w} height={rect.h} onpointerdown={lineStart} role="presentation" />
+    {#if line}
+      <line class="ruler-shadow" x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />
+      <line class="ruler" x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />
+    {:else}
+      <text class="hint" x={rect.x + rect.w / 2} y={rect.y + 28}>{t("Linie entlang des Horizonts oder einer Kante ziehen")}</text>
+    {/if}
+  {/if}
 </svg>
 
 <style>
@@ -222,5 +261,28 @@
   }
   .hit {
     fill: transparent;
+  }
+  .catch {
+    fill: transparent;
+    cursor: crosshair;
+  }
+  .ruler {
+    stroke: #ffd24a;
+    stroke-width: 2;
+    pointer-events: none;
+  }
+  .ruler-shadow {
+    stroke: rgb(0 0 0 / 0.6);
+    stroke-width: 4;
+    pointer-events: none;
+  }
+  .hint {
+    fill: #fff;
+    font-size: 13px;
+    text-anchor: middle;
+    paint-order: stroke;
+    stroke: rgb(0 0 0 / 0.7);
+    stroke-width: 3px;
+    pointer-events: none;
   }
 </style>

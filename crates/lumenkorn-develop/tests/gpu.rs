@@ -336,6 +336,23 @@ fn cases() -> Vec<(&'static str, DevelopParams)> {
             },
         ),
         (
+            "Perspektive mit Geraderichten und Zuschnitt",
+            DevelopParams {
+                rotate: 1,
+                flip_horizontal: true,
+                perspective_vertical: 60.0,
+                perspective_horizontal: -35.0,
+                straighten: 2.5,
+                crop: Some(Crop {
+                    x: 0.05,
+                    y: 0.1,
+                    w: 0.8,
+                    h: 0.85,
+                }),
+                ..d()
+            },
+        ),
+        (
             "Alles zusammen",
             DevelopParams {
                 exposure: 0.4,

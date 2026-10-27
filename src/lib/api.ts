@@ -373,6 +373,10 @@ export interface DevelopParams {
   flipHorizontal: boolean;
   /** Geraderichten in Grad, im Uhrzeigersinn positiv */
   straighten: number;
+  /** Perspektive senkrecht −100…100 (positiv: oberer Rand breiter) */
+  perspectiveVertical: number;
+  /** Perspektive waagerecht −100…100 (positiv: rechter Rand höher) */
+  perspectiveHorizontal: number;
   crop: { x: number; y: number; w: number; h: number } | null;
   /** Objektivkorrektur aus den Daten der Kamera (falls das RAW welche enthält) */
   lensCorrection: boolean;
@@ -614,6 +618,8 @@ export const DEFAULT_PARAMS: DevelopParams = {
   rotate: 0,
   flipHorizontal: false,
   straighten: 0,
+  perspectiveVertical: 0,
+  perspectiveHorizontal: 0,
   crop: null,
   lensCorrection: true,
   masks: [],
@@ -649,6 +655,8 @@ export function transferParams(target: DevelopParams, src: DevelopParams, g: Tra
     out.rotate = src.rotate;
     out.flipHorizontal = src.flipHorizontal;
     out.straighten = src.straighten;
+    out.perspectiveVertical = src.perspectiveVertical ?? 0;
+    out.perspectiveHorizontal = src.perspectiveHorizontal ?? 0;
     out.crop = src.crop ? { ...src.crop } : null;
   }
   return out;

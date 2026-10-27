@@ -125,6 +125,8 @@ class Develop {
   url = $state<string | null>(null);
   beforeUrl = $state<string | null>(null);
   showBefore = $state(false);
+  /** Clipping-Warnung: ausgebrannte Lichter rot, reines Schwarz blau */
+  showClipping = $state(false);
   /** Vorher-Knopf gedrückt gehalten (kurzer Vergleich) */
   holdBefore = $state(false);
   loading = $state(false);
@@ -163,8 +165,10 @@ class Develop {
   cropMode = $state(false);
   /** Seitenverhältnis (Breite/Höhe in Pixeln) oder null = frei */
   cropAspect = $state<number | null>(null);
+  /** Im Zuschnitt: Linie entlang von Horizont oder Kante ziehen */
+  lineMode = $state(false);
   #cropBefore: DevelopParams["crop"] = null;
-  #straightenBefore = 0;
+  #geoBefore = { straighten: 0, perspectiveVertical: 0, perspectiveHorizontal: 0 };
 
   // --- Masken -----------------------------------------------------------
   /** Index der ausgewählten Maskenebene. */
@@ -604,7 +608,11 @@ class Develop {
   enterCrop() {
     if (this.imageId === null || this.cropMode) return;
     this.#cropBefore = $state.snapshot(this.params.crop) as DevelopParams["crop"];
-    this.#straightenBefore = this.params.straighten;
+    this.#geoBefore = {
+      straighten: this.params.straighten,
+      perspectiveVertical: this.params.perspectiveVertical ?? 0,
+      perspectiveHorizontal: this.params.perspectiveHorizontal ?? 0,
+    };
     this.tool = null;
     this.activeMask = null;
     this.showOverlay = false;
@@ -618,6 +626,7 @@ class Develop {
     // Voller Rahmen ist kein Zuschnitt
     if (c && c.x <= 1e-4 && c.y <= 1e-4 && c.w >= 0.9999 && c.h >= 0.9999) this.params.crop = null;
     this.cropMode = false;
+    this.lineMode = false;
     this.schedule();
     this.commit();
   }
@@ -625,14 +634,17 @@ class Develop {
   cancelCrop() {
     if (!this.cropMode) return;
     this.params.crop = this.#cropBefore;
-    this.params.straighten = this.#straightenBefore;
+    Object.assign(this.params, this.#geoBefore);
     this.cropMode = false;
+    this.lineMode = false;
     this.schedule();
   }
 
   resetCrop() {
     this.params.crop = null;
     this.params.straighten = 0;
+    this.params.perspectiveVertical = 0;
+    this.params.perspectiveHorizontal = 0;
     this.schedule();
     if (!this.cropMode) this.commit();
   }
@@ -655,6 +667,28 @@ class Develop {
     const x = Math.min(Math.max(0, cx - w / 2), 1 - w);
     const y = Math.min(Math.max(0, cy - h / 2), 1 - h);
     this.params.crop = { x, y, w, h };
+    this.schedule();
+  }
+
+  /** „Linie ziehen“: im Zuschnitt einschalten (öffnet ihn bei Bedarf) */
+  startLine() {
+    if (!this.cropMode) this.enterCrop();
+    if (this.cropMode) this.lineMode = !this.lineMode;
+  }
+
+  /** Gezogene Linie (Anzeigepixel des gerade gerichteten Rahmens) waagerecht
+   *  bzw. – wenn sie steiler als 45° ist – senkrecht stellen. */
+  straightenAlong(dx: number, dy: number) {
+    this.lineMode = false;
+    if (Math.hypot(dx, dy) < 8) return;
+    // Winkel der Linie, y nach unten: positiv = im Uhrzeigersinn geneigt
+    let a = (Math.atan2(dy, dx) * 180) / Math.PI;
+    if (a > 90) a -= 180;
+    else if (a <= -90) a += 180;
+    const tilt = Math.abs(a) <= 45 ? a : a - 90 * Math.sign(a);
+    const v = Math.min(45, Math.max(-45, this.params.straighten - tilt));
+    this.params.straighten = Math.round(v * 100) / 100;
+    this.straightenFeedback();
     this.schedule();
   }
 
@@ -1168,7 +1202,7 @@ class Develop {
       colorGrade: differs(["colorGrade"]),
       details: differs(["clarity", "dehaze", "sharpen"]),
       masks: p.masks.some((m) => !m.shapes.some((s) => s.type === "raster")),
-      geometry: differs(["crop", "straighten", "rotate", "flipHorizontal"]),
+      geometry: differs(["crop", "straighten", "perspectiveVertical", "perspectiveHorizontal", "rotate", "flipHorizontal"]),
     };
   }
 

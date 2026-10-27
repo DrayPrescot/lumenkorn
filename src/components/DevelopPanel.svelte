@@ -209,7 +209,7 @@
 
 <aside class="scroll">
   <section class="hist">
-    <Histogram src={dev.showBefore ? dev.beforeUrl : dev.url} />
+    <Histogram src={dev.showBefore ? dev.beforeUrl : dev.url} clipping={dev.showClipping} onclipping={() => (dev.showClipping = !dev.showClipping)} />
     {#if dev.fullSize[0]}
       <p class="meta">
         {dev.fullSize[0]} × {dev.fullSize[1]} px{dev.raw ? ", RAW" : ""}
@@ -383,7 +383,11 @@
       {:else}
         <button class="btn" onclick={() => dev.enterCrop()} title={withKey(t("Zuschneiden"), "crop")}>{t("Zuschneiden")}</button>
       {/if}
-      <button class="btn quiet" disabled={!dev.params.crop && !dev.params.straighten} onclick={() => dev.resetCrop()}>{t("Zurücksetzen")}</button>
+      <button
+        class="btn quiet"
+        disabled={!dev.params.crop && !dev.params.straighten && !dev.params.perspectiveVertical && !dev.params.perspectiveHorizontal}
+        onclick={() => dev.resetCrop()}>{t("Zurücksetzen")}</button
+      >
     </div>
     {#if dev.cropMode}
       <div class="aspects" role="group" aria-label={t("Seitenverhältnis")}>
@@ -406,6 +410,31 @@
         oncommit={() => { if (!dev.cropMode) dev.commit(); }}
       />
       <button class="btn small" onclick={() => dev.autoStraighten()} title={t("Horizont und Kanten automatisch gerade stellen")}>{t("Auto")}</button>
+      <button
+        class="btn small"
+        class:on={dev.lineMode}
+        onclick={() => dev.startLine()}
+        title={t("Eine Linie entlang des Horizonts oder einer Kante ziehen, die dann gerade gestellt wird")}>{t("Linie")}</button
+      >
+    </div>
+    <div class="perspective">
+      <span class="sub">{t("Perspektive")}</span>
+      <Slider
+        label={t("Senkrecht")}
+        value={dev.params.perspectiveVertical ?? 0}
+        min={-100}
+        max={100}
+        oninput={(v) => { dev.set("perspectiveVertical", v); dev.straightenFeedback(); }}
+        oncommit={() => { if (!dev.cropMode) dev.commit(); }}
+      />
+      <Slider
+        label={t("Waagerecht")}
+        value={dev.params.perspectiveHorizontal ?? 0}
+        min={-100}
+        max={100}
+        oninput={(v) => { dev.set("perspectiveHorizontal", v); dev.straightenFeedback(); }}
+        oncommit={() => { if (!dev.cropMode) dev.commit(); }}
+      />
     </div>
     <div class="row">
       <button class="btn" onclick={() => dev.rotate(-1)} title={withKey(t("Links drehen"), "rotateLeft")}>↺ {t("Links")}</button>
@@ -599,10 +628,19 @@
   }
   .straighten {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr auto auto;
     align-items: end;
     gap: 8px;
     margin-top: 10px;
+  }
+  .perspective {
+    display: grid;
+    gap: 2px;
+    margin-top: 10px;
+  }
+  .perspective .sub {
+    color: var(--muted);
+    font-size: var(--step--1);
   }
   .btn.small {
     padding: 3px 8px;

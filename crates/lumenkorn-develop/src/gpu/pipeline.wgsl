@@ -19,7 +19,7 @@ struct U {
     contrast: f32, clarity: f32, sat: f32, vib: f32,
     out_w: u32, out_h: u32, rot: u32, flip: u32,
     ow: u32, oh: u32, crop_x: u32, crop_y: u32,
-    st_s: f32, st_c: f32, st_k: f32, dehaze: f32,
+    _p0: f32, _p1: f32, _p2: f32, dehaze: f32,
     haze: f32, haze_lift: f32, curve_mode: u32, _p3: f32,
     // HSL je Farbbereich (−1…1): [0..2) Farbton, [2..4) Sättigung, [4..6) Luminanz
     hsl: array<vec4<f32>, 6>,
@@ -27,6 +27,8 @@ struct U {
     // je Tönung (xyz) und Helligkeit (w); grade_pw = Grenze, Übergangsbreite
     grade: array<vec4<f32>, 4>,
     grade_pw: vec4<f32>,
+    // Geraderichten und Perspektive (geometry::Warp::m), je Zeile xyz
+    warp: array<vec4<f32>, 3>,
 };
 
 const F_RAW: u32 = 1u;
@@ -34,7 +36,7 @@ const F_DENOISE: u32 = 2u;
 const F_BASE: u32 = 4u;
 const F_DETAIL: u32 = 8u;
 const F_PACK: u32 = 16u;
-const F_STRAIGHTEN: u32 = 32u;
+const F_WARP: u32 = 32u;
 
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var<storage, read> ina: array<vec4<f32>>;
@@ -617,7 +619,7 @@ fn oriented(xo_in: u32, yo: u32) -> vec3<f32> {
     return ina[sy * u.w + sx].xyz;
 }
 
-// Geometrie: drehen, spiegeln, gerade richten, zuschneiden. ina = Bild,
+// Geometrie: drehen, spiegeln, gerade richten, Perspektive, zuschneiden. ina = Bild,
 // Ausgabe nach outa (Float) oder packed (RGBA8).
 @compute @workgroup_size(16, 16)
 fn geom(@builtin(global_invocation_id) id: vec3<u32>) {
@@ -625,13 +627,16 @@ fn geom(@builtin(global_invocation_id) id: vec3<u32>) {
     let px = id.x + u.crop_x;
     let py = id.y + u.crop_y;
     var c: vec3<f32>;
-    if ((u.flags & F_STRAIGHTEN) != 0u) {
-        let cx = f32(u.ow) / 2.0;
-        let cy = f32(u.oh) / 2.0;
-        let dx = (f32(px) + 0.5 - cx) / u.st_k;
-        let dy = (f32(py) + 0.5 - cy) / u.st_k;
-        let sx = clamp(u.st_c * dx + u.st_s * dy + cx - 0.5, 0.0, f32(u.ow - 1u));
-        let sy = clamp(-u.st_s * dx + u.st_c * dy + cy - 0.5, 0.0, f32(u.oh - 1u));
+    if ((u.flags & F_WARP) != 0u) {
+        // wie geometry::warp
+        let qx = f32(px) + 0.5;
+        let qy = f32(py) + 0.5;
+        let m0 = u.warp[0];
+        let m1 = u.warp[1];
+        let m2 = u.warp[2];
+        let z = m2.x * qx + m2.y * qy + m2.z;
+        let sx = clamp((m0.x * qx + m0.y * qy + m0.z) / z - 0.5, 0.0, f32(u.ow - 1u));
+        let sy = clamp((m1.x * qx + m1.y * qy + m1.z) / z - 0.5, 0.0, f32(u.oh - 1u));
         let x0 = u32(sx);
         let y0 = u32(sy);
         let x1 = min(x0 + 1u, u.ow - 1u);

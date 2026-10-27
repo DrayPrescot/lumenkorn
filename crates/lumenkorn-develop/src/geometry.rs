@@ -1,7 +1,8 @@
-//! Geometrie: Orientierung, Drehung, Spiegelung, Zuschnitt.
+//! Geometrie: Orientierung, Drehung, Spiegelung, Geraderichten, Perspektive,
+//! Zuschnitt.
 
 use crate::image_f32::ImageF32;
-use crate::params::Crop;
+use crate::params::{Crop, DevelopParams};
 use rayon::prelude::*;
 
 /// Wendet eine EXIF-Orientierung (1–8) an, sodass das Bild aufrecht steht.
@@ -93,21 +94,184 @@ pub fn straighten_scale(w: f32, h: f32, deg: f32) -> f32 {
     (c + (h / w) * s).max(c + (w / h) * s)
 }
 
-/// Dreht um die Bildmitte (im Uhrzeigersinn positiv) und vergrößert so, dass
-/// der Rahmen voll bleibt. Bilineare Abtastung.
-pub fn straighten(img: &ImageF32, deg: f32) -> ImageF32 {
-    let (w, h) = (img.width, img.height);
-    let (wf, hf) = (w as f32, h as f32);
-    let k = straighten_scale(wf, hf, deg);
-    let (s, c) = deg.to_radians().sin_cos();
-    let (cx, cy) = (wf / 2.0, hf / 2.0);
-    ImageF32::from_fn(w, h, |x, y| {
-        // Zielpixel → Quellposition: zurückdrehen und verkleinern
-        let (dx, dy) = ((x as f32 + 0.5 - cx) / k, (y as f32 + 0.5 - cy) / k);
-        let sx = c * dx + s * dy + cx - 0.5;
-        let sy = -s * dx + c * dy + cy - 0.5;
+/// Stärkste Neigung der Bildebene bei Perspektive ±100
+pub const PERSPECTIVE_MAX_DEG: f64 = 30.0;
+
+type M3 = [[f64; 3]; 3];
+
+fn mul(a: &M3, b: &M3) -> M3 {
+    let mut r = [[0.0; 3]; 3];
+    for (i, row) in r.iter_mut().enumerate() {
+        for (j, v) in row.iter_mut().enumerate() {
+            *v = (0..3).map(|k| a[i][k] * b[k][j]).sum();
+        }
+    }
+    r
+}
+
+fn apply(m: &M3, x: f64, y: f64) -> Option<(f64, f64)> {
+    let z = m[2][0] * x + m[2][1] * y + m[2][2];
+    (z > 1e-9).then(|| {
+        (
+            (m[0][0] * x + m[0][1] * y + m[0][2]) / z,
+            (m[1][0] * x + m[1][1] * y + m[1][2]) / z,
+        )
+    })
+}
+
+fn translate(x: f64, y: f64) -> M3 {
+    [[1.0, 0.0, x], [0.0, 1.0, y], [0.0, 0.0, 1.0]]
+}
+
+/// Geraderichten und Perspektive als eine projektive Abbildung. `src/lib/frame.ts`
+/// rechnet dasselbe für die Masken- und Zuschnittanzeige.
+pub struct Warp {
+    /// Ausgabe → Quelle in Pixelkoordinaten (Pixelmitte bei +0,5), zeilenweise:
+    /// `[x, y, z] = m · [px, py, 1]`, Quelle = (x/z, y/z)
+    pub m: [f32; 9],
+    /// Mittlere Vergrößerung gegenüber der Quelle (Wurzel des Flächen-
+    /// verhältnisses von Rahmen und abgebildetem Viereck)
+    pub zoom: f32,
+}
+
+impl Warp {
+    /// `None`, wenn nichts zu tun ist. `w`×`h` ist der gedrehte Rahmen.
+    pub fn new(w: usize, h: usize, p: &DevelopParams) -> Option<Warp> {
+        Warp::from_angles(
+            w,
+            h,
+            p.straighten,
+            p.perspective_vertical,
+            p.perspective_horizontal,
+        )
+    }
+
+    pub fn from_angles(
+        w: usize,
+        h: usize,
+        straighten: f32,
+        vertical: f32,
+        horizontal: f32,
+    ) -> Option<Warp> {
+        if (straighten == 0.0 && vertical == 0.0 && horizontal == 0.0) || w == 0 || h == 0 {
+            return None;
+        }
+        let (wf, hf) = (w as f64, h as f64);
+        let (cx, cy) = (wf / 2.0, hf / 2.0);
+        // Perspektive: Bildebene um die waagerechte bzw. senkrechte Achse
+        // kippen, Brennweite = lange Seite (etwa ein 35-mm-Objektiv). Von der
+        // Ausgabe zurück zur Quelle: K·Rᵀ·K⁻¹, so verschoben, dass die
+        // Bildmitte an ihrem Platz bleibt.
+        let a = (vertical as f64 / 100.0 * PERSPECTIVE_MAX_DEG).to_radians();
+        let b = (horizontal as f64 / 100.0 * PERSPECTIVE_MAX_DEG).to_radians();
+        let f = wf.max(hf);
+        let (sa, ca) = a.sin_cos();
+        let (sb, cb) = b.sin_cos();
+        let rx = [[1.0, 0.0, 0.0], [0.0, ca, -sa], [0.0, sa, ca]];
+        let ry = [[cb, 0.0, sb], [0.0, 1.0, 0.0], [-sb, 0.0, cb]];
+        let r = mul(&ry, &rx);
+        let rt = std::array::from_fn(|i| std::array::from_fn(|j| r[j][i]));
+        let k = [[f, 0.0, 0.0], [0.0, f, 0.0], [0.0, 0.0, 1.0]];
+        let k_inv = [[1.0 / f, 0.0, 0.0], [0.0, 1.0 / f, 0.0], [0.0, 0.0, 1.0]];
+        let fwd = mul(&mul(&k, &r), &k_inv);
+        let (c0x, c0y) = apply(&fwd, 0.0, 0.0)?;
+        let persp = mul(&mul(&mul(&k, &rt), &k_inv), &translate(c0x, c0y));
+        // Geraderichten (im Uhrzeigersinn positiv) wirkt nach der Perspektive
+        let (s, c) = (straighten as f64).to_radians().sin_cos();
+        let unrot = [[c, s, 0.0], [-s, c, 0.0], [0.0, 0.0, 1.0]];
+        let base = mul(&persp, &unrot);
+        let zoom = if vertical == 0.0 && horizontal == 0.0 {
+            straighten_scale(wf as f32, hf as f32, straighten) as f64
+        } else {
+            fill_zoom(&base, cx, cy)
+        };
+        let scale = [
+            [1.0 / zoom, 0.0, 0.0],
+            [0.0, 1.0 / zoom, 0.0],
+            [0.0, 0.0, 1.0],
+        ];
+        let m = mul(
+            &mul(&mul(&translate(cx, cy), &base), &scale),
+            &translate(-cx, -cy),
+        );
+        // Fläche des Quellvierecks (Gaußsche Trapezformel)
+        let quad: Vec<(f64, f64)> = [(0.0, 0.0), (wf, 0.0), (wf, hf), (0.0, hf)]
+            .iter()
+            .map(|&(x, y)| apply(&m, x, y).unwrap_or((x, y)))
+            .collect();
+        let area = (0..4)
+            .map(|i| {
+                let (a, b) = (quad[i], quad[(i + 1) % 4]);
+                a.0 * b.1 - b.0 * a.1
+            })
+            .sum::<f64>()
+            .abs()
+            / 2.0;
+        let n = m[2][2];
+        Some(Warp {
+            m: std::array::from_fn(|i| (m[i / 3][i % 3] / n) as f32),
+            zoom: (wf * hf / area.max(1e-9)).sqrt() as f32,
+        })
+    }
+}
+
+/// Kleinste Vergrößerung, bei der alle vier Ecken der Ausgabe im Quellbild
+/// liegen. Projektive Abbildungen erhalten Geraden, der Rahmen wird also zu
+/// einem Viereck, und es genügt, die Ecken zu prüfen.
+fn fill_zoom(base: &M3, cx: f64, cy: f64) -> f64 {
+    let inside = |k: f64| {
+        [(-cx, -cy), (cx, -cy), (cx, cy), (-cx, cy)]
+            .iter()
+            .all(|&(x, y)| {
+                apply(base, x / k, y / k).is_some_and(|(sx, sy)| {
+                    sx.abs() <= cx * (1.0 + 1e-6) && sy.abs() <= cy * (1.0 + 1e-6)
+                })
+            })
+    };
+    let (mut lo, mut hi) = (0.25, 50.0);
+    if inside(lo) {
+        return lo;
+    }
+    for _ in 0..60 {
+        let mid = 0.5 * (lo + hi);
+        if inside(mid) {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    hi
+}
+
+/// Projektive Abbildung mit [`Warp::m`] anwenden. Bilineare Abtastung.
+pub fn warp(img: &ImageF32, m: &[f32; 9]) -> ImageF32 {
+    ImageF32::from_fn(img.width, img.height, |x, y| {
+        let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+        let z = m[6] * px + m[7] * py + m[8];
+        let sx = (m[0] * px + m[1] * py + m[2]) / z - 0.5;
+        let sy = (m[3] * px + m[4] * py + m[5]) / z - 0.5;
         bilinear(img, sx, sy)
     })
+}
+
+/// Wie viel größer ein Bild geladen werden muss, damit nach Geraderichten und
+/// Perspektive (die beide vergrößern) noch die gewünschte Auflösung bleibt.
+/// Die Bildmaße sind vorher unbekannt: das stärkere von Quer- und Hochformat.
+pub fn load_margin(p: &DevelopParams) -> f32 {
+    [(3, 2), (2, 3)]
+        .iter()
+        .filter_map(|&(w, h)| Warp::new(w * 1000, h * 1000, p))
+        .map(|w| w.zoom)
+        .fold(1.0, f32::max)
+}
+
+/// Dreht um die Bildmitte (im Uhrzeigersinn positiv) und vergrößert so, dass
+/// der Rahmen voll bleibt.
+pub fn straighten(img: &ImageF32, deg: f32) -> ImageF32 {
+    match Warp::from_angles(img.width, img.height, deg, 0.0, 0.0) {
+        Some(w) => warp(img, &w.m),
+        None => img.clone(),
+    }
 }
 
 #[inline]
@@ -289,6 +453,127 @@ mod tests {
         // Vergrößerung > 1 bei Drehung
         assert!(straighten_scale(200.0, 100.0, 10.0) > 1.0);
         assert!((straighten_scale(200.0, 100.0, 0.0) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn straighten_matches_the_closed_form() {
+        // Die Matrix ergibt dieselbe Abbildung wie die frühere direkte Formel
+        let (w, h, deg) = (300usize, 200usize, -7.5f32);
+        let m = Warp::from_angles(w, h, deg, 0.0, 0.0).unwrap().m;
+        let k = straighten_scale(w as f32, h as f32, deg);
+        let (s, c) = deg.to_radians().sin_cos();
+        for (x, y) in [
+            (0.5f32, 0.5f32),
+            (299.5, 10.5),
+            (150.0, 100.0),
+            (17.5, 199.5),
+        ] {
+            let z = m[6] * x + m[7] * y + m[8];
+            let sx = (m[0] * x + m[1] * y + m[2]) / z;
+            let sy = (m[3] * x + m[4] * y + m[5]) / z;
+            let (dx, dy) = ((x - 150.0) / k, (y - 100.0) / k);
+            assert!((sx - (c * dx + s * dy + 150.0)).abs() < 1e-3);
+            assert!((sy - (-s * dx + c * dy + 100.0)).abs() < 1e-3);
+        }
+    }
+
+    /// Ausgabe → Quelle wie in `warp`, ohne −0,5
+    fn map(m: &[f32; 9], x: f32, y: f32) -> (f32, f32) {
+        let z = m[6] * x + m[7] * y + m[8];
+        (
+            (m[0] * x + m[1] * y + m[2]) / z,
+            (m[3] * x + m[4] * y + m[5]) / z,
+        )
+    }
+
+    #[test]
+    fn perspective_straightens_converging_verticals_and_fills_the_frame() {
+        let (w, h) = (400usize, 300usize);
+        // Senkrechte Hauswand, nach oben fotografiert: Kanten laufen oben
+        // zusammen. Positive Korrektur zieht den oberen Rand auseinander –
+        // in der Quelle liegen die oberen Ecken der Ausgabe also näher an
+        // der Mitte als die unteren.
+        let wp = Warp::from_angles(w, h, 0.0, 50.0, 0.0).unwrap();
+        let (tl, _) = map(&wp.m, 0.0, 0.0);
+        let (bl, _) = map(&wp.m, 0.0, h as f32);
+        assert!(tl > bl + 5.0, "oben {tl} unten {bl}");
+        // Bildmitte bleibt, und keine Ecke greift außerhalb des Bildes
+        assert!(wp.zoom > 1.0);
+        let (mx, my) = map(&wp.m, 200.0, 150.0);
+        assert!(
+            (mx - 200.0).abs() < 0.5 && (my - 150.0).abs() < 25.0,
+            "{mx} {my}"
+        );
+        for (x, y) in [(0.0, 0.0), (400.0, 0.0), (400.0, 300.0), (0.0, 300.0)] {
+            let (sx, sy) = map(&wp.m, x, y);
+            assert!(
+                (-0.01..=400.01).contains(&sx) && (-0.01..=300.01).contains(&sy),
+                "{sx} {sy}"
+            );
+        }
+        // Waagerecht positiv: rechter Rand höher, also in der Quelle kürzer
+        let wh = Warp::from_angles(w, h, 0.0, 0.0, 50.0).unwrap();
+        let right = map(&wh.m, 400.0, 300.0).1 - map(&wh.m, 400.0, 0.0).1;
+        let left = map(&wh.m, 0.0, 300.0).1 - map(&wh.m, 0.0, 0.0).1;
+        assert!(right < left - 5.0, "rechts {right} links {left}");
+        assert!(Warp::from_angles(w, h, 0.0, 0.0, 0.0).is_none());
+    }
+
+    /// Dieselben Zahlen liefert `warpOf` in `src/lib/frame.ts` (dort von Hand
+    /// geprüft) – ändert sich eine Seite, verrutschen Masken in der Anzeige.
+    #[test]
+    fn warp_matches_the_frontend() {
+        let cases = [
+            (
+                (2.5, 60.0, -35.0),
+                1.236758,
+                [
+                    0.63944, -0.08166, 56.24089, -0.11168, 0.58744, 63.13025, -0.00028, -0.00056,
+                ],
+            ),
+            (
+                (0.0, 100.0, 0.0),
+                1.244238,
+                [
+                    0.72727, -0.18182, 54.54535, 0.0, 0.49347, 55.52443, 0.0, -0.00091,
+                ],
+            ),
+            (
+                (-7.5, 0.0, 0.0),
+                1.16548,
+                [0.85068, -0.11199, 46.66397, 0.11199, 0.85068, 0.0, 0.0, 0.0],
+            ),
+            (
+                (0.0, -40.0, 80.0),
+                1.241845,
+                [
+                    1.18985, 0.11119, 4.58220, 0.06912, 1.12957, 11.16178, 0.00106, 0.00056,
+                ],
+            ),
+        ];
+        for ((st, v, h), zoom, m) in cases {
+            let m: [f32; 8] = m;
+            let w = Warp::from_angles(400, 300, st, v, h).unwrap();
+            assert!((w.zoom - zoom).abs() < 1e-4, "{st} {v} {h}: {}", w.zoom);
+            for (i, e) in m.iter().enumerate() {
+                let tol = if e.abs() > 1.0f32 { 1e-3 } else { 1e-5 };
+                assert!((w.m[i] - e).abs() < tol, "{st} {v} {h} [{i}]: {}", w.m[i]);
+            }
+        }
+    }
+
+    #[test]
+    fn load_margin_covers_the_zoom() {
+        let p = DevelopParams {
+            perspective_vertical: 100.0,
+            straighten: 10.0,
+            ..Default::default()
+        };
+        let m = load_margin(&p);
+        for (w, h) in [(6000, 4000), (4000, 6000)] {
+            assert!(m >= Warp::new(w, h, &p).unwrap().zoom - 1e-3);
+        }
+        assert_eq!(load_margin(&DevelopParams::default()), 1.0);
     }
 
     #[test]

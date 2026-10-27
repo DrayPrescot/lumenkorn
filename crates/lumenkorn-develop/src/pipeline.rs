@@ -603,8 +603,8 @@ fn render_sanitized(
     if p.flip_horizontal {
         img = geometry::flip_h(&img);
     }
-    if p.straighten != 0.0 {
-        img = geometry::straighten(&img, p.straighten);
+    if let Some(w) = geometry::Warp::new(img.width, img.height, p) {
+        img = geometry::warp(&img, &w.m);
     }
     if let Some(c) = p.crop {
         img = geometry::crop(&img, c);
