@@ -26,6 +26,7 @@ import {
   transferParams,
 } from "./api";
 import { lib } from "./store.svelte";
+import type { ImageSummary } from "./api";
 import { editAspect } from "./layout";
 import { isCanceled, t } from "./i18n";
 import { keymap } from "./keymap.svelte";
@@ -102,6 +103,8 @@ const same = (a: DevelopParams, b: DevelopParams) => JSON.stringify(a) === JSON.
 /** Obergrenze für den Rückgängig-Verlauf (Zeichen der JSON-Darstellung, grob 50 MB) */
 const UNDO_MAX_CHARS = 50_000_000;
 const clone = (p: DevelopParams): DevelopParams => JSON.parse(JSON.stringify(p));
+/** Serialisierte Standardwerte: Vergleiche „unverändert/Standard“ laufen über Zeichenketten */
+const DEFAULT_JSON = JSON.stringify(DEFAULT_PARAMS);
 
 /** Übertragen wird ausschließlich der Reiter „Basis“ (ohne Rauschreduzierung). */
 const BASIC_ONLY: TransferGroups = { ...NO_GROUPS, basic: true };
@@ -174,12 +177,15 @@ class Develop {
   maskBusy = $state<string | null>(null);
   exportProgress = $state<ExportProgress | null>(null);
 
-  #undo: DevelopParams[] = [];
-  /** Geschätzte Größe (JSON-Länge) der Verlaufsschritte */
-  #undoSize = new WeakMap<DevelopParams, number>();
-  #redo: DevelopParams[] = [];
-  #committed: DevelopParams = clone(DEFAULT_PARAMS);
-  #saved: DevelopParams = clone(DEFAULT_PARAMS);
+  // Verlauf als JSON-Zeichenketten: Die Länge ist die exakte Größe, Pinsel-
+  // masken mit tausenden Punkten belegen als Objekte ein Vielfaches, und
+  // geparst wird nur bei Rückgängig/Wiederholen.
+  #undo: string[] = [];
+  #redo: string[] = [];
+  /** Letzter Verlaufsschritt (JSON) */
+  #committedJson = DEFAULT_JSON;
+  /** Zuletzt gespeicherter Stand (JSON); "" erzwingt das nächste Speichern */
+  #savedJson = DEFAULT_JSON;
   #saving: Promise<unknown> = Promise.resolve();
   #lastOpen = -Infinity;
   #inFlight = false;
@@ -214,9 +220,9 @@ class Develop {
    *  Ableitungen, die nicht bei jedem Pinselpunkt neu rechnen sollen. */
   committedVersion = $state(0);
 
-  #setCommitted(p: DevelopParams) {
-    this.#committed = p;
-    this.isDefault = same(p, DEFAULT_PARAMS);
+  #setCommitted(json: string) {
+    this.#committedJson = json;
+    this.isDefault = json === DEFAULT_JSON;
     this.committedVersion++;
   }
 
@@ -329,8 +335,9 @@ class Develop {
       p.repairs = (p.repairs ?? []).map((r) => ({ ...r, result: r.result ?? null, resultKey: r.resultKey ?? null }));
       this.params = p;
       this.#paramsFor = id;
-      this.#setCommitted(clone(p));
-      this.#saved = clone(p);
+      const json = JSON.stringify(p);
+      this.#setCommitted(json);
+      this.#savedJson = json;
       this.raw = info.raw;
       this.asShotKelvin = info.asShotKelvin ?? null;
       this.lensInfo = info.lens ?? null;
@@ -441,23 +448,20 @@ class Develop {
   /** Ende einer Änderung (Regler losgelassen): Verlaufsschritt anlegen. */
   commit() {
     if (!this.ready) return;
-    const snap = $state.snapshot(this.params) as DevelopParams;
-    // Die Serialisierung entsteht beim Vergleich ohnehin; ihre Länge schätzt
-    // zugleich den Speicherbedarf des Verlaufsschritts.
-    const prevJson = JSON.stringify(this.#committed);
-    if (JSON.stringify(snap) === prevJson) return;
-    this.#undoSize.set(this.#committed, prevJson.length);
-    this.#undo.push(this.#committed);
+    // Nur einmal serialisieren: Vergleich, Verlauf und Standard-Prüfung nutzen dieselbe Zeichenkette
+    const json = JSON.stringify($state.snapshot(this.params));
+    if (json === this.#committedJson) return;
+    this.#undo.push(this.#committedJson);
     // Verlauf nach Anzahl und Gesamtgröße begrenzen (älteste zuerst);
     // der jüngste Schritt bleibt immer erhalten.
     let total = 0;
-    for (const e of this.#undo) total += this.#undoSize.get(e) ?? 0;
+    for (const e of this.#undo) total += e.length;
     while (this.#undo.length > 1 && (this.#undo.length > 200 || total > UNDO_MAX_CHARS)) {
-      total -= this.#undoSize.get(this.#undo[0]) ?? 0;
+      total -= this.#undo[0].length;
       this.#undo.shift();
     }
     this.#redo = [];
-    this.#setCommitted(clone(snap));
+    this.#setCommitted(json);
     this.scheduleSave();
   }
 
@@ -474,9 +478,9 @@ class Develop {
   undo() {
     const prev = this.#undo.pop();
     if (!prev) return;
-    this.#redo.push(clone($state.snapshot(this.params) as DevelopParams));
-    this.params = clone(prev);
-    this.#setCommitted(clone(prev));
+    this.#redo.push(JSON.stringify($state.snapshot(this.params)));
+    this.params = JSON.parse(prev) as DevelopParams;
+    this.#setCommitted(prev);
     this.schedule();
     this.scheduleSave();
   }
@@ -484,9 +488,9 @@ class Develop {
   redo() {
     const next = this.#redo.pop();
     if (!next) return;
-    this.#undo.push(clone($state.snapshot(this.params) as DevelopParams));
-    this.params = clone(next);
-    this.#setCommitted(clone(next));
+    this.#undo.push(JSON.stringify($state.snapshot(this.params)));
+    this.params = JSON.parse(next) as DevelopParams;
+    this.#setCommitted(next);
     this.schedule();
     this.scheduleSave();
   }
@@ -968,27 +972,28 @@ class Develop {
     if (id === null || !this.ready) return;
     // Eine Preset-Vorschau wird nie gespeichert
     const p = this.#hoverBase ?? ($state.snapshot(this.params) as DevelopParams);
-    if (same(p, this.#saved)) return;
-    this.#saved = clone(p);
+    const json = JSON.stringify(p);
+    if (json === this.#savedJson) return;
+    this.#savedJson = json;
     // Speichervorgänge strikt nacheinander: Die Befehle laufen im Backend
     // parallel, ein älterer Stand dürfte sonst einen neueren überschreiben.
     const run = this.#saving.then(() => api.developSave([id], p));
     this.#saving = run.catch(() => {});
     try {
       await run;
-      const edited = !same(p, DEFAULT_PARAMS);
+      const edited = json !== DEFAULT_JSON;
       // Nur bei Änderung neu zuweisen – sonst rechnet das Raster bei jedem Speichern neu
       const im = lib.images.find((i) => i.id === id);
       const aspect = im && edited ? editAspect(im.width, im.height, p) : undefined;
       const reshaped = !!im && Math.abs((im.aspect ?? 0) - (aspect ?? 0)) > 1e-4;
       if (im && (im.edited !== edited || reshaped)) {
-        lib.images = lib.images.map((i) => (i.id === id ? { ...i, edited, aspect } : i));
+        lib.patchImages([id], { edited, aspect });
         // Gedreht oder zugeschnitten: Raster und Filmstreifen neu anordnen
         if (reshaped) lib.layoutVersion++;
       }
     } catch (e) {
       // Beim nächsten Anlass erneut versuchen
-      if (this.imageId === id) this.#saved = { ...p, version: -1 };
+      if (this.imageId === id) this.#savedJson = "";
       lib.notify(t("Speichern fehlgeschlagen: {error}", { error: String(e) }), "error");
     }
   }
@@ -1047,11 +1052,12 @@ class Develop {
         return false;
       }
       const set = new Set(others);
-      lib.images = lib.images.map((i) =>
-        !set.has(i.id) ? i
-        : groups.geometry ? { ...i, edited: true, aspect: editAspect(i.width, i.height, src) }
-        : { ...i, edited: true },
-      );
+      // Über das Protokoll der Bibliothek, damit eine gleichzeitige Listenabfrage nicht überschreibt
+      if (groups.geometry) {
+        const changes = new Map<number, Partial<ImageSummary>>();
+        for (const i of lib.images) if (set.has(i.id)) changes.set(i.id, { edited: true, aspect: editAspect(i.width, i.height, src) });
+        lib.patchImages([...changes.keys()], changes);
+      } else lib.patchImages(others, { edited: true });
       if (groups.geometry) lib.layoutVersion++;
     }
     return true;
@@ -1273,7 +1279,7 @@ class Develop {
     // Inzwischen anderes Foto geöffnet: Stand nicht übernehmen
     if (this.imageId !== id || !this.ready) return;
     this.replace({ ...clone(DEFAULT_PARAMS), ...p });
-    this.#saved = clone(this.params);
+    this.#savedJson = JSON.stringify(this.params);
   }
 
   async deleteSnapshot(edit: Edit) {

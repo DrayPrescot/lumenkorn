@@ -65,8 +65,19 @@
     | { kind: "linear-move"; index: number; start: [number, number]; orig: MaskShape }
     | { kind: "radial-move"; index: number; start: [number, number]; orig: MaskShape }
     | { kind: "radial-r"; index: number; axis: "x" | "y" }
-    | { kind: "paint"; stroke: Stroke; last: [number, number] };
+    | { kind: "paint"; stroke: Stroke; last: [number, number]; pts: [number, number][] };
   let drag: Drag | null = null;
+  // Pinselstriche: Punkte sammeln sich in einem einfachen Array und gehen
+  // höchstens alle ~33 ms gebündelt in den Zustand und zur Vorschau. So wächst
+  // der Aufwand pro Mausbewegung nicht mit der Zahl der Punkte (Proxy, Snapshot).
+  let paintTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function flushPaint() {
+    clearTimeout(paintTimer);
+    paintTimer = undefined;
+    if (drag?.kind !== "paint") return;
+    if (drag.stroke.points.length !== drag.pts.length) drag.stroke.points = drag.pts.slice();
+  }
   let cursor = $state<[number, number] | null>(null);
 
   const layer = $derived(dev.layer);
@@ -107,7 +118,7 @@
       (shape as Extract<MaskShape, { type: "brush" }>).strokes.push(stroke);
       // Auf das reaktive Objekt im Zustand zeigen, nicht auf die lokale Kopie
       const live = (shape as Extract<MaskShape, { type: "brush" }>).strokes.at(-1)!;
-      drag = { kind: "paint", stroke: live, last: [px, py] };
+      drag = { kind: "paint", stroke: live, last: [px, py], pts: [[sx, sy]] };
       dev.schedule();
     } else if (dev.tool === "object") {
       e.stopPropagation();
@@ -184,9 +195,13 @@
         // Punkte nur in sinnvollem Abstand aufnehmen
         const minDist = Math.max(2, dev.brush.size * long * scale * 0.25);
         if (Math.hypot(px - drag.last[0], py - drag.last[1]) < minDist) return;
-        drag.stroke.points.push([sx, sy]);
+        drag.pts.push([sx, sy]);
         drag.last = [px, py];
-        break;
+        paintTimer ??= setTimeout(() => {
+          flushPaint();
+          dev.schedule();
+        }, 33);
+        return;
       }
     }
     // Live rendern; den Verlaufsschritt legt erst onup() an
@@ -195,6 +210,8 @@
 
   function onup(e: PointerEvent) {
     if (!drag) return;
+    // Restliche Punkte des Strichs übernehmen, bevor der Verlaufsschritt entsteht
+    flushPaint();
     drag = null;
     if (svg.hasPointerCapture(e.pointerId)) svg.releasePointerCapture(e.pointerId);
     // Nach dem Erstellen eines Verlaufs oder einer Ellipse zum Bearbeiten wechseln

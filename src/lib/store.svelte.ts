@@ -301,7 +301,6 @@ class Library {
   }
   #projectsToken = 0;
 
-  /** Lädt die Bilder des aktuellen Bereichs. `keepFocus` behält die Auswahl bei. */
   /** Lädt die Fotos der Ansicht. `keepFocus`: fokussiertes Foto (und Auswahl)
    *  behalten, soweit noch gelistet. `developFirst`: im Entwickeln-Modus ohne
    *  behaltenes Foto das erste öffnen, statt zur Bibliothek zu wechseln. */
@@ -702,6 +701,13 @@ class Library {
     if (delta) this.rejectedCount += delta;
     // Ortsänderungen sofort für die Karte melden (sie hört auf geoVersion)
     if (change instanceof Map || "lat" in change || "lon" in change) this.geoVersion++;
+  }
+
+  /** Von außen (Entwickeln): Felder der Fotos `ids` ändern und im Protokoll
+   *  vermerken, damit eine gleichzeitig laufende Listenabfrage sie nicht mit
+   *  altem Stand überschreibt. `layoutVersion` ruft der Aufrufer selbst hoch. */
+  patchImages(ids: number[], change: Partial<ImageSummary> | Map<number, Partial<ImageSummary>>) {
+    this.#patch(ids, change);
   }
 
   async rate(rating: number) {
