@@ -785,13 +785,12 @@ pub fn generate_some(
 
         // Kurze Sperre: Veraltung für alle prüfen, die Temp-Dateien umbenennen
         // und alle Zustände in einer Transaktion setzen. Wurde das Bild während
-        // des Renderns bearbeitet (Entwickeln speichert eigene Thumbnails, und
-        // zwar prüfend und schreibend unter derselben Sperre), ist dieses
-        // Ergebnis veraltet und darf das neue nicht überschreiben – es bleibt
-        // ausstehend und wird mit der neuen Bearbeitung erzeugt. Das Umbenennen
-        // gehört noch unter die Sperre: Danach käme Entwickeln dazwischen und
-        // würde von uns überschrieben. Es ist billig, weil die Bytes schon
-        // geschrieben sind.
+        // des Renderns bearbeitet (Entwickeln speichert die Einstellungen und
+        // danach eigene Thumbnails), ist dieses Ergebnis veraltet und darf das
+        // neue nicht überschreiben – es bleibt ausstehend und wird mit der neuen
+        // Bearbeitung erzeugt. Prüfung und Umbenennen unter derselben Sperre:
+        // Dazwischen gespeicherte Einstellungen fielen sonst nicht auf. Das
+        // Umbenennen ist billig, weil die Bytes schon geschrieben sind.
         let ids: Vec<i64> = staged.iter().map(|(j, _)| j.id).collect();
         let outcome = {
             let mut cat = catalog.locked();
@@ -819,6 +818,10 @@ pub fn generate_some(
                                 false
                             }
                         };
+                        // Alte Vorschau verwerfen (die Datei kann sich geändert
+                        // haben) – noch unter der Sperre, sonst träfe es eine
+                        // gerade vom Entwickeln geschriebene neue
+                        let _ = std::fs::remove_file(cache.path_for(Variant::Preview, job.id));
                         states.push((job.id, ok));
                     }
                     cat.set_thumb_states(&states).map(|()| states)
@@ -837,8 +840,6 @@ pub fn generate_some(
         // Echte Datenbankfehler (nicht „gelöscht“) melden und weitergeben
         let done = outcome.inspect_err(|e| log::warn!("Thumbnail-Zustand nicht gesetzt: {e}"))?;
         for (id, ok) in done {
-            // Alte Vorschau verwerfen, falls sich die Datei geändert hat.
-            let _ = std::fs::remove_file(cache.path_for(Variant::Preview, id));
             on_done(id, ok);
         }
     }
