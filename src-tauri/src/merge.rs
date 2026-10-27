@@ -209,7 +209,15 @@ fn run(
         if src.kind == SourceKind::Raster {
             scene_linear.store(false, Ordering::Relaxed);
         }
-        Ok(src.image)
+        // Objektivkorrektur vor dem Ausrichten: Mit Verzeichnung passen die
+        // Aufnahmen an den Rändern – wo sie sich überlappen – nicht genau
+        // aufeinander, und Nähte im Panorama zeigen dann Versätze. Das
+        // Ergebnis (EXR) hat keine Objektivdaten mehr, wird also nicht doppelt
+        // korrigiert.
+        Ok(match &src.lens {
+            Some(lens) => lens.apply(&src.image),
+            None => src.image,
+        })
     };
     // Höchstens ~10 Meldungen pro Sekunde
     let last = Mutex::new(std::time::Instant::now() - std::time::Duration::from_secs(1));

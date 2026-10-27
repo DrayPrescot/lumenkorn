@@ -33,7 +33,12 @@ fn main() -> Result<()> {
         .ok()
         .and_then(|v| v.parse().ok());
     let load = |i: usize| -> Result<ImageF32> {
-        Ok(Source::load(&files[i], raw(&files[i]), orientation, None)?.image)
+        // Wie in der App: Objektivkorrektur vor dem Ausrichten
+        let src = Source::load(&files[i], raw(&files[i]), orientation, None)?;
+        Ok(match &src.lens {
+            Some(lens) => lens.apply(&src.image),
+            None => src.image,
+        })
     };
     let opts = pano::PanoOptions {
         max_megapixels: mp.parse().unwrap_or(40.0),

@@ -10,6 +10,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Panorama: objects close to the camera, such as a tree in the foreground, no longer appear as
   see-through double images. Each part of the panorama now comes from one shot, with the seams
   placed where neighbouring shots differ least, and only a narrow strip along the seams is blended.
+- HDR, panorama and focus stacking apply the lens correction (distortion, color fringes,
+  vignetting) before aligning the photos. Shots now line up at their edges, where they overlap.
 
 ## [1.0.18] – 2026-10-26
 
