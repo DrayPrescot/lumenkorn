@@ -157,6 +157,59 @@ export interface ImageDetail {
   focalLength: number | null;
   tags: ImageTag[];
   location: Location | null;
+  /** Vom Nutzer eingegeben (Metadaten bearbeiten) */
+  title?: string | null;
+  description?: string | null;
+  creator?: string | null;
+  copyright?: string | null;
+  /** Mindestens ein Feld wurde vom Nutzer geändert */
+  metaEdited?: boolean;
+}
+
+/** Änderung eines Metadatenfeldes: nichts, auf Wert setzen, Wert aus der Datei */
+export type MetaEdit<T> = "keep" | "reset" | { set: T };
+
+export interface MetaPatch {
+  title?: MetaEdit<string>;
+  description?: MetaEdit<string>;
+  creator?: MetaEdit<string>;
+  copyright?: MetaEdit<string>;
+  /** `JJJJ-MM-TTThh:mm:ss` */
+  capturedAt?: MetaEdit<string>;
+  camera?: MetaEdit<string>;
+  lens?: MetaEdit<string>;
+  iso?: MetaEdit<number>;
+  /** „1/250“ oder Sekunden */
+  exposure?: MetaEdit<string>;
+  aperture?: MetaEdit<number>;
+  focalLength?: MetaEdit<number>;
+}
+
+/** Feld eines Fotos: gültiger Wert, Wert in der Datei, überschrieben? */
+export interface MetaField<T> {
+  value: T | null;
+  file: T | null;
+  overridden: boolean;
+}
+
+export interface ImageMeta {
+  id: number;
+  title: MetaField<string>;
+  description: MetaField<string>;
+  creator: MetaField<string>;
+  copyright: MetaField<string>;
+  capturedAt: MetaField<string>;
+  camera: MetaField<string>;
+  lens: MetaField<string>;
+  iso: MetaField<number>;
+  exposure: MetaField<string>;
+  aperture: MetaField<number>;
+  focalLength: MetaField<number>;
+}
+
+export interface MetaReport {
+  changed: number[];
+  failed: { id: number; path: string; error: string }[];
 }
 
 /** Aufnahmeort eines Fotos */
@@ -897,6 +950,9 @@ export const api = {
 
   queryImages: (query: ImageQuery) => call<ImageSummary[]>("query_images", { query }),
   imageDetail: (id: number) => call<ImageDetail>("image_detail", { id }),
+  metaGetMany: (ids: number[]) => call<ImageMeta[]>("meta_get_many", { ids }),
+  metaSet: (ids: number[], patch: MetaPatch) => call<MetaReport>("meta_set", { ids, patch }),
+  metaShiftTime: (ids: number[], seconds: number) => call<MetaReport>("meta_shift_time", { ids, seconds }),
   photoStats: (query: ImageQuery) => call<PhotoStats>("photo_stats", { query }),
   fileTypes: (query: ImageQuery) => call<FileTypeCount[]>("file_types", { query }),
   setRating: (ids: number[], rating: number) => call<void>("set_rating", { ids, rating }),

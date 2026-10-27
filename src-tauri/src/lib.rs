@@ -13,6 +13,7 @@ mod logfile;
 mod mcp;
 mod memory;
 mod merge;
+mod meta;
 mod people;
 mod protocol;
 mod repair;
@@ -239,6 +240,10 @@ pub fn run() {
             commands::open_url,
             commands::app_exit,
             geo::geo_search,
+            meta::meta_get,
+            meta::meta_get_many,
+            meta::meta_set,
+            meta::meta_shift_time,
             geo::geo_set_location,
             geo::geo_clear_location,
             geo::geo_apply,

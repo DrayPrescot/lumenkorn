@@ -3099,6 +3099,7 @@ dependencies = [
  "log",
  "lumenkorn-develop",
  "notify",
+ "quick-xml",
  "rayon",
  "rusqlite",
  "serde",

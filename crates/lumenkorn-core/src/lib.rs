@@ -12,6 +12,7 @@ pub mod formats;
 pub mod geo;
 pub mod geotime;
 pub mod housekeeping;
+pub mod imagemeta;
 pub mod import;
 pub mod maskstore;
 pub mod metadata;
@@ -23,6 +24,7 @@ pub mod stats;
 pub mod thumbs;
 pub mod timeshift;
 pub mod watcher;
+pub mod xmp;
 
 pub use catalog::Catalog;
 pub use error::{Error, Result};

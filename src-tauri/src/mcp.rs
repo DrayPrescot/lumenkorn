@@ -534,6 +534,27 @@ fn tools() -> Vec<Value> {
             false,
         ),
         tool(
+            "edit_metadata",
+            "Edit photo metadata",
+            "Change title, description, creator, copyright, capture time (YYYY-MM-DDThh:mm:ss), camera, lens, ISO, exposure time (\"1/250\" or seconds), aperture and focal length (mm) of photos. Only the fields you pass are changed; null resets a field to the value in the file. `shift_seconds` moves the capture time instead. The values are stored in the catalog and in an XMP sidecar next to each photo (created if missing); the photo file itself is never modified.",
+            json!({ "type": "object", "properties": {
+                "ids": ids_schema(),
+                "title": { "type": ["string", "null"] },
+                "description": { "type": ["string", "null"] },
+                "creator": { "type": ["string", "null"] },
+                "copyright": { "type": ["string", "null"] },
+                "captured_at": { "type": ["string", "null"] },
+                "camera": { "type": ["string", "null"] },
+                "lens": { "type": ["string", "null"] },
+                "iso": { "type": ["integer", "null"] },
+                "exposure": { "type": ["string", "null"] },
+                "aperture": { "type": ["number", "null"] },
+                "focal_length": { "type": ["number", "null"] },
+                "shift_seconds": { "type": "integer" }
+            }, "required": ["ids"] }),
+            false,
+        ),
+        tool(
             "get_develop_settings",
             "Read develop settings",
             "All develop settings of a photo as JSON (the format set_develop_settings accepts).",
@@ -751,6 +772,45 @@ async fn call(app: &AppHandle, name: &str, a: &Value) -> ToolResult {
             crate::commands::set_rating(state.clone(), ids.clone(), r).map_err(e)?;
             changed(app, &[]);
             text(json!({ "rated": ids.len(), "rating": r }))
+        }
+        "edit_metadata" => {
+            let ids = ids(a, "ids")?;
+            let change = if let Some(by) = arg(a, "shift_seconds").and_then(Value::as_i64) {
+                crate::meta::Change::Shift(by)
+            } else {
+                // Eigene Namen (snake_case) auf das Patch-Format abbilden:
+                // vorhanden = setzen, null = zurücksetzen, fehlend = unverändert
+                let mut patch = serde_json::Map::new();
+                for (k, camel) in [
+                    ("title", "title"),
+                    ("description", "description"),
+                    ("creator", "creator"),
+                    ("copyright", "copyright"),
+                    ("captured_at", "capturedAt"),
+                    ("camera", "camera"),
+                    ("lens", "lens"),
+                    ("iso", "iso"),
+                    ("exposure", "exposure"),
+                    ("aperture", "aperture"),
+                    ("focal_length", "focalLength"),
+                ] {
+                    match a.get(k) {
+                        None => {}
+                        Some(Value::Null) => {
+                            patch.insert(camel.into(), json!("reset"));
+                        }
+                        Some(v) => {
+                            patch.insert(camel.into(), json!({ "set": v }));
+                        }
+                    }
+                }
+                let patch = serde_json::from_value(Value::Object(patch))
+                    .map_err(|x| format!("invalid metadata: {x}"))?;
+                crate::meta::Change::Patch(patch)
+            };
+            let report = crate::meta::edit_metadata(&state, &ids, change).map_err(e)?;
+            changed(app, &[]);
+            text(report)
         }
         "flag_photos" => {
             let ids = ids(a, "ids")?;

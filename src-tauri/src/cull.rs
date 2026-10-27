@@ -9,8 +9,7 @@ use crate::AppState;
 use lumenkorn_core::Error;
 use lumenkorn_core::LockExt;
 use serde::Serialize;
-use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tauri::State;
 
 #[derive(Serialize)]
@@ -90,7 +89,7 @@ fn delete_rejected_blocking(
             Ok(()) => {
                 deleted.push(*id);
                 bytes += size;
-                for sidecar in sidecars(p) {
+                for sidecar in lumenkorn_core::xmp::sidecars(p) {
                     if let Err(e) = remove(&sidecar, to_trash) {
                         log::warn!("XMP {} nicht gelöscht: {e}", sidecar.display());
                     }
@@ -143,47 +142,6 @@ fn remove(path: &Path, to_trash: bool) -> Result<(), String> {
         return trash::delete(path).map_err(|e| e.to_string());
     }
     std::fs::remove_file(path).map_err(|e| e.to_string())
-}
-
-/// XMP-Begleitdateien eines Fotos: `foto.cr3.xmp` gehört immer dazu,
-/// `foto.xmp` nur, wenn kein anderes Foto gleichen Namens daneben liegt
-/// (RAW+JPEG-Paare teilen sich diese Datei).
-fn sidecars(photo: &Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    let Some(name) = photo.file_name().and_then(|n| n.to_str()) else {
-        return out;
-    };
-    let dir = photo.parent().unwrap_or(Path::new("."));
-    let stem = photo.file_stem().and_then(|s| s.to_str()).unwrap_or(name);
-    let mut seen = HashSet::new();
-    let entries: Vec<String> = std::fs::read_dir(dir)
-        .map(|rd| {
-            rd.filter_map(|e| e.ok()?.file_name().into_string().ok())
-                .collect()
-        })
-        .unwrap_or_default();
-    let is_xmp = |n: &str| n.to_ascii_lowercase().ends_with(".xmp");
-    let sibling = entries.iter().any(|n| {
-        !is_xmp(n)
-            && n != name
-            && Path::new(n)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .is_some_and(|s| s == stem)
-    });
-    for n in &entries {
-        if !is_xmp(n) {
-            continue;
-        }
-        let base = &n[..n.len() - 4];
-        if base == name || (!sibling && base == stem) {
-            // Groß-/Kleinschreibung: dieselbe Datei nur einmal
-            if seen.insert(n.to_ascii_lowercase()) {
-                out.push(dir.join(n));
-            }
-        }
-    }
-    out
 }
 
 /// Zwischenspeicher und Zusatzdateien gelöschter Bilder entfernen.
@@ -260,7 +218,7 @@ mod tests {
             std::fs::write(dir.join(n), b"x").unwrap();
         }
         let names = |p: &str| -> Vec<String> {
-            let mut v: Vec<String> = sidecars(&dir.join(p))
+            let mut v: Vec<String> = lumenkorn_core::xmp::sidecars(&dir.join(p))
                 .iter()
                 .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
                 .collect();

@@ -3,10 +3,56 @@
 
 import { DEFAULT_PARAMS, NO_GROUPS, transferParams } from "./api";
 import { t } from "./i18n";
-import type { DevelopParams, Edit, Preset, FolderNode, ImageDetail, ImageQuery, ImageSummary, ImageTag, Project, Root } from "./api";
+import type { DevelopParams, Edit, Preset, FolderNode, ImageDetail, ImageMeta, ImageQuery, ImageSummary, ImageTag, MetaPatch, Project, Root } from "./api";
 
 // rating/flag gehören zur Bildliste (ImageSummary), nicht zu den Details
-type Img = ImageDetail & { rootId: number; hue: number; rating: number; flag: number; edit?: DevelopParams; snapshots: Edit[] };
+type Img = ImageDetail & {
+  rootId: number;
+  hue: number;
+  rating: number;
+  flag: number;
+  edit?: DevelopParams;
+  snapshots: Edit[];
+  /** Metadaten bearbeiten: Dateiwerte der überschriebenen Felder */
+  fileMeta?: Record<string, unknown>;
+};
+
+const META_TEXT = ["title", "description", "creator", "copyright"] as const;
+const META_FILE = ["capturedAt", "camera", "lens", "iso", "exposure", "aperture", "focalLength"] as const;
+
+/** Wie das Backend: Zeit wie „2024-06-01 14:03:22“ oder mit T, Sekunden optional */
+function metaFor(i: Img): ImageMeta {
+  const rec = i as unknown as Record<string, unknown>;
+  const field = (k: string, backed: boolean) => {
+    const overridden = backed ? !!i.fileMeta && k in i.fileMeta : rec[k] != null;
+    return { value: (rec[k] ?? null) as never, file: (backed ? (overridden ? i.fileMeta![k] : rec[k]) ?? null : null) as never, overridden };
+  };
+  const o: Record<string, unknown> = { id: i.id };
+  for (const k of META_TEXT) o[k] = field(k, false);
+  for (const k of META_FILE) o[k] = field(k, true);
+  return o as unknown as ImageMeta;
+}
+
+function applyMetaPatch(i: Img, patch: MetaPatch) {
+  const rec = i as unknown as Record<string, unknown>;
+  for (const [k, e] of Object.entries(patch) as [string, "keep" | "reset" | { set: unknown }][]) {
+    if (e === "keep") continue;
+    const backed = (META_FILE as readonly string[]).includes(k);
+    if (e === "reset") {
+      if (backed && i.fileMeta && k in i.fileMeta) {
+        rec[k] = i.fileMeta[k];
+        delete i.fileMeta[k];
+      } else if (!backed) rec[k] = null;
+      continue;
+    }
+    if (backed) {
+      i.fileMeta ??= {};
+      if (!(k in i.fileMeta)) i.fileMeta[k] = rec[k] ?? null;
+    }
+    rec[k] = e.set;
+  }
+  i.metaEdited = META_TEXT.some((k) => rec[k] != null) || !!i.fileMeta && Object.keys(i.fileMeta).length > 0;
+}
 
 const sep = "/";
 const roots: Root[] = [
@@ -355,7 +401,7 @@ export const mock = {
         for (const i of images.filter((i) => a.ids.includes(i.id))) i.location = null;
         return out(null);
       case "image_detail": {
-        const { rootId, hue, edit, snapshots, ...d } = images.find((i) => i.id === a.id)!;
+        const { rootId, hue, edit, snapshots, fileMeta, ...d } = images.find((i) => i.id === a.id)!;
         return out(d);
       }
       case "develop_load": {
@@ -633,6 +679,19 @@ export const mock = {
         return out(["DSC01153.jpg", "DSC01154.jpg"]);
       case "export_images":
         throw t("Export ist nur in der App verfügbar.");
+      case "meta_get_many":
+        return out(images.filter((i) => a.ids.includes(i.id)).map(metaFor));
+      case "meta_set":
+        for (const i of images.filter((i) => a.ids.includes(i.id))) applyMetaPatch(i, a.patch);
+        return out({ changed: a.ids, failed: [] });
+      case "meta_shift_time":
+        for (const i of images.filter((i) => a.ids.includes(i.id))) {
+          if (!i.capturedAt) continue;
+          const d = new Date(i.capturedAt + "Z");
+          d.setUTCSeconds(d.getUTCSeconds() + a.seconds);
+          applyMetaPatch(i, { capturedAt: { set: d.toISOString().slice(0, 19) } });
+        }
+        return out({ changed: a.ids, failed: [] });
       case "set_rating":
         images.filter((i) => a.ids.includes(i.id)).forEach((i) => (i.rating = a.rating));
         return out(null);
