@@ -150,7 +150,8 @@ const MIGRATIONS: &[&str] = &[
     CREATE INDEX images_ai_pending ON images(id) WHERE ai_state = 0;
     CREATE INDEX images_faces_pending ON images(id) WHERE face_state = 0;
     "#,
-    // v4: Volltextindex für die Suche (siehe `SEARCH_INDEX`)
+    // v4: Volltextindex für die Suche (siehe `SEARCH_INDEX`; seit v11 halten
+    // Trigger ihn nicht mehr aktuell, sondern markieren nur – `flush_search`)
     SEARCH_INDEX,
     // v5: Ordnernamen bei Laufwerken als Quellordner (`E:\`) nicht kürzen
     r#"
@@ -475,8 +476,15 @@ pub(crate) fn flush_search(conn: &Connection) -> Result<()> {
 ///
 /// Trigramme statt Wörter: So findet „sonnen“ wie bisher „Sonnenuntergang“,
 /// aber über den Index statt durch Lesen jeder Zeile. Groß-/Kleinschreibung
-/// (auch Umlaute) und Akzente spielen keine Rolle. Trigger halten den Index
-/// bei jeder Änderung aktuell – kein Code muss daran denken.
+/// (auch Umlaute) und Akzente spielen keine Rolle.
+///
+/// Ursprünglich (v4) hielten Trigger den Index bei jeder Änderung sofort
+/// aktuell. Seit Migration v11 (`SEARCH_DIRTY`) markieren sie Fotos nur noch
+/// als veraltet (Tabelle `search_dirty`); neu aufgebaut wird der Eintrag erst
+/// von `flush_search`. Code, der Dateiname, Ordner, Kamera, Objektiv,
+/// Schlagworte oder Personennamen ändert, muss `flush_search` danach aufrufen
+/// (`with_tx` tut es am Ende der Transaktion), sonst findet die Suche die
+/// Änderung nicht.
 const SEARCH_INDEX: &str = r#"
     CREATE VIRTUAL TABLE search USING fts5(body, tokenize = 'trigram remove_diacritics 1');
 
@@ -1352,6 +1360,34 @@ impl Catalog {
             .query_row([id], thumb_job_from_row)
             .optional()?
             .ok_or_else(|| Error::NotFound(tr!("Bild {id}", "Photo {id}")))
+    }
+
+    /// Wie [`Self::thumb_job`] für viele Fotos in einer Abfrage. Gelöschte
+    /// Fotos fehlen im Ergebnis.
+    pub fn thumb_jobs(&self, ids: &[i64]) -> Result<HashMap<i64, ThumbJob>> {
+        let ids = serde_json::to_string(ids)?;
+        let mut st = self.conn.prepare_cached(&format!(
+            "{THUMB_JOB_SELECT} WHERE i.id IN (SELECT value FROM json_each(?1))"
+        ))?;
+        let rows = st.query_map([ids], thumb_job_from_row)?;
+        let mut out = HashMap::new();
+        for job in rows {
+            let job = job?;
+            out.insert(job.id, job);
+        }
+        Ok(out)
+    }
+
+    /// Setzt den Thumbnail-Zustand mehrerer Fotos in einer Transaktion
+    /// (`true` = fertig, `false` = fehlgeschlagen).
+    pub fn set_thumb_states(&mut self, states: &[(i64, bool)]) -> Result<()> {
+        self.with_tx(|tx| {
+            let mut st = tx.prepare_cached("UPDATE images SET thumb_state = ?2 WHERE id = ?1")?;
+            for (id, ok) in states {
+                st.execute(params![id, if *ok { 1 } else { 2 }])?;
+            }
+            Ok(())
+        })
     }
 
     /// Fehlgeschlagene Thumbnails erneut versuchen (z. B. nach kurzer
