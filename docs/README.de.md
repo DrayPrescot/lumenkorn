@@ -234,9 +234,10 @@ Außerdem:
 - **Einstellungen übertragen:** Strg+Umschalt+C kopiert die Basis-Einstellungen, Strg+Umschalt+V
   fügt sie auf alle ausgewählten Fotos ein (auch per Rechtsklick). Masken, Reparaturen,
   Rauschreduzierung und Zuschnitt des Zielfotos bleiben unberührt.
-- **Export** als JPEG, 16-Bit-TIFF oder PNG, optional verkleinert, im Hintergrund. Standardziel ist
-  der Unterordner `Export` neben dem Original. Von Lumenkorn angelegte Export-Ordner tragen eine
-  versteckte Markierung (`.lumenkorn-export`) und erscheinen nicht in der Bibliothek. Vorhandene
+- **Export** als JPEG, 16-Bit-TIFF, PNG oder DNG, auch mehrere Formate auf einmal, optional
+  verkleinert, im Hintergrund. DNG enthält die Rohdaten des Originals ohne Bearbeitung und
+  entsteht nur aus RAW-Dateien. Standardziel ist der Unterordner `Export` neben dem Original.
+  Von Lumenkorn angelegte Export-Ordner tragen eine versteckte Markierung (`.lumenkorn-export`) und erscheinen nicht in der Bibliothek. Vorhandene
   Dateien werden nie überschrieben.
 
 ## Masken (lokale Anpassungen)
@@ -268,7 +269,8 @@ zeigen die Masken.
 ## KI-Funktionen
 
 Alle KI-Funktionen sind optional und werden unter **Einstellungen → KI** (unten links) eingerichtet. Jede lädt ihre
-Modelle einmal herunter; danach läuft alles offline.
+Modelle einmal herunter; danach läuft alles offline. **Alle KI-Komponenten herunterladen** holt alles auf
+einmal, weitere Downloads während eines laufenden reihen sich ein.
 
 | Funktion | Modell | Download |
 |---|---|---|

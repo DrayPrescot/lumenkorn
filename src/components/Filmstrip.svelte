@@ -4,7 +4,7 @@
   import { retryImage } from "../lib/retry";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
-  import { aspectOf } from "../lib/layout";
+  import { imageAspect } from "../lib/layout";
   import Icon from "./Icon.svelte";
 
   // `compare`: Streifen unter dem Vergleich – Klicks ändern die verglichenen
@@ -29,7 +29,7 @@
     const images = untrack(() => lib.images);
     const a = new Float64Array(images.length + 1);
     for (let i = 0; i < images.length; i++) {
-      a[i + 1] = a[i] + Math.round(aspectOf(images[i].width, images[i].height) * thumbH) + GAP;
+      a[i + 1] = a[i] + Math.round(imageAspect(images[i]) * thumbH) + GAP;
     }
     return a;
   });

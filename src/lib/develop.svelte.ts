@@ -26,6 +26,7 @@ import {
   transferParams,
 } from "./api";
 import { lib } from "./store.svelte";
+import { editAspect } from "./layout";
 import { isCanceled, t } from "./i18n";
 import { keymap } from "./keymap.svelte";
 import type { HslMode } from "./hsl";
@@ -970,8 +971,13 @@ class Develop {
       await run;
       const edited = !same(p, DEFAULT_PARAMS);
       // Nur bei Änderung neu zuweisen – sonst rechnet das Raster bei jedem Speichern neu
-      if (lib.images.some((i) => i.id === id && i.edited !== edited)) {
-        lib.images = lib.images.map((i) => (i.id === id ? { ...i, edited } : i));
+      const im = lib.images.find((i) => i.id === id);
+      const aspect = im && edited ? editAspect(im.width, im.height, p) : undefined;
+      const reshaped = !!im && Math.abs((im.aspect ?? 0) - (aspect ?? 0)) > 1e-4;
+      if (im && (im.edited !== edited || reshaped)) {
+        lib.images = lib.images.map((i) => (i.id === id ? { ...i, edited, aspect } : i));
+        // Gedreht oder zugeschnitten: Raster und Filmstreifen neu anordnen
+        if (reshaped) lib.layoutVersion++;
       }
     } catch (e) {
       // Beim nächsten Anlass erneut versuchen
@@ -1034,7 +1040,12 @@ class Develop {
         return false;
       }
       const set = new Set(others);
-      lib.images = lib.images.map((i) => (set.has(i.id) ? { ...i, edited: true } : i));
+      lib.images = lib.images.map((i) =>
+        !set.has(i.id) ? i
+        : groups.geometry ? { ...i, edited: true, aspect: editAspect(i.width, i.height, src) }
+        : { ...i, edited: true },
+      );
+      if (groups.geometry) lib.layoutVersion++;
     }
     return true;
   }

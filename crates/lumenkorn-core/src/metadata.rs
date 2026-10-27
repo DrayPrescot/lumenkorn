@@ -209,9 +209,75 @@ fn read_exif(path: &Path) -> Option<Metadata> {
 }
 
 fn exif_from<R: BufRead + Seek>(reader: &mut R) -> Option<Metadata> {
-    use exif::{In, Tag, Value};
-
+    // Panasonic RW2 („IIU“) und Olympus ORF („IIRO“, „IIRS“, „MMOR“) sind TIFF
+    // mit eigener Kennung, die `kamadak-exif` nicht erkennt – ohne Sonderweg
+    // fehlten Ausrichtung, Datum und Kamera.
+    let head = reader.fill_buf().ok()?;
+    let le = match head.get(0..4)? {
+        [b'I', b'I', 0x55, 0] | [b'I', b'I', b'R', b'O'] | [b'I', b'I', b'R', b'S'] => Some(true),
+        [b'M', b'M', b'O', b'R'] => Some(false),
+        _ => None,
+    };
+    if let Some(le) = le {
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf).ok()?;
+        buf[2..4].copy_from_slice(if le { &[42, 0] } else { &[0, 42] });
+        return exif_from_tiff(buf);
+    }
     let exif = exif::Reader::new().read_from_container(reader).ok()?;
+    Some(exif_fields(&exif))
+}
+
+/// TIFF-RAW mit korrigierter Kennung. RW2 legt Datum und Belichtung oft nur
+/// in das eingebettete JPEG (Tag 0x002E) – daraus wird Fehlendes ergänzt.
+fn exif_from_tiff(buf: Vec<u8>) -> Option<Metadata> {
+    use exif::{Context, In, Tag, Value};
+    let reader = exif::Reader::new();
+    let exif = reader.read_raw(buf).ok()?;
+    let mut m = exif_fields(&exif);
+    // RW2: Bildbereich steht in eigenen Tags (Ränder oben, links, unten, rechts)
+    let border = |t: u16| {
+        exif.get_field(Tag(Context::Tiff, t), In::PRIMARY)
+            .and_then(|f| f.value.get_uint(0))
+            .map(i64::from)
+    };
+    if m.width.is_none()
+        && let (Some(top), Some(left), Some(bottom), Some(right)) =
+            (border(4), border(5), border(6), border(7))
+        && right > left
+        && bottom > top
+    {
+        m.width = Some(right - left);
+        m.height = Some(bottom - top);
+    }
+    let jpeg = match exif.get_field(Tag(Context::Tiff, 0x002E), In::PRIMARY) {
+        Some(f) => match &f.value {
+            Value::Undefined(b, _) | Value::Byte(b) => Some(b.clone()),
+            _ => None,
+        },
+        None => None,
+    };
+    if let Some(inner) = jpeg.and_then(|j| {
+        reader
+            .read_from_container(&mut std::io::Cursor::new(j))
+            .ok()
+    }) {
+        let j = exif_fields(&inner);
+        m.orientation = m.orientation.or(j.orientation);
+        m.captured_at = m.captured_at.or(j.captured_at);
+        m.camera = m.camera.or(j.camera);
+        m.lens = m.lens.or(j.lens);
+        m.iso = m.iso.or(j.iso);
+        m.exposure = m.exposure.or(j.exposure);
+        m.aperture = m.aperture.or(j.aperture);
+        m.focal_length = m.focal_length.or(j.focal_length);
+        m.gps = m.gps.or(j.gps);
+    }
+    Some(m)
+}
+
+fn exif_fields(exif: &exif::Exif) -> Metadata {
+    use exif::{In, Tag, Value};
 
     let text = |tag: Tag| -> Option<String> {
         let f = exif.get_field(tag, In::PRIMARY)?;
@@ -272,7 +338,7 @@ fn exif_from<R: BufRead + Seek>(reader: &mut R) -> Option<Metadata> {
         _ => None,
     };
 
-    Some(Metadata {
+    Metadata {
         width: uint(Tag::PixelXDimension).or_else(|| uint(Tag::ImageWidth)),
         height: uint(Tag::PixelYDimension).or_else(|| uint(Tag::ImageLength)),
         orientation: uint(Tag::Orientation).filter(|o| (1..=8).contains(o)),
@@ -283,8 +349,8 @@ fn exif_from<R: BufRead + Seek>(reader: &mut R) -> Option<Metadata> {
         exposure,
         aperture: rational(Tag::FNumber),
         focal_length: rational(Tag::FocalLength),
-        gps: gps(&exif),
-    })
+        gps: gps(exif),
+    }
 }
 
 /// GPS-Position aus EXIF: Grad, Minuten, Sekunden und Himmelsrichtung.
@@ -424,6 +490,35 @@ mod tests {
         assert_eq!(tiff_raw_dims_in(b"kein tiff"), None);
         // Abgeschnittene Datei: kein Absturz
         assert_eq!(tiff_raw_dims_in(&fake_raw(true)[..60]), None);
+    }
+
+    /// RW2 und ORF: TIFF mit eigener Kennung, Ausrichtung in IFD0
+    #[test]
+    fn rw2_and_orf_orientation() {
+        let raw = |magic: &[u8; 4], le: bool| {
+            let w16 = |v: u16| if le { v.to_le_bytes() } else { v.to_be_bytes() };
+            let mut d = magic.to_vec();
+            d.extend(if le {
+                8u32.to_le_bytes()
+            } else {
+                8u32.to_be_bytes()
+            });
+            d.extend(w16(1));
+            d.extend(w16(0x0112));
+            d.extend(w16(3));
+            d.extend(if le {
+                1u32.to_le_bytes()
+            } else {
+                1u32.to_be_bytes()
+            });
+            d.extend(w16(6));
+            d.extend([0, 0, 0, 0, 0, 0]);
+            d
+        };
+        for (magic, le) in [(b"IIU\0", true), (b"IIRO", true), (b"MMOR", false)] {
+            let m = exif_from(&mut std::io::Cursor::new(raw(magic, le)));
+            assert_eq!(m.and_then(|m| m.orientation), Some(6), "{magic:?}");
+        }
     }
 
     #[test]

@@ -54,6 +54,8 @@ export interface ImageSummary {
   thumbReady: boolean;
   missing: boolean;
   edited: boolean;
+  /** Seitenverhältnis nach Drehen und Zuschnitt (nur bearbeitete Fotos) */
+  aspect?: number;
   /** Aufnahmeort (fehlt, wenn unbekannt) */
   lat?: number;
   lon?: number;
@@ -697,8 +699,12 @@ export interface LensSummary {
   lens: string | null;
 }
 
+export type ExportFormat = "jpeg" | "tiff16" | "png" | "dng";
+
 export interface ExportOptions {
-  format: "jpeg" | "tiff16" | "png";
+  format: ExportFormat;
+  /** Mehrere Formate auf einmal (z. B. DNG und JPEG) */
+  formats?: ExportFormat[];
   quality: number;
   longEdge: number | null;
 }
@@ -812,8 +818,15 @@ export interface AiStatus {
   settings: AiSettings;
 }
 
+export type AiComponent = "clip" | "masks" | "denoise" | "faces" | "repair" | Backend;
+
 export interface AiDownloadEvent {
   progress: { item: string; index: number; count: number; done: number; total: number | null } | null;
+  /** Was gerade geladen wird */
+  component: AiComponent | null;
+  /** Was danach noch drankommt */
+  queued: AiComponent[];
+  /** `component` ist fertig (mit `error` gescheitert) */
   finished: boolean;
   error: string | null;
 }
@@ -974,7 +987,7 @@ export const api = {
   repairCompute: (imageId: number, shapes: MaskShape[], denoise: DevelopParams["denoise"], lens: boolean) =>
     call<string>("repair_compute", { imageId, shapes, denoise, lens }),
   repairCancel: () => call<void>("repair_cancel"),
-  aiDownload: (component: "clip" | "masks" | "denoise" | "faces" | "repair" | Backend = "clip") => call<void>("ai_download", { component }),
+  aiDownload: (component: AiComponent = "clip") => call<void>("ai_download", { component }),
   maskSubject: (id: number) => call<MaskResult>("mask_subject", { id }),
   maskSky: (id: number) => call<MaskResult>("mask_sky", { id }),
   maskPerson: (id: number, part: PersonPart) => call<MaskResult>("mask_person", { id, part }),

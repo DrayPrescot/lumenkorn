@@ -6,7 +6,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Export to **DNG**: the original raw data, losslessly, with a preview but without edits. Only for
+  RAW files.
+- Export several formats at once, for example DNG to archive and JPEG to share.
+- AI downloads queue up: clicking a second download while one is running starts it afterwards
+  instead of doing nothing. **Download all AI components** gets everything in one go.
+
 ### Fixed
+- Panasonic RW2 and Olympus ORF files lost their orientation, capture date and camera, because
+  their EXIF data was not read. Portrait photos now stand upright. Photos already in the catalog
+  are read again on the next start.
+- After rotating a photo between landscape and portrait (or cropping it), the library grid and the
+  filmstrip kept the old shape and cut the thumbnail off. They now follow the new shape.
 - White balance **Automatic** stayed disabled after opening a photo, so it did nothing. Buttons that
   wait for the photo's settings to load now become active as soon as they are loaded.
 

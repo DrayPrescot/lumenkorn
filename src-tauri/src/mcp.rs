@@ -606,11 +606,12 @@ fn tools() -> Vec<Value> {
         tool(
             "export_photos",
             "Export photos",
-            "Export developed photos in the background. Without `folder`, each goes into an \"Export\" subfolder next to its original. `folder` must be an existing absolute path inside one of the library folders (or the user's Pictures folder); at most 500 photos per call. format jpeg (quality 1–100), png or tiff; long_edge limits the size in pixels.",
+            "Export developed photos in the background. Without `folder`, each goes into an \"Export\" subfolder next to its original. `folder` must be an existing absolute path inside one of the library folders (or the user's Pictures folder); at most 500 photos per call. format jpeg (quality 1–100), png, tiff or dng (the original RAW data without edits, RAW files only); several formats at once with `formats`, e.g. [\"dng\", \"jpeg\"]; long_edge limits the size in pixels.",
             json!({ "type": "object", "properties": {
                 "ids": ids_schema(),
                 "folder": { "type": "string" },
-                "format": { "type": "string", "enum": ["jpeg", "png", "tiff"], "default": "jpeg" },
+                "format": { "type": "string", "enum": ["jpeg", "png", "tiff", "dng"], "default": "jpeg" },
+                "formats": { "type": "array", "items": { "type": "string", "enum": ["jpeg", "png", "tiff", "dng"] } },
                 "quality": { "type": "integer", "minimum": 1, "maximum": 100, "default": 90 },
                 "long_edge": { "type": "integer", "minimum": 64 }
             }, "required": ["ids"] }),
@@ -905,13 +906,20 @@ async fn call(app: &AppHandle, name: &str, a: &Value) -> ToolResult {
         "add_mask" => add_mask(app, a).await,
         "export_photos" => {
             let ids = ids(a, "ids")?;
-            let format = match arg(a, "format").and_then(Value::as_str).unwrap_or("jpeg") {
+            let name = |f: &str| match f {
                 "png" => "png",
                 "tiff" | "tif" => "tiff16",
+                "dng" => "dng",
                 _ => "jpeg",
             };
+            let format = name(arg(a, "format").and_then(Value::as_str).unwrap_or("jpeg"));
+            let formats: Vec<&str> = arg(a, "formats")
+                .and_then(Value::as_array)
+                .map(|l| l.iter().filter_map(Value::as_str).map(name).collect())
+                .unwrap_or_default();
             let options: lumenkorn_develop::output::ExportOptions = serde_json::from_value(json!({
-                "format": format,
+                "format": formats.first().copied().unwrap_or(format),
+                "formats": formats,
                 "quality": arg(a, "quality").and_then(Value::as_u64).unwrap_or(90).clamp(1, 100),
                 "longEdge": arg(a, "long_edge").and_then(Value::as_u64),
             }))

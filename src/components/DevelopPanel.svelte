@@ -332,8 +332,8 @@
       </div>
     {:else if !lib.ai?.denoiseReady}
       <p class="dn-note">{t("Entfernt Bildrauschen mit DRUNet, ohne Details zu verwischen. Benötigt einmalig etwa {n} MB.", { n: Math.round((lib.ai?.denoiseDownloadSize ?? 131e6) / 1e6) })}</p>
-      <button class="btn small" disabled={!!lib.aiDownload} onclick={() => api.aiDownload("denoise").then(() => lib.refreshAi())}>
-        {lib.aiDownload ? t("Wird geladen …") : t("Herunterladen")}
+      <button class="btn small" disabled={lib.aiPending("denoise")} onclick={() => api.aiDownload("denoise").then(() => lib.refreshAi())}>
+        {lib.aiDownload?.component === "denoise" ? t("Wird geladen …") : lib.aiPending("denoise") ? t("Wartet …") : t("Herunterladen")}
       </button>
     {:else}
       <Slider label={t("Stärke")} value={dev.denoiseStrength} min={0} max={100} neutral={50} oninput={(v) => (dev.denoiseStrength = v)} oncommit={() => {}} />

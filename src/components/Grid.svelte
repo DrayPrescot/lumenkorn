@@ -3,7 +3,7 @@
   import { isTyping } from "../lib/keys";
   import { imageUrl } from "../lib/api";
   import { retryImage } from "../lib/retry";
-  import { aspectOf, justify, type Row } from "../lib/layout";
+  import { imageAspect, justify, type Row } from "../lib/layout";
   import { lib } from "../lib/store.svelte";
   import Icon from "./Icon.svelte";
   import { t } from "../lib/i18n";
@@ -23,7 +23,7 @@
   let lastAspects: number[] = [];
   const aspects = $derived.by(() => {
     void lib.layoutVersion;
-    const a = untrack(() => lib.images.map((i) => aspectOf(i.width, i.height)));
+    const a = untrack(() => lib.images.map(imageAspect));
     if (a.length === lastAspects.length && a.every((v, i) => v === lastAspects[i])) return lastAspects;
     lastAspects = a;
     return a;

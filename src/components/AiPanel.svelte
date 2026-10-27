@@ -1,7 +1,7 @@
 <script lang="ts">
   // KI und Grafikkarte im Einstellungsmenü (SettingsDialog): `part` wählt den
   // Abschnitt.
-  import { api, type AccelPreference, type Backend, type Benchmark } from "../lib/api";
+  import { api, type AccelPreference, type AiComponent, type Benchmark } from "../lib/api";
   import { lib } from "../lib/store.svelte";
   import Icon from "./Icon.svelte";
   import { onMount } from "svelte";
@@ -27,13 +27,34 @@
     await Promise.all([lib.refreshAi(), lib.refreshPeople()]);
   }
 
-  async function download(component: "clip" | "masks" | "denoise" | "faces" | Backend = "clip") {
+  // Downloads laufen nacheinander; ein Klick während eines Downloads reiht ein
+  async function download(component: AiComponent = "clip") {
     try {
       await api.aiDownload(component);
       await lib.refreshAi();
     } catch (e) {
       lib.notify(String(e), "error");
     }
+  }
+
+  /** Beschriftung eines Download-Knopfs: lädt gerade, wartet oder `label` */
+  const dlLabel = (c: AiComponent, label: string) =>
+    lib.aiDownload?.component === c ? t("Wird geladen …") : lib.aiPending(c) ? t("Wartet …") : label;
+
+  // Was noch fehlt – für „Alle herunterladen“ bei einer neuen Installation
+  const missing = $derived.by(() => {
+    if (!s) return [] as AiComponent[];
+    const m: AiComponent[] = [];
+    if (!s.modelReady || !s.runtimePath) m.push("clip");
+    if (!(s.masksReady && s.skyReady && s.partsReady)) m.push("masks");
+    if (!s.denoiseReady) m.push("denoise");
+    if (ps && !ps.ready) m.push("faces");
+    if (!s.repairReady) m.push("repair");
+    return m;
+  });
+  const missingIdle = $derived(missing.filter((c) => !lib.aiPending(c)));
+  async function downloadAll() {
+    for (const c of missingIdle) await download(c);
   }
 
   async function toggleAuto(e: Event) {
@@ -144,17 +165,30 @@
       </div>
     {/if}
 
-    {#if !s}
-      <p class="muted">{t("Status wird geladen …")}</p>
-    {:else if lib.aiDownload}
+    {#if lib.aiDownload}
       <div class="progress">
         <div class="line">
           <span>{d ? t("{item} ({index} von {count})", { item: d.item, index: d.index, count: d.count }) : t("Verbinde …")}</span>
           <span class="muted">{d ? `${mb(d.done)}${d.total ? t(" von {size}", { size: mb(d.total) }) : ""}` : ""}</span>
         </div>
         <progress max="100" value={pct ?? undefined}></progress>
-        <button class="btn quiet" onclick={() => api.aiCancelDownload()}>{t("Abbrechen")}</button>
+        <div class="actions">
+          <button class="btn quiet" onclick={() => api.aiCancelDownload()}>{t("Abbrechen")}</button>
+          {#if lib.aiDownload.queued.length}
+            <span class="muted small">{t("Danach noch {n} weitere", { n: lib.aiDownload.queued.length })}</span>
+          {/if}
+        </div>
       </div>
+    {/if}
+
+    {#if missing.length > 1 && missingIdle.length}
+      <div class="actions">
+        <button class="btn" onclick={downloadAll}>{t("Alle KI-Komponenten herunterladen")}</button>
+      </div>
+    {/if}
+
+    {#if !s}
+      <p class="muted">{t("Status wird geladen …")}</p>
     {:else if !s.modelReady || !s.runtimePath}
       <div class="box">
         <p>
@@ -166,7 +200,7 @@
             <code>{s.modelDir.replace(/clip-vit-b32$/, "runtime")}</code>{t(" ab.")}
           </p>
         {/if}
-        <button class="btn primary" onclick={() => download("clip")}>{t("KI-Komponenten herunterladen")}</button>
+        <button class="btn primary" disabled={lib.aiPending("clip")} onclick={() => download("clip")}>{dlLabel("clip", t("KI-Komponenten herunterladen"))}</button>
       </div>
     {:else}
       <dl>
@@ -190,7 +224,7 @@
       </div>
     {/if}
 
-    {#if s && !lib.aiDownload}
+    {#if s}
       <div class="sep"></div>
       <h4>{t("KI-Masken")}</h4>
       {#if s.masksReady && s.skyReady && s.partsReady}
@@ -201,12 +235,12 @@
             {t("„Motiv auswählen“ (IS-Net), „Objekt per Klick“ (Segment Anything), die KI-Himmelserkennung (skyseg) sowie Personen und Tiere (OWLv2, MediaPipe) benötigen einmalig etwa")}
             <strong>{mb(s.masksDownloadSize)}</strong> {t("von GitHub und Hugging Face. „Himmel“ funktioniert auch ohne, wird damit aber deutlich genauer.")}
           </p>
-          <button class="btn primary" onclick={() => download("masks")}>{t("KI-Masken herunterladen")}</button>
+          <button class="btn primary" disabled={lib.aiPending("masks")} onclick={() => download("masks")}>{dlLabel("masks", t("KI-Masken herunterladen"))}</button>
         </div>
       {/if}
     {/if}
 
-    {#if s && !lib.aiDownload}
+    {#if s}
       <div class="sep"></div>
       <h4>{t("KI-Rauschreduzierung")}</h4>
       {#if s.denoiseReady}
@@ -217,12 +251,12 @@
             {t("DRUNet entfernt Bildrauschen, ohne Details zu verwischen. Lumenkorn lädt die Original-Gewichte (etwa")}
             <strong>{mb(s.denoiseDownloadSize)}</strong>{t(", MIT-Lizenz) von GitHub und bereitet das Modell lokal vor.")}
           </p>
-          <button class="btn primary" onclick={() => download("denoise")}>{t("Rauschreduzierung herunterladen")}</button>
+          <button class="btn primary" disabled={lib.aiPending("denoise")} onclick={() => download("denoise")}>{dlLabel("denoise", t("Rauschreduzierung herunterladen"))}</button>
         </div>
       {/if}
     {/if}
 
-    {#if s && !lib.aiDownload && ps}
+    {#if s && ps}
       <div class="sep"></div>
       <h4>{t("Personenerkennung")}</h4>
       {#if ps.ready}
@@ -249,7 +283,7 @@
             {t("Findet Gesichter (YuNet) und gruppiert gleiche Personen (SFace), damit du sie benennen und danach filtern kannst. Einmalig etwa")}
             <strong>{mb(ps.downloadSize)}</strong> {t("aus dem OpenCV Model Zoo (MIT bzw. Apache-2.0). Gesichtsdaten bleiben auf diesem Rechner.")}
           </p>
-          <button class="btn primary" onclick={() => download("faces").then(() => lib.refreshPeople())}>{t("Personenerkennung herunterladen")}</button>
+          <button class="btn primary" disabled={lib.aiPending("faces")} onclick={() => download("faces").then(() => lib.refreshPeople())}>{dlLabel("faces", t("Personenerkennung herunterladen"))}</button>
         </div>
       {/if}
     {/if}
@@ -282,11 +316,11 @@
               : " (DirectX 12)"}{t(". Einmalig etwa")} <strong>{mb(s.gpuRuntimes[0].downloadSize)}</strong>.
           </p>
           <div class="actions">
-            <button class="btn primary" onclick={() => download(s.gpuRuntimes[0].backend)}>
-              {t("GPU-Unterstützung herunterladen")}
+            <button class="btn primary" disabled={lib.aiPending(s.gpuRuntimes[0].backend)} onclick={() => download(s.gpuRuntimes[0].backend)}>
+              {dlLabel(s.gpuRuntimes[0].backend, t("GPU-Unterstützung herunterladen"))}
             </button>
             {#each s.gpuRuntimes.slice(1) as alt (alt.backend)}
-              <button class="btn quiet" onclick={() => download(alt.backend)}>{t("Alternative: {label}", { label: alt.label })}</button>
+              <button class="btn quiet" disabled={lib.aiPending(alt.backend)} onclick={() => download(alt.backend)}>{dlLabel(alt.backend, t("Alternative: {label}", { label: alt.label }))}</button>
             {/each}
           </div>
         </div>
@@ -343,8 +377,8 @@
         {#if gpuMissing.length}
           <div class="actions">
             {#each gpuMissing as alt (alt.backend)}
-              <button class="btn quiet" onclick={() => download(alt.backend)}>
-                {t("Zusätzlich {label} laden ({size})", { label: alt.label, size: mb(alt.downloadSize) })}
+              <button class="btn quiet" disabled={lib.aiPending(alt.backend)} onclick={() => download(alt.backend)}>
+                {dlLabel(alt.backend, t("Zusätzlich {label} laden ({size})", { label: alt.label, size: mb(alt.downloadSize) }))}
               </button>
             {/each}
           </div>
@@ -433,6 +467,7 @@
   .actions {
     display: flex;
     gap: 8px;
+    align-items: center;
   }
   .warn {
     color: #e0a07f;

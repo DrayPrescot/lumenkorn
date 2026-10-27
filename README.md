@@ -97,7 +97,9 @@ the catalog before you let Lumenkorn loose on your whole collection.
 - AI noise reduction and AI repair (remove dust, power lines, people, signs).
 - History with undo/redo, snapshots, copy and paste of settings to many photos, and a
   "reset to original" button that asks before discarding everything.
-- Export to JPEG, 16-bit TIFF or PNG, by default into an `Export` folder next to each original.
+- Export to JPEG, 16-bit TIFF, PNG or DNG, several formats at once if you like, by default into
+  an `Export` folder next to each original. DNG holds the original raw data without edits (RAW
+  files only).
 
 ### Auto in your style
 Auto learns from your edits how you differ from its suggestions and adapts step by step,
@@ -240,7 +242,8 @@ photo open in Develop they can be undone with `Ctrl+Z`.
 ### First steps
 1. Click **+** next to *Ordner* and choose a folder with photos.
 2. Rate with `0`–`5`, flag with `P` / `X`, and press `D` to develop the selected photo.
-3. Optional: **Settings → AI** (bottom left) downloads the AI models. Everything else works without them.
+3. Optional: **Settings → AI** (bottom left) downloads the AI models, one by one or with
+   **Download all AI components**. Everything else works without them.
 
 ### Keyboard shortcuts
 
@@ -537,7 +540,7 @@ The same list is shown in the app: click ⓘ (**About Lumenkorn**) at the bottom
 |---|---|---|
 | [Tauri](https://github.com/tauri-apps/tauri) with the [dialog, updater and single-instance plugins](https://github.com/tauri-apps/plugins-workspace) | app shell, window, file dialogs, updates | MIT or Apache-2.0 |
 | [Svelte](https://github.com/sveltejs/svelte) | user interface | MIT |
-| [rawler](https://github.com/dnglab/dnglab) (dnglab) | reading RAW files | LGPL-2.1 |
+| [rawler](https://github.com/dnglab/dnglab) (dnglab) | reading RAW files, DNG export | LGPL-2.1 |
 | [darktable](https://github.com/darktable-org/darktable) | RAW development: highlight reconstruction, demosaicing, color calibration, sigmoid (code translated to Rust) | GPL-3.0-or-later |
 | [rawspeed](https://github.com/darktable-org/rawspeed) camera data (`cameras.xml`, reduced to a table by `tools/rawspeed_white.py`) | sensor white and black levels | LGPL-2.1-or-later |
 | [wgpu](https://github.com/gfx-rs/wgpu) | GPU image processing | MIT or Apache-2.0 |

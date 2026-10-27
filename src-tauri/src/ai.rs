@@ -44,6 +44,9 @@ pub struct AiState {
     load_error: Mutex<Option<String>>,
     index: RwLock<Option<EmbeddingIndex>>,
     pub(crate) downloading: AtomicBool,
+    /// Gewünschte Downloads: Sie laufen nacheinander, ein weiterer Klick
+    /// während eines Downloads reiht sich ein
+    downloads: Mutex<Downloads>,
     cancel: AtomicBool,
     settings_path: PathBuf,
     pub(crate) settings: Mutex<AiSettings>,
@@ -265,6 +268,7 @@ impl AiState {
             load_error: Mutex::new(None),
             index: RwLock::new(None),
             downloading: AtomicBool::new(false),
+            downloads: Mutex::new(Downloads::default()),
             cancel: AtomicBool::new(false),
             settings_path,
             settings: Mutex::new(settings),
@@ -681,12 +685,34 @@ pub fn ai_set_settings(state: State<AppState>, settings: AiSettings) -> Result<(
     Ok(())
 }
 
+#[derive(Default)]
+struct Downloads {
+    current: Option<Component>,
+    queue: std::collections::VecDeque<Component>,
+}
+
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct DownloadEvent {
     progress: Option<models::Progress>,
+    /// Was gerade geladen wird
+    component: Option<Component>,
+    /// Was danach noch drankommt
+    queued: Vec<Component>,
+    /// `component` ist fertig (mit `error` gescheitert)
     finished: bool,
     error: Option<String>,
+}
+
+fn download_event(state: &AppState, progress: Option<models::Progress>) -> DownloadEvent {
+    let d = state.ai.downloads.locked();
+    DownloadEvent {
+        progress,
+        component: d.current,
+        queued: d.queue.iter().copied().collect(),
+        finished: false,
+        error: None,
+    }
 }
 
 /// Entfernt gelöschte Fotos aus dem Suchindex der semantischen Suche (`None`:
@@ -706,76 +732,99 @@ pub(crate) fn forget_in_index(state: &AppState, ids: Option<&[i64]>) {
 }
 
 /// Lädt fehlende KI-Komponenten im Hintergrund. Fortschritt per `ai-download`.
+/// Läuft schon ein Download, kommt `component` danach dran.
 #[tauri::command(async)]
 pub fn ai_download(app: AppHandle, component: Option<Component>) -> Result<(), Error> {
     let component = component.unwrap_or(Component::Clip);
     let state = app.state::<AppState>();
+    // Einreihen und Starten unter derselben Sperre, unter der der Download-
+    // Thread bei leerer Warteschlange endet – so geht kein Wunsch verloren.
+    let mut downloads = state.ai.downloads.locked();
+    if downloads.current != Some(component) && !downloads.queue.contains(&component) {
+        downloads.queue.push_back(component);
+    }
     // Setzt `downloading` auch zurück, wenn der Download-Thread panisch endet
     // oder gar nicht erst startet – sonst blieben Analyse und Gesichter-
     // erkennung bis zum Neustart blockiert.
     let Some(done) = crate::busy::claim_in(&app, |s| &s.ai.downloading) else {
+        drop(downloads);
+        let _ = app.emit("ai-download", download_event(&state, None));
         return Ok(());
     };
-    state.ai.cancel.store(false, Ordering::SeqCst);
+    drop(downloads);
     std::thread::Builder::new()
         .name("lumenkorn-download".into())
         .spawn(move || {
             let state = app.state::<AppState>();
-            let progress = |p: models::Progress| {
+            loop {
+                let component = {
+                    let mut d = state.ai.downloads.locked();
+                    let next = d.queue.pop_front();
+                    d.current = next;
+                    match next {
+                        Some(c) => c,
+                        None => {
+                            drop(done);
+                            return;
+                        }
+                    }
+                };
+                state.ai.cancel.store(false, Ordering::SeqCst);
+                let _ = app.emit("ai-download", download_event(&state, None));
+                let error = download_one(&app, &state, component);
                 let _ = app.emit(
                     "ai-download",
                     DownloadEvent {
-                        progress: Some(p),
-                        finished: false,
-                        error: None,
+                        finished: true,
+                        error,
+                        ..download_event(&state, None)
                     },
                 );
-            };
-            // Ein Panic im Download soll als Fehler enden, nicht als ewiges „läuft“
-            let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                models::download_missing(&state.data_dir, component, &progress, &state.ai.cancel)
-            }))
-            .unwrap_or_else(|_| {
-                Err(lumenkorn_ai::Error::Download(
-                    tr_s(
-                        "interner Fehler beim Herunterladen",
-                        "internal error while downloading",
-                    )
-                    .into(),
-                ))
-            });
-            drop(done);
-            *state.ai.load_error.locked() = None;
-            let error = match (res, component) {
-                (Ok(()), Component::Clip) => ensure_loaded(&state).err().map(|e| e.to_string()),
-                (Ok(()), Component::Faces) => {
-                    let e = ensure_runtime(&state).err().map(|e| e.to_string());
-                    if e.is_none() {
-                        state.worker.submit(Job::Faces);
-                    }
-                    e
-                }
-                (Ok(()), Component::Masks | Component::Denoise | Component::Repair) => {
-                    ensure_runtime(&state).err().map(|e| e.to_string())
-                }
-                // Ist noch keine Laufzeit geladen, wird die neue beim nächsten
-                // Bedarf genommen; sonst zeigt der Status „Neustart nötig“.
-                (Ok(()), Component::Webgpu) => None,
-                (Err(e), _) => Some(e.to_string()),
-            };
-            if error.is_none() && component == Component::Clip {
-                state.worker.submit(Job::Ai);
             }
-            let _ = app.emit(
-                "ai-download",
-                DownloadEvent {
-                    progress: None,
-                    finished: true,
-                    error,
-                },
-            );
         })?;
     Ok(())
+}
+
+/// Ein Download samt Laden der Modelle; liefert die Fehlermeldung.
+fn download_one(app: &AppHandle, state: &AppState, component: Component) -> Option<String> {
+    let progress = |p: models::Progress| {
+        let _ = app.emit("ai-download", download_event(state, Some(p)));
+    };
+    // Ein Panic im Download soll als Fehler enden, nicht als ewiges „läuft“
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        models::download_missing(&state.data_dir, component, &progress, &state.ai.cancel)
+    }))
+    .unwrap_or_else(|_| {
+        Err(lumenkorn_ai::Error::Download(
+            tr_s(
+                "interner Fehler beim Herunterladen",
+                "internal error while downloading",
+            )
+            .into(),
+        ))
+    });
+    *state.ai.load_error.locked() = None;
+    let error = match (res, component) {
+        (Ok(()), Component::Clip) => ensure_loaded(state).err().map(|e| e.to_string()),
+        (Ok(()), Component::Faces) => {
+            let e = ensure_runtime(state).err().map(|e| e.to_string());
+            if e.is_none() {
+                state.worker.submit(Job::Faces);
+            }
+            e
+        }
+        (Ok(()), Component::Masks | Component::Denoise | Component::Repair) => {
+            ensure_runtime(state).err().map(|e| e.to_string())
+        }
+        // Ist noch keine Laufzeit geladen, wird die neue beim nächsten
+        // Bedarf genommen; sonst zeigt der Status „Neustart nötig“.
+        (Ok(()), Component::Webgpu) => None,
+        (Err(e), _) => Some(e.to_string()),
+    };
+    if error.is_none() && component == Component::Clip {
+        state.worker.submit(Job::Ai);
+    }
+    error
 }
 
 /// Absturzmeldung gelesen.
@@ -852,6 +901,8 @@ pub async fn ai_benchmark(app: AppHandle) -> Result<Benchmark, Error> {
 
 #[tauri::command]
 pub fn ai_cancel_download(state: State<AppState>) {
+    // Auch alles Eingereihte – „Abbrechen“ meint den ganzen Download
+    state.ai.downloads.locked().queue.clear();
     state.ai.cancel.store(true, Ordering::SeqCst);
 }
 

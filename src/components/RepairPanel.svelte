@@ -92,8 +92,8 @@
       {t("Entfernt Störendes – Staubflecken, Leitungen, Passanten – und füllt die Stelle passend aus der Umgebung (LaMa).")}
       {t("Benötigt einmalig etwa {n} MB.", { n: Math.round((lib.ai?.repairDownloadSize ?? 92.6e6) / 1e6) })}
     </p>
-    <button class="btn small" disabled={!!lib.aiDownload} onclick={() => api.aiDownload("repair").then(() => lib.refreshAi())}>
-      {lib.aiDownload ? t("Wird geladen …") : t("Herunterladen")}
+    <button class="btn small" disabled={lib.aiPending("repair")} onclick={() => api.aiDownload("repair").then(() => lib.refreshAi())}>
+      {lib.aiDownload?.component === "repair" ? t("Wird geladen …") : lib.aiPending("repair") ? t("Wartet …") : t("Herunterladen")}
     </button>
   {:else if repairs.length}
     <ul class="layers">

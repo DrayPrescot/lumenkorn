@@ -1,7 +1,7 @@
 // Zentraler Oberflächenzustand (Svelte-5-Runes).
 
 import { isCanceled, lang, num, t, tc } from "./i18n";
-import { api, listen, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type DeleteReport, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress, type ImportProgress, type ImportDone, type ImageQuery, type LocationItem } from "./api";
+import { api, listen, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type AiComponent, type DeleteReport, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress, type ImportProgress, type ImportDone, type ImageQuery, type LocationItem } from "./api";
 
 class Library {
   roots = $state<Root[]>([]);
@@ -66,6 +66,11 @@ class Library {
     return this.#facesV.get(id) ?? 0;
   }
   aiDownload = $state<AiDownloadEvent | null>(null);
+  /** Wird gerade geladen oder wartet darauf */
+  aiPending(c: AiComponent): boolean {
+    const d = this.aiDownload;
+    return !!d && (d.component === c || d.queued.includes(c));
+  }
   #tagsV = new Map<number, number>();
   #tagsEpoch = $state(0);
   /** Erhöht sich, wenn KI-Schlagworte eines Bildes neu sind. */
@@ -199,10 +204,17 @@ class Library {
       this.#tagsEpoch++;
     });
     listen("ai-download", async (e) => {
-      this.aiDownload = e.finished ? null : e;
+      // Downloads laufen nacheinander: Erst wenn nichts mehr wartet, ist Schluss.
+      // Ein Ereignis ohne Fortschritt (etwas wurde eingereiht) behält die Anzeige.
+      const prev = this.aiDownload;
+      this.aiDownload =
+        e.finished && !e.queued.length ? null
+        : e.finished ? { ...e, progress: null, finished: false, component: e.queued[0] }
+        : { ...e, progress: e.progress ?? (prev?.component === e.component ? prev.progress : null) };
       if (e.finished) {
         if (e.error) this.notify(t("KI-Download: {error}", { error: e.error }), "error");
-        else this.notify(t("KI ist bereit. Fotos werden jetzt im Hintergrund verschlagwortet."));
+        else if (e.component === "clip") this.notify(t("KI ist bereit. Fotos werden jetzt im Hintergrund verschlagwortet."));
+        else this.notify(t("Download abgeschlossen."));
         await Promise.all([this.refreshAi(), this.refreshPeople()]);
       }
     });

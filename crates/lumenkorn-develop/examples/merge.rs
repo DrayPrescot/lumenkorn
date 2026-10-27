@@ -41,6 +41,7 @@ fn save(img: &ImageF32, dir: &Path, name: &str, scene: bool) -> Result<()> {
         &dir.join(format!("{name}.jpg")),
         &ExportOptions {
             format: ExportFormat::Jpeg,
+            formats: Vec::new(),
             quality: 88,
             long_edge: None,
         },

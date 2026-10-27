@@ -65,6 +65,10 @@ pub struct ImageSummary {
     pub missing: bool,
     /// Hat eine aktuelle Bearbeitung.
     pub edited: bool,
+    /// Seitenverhältnis nach Drehen und Zuschnitt der Bearbeitung (Breite durch
+    /// Höhe); fehlt ohne Bearbeitung oder ohne bekannte Maße
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aspect: Option<f64>,
     /// Aufnahmeort (für die Karte), fehlt meist
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lat: Option<f64>,

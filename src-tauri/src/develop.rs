@@ -6,7 +6,7 @@ use lumenkorn_core::LockExt;
 use lumenkorn_core::formats::ImageKind;
 use lumenkorn_core::{Catalog, Edit, Error, Preset};
 use lumenkorn_develop::i18n::tr_s;
-use lumenkorn_develop::output::{self, ExportOptions};
+use lumenkorn_develop::output::{self, ExportFormat, ExportOptions};
 use lumenkorn_develop::{Crop, DevelopParams, ImageF32, RenderOptions, Source, tr};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -795,6 +795,37 @@ struct ExportProgress {
     dir: String,
 }
 
+/// Entwickelt ein Foto für den Export. Mit begrenzter Kantenlänge nicht in
+/// voller Auflösung: Die Quelle muss nur groß genug sein, dass der Zuschnitt
+/// (und die Vergrößerung beim Geraderichten) die Zielgröße erreicht.
+fn develop_for_export(
+    state: &AppState,
+    job: &lumenkorn_core::catalog::ThumbJob,
+    params: &DevelopParams,
+    long_edge: Option<usize>,
+) -> Result<ImageF32, Error> {
+    let load_edge = long_edge.filter(|m| *m > 0).map(|m| {
+        let crop = params.crop.map_or(1.0, |c| c.w.min(c.h)).max(0.05);
+        let tilt = if params.straighten != 0.0 { 1.5 } else { 1.0 };
+        (m as f32 / crop * tilt).ceil() as usize
+    });
+    let src = Source::load(
+        Path::new(&job.path),
+        job.kind == ImageKind::Raw,
+        job.orientation.map(|o| o as u16),
+        load_edge,
+    )?;
+    let denoised = params.denoise.as_ref().and_then(|d| {
+        let p = lumenkorn_develop::denoised::path(&state.denoised_dir, &d.id)?;
+        lumenkorn_develop::denoised::read(&p, Some(src.image.long_edge())).ok()
+    });
+    Ok(lumenkorn_develop::render_auto(
+        &src,
+        params,
+        &render_opts(state, denoised.as_ref()),
+    ))
+}
+
 /// Exportiert in voller Auflösung im Hintergrund. Fortschritt per `export-progress`.
 /// Ohne `dir` landet jedes Foto im Unterordner „Export“ neben dem Original.
 #[tauri::command(async)]
@@ -836,6 +867,7 @@ pub fn export_images(
         .spawn(move || {
             let _running = running;
             let state = app.state::<AppState>();
+            let formats = options.all_formats();
             let total = ids.len();
             let mut failed = Vec::new();
             let mut used = std::collections::BTreeSet::new();
@@ -865,30 +897,6 @@ pub fn export_images(
                                 dir: shown(&used),
                             },
                         );
-                        // Mit begrenzter Kantenlänge nicht in voller Auflösung
-                        // entwickeln: Die Quelle muss nur groß genug sein, dass der
-                        // Zuschnitt (und die Vergrößerung beim Geraderichten) die
-                        // Zielgröße erreicht.
-                        let load_edge = options.long_edge.filter(|m| *m > 0).map(|m| {
-                            let crop = params.crop.map_or(1.0, |c| c.w.min(c.h)).max(0.05);
-                            let tilt = if params.straighten != 0.0 { 1.5 } else { 1.0 };
-                            (m as f32 / crop * tilt).ceil() as usize
-                        });
-                        let src = Source::load(
-                            Path::new(&job.path),
-                            job.kind == ImageKind::Raw,
-                            job.orientation.map(|o| o as u16),
-                            load_edge,
-                        )?;
-                        let denoised = params.denoise.as_ref().and_then(|d| {
-                            let p = lumenkorn_develop::denoised::path(&state.denoised_dir, &d.id)?;
-                            lumenkorn_develop::denoised::read(&p, Some(src.image.long_edge())).ok()
-                        });
-                        let img = lumenkorn_develop::render_auto(
-                            &src,
-                            &params,
-                            &render_opts(&state, denoised.as_ref()),
-                        );
                         let target_dir = match &dir {
                             Some(d) => d.clone(),
                             None => lumenkorn_core::scanner::export_dir_for(Path::new(&job.path))
@@ -896,10 +904,54 @@ pub fn export_images(
                                 Error::Invalid(tr!("Export-Ordner: {e}", "Export folder: {e}"))
                             })?,
                         };
-                        let target = unique_path(&target_dir, &name, options.format.extension());
-                        used.insert(target_dir);
-                        output::write(&img, &target, &options)?;
-                        Ok(name)
+                        used.insert(target_dir.clone());
+                        let orientation = job.orientation.map(|o| o as u16);
+                        // Entwickelt wird einmal für alle Bildformate (nicht für DNG)
+                        let mut developed = None;
+                        let mut errors = Vec::new();
+                        for format in &formats {
+                            let target = unique_path(&target_dir, &name, format.extension());
+                            let res = if *format == ExportFormat::Dng {
+                                if job.kind == ImageKind::Raw {
+                                    output::write_dng(Path::new(&job.path), &target, orientation)
+                                        .map_err(Error::from)
+                                } else {
+                                    Err(Error::Invalid(
+                                        tr_s(
+                                            "DNG gibt es nur für RAW-Dateien",
+                                            "DNG is only available for RAW files",
+                                        )
+                                        .into(),
+                                    ))
+                                }
+                            } else {
+                                let img = developed.get_or_insert_with(|| {
+                                    develop_for_export(&state, &job, &params, options.long_edge)
+                                });
+                                match img {
+                                    Ok(img) => {
+                                        let opts = ExportOptions {
+                                            format: *format,
+                                            ..options.clone()
+                                        };
+                                        output::write(img, &target, &opts).map_err(Error::from)
+                                    }
+                                    Err(e) => Err(Error::Invalid(e.to_string())),
+                                }
+                            };
+                            if let Err(e) = res {
+                                errors.push(if formats.len() > 1 {
+                                    format!("{}: {e}", format.extension().to_uppercase())
+                                } else {
+                                    e.to_string()
+                                });
+                            }
+                        }
+                        if errors.is_empty() {
+                            Ok(name)
+                        } else {
+                            Err(Error::Invalid(errors.join("; ")))
+                        }
                     },
                 ))
                 .unwrap_or_else(|_| {

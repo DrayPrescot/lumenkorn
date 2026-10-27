@@ -46,6 +46,7 @@ fn main() -> Result<()> {
         &output,
         &ExportOptions {
             format: ExportFormat::Jpeg,
+            formats: Vec::new(),
             quality: 88,
             long_edge: None,
         },

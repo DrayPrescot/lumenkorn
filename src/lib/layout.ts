@@ -61,6 +61,26 @@ export function aspectOf(w: number | null, h: number | null): number {
   return Math.min(3, Math.max(0.4, w / h));
 }
 
+/** Seitenverhältnis im Raster und Filmstreifen: nach Drehen und Zuschnitt der
+ *  Bearbeitung, sonst das des Originals. */
+export function imageAspect(im: { width: number | null; height: number | null; aspect?: number }): number {
+  return im.aspect ? Math.min(3, Math.max(0.4, im.aspect)) : aspectOf(im.width, im.height);
+}
+
+/** Wie `EDIT_ASPECT` im Katalog: Vierteldrehung und Zuschnitt (normiert auf
+ *  das gedrehte Bild). `undefined` ohne bekannte Maße. */
+export function editAspect(
+  w: number | null,
+  h: number | null,
+  p: { rotate: number; crop: { w: number; h: number } | null },
+): number | undefined {
+  if (!w || !h) return undefined;
+  const odd = p.rotate % 2 === 1;
+  const c = p.crop ?? { w: 1, h: 1 };
+  const a = ((odd ? h : w) * c.w) / ((odd ? w : h) * c.h);
+  return Number.isFinite(a) && a > 0 ? a : undefined;
+}
+
 /** Maße für den Zoom in der Bibliothek: längste Kante in voller Auflösung und
  * die der Quelle, aus der die Vorschau entstand. Bearbeitete Bilder werden für
  * die Vorschau aus der auf 2048 px verkleinerten Quelle entwickelt (ein

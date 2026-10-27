@@ -292,6 +292,10 @@ const MIGRATIONS: &[&str] = &[
     // Import). v11 hatte `images_hash` entfernt; mit der Größe als zweiter
     // Spalte deckt er die ganze Abfrage ab.
     "CREATE INDEX images_hash ON images(quick_hash, size);",
+    // v23: EXIF aus RW2 und ORF wurde nicht gelesen (fehlende Ausrichtung,
+    // Datum, Kamera). Ungültige Änderungszeit: Der nächste Abgleich liest die
+    // Metadaten neu, Bewertungen und Bearbeitungen bleiben.
+    "UPDATE images SET mtime = -1 WHERE lower(ext) IN ('rw2', 'orf');",
 ];
 
 /// v21: Aufnahmeort je Foto – Koordinaten (aus EXIF oder vom Nutzer gesetzt)
@@ -1036,7 +1040,7 @@ impl Catalog {
             "SELECT i.id, i.path, i.file_name, i.kind, i.width, i.height, i.captured_at,
                     i.rating, i.flag, i.thumb_state, i.missing,
                     EXISTS (SELECT 1 FROM edits e WHERE e.image_id = i.id AND e.is_current = 1),
-                    i.gps_lat, i.gps_lon
+                    i.gps_lat, i.gps_lon, {EDIT_ASPECT}
              FROM images i WHERE {where_sql} ORDER BY {order}"
         );
         if let Some(limit) = q.limit {
@@ -1887,8 +1891,20 @@ fn summary_from_row(r: &Row) -> rusqlite::Result<ImageSummary> {
         edited: r.get(11)?,
         lat: r.get(12)?,
         lon: r.get(13)?,
+        aspect: r.get(14)?,
     })
 }
+
+/// Seitenverhältnis der aktuellen Bearbeitung: eine ungerade Zahl von
+/// Vierteldrehungen tauscht Breite und Höhe, der Zuschnitt ist normiert auf
+/// das gedrehte Bild. Für Raster und Filmstreifen.
+const EDIT_ASPECT: &str = "(SELECT
+        (CASE WHEN json_extract(e.params, '$.rotate') % 2 = 1 THEN i.height ELSE i.width END)
+        * COALESCE(json_extract(e.params, '$.crop.w'), 1.0)
+        / ((CASE WHEN json_extract(e.params, '$.rotate') % 2 = 1 THEN i.width ELSE i.height END)
+           * COALESCE(json_extract(e.params, '$.crop.h'), 1.0))
+     FROM edits e
+     WHERE e.image_id = i.id AND e.is_current = 1 AND i.width > 0 AND i.height > 0)";
 
 fn edit_from_row(r: &Row) -> rusqlite::Result<Edit> {
     let json: String = r.get(3)?;
@@ -2124,6 +2140,38 @@ mod cull_tests {
             .unwrap();
         assert_eq!(left, 3);
         assert!(cat.rejected_files(&ids).unwrap().is_empty());
+    }
+
+    /// Raster und Filmstreifen zeigen gedrehte und zugeschnittene Fotos in
+    /// ihrer neuen Form
+    #[test]
+    fn summary_aspect_follows_rotation_and_crop() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let ids = tests_support::insert_dummy_images(&mut cat, 3);
+        cat.conn
+            .execute("UPDATE images SET width = 6000, height = 4000", [])
+            .unwrap();
+        let rotated = DevelopParams {
+            rotate: 1,
+            ..Default::default()
+        };
+        let cropped = DevelopParams {
+            rotate: 3,
+            crop: Some(lumenkorn_develop::params::Crop {
+                x: 0.0,
+                y: 0.0,
+                w: 0.5,
+                h: 1.0,
+            }),
+            ..Default::default()
+        };
+        cat.save_develop(&[ids[1]], &rotated).unwrap();
+        cat.save_develop(&[ids[2]], &cropped).unwrap();
+        let all = cat.query_images(&ImageQuery::new(Scope::All)).unwrap();
+        let aspect = |id: i64| all.iter().find(|s| s.id == id).unwrap().aspect;
+        assert_eq!(aspect(ids[0]), None);
+        assert!((aspect(ids[1]).unwrap() - 4000.0 / 6000.0).abs() < 1e-6);
+        assert!((aspect(ids[2]).unwrap() - 2000.0 / 6000.0).abs() < 1e-6);
     }
 
     #[test]

@@ -62,6 +62,7 @@ fn main() -> Result<()> {
         Path::new(out),
         &ExportOptions {
             format: ExportFormat::Jpeg,
+            formats: Vec::new(),
             quality: 90,
             long_edge: None,
         },

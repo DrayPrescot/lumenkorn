@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, isTauri, pickFolder, type ExportOptions } from "../lib/api";
+  import { api, isTauri, pickFolder, type ExportFormat } from "../lib/api";
   import { prefs } from "../lib/prefs.svelte";
   import { dev } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
@@ -9,7 +9,18 @@
 
   let { ids, onclose }: { ids: number[]; onclose: () => void } = $props();
 
-  let format = $state<ExportOptions["format"]>("jpeg");
+  // Mehrere Formate auf einmal, z. B. DNG zum Archivieren und JPEG zum Teilen
+  const FORMATS: { id: ExportFormat; label: string }[] = [
+    { id: "jpeg", label: "JPEG" },
+    { id: "tiff16", label: t("TIFF, 16 Bit") },
+    { id: "png", label: "PNG" },
+    { id: "dng", label: "DNG" },
+  ];
+  let formats = $state<ExportFormat[]>(["jpeg"]);
+  const developed = $derived(formats.some((f) => f !== "dng"));
+  function toggleFormat(f: ExportFormat, on: boolean) {
+    formats = on ? FORMATS.map((x) => x.id).filter((x) => x === f || formats.includes(x)) : formats.filter((x) => x !== f);
+  }
   let quality = $state(90);
   let resize = $state(false);
   let longEdge = $state(2560);
@@ -37,9 +48,10 @@
   }
 
   async function start() {
+    if (!formats.length) return;
     await dev.flush();
     try {
-      await api.exportImages(ids, dir, { format, quality, longEdge: resize ? longEdge : null });
+      await api.exportImages(ids, dir, { format: formats[0], formats, quality, longEdge: resize ? longEdge : null });
       lib.notify(t(ids.length === 1 ? "Export von {n} Foto gestartet" : "Export von {n} Fotos gestartet", { n: ids.length }));
       onclose();
     } catch (e) {
@@ -61,13 +73,20 @@
     <h3>{t(ids.length === 1 ? "{n} Foto exportieren" : "{n} Fotos exportieren", { n: ids.length })}</h3>
 
     <fieldset>
-      <legend>{t("Format")}</legend>
-      <label><input type="radio" bind:group={format} value="jpeg" /> JPEG</label>
-      <label><input type="radio" bind:group={format} value="tiff16" /> {t("TIFF, 16 Bit")}</label>
-      <label><input type="radio" bind:group={format} value="png" /> PNG</label>
+      <legend>{t("Formate")}</legend>
+      {#each FORMATS as f (f.id)}
+        <label>
+          <input type="checkbox" checked={formats.includes(f.id)} onchange={(e) => toggleFormat(f.id, e.currentTarget.checked)} />
+          {f.label}
+        </label>
+      {/each}
     </fieldset>
 
-    {#if format === "jpeg"}
+    {#if formats.includes("dng")}
+      <p class="hint">{t("DNG enthält die Rohdaten des Originals ohne Bearbeitung und entsteht nur aus RAW-Dateien.")}</p>
+    {/if}
+
+    {#if formats.includes("jpeg")}
       <label class="line">
         {t("Qualität")}
         <input type="range" min="40" max="100" bind:value={quality} />
@@ -75,11 +94,13 @@
       </label>
     {/if}
 
-    <label class="line">
-      <input type="checkbox" bind:checked={resize} />
-      {t("Längste Kante begrenzen auf")}
-      <input type="number" min="256" max="20000" step="1" bind:value={longEdge} disabled={!resize} /> px
-    </label>
+    {#if developed}
+      <label class="line">
+        <input type="checkbox" bind:checked={resize} />
+        {t("Längste Kante begrenzen auf")}
+        <input type="number" min="256" max="20000" step="1" bind:value={longEdge} disabled={!resize} /> px
+      </label>
+    {/if}
 
     <div class="line">
       <span class="label">{t("Ziel")}</span>
@@ -101,7 +122,7 @@
 
     <div class="actions">
       <button type="button" class="btn quiet" onclick={onclose}>{t("Abbrechen")}</button>
-      <button type="submit" class="btn primary">{t("Exportieren")}</button>
+      <button type="submit" class="btn primary" disabled={!formats.length}>{t("Exportieren")}</button>
     </div>
   </form>
 </div>
@@ -167,7 +188,6 @@
     flex: 1;
     accent-color: var(--accent);
   }
-  input[type="radio"],
   input[type="checkbox"] {
     accent-color: var(--accent);
   }

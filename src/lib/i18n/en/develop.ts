@@ -107,6 +107,8 @@ export default {
   "TIFF, 16 Bit": "TIFF, 16-bit",
   "Qualität": "Quality",
   "Längste Kante begrenzen auf": "Limit long edge to",
+  "Formate": "Formats",
+  "DNG enthält die Rohdaten des Originals ohne Bearbeitung und entsteht nur aus RAW-Dateien.": "DNG holds the original raw data without edits and is only made from RAW files.",
   "Ziel": "Destination",
   "Im Ordner jedes Fotos wird bei Bedarf ein Unterordner „Export“ angelegt.": "An “Export” subfolder is created in each photo's folder as needed.",
   "Unterordner „Export“ neben dem Original": "“Export” subfolder next to the original",
