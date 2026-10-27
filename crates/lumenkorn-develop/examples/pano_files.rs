@@ -64,6 +64,7 @@ fn main() -> Result<()> {
             format: ExportFormat::Jpeg,
             formats: Vec::new(),
             dng_edited: true,
+            on_conflict: Default::default(),
             quality: 90,
             long_edge: None,
         },

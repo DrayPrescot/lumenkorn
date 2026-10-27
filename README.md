@@ -99,7 +99,9 @@ the catalog before you let Lumenkorn loose on your whole collection.
   "reset to original" button that asks before discarding everything.
 - Export to JPEG, 16-bit TIFF, PNG or DNG, several formats at once if you like, by default into
   an `Export` folder next to each original. DNG is slightly lossy (linear, JPEG-compressed, as in
-  Lightroom) and holds either the edited photo or the original image data without edits.
+  Lightroom) and holds either the edited photo or the original image data without edits. If a
+  file already exists, Lumenkorn asks whether to overwrite it, export as well (`name-2`) or skip
+  it. Originals in the library are never overwritten.
 
 ### Auto in your style
 Auto learns from your edits how you differ from its suggestions and adapts step by step,

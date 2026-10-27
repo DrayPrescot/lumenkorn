@@ -293,6 +293,7 @@ pub fn run() {
             develop::develop_restore,
             develop::develop_delete_snapshot,
             develop::export_images,
+            develop::export_conflicts,
             ai::ai_status,
             ai::ai_set_settings,
             ai::ai_download,

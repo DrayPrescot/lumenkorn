@@ -239,8 +239,10 @@ Außerdem:
   verkleinert, im Hintergrund. DNG wird wie in Lightroom leicht verlustbehaftet gespeichert
   (linear, JPEG-komprimiert) und enthält wahlweise das bearbeitete Foto oder die Bilddaten des
   Originals ohne Bearbeitung. Standardziel ist der Unterordner `Export` neben dem Original.
-  Von Lumenkorn angelegte Export-Ordner tragen eine versteckte Markierung (`.lumenkorn-export`) und erscheinen nicht in der Bibliothek. Vorhandene
-  Dateien werden nie überschrieben.
+  Von Lumenkorn angelegte Export-Ordner tragen eine versteckte Markierung (`.lumenkorn-export`) und
+  erscheinen nicht in der Bibliothek. Gibt es eine Datei schon, fragt Lumenkorn: überschreiben,
+  zusätzlich exportieren (`Name-2`) oder überspringen. Originale der Bibliothek werden nie
+  überschrieben.
 
 ## Masken (lokale Anpassungen)
 

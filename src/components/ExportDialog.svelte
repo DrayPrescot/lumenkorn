@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, isTauri, pickFolder, type ExportFormat } from "../lib/api";
+  import { api, isTauri, pickFolder, type ExportFormat, type ExportOptions } from "../lib/api";
   import { prefs } from "../lib/prefs.svelte";
   import { dev } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
@@ -48,11 +48,25 @@
     else if (!isTauri || navigator.userAgent.includes("Android")) pathDialog = true;
   }
 
+  // Gibt es Zieldateien schon, wird einmal für alle gefragt
+  let conflicts = $state<string[] | null>(null);
+  const options = (): ExportOptions => ({ format: formats[0], formats, dngEdited, quality, longEdge: resize ? longEdge : null });
+
   async function start() {
     if (!formats.length) return;
     await dev.flush();
     try {
-      await api.exportImages(ids, dir, { format: formats[0], formats, dngEdited, quality, longEdge: resize ? longEdge : null });
+      const existing = await api.exportConflicts(ids, dir, options());
+      if (existing.length) conflicts = existing;
+      else await run("rename");
+    } catch (e) {
+      lib.notify(String(e), "error");
+    }
+  }
+
+  async function run(onConflict: NonNullable<ExportOptions["onConflict"]>) {
+    try {
+      await api.exportImages(ids, dir, { ...options(), onConflict });
       lib.notify(t(ids.length === 1 ? "Export von {n} Foto gestartet" : "Export von {n} Fotos gestartet", { n: ids.length }));
       onclose();
     } catch (e) {
@@ -124,14 +138,30 @@
     </div>
 
     <p class="hint">
-      {t("Exportiert in voller Auflösung mit allen Bearbeitungen. Vorhandene Dateien werden nicht überschrieben.")}
+      {t("Exportiert in voller Auflösung mit allen Bearbeitungen. Gibt es eine Datei schon, fragt Lumenkorn nach.")}
       {#if !dir}{t("Von Lumenkorn angelegte „Export“-Ordner erscheinen nicht in der Bibliothek.")}{/if}
     </p>
 
-    <div class="actions">
-      <button type="button" class="btn quiet" onclick={onclose}>{t("Abbrechen")}</button>
-      <button type="submit" class="btn primary" disabled={!formats.length}>{t("Exportieren")}</button>
-    </div>
+    {#if conflicts}
+      <div class="conflict" role="alert">
+        <p>
+          {t(conflicts.length === 1 ? "{n} Datei gibt es im Ziel schon:" : "{n} Dateien gibt es im Ziel schon:", { n: conflicts.length })}
+          <span class="names">{conflicts.slice(0, 3).join(", ")}{conflicts.length > 3 ? " …" : ""}</span>
+        </p>
+        <p class="hint">{t("Originale aus der Bibliothek werden nie überschrieben.")}</p>
+        <div class="choices">
+          <button type="button" class="btn small" onclick={() => run("overwrite")}>{t("Überschreiben")}</button>
+          <button type="button" class="btn small" onclick={() => run("rename")} title={t("Als Name-2 usw. neben die vorhandene Datei")}>{t("Zusätzlich exportieren")}</button>
+          <button type="button" class="btn small" onclick={() => run("skip")}>{t("Überspringen")}</button>
+        </div>
+        <button type="button" class="btn small quiet back" onclick={() => (conflicts = null)}>{t("Zurück")}</button>
+      </div>
+    {:else}
+      <div class="actions">
+        <button type="button" class="btn quiet" onclick={onclose}>{t("Abbrechen")}</button>
+        <button type="submit" class="btn primary" disabled={!formats.length}>{t("Exportieren")}</button>
+      </div>
+    {/if}
   </form>
 </div>
 
@@ -233,7 +263,31 @@
   .actions {
     display: flex;
     justify-content: flex-end;
+    flex-wrap: wrap;
     gap: 8px;
+  }
+  .conflict {
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+    background: var(--raised);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-m);
+  }
+  .conflict p {
+    margin: 0;
+  }
+  .choices {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .back {
+    justify-self: start;
+  }
+  .names {
+    color: var(--muted);
+    overflow-wrap: anywhere;
   }
   .btn:disabled {
     opacity: 0.45;

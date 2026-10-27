@@ -719,6 +719,8 @@ export interface ExportOptions {
   formats?: ExportFormat[];
   /** DNG mit Bearbeitung (sonst das unbearbeitete Original) */
   dngEdited?: boolean;
+  /** Zieldatei gibt es schon: zusätzlich (-2), überschreiben oder überspringen */
+  onConflict?: "rename" | "overwrite" | "skip";
   quality: number;
   longEdge: number | null;
 }
@@ -728,6 +730,8 @@ export interface ExportProgress {
   total: number;
   current: string | null;
   failed: string[];
+  /** Schon vorhandene Dateien, die behalten wurden */
+  skipped: number;
   finished: boolean;
   dir: string;
 }
@@ -961,6 +965,9 @@ export const api = {
   /** `dir` null: Unterordner „Export“ neben dem jeweiligen Original. */
   exportImages: (ids: number[], dir: string | null, options: ExportOptions) =>
     call<void>("export_images", { ids, dir, options }),
+  /** Dateinamen, die es im Ziel schon gibt */
+  exportConflicts: (ids: number[], dir: string | null, options: ExportOptions) =>
+    call<string[]>("export_conflicts", { ids, dir, options }),
 
   aiStatus: () => call<AiStatus>("ai_status"),
   aiSetSettings: (settings: AiSettings) => call<void>("ai_set_settings", { settings }),

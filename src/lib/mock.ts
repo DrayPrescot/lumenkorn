@@ -629,6 +629,8 @@ export const mock = {
         throw t("Downloads sind nur in der App verfügbar.");
       case "semantic_search":
         return out(query({ scope: a.scope, search: a.query, minRating: a.minRating, exts: a.exts, edited: a.edited }));
+      case "export_conflicts":
+        return out(["DSC01153.jpg", "DSC01154.jpg"]);
       case "export_images":
         throw t("Export ist nur in der App verfügbar.");
       case "set_rating":

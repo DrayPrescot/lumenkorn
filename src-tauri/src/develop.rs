@@ -807,6 +807,8 @@ struct ExportProgress {
     total: usize,
     current: Option<String>,
     failed: Vec<String>,
+    /// Dateien, die schon vorhanden waren und bleiben sollten
+    skipped: usize,
     finished: bool,
     dir: String,
 }
@@ -886,7 +888,11 @@ pub fn export_images(
             let formats = options.all_formats();
             let total = ids.len();
             let mut failed = Vec::new();
+            let mut skipped = 0;
             let mut used = std::collections::BTreeSet::new();
+            // In diesem Export geschrieben: nie überschreiben (z. B. IMG_1.CR2
+            // und IMG_1.JPG aus demselben Ordner)
+            let mut written = std::collections::HashSet::new();
             for (i, id) in ids.iter().enumerate() {
                 let mut cur_name: Option<String> = None;
                 // Ein Panic bei einem Bild (z. B. in der GPU-Pipeline) darf den
@@ -909,6 +915,7 @@ pub fn export_images(
                                 total,
                                 current: Some(name.clone()),
                                 failed: failed.clone(),
+                                skipped,
                                 finished: false,
                                 dir: shown(&used),
                             },
@@ -926,7 +933,24 @@ pub fn export_images(
                         let mut developed = None;
                         let mut errors = Vec::new();
                         for format in &formats {
-                            let target = unique_path(&target_dir, &name, format.extension());
+                            let Some(target) = export_target(
+                                &target_dir,
+                                &name,
+                                format.extension(),
+                                options.on_conflict,
+                                &written,
+                                |p| {
+                                    state
+                                        .catalog
+                                        .locked()
+                                        .has_image_path(&p.to_string_lossy())
+                                        .unwrap_or(true)
+                                },
+                            ) else {
+                                skipped += 1;
+                                continue;
+                            };
+                            written.insert(target.clone());
                             let res = if *format == ExportFormat::Dng && !options.dng_edited {
                                 // Original ohne Bearbeitung: die Szenendaten der Quelle
                                 Source::load(
@@ -991,6 +1015,7 @@ pub fn export_images(
                     total,
                     current: None,
                     failed,
+                    skipped,
                     finished: true,
                     dir: shown(&used),
                 },
@@ -1000,6 +1025,84 @@ pub fn export_images(
 }
 
 /// `name.jpg`, bei Kollision `name-2.jpg`, `name-3.jpg` …
+/// Zieldatei eines Exports nach `mode`; `None`: überspringen. Originale der
+/// Bibliothek und Dateien aus diesem Export werden nie überschrieben, sondern
+/// bekommen einen neuen Namen.
+fn export_target(
+    dir: &Path,
+    stem: &str,
+    ext: &str,
+    mode: output::OnConflict,
+    written: &std::collections::HashSet<PathBuf>,
+    is_original: impl Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    let first = dir.join(format!("{stem}.{ext}"));
+    if !first.exists() && !written.contains(&first) {
+        return Some(first);
+    }
+    let protected = written.contains(&first) || is_original(&first);
+    // Nächster freie Name, auch unter den in diesem Export vergebenen
+    let renamed = || {
+        (2..)
+            .map(|n| dir.join(format!("{stem}-{n}.{ext}")))
+            .find(|p| !p.exists() && !written.contains(p))
+    };
+    match mode {
+        _ if protected => renamed(),
+        output::OnConflict::Overwrite => Some(first),
+        output::OnConflict::Skip => None,
+        output::OnConflict::Rename => renamed(),
+    }
+}
+
+/// Wo der Export ein Foto ablegen würde, ohne Ordner anzulegen
+fn planned_export_dir(dir: Option<&Path>, photo: &Path) -> Option<PathBuf> {
+    match dir {
+        Some(d) => Some(d.to_path_buf()),
+        None => photo.parent().map(|p| p.join("Export")),
+    }
+}
+
+/// Vor dem Export: Welche Zieldateien gibt es schon? (Dateinamen; die
+/// Oberfläche fragt dann, ob überschrieben, zusätzlich exportiert oder
+/// übersprungen werden soll)
+#[tauri::command(async)]
+pub fn export_conflicts(
+    state: State<AppState>,
+    ids: Vec<i64>,
+    dir: Option<String>,
+    options: ExportOptions,
+) -> Result<Vec<String>, Error> {
+    let dir = dir.map(PathBuf::from);
+    let formats = options.all_formats();
+    let paths: Vec<String> = {
+        let cat = state.catalog.locked();
+        ids.iter()
+            .filter_map(|id| cat.thumb_job(*id).ok().map(|j| j.path))
+            .collect()
+    };
+    let mut out = Vec::new();
+    for p in &paths {
+        let photo = Path::new(p);
+        let (Some(d), Some(stem)) = (planned_export_dir(dir.as_deref(), photo), photo.file_stem())
+        else {
+            continue;
+        };
+        for f in &formats {
+            let t = d.join(format!("{}.{}", stem.to_string_lossy(), f.extension()));
+            if t.exists() {
+                out.push(
+                    t.file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+            }
+        }
+    }
+    Ok(out)
+}
+
 pub(crate) fn unique_path(dir: &Path, stem: &str, ext: &str) -> PathBuf {
     let first = dir.join(format!("{stem}.{ext}"));
     if !first.exists() {
@@ -1013,7 +1116,40 @@ pub(crate) fn unique_path(dir: &Path, stem: &str, ext: &str) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::{FileStamp, zoom_edge};
+    use super::{FileStamp, export_target, output::OnConflict, zoom_edge};
+
+    #[test]
+    fn export_target_follows_conflict_mode() {
+        let dir = std::env::temp_dir().join(format!("lw-target-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.jpg"), b"alt").unwrap();
+        std::fs::write(dir.join("orig.jpg"), b"original").unwrap();
+        let none = std::collections::HashSet::new();
+        let lib = |p: &std::path::Path| p.ends_with("orig.jpg");
+        let t = |stem, mode, written: &std::collections::HashSet<_>| {
+            export_target(&dir, stem, "jpg", mode, written, lib)
+        };
+        // Frei: immer der eigentliche Name
+        assert_eq!(t("neu", OnConflict::Skip, &none), Some(dir.join("neu.jpg")));
+        assert_eq!(
+            t("a", OnConflict::Overwrite, &none),
+            Some(dir.join("a.jpg"))
+        );
+        assert_eq!(t("a", OnConflict::Rename, &none), Some(dir.join("a-2.jpg")));
+        assert_eq!(t("a", OnConflict::Skip, &none), None);
+        // Originale der Bibliothek nie überschreiben, auch nicht auslassen
+        assert_eq!(
+            t("orig", OnConflict::Overwrite, &none),
+            Some(dir.join("orig-2.jpg"))
+        );
+        // Im selben Export geschrieben (IMG_1.CR2 und IMG_1.JPG): daneben legen
+        let written = [dir.join("neu.jpg")].into_iter().collect();
+        assert_eq!(
+            t("neu", OnConflict::Overwrite, &written),
+            Some(dir.join("neu-2.jpg"))
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn file_stamp_notices_external_changes() {

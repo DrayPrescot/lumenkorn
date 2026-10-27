@@ -11,6 +11,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   white balance, instead of a relative −100…100 that often ran out of range. The slider moves
   evenly in mired. **Automatic** suggests a Kelvin value too. Older edits are shown in Kelvin
   and look the same. JPEGs and other finished images keep the relative temperature.
+- When an exported file already exists, Lumenkorn asks once for the whole export: overwrite,
+  export as well (`name-2`, as before) or skip. Originals in the library are never overwritten,
+  and photos of the same export never overwrite each other.
 
 ### Fixed
 - Exported DNGs now carry a large JPEG preview (2560 px) like Adobe's DNGs. Windows and image

@@ -107,6 +107,22 @@ pub struct ExportOptions {
     /// Bearbeitung (zum Weiterentwickeln in anderen Programmen)
     #[serde(default = "yes")]
     pub dng_edited: bool,
+    /// Gibt es die Zieldatei schon? Standard: mit „-2“ daneben legen
+    #[serde(default)]
+    pub on_conflict: OnConflict,
+}
+
+/// Umgang mit schon vorhandenen Zieldateien beim Export
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OnConflict {
+    /// Zusätzlich exportieren: `name-2.jpg`
+    #[default]
+    Rename,
+    /// Vorhandene Datei ersetzen (nie ein Original der Bibliothek)
+    Overwrite,
+    /// Vorhandene Datei behalten, dieses Format nicht schreiben
+    Skip,
 }
 
 fn default_quality() -> u8 {
@@ -239,6 +255,7 @@ mod tests {
                 quality: 90,
                 long_edge: None,
                 dng_edited: false,
+                on_conflict: OnConflict::Rename,
             };
             write_original_dng(&src.image, &target, &opts).unwrap();
             let back = crate::Source::load(&target, true, None, None).unwrap();
@@ -279,6 +296,7 @@ mod tests {
                     quality: 90,
                     long_edge: Some(150),
                     dng_edited: true,
+                    on_conflict: OnConflict::Rename,
                 },
             )
             .unwrap();

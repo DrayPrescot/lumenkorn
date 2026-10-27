@@ -43,6 +43,7 @@ fn save(img: &ImageF32, dir: &Path, name: &str, scene: bool) -> Result<()> {
             format: ExportFormat::Jpeg,
             formats: Vec::new(),
             dng_edited: true,
+            on_conflict: Default::default(),
             quality: 88,
             long_edge: None,
         },

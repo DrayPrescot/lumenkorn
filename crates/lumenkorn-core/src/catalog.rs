@@ -1028,6 +1028,17 @@ impl Catalog {
     // Bilder – Abfragen
     // ------------------------------------------------------------------
 
+    /// Liegt unter diesem Pfad ein Foto der Bibliothek? (Groß-/Kleinschreibung
+    /// egal – unter Windows ist es dieselbe Datei.) Der Export überschreibt
+    /// solche Dateien nie.
+    pub fn has_image_path(&self, path: &str) -> Result<bool> {
+        Ok(self.conn.query_row(
+            "SELECT EXISTS (SELECT 1 FROM images WHERE path = ?1 COLLATE NOCASE)",
+            [path],
+            |r| r.get(0),
+        )?)
+    }
+
     pub fn query_images(&self, q: &ImageQuery) -> Result<Vec<ImageSummary>> {
         let (where_sql, mut args) = self.where_clause(q)?;
         let order = match q.sort {

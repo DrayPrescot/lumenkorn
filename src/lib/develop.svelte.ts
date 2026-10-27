@@ -274,10 +274,13 @@ class Develop {
       clearTimeout(this.#exportTimer);
       if (p.finished) {
         const ok = p.total - p.failed.length;
+        const skipped = p.skipped
+          ? " " + t(p.skipped === 1 ? "{n} vorhandene Datei übersprungen." : "{n} vorhandene Dateien übersprungen.", { n: p.skipped })
+          : "";
         lib.notify(
-          p.failed.length
+          (p.failed.length
             ? t("{ok} von {total} exportiert. Fehlgeschlagen: {failed}", { ok, total: p.total, failed: p.failed.join("; ") })
-            : t(ok === 1 ? "{n} Foto exportiert nach {dir}" : "{n} Fotos exportiert nach {dir}", { n: ok, dir: p.dir }),
+            : t(ok === 1 ? "{n} Foto exportiert nach {dir}" : "{n} Fotos exportiert nach {dir}", { n: ok, dir: p.dir })) + skipped,
           p.failed.length ? "error" : "info",
         );
         this.#exportTimer = setTimeout(() => (this.exportProgress = null), 1500);
