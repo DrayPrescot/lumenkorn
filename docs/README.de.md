@@ -170,7 +170,7 @@ Der Reiter **Basis** enthält von oben nach unten:
   danach und tont das Schwarzweißbild, etwa kühle Tiefen und warme Lichter oder Sepia.
 
 - **Weißabgleich:** Temperatur und Tönung, relativ zum Kamera-Weißabgleich. „Automatisch“ schätzt
-  die Lichtfarbe und stellt sie neutral, „Wie aufgenommen“ setzt beide Regler auf 0.
+  die Lichtfarbe und stellt sie neutral.
 - **Enter** löst im Entwickeln den Fokus von einem Regler, damit die Pfeiltasten wieder durch den
   Filmstreifen blättern; beim Zuschneiden übernimmt Enter den Zuschnitt.
 - **Licht:** Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz. Lichter und Tiefen wirken auf die

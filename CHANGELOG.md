@@ -13,8 +13,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [1.0.20] – 2026-10-27
 
 ### Added
-- White balance: **Automatic** estimates the color of the light and makes it neutral, **As shot**
-  returns to the camera's white balance.
+- White balance: **Automatic** estimates the color of the light and makes it neutral.
 - The **Filter** button (formerly File type) can also show only edited or only unedited photos.
 
 ### Fixed

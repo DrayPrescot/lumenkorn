@@ -67,7 +67,7 @@ the catalog before you let Lumenkorn loose on your whole collection.
   Nikon, Sony, Fujifilm, Panasonic, Olympus/OM System, Pentax, DNG and others supported by rawler.
 
 ### Develop (non-destructive)
-- White balance (with **Automatic** and **As shot**), exposure, contrast, highlights, shadows,
+- White balance (with **Automatic**), exposure, contrast, highlights, shadows,
   whites, blacks, clarity, dehaze,
   vibrance, saturation and sharpening. **Auto** (`Ctrl+U`) sets the tone sliders for a
   balanced result and learns your style from your edits (see below). **Black & White** (`V`)

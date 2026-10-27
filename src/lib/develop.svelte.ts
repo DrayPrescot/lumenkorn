@@ -1083,15 +1083,6 @@ class Develop {
     }
   }
 
-  /** Weißabgleich wie aufgenommen (Temperatur und Tönung 0, mit Rückgängig) */
-  asShotWhiteBalance() {
-    if (!this.ready || (this.params.temperature === 0 && this.params.tint === 0)) return;
-    this.params.temperature = 0;
-    this.params.tint = 0;
-    this.schedule();
-    this.commit();
-  }
-
   /** Schwarzweiß ein/aus (mit Rückgängig) */
   setMonochrome(on: boolean) {
     if (!this.ready || (this.params.monochrome ?? false) === on) return;

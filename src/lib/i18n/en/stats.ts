@@ -12,8 +12,6 @@ export default {
   "nur bearbeitete": "edited only",
   "nur unbearbeitete": "unedited only",
   "Lichtfarbe schätzen und neutral stellen": "Estimate the color of the light and make it neutral",
-  "Weißabgleich der Kamera (Temperatur und Tönung 0)": "The camera's white balance (temperature and tint 0)",
-  "Wie aufgenommen": "As shot",
   "Keine Fotos in dieser Ansicht.": "No photos in this view.",
   "Ohne Auswahl werden alle Typen gezeigt.": "With nothing selected, all types are shown.",
   "Alle Typen": "All types",
