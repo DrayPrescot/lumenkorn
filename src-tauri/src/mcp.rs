@@ -1047,7 +1047,7 @@ async fn search(app: &AppHandle, a: &Value) -> ToolResult {
         .and_then(Value::as_bool)
         .unwrap_or(false);
     let mut list = if let (Some(q), true) = (text_q, by_content) {
-        crate::ai::semantic_search(app.clone(), q.to_string(), scope, min_rating, exts)
+        crate::ai::semantic_search(app.clone(), q.to_string(), scope, min_rating, exts, None)
             .await
             .map_err(e)?
     } else {

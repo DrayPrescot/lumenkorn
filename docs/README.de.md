@@ -79,10 +79,10 @@ vergibt sie in der neuen Sprache neu.
 - **Suche** über Dateiname, Ordner, Kamera, Objektiv, Schlagworte, Personen und Ortsnamen, oder nach Bildinhalt
   (KI). Teilwörter genügen („sonnen“ findet „Sonnenuntergang“), Groß- und Kleinschreibung und
   Akzente spielen keine Rolle. Dazu Filter nach Mindestbewertung und Sortierung.
-- **Dateityp:** Der Knopf „Dateityp“ in der Werkzeugleiste listet die Formate der Ansicht (ARW,
-  CR3, JPEG, PNG …) mit ihrer Anzahl, getrennt nach RAW und anderen Formaten; JPG und JPEG zählen
-  als ein Typ. Der Filter gilt in der Bibliothek und beim Entwickeln (Filmstreifen), zusammen mit
-  Suche und Sternen.
+- **Filter:** Der Knopf „Filter“ in der Werkzeugleiste zeigt nur bearbeitete oder nur
+  unbearbeitete Fotos und listet die Formate der Ansicht (ARW, CR3, JPEG, PNG …) mit ihrer Anzahl,
+  getrennt nach RAW und anderen Formaten; JPG und JPEG zählen als ein Typ. Der Filter gilt in der
+  Bibliothek und beim Entwickeln (Filmstreifen), zusammen mit Suche und Sternen.
 - **Statistik:** Der Knopf „Statistik“ über dem Raster wertet die Fotos der Ansicht aus (Ordner,
   Projekt, Person, mit allen Filtern): Kameras, Objektive, Brennweite, Blende, Belichtungszeit,
   ISO, Aufnahmen je Monat oder Jahr, Tageszeit, Schlagworte, Personen, Länder, Dateitypen und
@@ -169,7 +169,10 @@ Der Reiter **Basis** enthält von oben nach unten:
   einen dramatischen Himmel), und Masken färben das Bild nicht wieder ein. Color Grading wirkt
   danach und tont das Schwarzweißbild, etwa kühle Tiefen und warme Lichter oder Sepia.
 
-- **Weißabgleich:** Temperatur und Tönung, relativ zum Kamera-Weißabgleich.
+- **Weißabgleich:** Temperatur und Tönung, relativ zum Kamera-Weißabgleich. „Automatisch“ schätzt
+  die Lichtfarbe und stellt sie neutral, „Wie aufgenommen“ setzt beide Regler auf 0.
+- **Enter** löst im Entwickeln den Fokus von einem Regler, damit die Pfeiltasten wieder durch den
+  Filmstreifen blättern; beim Zuschneiden übernimmt Enter den Zuschnitt.
 - **Licht:** Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz. Lichter und Tiefen wirken auf die
   helle bzw. dunkle Bildhälfte bis in die Mitteltöne, Weiß und Schwarz nur auf die Enden der Skala
   (Weiß- und Schwarzpunkt) – die Mitteltöne bleiben dabei nahezu, wo sie sind.

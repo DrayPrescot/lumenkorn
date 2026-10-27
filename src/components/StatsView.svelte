@@ -183,6 +183,7 @@
         {lib.scopeTitle}
         {#if lib.search.trim()}· {t("Suche „{s}“", { s: lib.search.trim() })}{/if}
         {#if lib.minRating}· {t("ab {n} Sternen", { n: lib.minRating })}{/if}
+        {#if lib.editedFilter !== null}· {lib.editedFilter ? t("nur bearbeitete") : t("nur unbearbeitete")}{/if}
         {#if lib.fileTypes.length}· {[...new Set(types.length ? lib.fileTypes.map((e) => types.find((x) => x.exts.includes(e))?.label ?? e.toUpperCase()) : lib.fileTypes)].join(", ")}{/if}
       </p>
     </div>

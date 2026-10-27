@@ -544,6 +544,22 @@ pub async fn develop_auto(
     .await
 }
 
+/// Automatischer Weißabgleich: (Temperatur, Tönung) für das Foto
+#[tauri::command]
+pub async fn develop_auto_wb(
+    app: AppHandle,
+    id: i64,
+    params: DevelopParams,
+) -> Result<(f32, f32), Error> {
+    blocking(app, move |state| {
+        let src = load_proxy(state, id, PROXY_EDGE)?;
+        let wb = lumenkorn_develop::auto::auto_white_balance(&src, &params);
+        log::info!("Auto-Weißabgleich für Bild {id}: {wb:?}");
+        Ok(wb)
+    })
+    .await
+}
+
 /// Ob für das Foto die Objektivkorrektur eingeschaltet ist (gespeicherter
 /// Stand; die Oberfläche speichert Änderungen sofort).
 pub(crate) fn lens_setting(state: &AppState, id: i64) -> bool {

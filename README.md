@@ -54,8 +54,8 @@ the catalog before you let Lumenkorn loose on your whole collection.
 - Projects collect any number of folders, also across drives.
 - Ratings (`0`–`5`), pick and reject flags (`P` / `X`), keywords, and a search over file name,
   folder, camera, lens, keywords, people and place names.
-- **File type** in the toolbar filters by format (ARW, CR3, JPEG, PNG …, or all RAW files at once),
-  in the library and in Develop.
+- **Filter** in the toolbar shows only edited or only unedited photos, and filters by format (ARW,
+  CR3, JPEG, PNG …, or all RAW files at once), in the library and in Develop.
 - **Statistics** shows the photos of the current view by camera, lens, focal length, aperture,
   shutter speed, ISO, month or year, time of day, keyword, person, country, file type and rating.
   Clicking an entry filters by it.
@@ -67,7 +67,8 @@ the catalog before you let Lumenkorn loose on your whole collection.
   Nikon, Sony, Fujifilm, Panasonic, Olympus/OM System, Pentax, DNG and others supported by rawler.
 
 ### Develop (non-destructive)
-- White balance, exposure, contrast, highlights, shadows, whites, blacks, clarity, dehaze,
+- White balance (with **Automatic** and **As shot**), exposure, contrast, highlights, shadows,
+  whites, blacks, clarity, dehaze,
   vibrance, saturation and sharpening. **Auto** (`Ctrl+U`) sets the tone sliders for a
   balanced result and learns your style from your edits (see below). **Black & White** (`V`)
   converts the photo; the HSL luminance sliders
@@ -86,7 +87,9 @@ the catalog before you let Lumenkorn loose on your whole collection.
 - Lens correction for RAW files (on by default): distortion, color fringes and vignetting,
   from the correction data the camera writes into the file (Sony ARW, DNG) or from a
   [Lensfun](https://lensfun.github.io/) profile for about 1,500 lenses.
-- Crop, rotate, flip, and straighten with automatic horizon detection.
+- Crop, rotate, flip, and straighten with automatic horizon detection. `Enter` applies the crop.
+- In Develop, `Enter` releases the focus from a slider, so the arrow keys move through the
+  filmstrip again.
 - Local adjustments: linear and radial gradients, brush, color range, and AI masks for
   subject, sky, people (whole or parts such as hair, eyes, lips or skin), animals (birds,
   mammals, reptiles) and any object you click on. Shapes can be added to or subtracted from each

@@ -1121,6 +1121,12 @@ impl Catalog {
                 serde_json::to_string(&exts).unwrap_or_else(|_| "[]".into()),
             ));
         }
+        if let Some(edited) = q.edited {
+            parts.push(format!(
+                "{} EXISTS (SELECT 1 FROM edits e WHERE e.image_id = i.id AND e.is_current = 1)",
+                if edited { "" } else { "NOT" }
+            ));
+        }
         if let Some(ids) = &q.ids {
             parts.push("i.id IN (SELECT value FROM json_each(?))".into());
             args.push(Value::Text(
@@ -1820,10 +1826,12 @@ impl Catalog {
     /// beschränkt auf einen Bereich.
     pub fn images_in_order(&self, ids: &[i64], filter: &ImageQuery) -> Result<Vec<ImageSummary>> {
         // Nur die Treffer lesen, nicht alle Fotos des Bereichs (bis 100 000).
-        // Von `filter` zählen Bereich, Mindestbewertung und Dateitypen.
+        // Von `filter` zählen Bereich, Mindestbewertung, Dateitypen und
+        // bearbeitet/unbearbeitet.
         let mut q = ImageQuery::new(filter.scope.clone());
         q.min_rating = filter.min_rating;
         q.exts = filter.exts.clone();
+        q.edited = filter.edited;
         q.ids = Some(ids.to_vec());
         let all = self.query_images(&q)?;
         let by_id: std::collections::HashMap<i64, ImageSummary> =

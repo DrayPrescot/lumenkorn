@@ -871,6 +871,7 @@ pub async fn semantic_search(
     scope: Scope,
     min_rating: Option<i64>,
     exts: Option<Vec<String>>,
+    edited: Option<bool>,
 ) -> Result<Vec<ImageSummary>, Error> {
     blocking(app, move |state| {
         let loaded = ensure_loaded(state)?;
@@ -888,6 +889,7 @@ pub async fn semantic_search(
         let mut sq = ImageQuery::new(scope);
         sq.min_rating = min_rating;
         sq.exts = exts;
+        sq.edited = edited;
         let allowed: HashSet<i64> = state.catalog.locked().query_image_ids(&sq)?;
         // Kosinus-Werte von CLIP liegen eng beieinander; relativ zum besten
         // Treffer filtern ist robuster als eine feste Schwelle.

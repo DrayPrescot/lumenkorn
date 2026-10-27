@@ -59,7 +59,23 @@
     return (r: { x: number; y: number; w: number; h: number }, scale: number) => dev.detailUrl(r, scale, b);
   });
 
+  /** Enter: Zuschnitt übernehmen bzw. den Fokus lösen, damit die Pfeiltasten
+   *  wieder im Filmstreifen blättern statt einen Regler zu verstellen. Nicht
+   *  in Dialogen und echten Textfeldern (Maskenname …); die Wertfelder der
+   *  Regler übernehmen ihren Wert selbst und lassen Enter durch. */
+  function enter(e: KeyboardEvent): boolean {
+    if (e.key !== "Enter" || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return false;
+    const el = e.target as HTMLElement | null;
+    if (el?.closest?.("dialog, [role='dialog'], [aria-modal='true']")) return false;
+    if (isTyping(e) && !el?.closest?.(".slider")) return false;
+    e.preventDefault();
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    if (dev.cropMode) dev.applyCrop();
+    return true;
+  }
+
   function onkeydown(e: KeyboardEvent) {
+    if (enter(e)) return;
     if (isTyping(e)) return;
     if (!dev.cropMode && zoomKey(e, zoom)) return;
     // Pfeile, Enter und Escape sind fest; der Rest folgt der Belegung
@@ -70,7 +86,6 @@
     else if (keymap.is(e, "maskOverlay") && dev.activeMask !== null) dev.toggleOverlay();
     else if (keymap.is(e, "bw")) dev.setMonochrome(!dev.params.monochrome);
     else if (keymap.is(e, "crop")) dev.cropMode ? dev.applyCrop() : dev.enterCrop();
-    else if (e.key === "Enter" && dev.cropMode) dev.applyCrop();
     else if (e.key === "Escape" && dev.cropMode) dev.cancelCrop();
     else if (e.key === "Escape" && (dev.tool || dev.activeMask !== null)) {
       if (dev.tool) dev.tool = null;

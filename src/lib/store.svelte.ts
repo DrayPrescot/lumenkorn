@@ -16,6 +16,8 @@ class Library {
   minRating = $state(0);
   /** Dateityp-Filter: Endungen (klein), leer = alle */
   fileTypes = $state<string[]>([]);
+  /** Nur bearbeitete (true) bzw. unbearbeitete (false) Fotos, null = alle */
+  editedFilter = $state<boolean | null>(null);
 
   /** Flach (`raw`): Bei 50 000 Fotos kein Proxy je Bild; geändert wird nur durch Ersetzen. */
   images = $state.raw<ImageSummary[]>([]);
@@ -304,7 +306,7 @@ class Library {
       const query = this.currentQuery();
       let images =
         this.semantic && query.search
-          ? await api.semanticSearch(query.search, query.scope, query.minRating ?? null, query.exts ?? null)
+          ? await api.semanticSearch(query.search, query.scope, query.minRating ?? null, query.exts ?? null, query.edited ?? null)
           : await api.queryImages(query);
       if (token !== this.#loadToken) return;
       // Während der Abfrage Bewertetes/Markiertes erneut anwenden
@@ -377,6 +379,7 @@ class Library {
       this.search = "";
       this.minRating = 0;
       this.fileTypes = [];
+      this.editedFilter = null;
       this.scope = { type: "all" };
       await this.loadImages();
       index = this.images.findIndex((i) => i.id === id);
@@ -961,19 +964,21 @@ class Library {
       search: text || null,
       minRating: this.minRating || null,
       exts: this.fileTypes.length ? [...this.fileTypes] : null,
+      edited: this.editedFilter,
     };
   }
 
-  /** Ein Filter (Suche, Sterne, Dateityp) ist gesetzt */
+  /** Ein Filter (Suche, Sterne, Bearbeitung, Dateityp) ist gesetzt */
   get filtered(): boolean {
-    return !!(this.search.trim() || this.minRating || this.fileTypes.length);
+    return !!(this.search.trim() || this.minRating || this.fileTypes.length || this.editedFilter !== null);
   }
 
-  /** Suche, Mindestbewertung und Dateityp zurücksetzen */
+  /** Suche, Mindestbewertung, Bearbeitung und Dateityp zurücksetzen */
   resetFilters() {
     this.search = "";
     this.minRating = 0;
     this.fileTypes = [];
+    this.editedFilter = null;
     void this.loadImages();
   }
 

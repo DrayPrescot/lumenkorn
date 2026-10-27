@@ -365,6 +365,28 @@ mod tests {
             (types[0].ext.as_str(), types[0].kind.as_str()),
             ("arw", "raw")
         );
+
+        // Nur bearbeitete bzw. unbearbeitete Fotos
+        cat.save_develop(
+            &[ids[1]],
+            &lumenkorn_develop::DevelopParams {
+                exposure: 0.3,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let mut edited = all.clone();
+        edited.edited = Some(true);
+        let hits: Vec<i64> = cat
+            .query_images(&edited)
+            .unwrap()
+            .iter()
+            .map(|i| i.id)
+            .collect();
+        assert_eq!(hits, [ids[1]]);
+        assert_eq!(cat.photo_stats(&edited).unwrap().total, 1);
+        edited.edited = Some(false);
+        assert_eq!(cat.query_images(&edited).unwrap().len(), 3);
     }
 
     #[test]

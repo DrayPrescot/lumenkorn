@@ -266,6 +266,8 @@ export interface ImageQuery {
   minRating?: number | null;
   /** Nur diese Endungen (klein, ohne Punkt) */
   exts?: string[] | null;
+  /** Nur bearbeitete (true) bzw. unbearbeitete (false) Fotos */
+  edited?: boolean | null;
 }
 
 /** Anzahl Fotos je Eintrag */
@@ -909,6 +911,8 @@ export const api = {
     return new Blob([buf], { type: "image/jpeg" });
   },
   developAuto: (id: number, params: DevelopParams) => call<AutoTone>("develop_auto", { id, params }),
+  /** Automatischer Weißabgleich: [Temperatur, Tönung] */
+  developAutoWb: (id: number, params: DevelopParams) => call<[number, number]>("develop_auto_wb", { id, params }),
   developDetectTilt: (id: number, rotate: number, flip: boolean) =>
     call<number | null>("develop_detect_tilt", { id, rotate, flip }),
   developSave: (ids: number[], params: DevelopParams) => call<void>("develop_save", { ids, params }),
@@ -981,8 +985,8 @@ export const api = {
     call<MaskResult>("mask_object", { id, points, maskId }),
   aiCancelDownload: () => call<void>("ai_cancel_download"),
   aiRetagAll: () => call<void>("ai_retag_all"),
-  semanticSearch: (query: string, scope: Scope, minRating: number | null, exts: string[] | null) =>
-    call<ImageSummary[]>("semantic_search", { query, scope, minRating, exts }),
+  semanticSearch: (query: string, scope: Scope, minRating: number | null, exts: string[] | null, edited: boolean | null) =>
+    call<ImageSummary[]>("semantic_search", { query, scope, minRating, exts, edited }),
   albumSuggest: (request: { scope: Scope; theme: string; customTheme: string | null; count: number; skipUneditedRaw: boolean }) =>
     call<AlbumSuggestion>("album_suggest", { request }),
   albumSuggestCancel: () => call<void>("album_suggest_cancel"),

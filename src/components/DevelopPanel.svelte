@@ -246,6 +246,16 @@
             />
           {/each}
         </div>
+        {#if g.id === "wb"}
+          <div class="wb-row">
+            <button class="btn small" disabled={!dev.ready || dev.autoBusy} onclick={() => dev.autoWhiteBalance()} title={t("Lichtfarbe schätzen und neutral stellen")}>
+              <Icon name="sparkle" size={12} /> {t("Automatisch")}
+            </button>
+            <button class="btn small quiet" disabled={!dev.ready || (dev.params.temperature === 0 && dev.params.tint === 0)} onclick={() => dev.asShotWhiteBalance()} title={t("Weißabgleich der Kamera (Temperatur und Tönung 0)")}>
+              {t("Wie aufgenommen")}
+            </button>
+          </div>
+        {/if}
         {#if g.id === "details"}
           {@render denoiseSection()}
         {/if}
@@ -444,6 +454,11 @@
     display: grid;
     gap: 8px;
     margin-top: 10px;
+  }
+  .wb-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
   }
   .row {
     display: flex;

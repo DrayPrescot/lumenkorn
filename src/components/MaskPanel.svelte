@@ -322,9 +322,18 @@
     box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
     padding: 4px;
   }
-  .row .anchor:first-child .menu {
+  /* Hinzufügen/Abziehen: Menü an der linken Kante der Knopfzeile, sonst
+     ragt es beim rechten Knopf links aus dem Seitenbereich und wird abgeschnitten */
+  .row:has(> .anchor) {
+    position: relative;
+  }
+  .row > .anchor {
+    position: static;
+  }
+  .row .menu {
     left: 0;
     right: auto;
+    max-width: 100%;
   }
   .menu button {
     display: grid;

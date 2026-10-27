@@ -1062,6 +1062,34 @@ class Develop {
     }
   }
 
+  /** Automatischer Weißabgleich (mit Rückgängig) */
+  async autoWhiteBalance() {
+    const id = this.imageId;
+    if (id === null || !this.ready || this.autoBusy) return;
+    this.autoBusy = true;
+    try {
+      const [temperature, tint] = await api.developAutoWb(id, $state.snapshot(this.params) as DevelopParams);
+      if (this.imageId !== id) return;
+      this.params.temperature = temperature;
+      this.params.tint = tint;
+      this.schedule();
+      this.commit();
+    } catch (e) {
+      lib.notify(String(e), "error");
+    } finally {
+      this.autoBusy = false;
+    }
+  }
+
+  /** Weißabgleich wie aufgenommen (Temperatur und Tönung 0, mit Rückgängig) */
+  asShotWhiteBalance() {
+    if (!this.ready || (this.params.temperature === 0 && this.params.tint === 0)) return;
+    this.params.temperature = 0;
+    this.params.tint = 0;
+    this.schedule();
+    this.commit();
+  }
+
   /** Schwarzweiß ein/aus (mit Rückgängig) */
   setMonochrome(on: boolean) {
     if (!this.ready || (this.params.monochrome ?? false) === on) return;

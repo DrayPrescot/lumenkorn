@@ -187,6 +187,9 @@ pub struct ImageQuery {
     /// Leer oder fehlend: alle.
     #[serde(default)]
     pub exts: Option<Vec<String>>,
+    /// Nur bearbeitete (`true`) bzw. nur unbearbeitete (`false`) Fotos
+    #[serde(default)]
+    pub edited: Option<bool>,
     #[serde(default)]
     pub limit: Option<i64>,
     #[serde(default)]
@@ -205,6 +208,7 @@ impl ImageQuery {
             ids: None,
             min_rating: None,
             exts: None,
+            edited: None,
             limit: None,
             offset: None,
         }

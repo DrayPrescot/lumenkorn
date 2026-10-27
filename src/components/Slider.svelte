@@ -76,14 +76,17 @@
   }
 
   function keydown(e: KeyboardEvent) {
-    // Tastenkürzel der Ansicht nicht auslösen, während hier getippt wird
-    e.stopPropagation();
     const el = e.currentTarget as HTMLInputElement;
     if (e.key === "Enter") {
+      // Wert übernehmen und Fokus abgeben; Enter geht weiter an die Ansicht
+      // (beim Zuschneiden: übernehmen, sonst blättern die Pfeile wieder)
       typed();
-      draft = fmt(value);
-      el.select();
-    } else if (e.key === "Escape") {
+      el.blur();
+      return;
+    }
+    // Tastenkürzel der Ansicht nicht auslösen, während hier getippt wird
+    e.stopPropagation();
+    if (e.key === "Escape") {
       draft = null;
       el.blur();
     } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {

@@ -165,6 +165,7 @@ function matching(q: ImageQuery, withTypes = true): Img[] {
       inScope(i, q) &&
       i.rating >= (q.minRating ?? 0) &&
       (!exts || exts.includes(i.ext)) &&
+      (q.edited == null || !!i.edit === q.edited) &&
       words.every((w) =>
         [i.fileName, i.camera ?? "", i.lens ?? "", i.location?.place ?? "", ...i.tags.map((tag) => tag.name)].some((s) => s.toLowerCase().includes(w)),
       ),
@@ -365,6 +366,8 @@ export const mock = {
       case "develop_auto":
         await new Promise((r) => setTimeout(r, 300));
         return out({ exposure: 0.45, contrast: 18, highlights: -22, shadows: 15, whites: 34, blacks: -21, vibrance: 12 });
+      case "develop_auto_wb":
+        return out([-18, 6]);
       case "develop_detect_tilt":
         return out(1.5);
       case "develop_params": {
@@ -623,7 +626,7 @@ export const mock = {
       case "ai_download":
         throw t("Downloads sind nur in der App verfügbar.");
       case "semantic_search":
-        return out(query({ scope: a.scope, search: a.query, minRating: a.minRating, exts: a.exts }));
+        return out(query({ scope: a.scope, search: a.query, minRating: a.minRating, exts: a.exts, edited: a.edited }));
       case "export_images":
         throw t("Export ist nur in der App verfügbar.");
       case "set_rating":

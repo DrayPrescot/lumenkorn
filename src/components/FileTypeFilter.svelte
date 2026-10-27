@@ -9,11 +9,20 @@
   let types = $state<FileType[]>([]);
   let loading = $state(false);
 
-  // Gewählte Typen als Namen („ARW“, „JPEG“) für den Knopf
+  // Gewählte Filter für den Knopf: „Bearbeitet · ARW“
   const chosen = $derived([...new Set(lib.fileTypes.map(typeLabel))]);
-  const label = $derived(
-    !chosen.length ? t("Dateityp") : chosen.length <= 2 ? chosen.join(", ") : t("{n} Dateitypen", { n: chosen.length }),
-  );
+  const label = $derived.by(() => {
+    const parts: string[] = [];
+    if (lib.editedFilter !== null) parts.push(lib.editedFilter ? t("Bearbeitet") : t("Unbearbeitet"));
+    if (chosen.length) parts.push(chosen.length <= 2 ? chosen.join(", ") : t("{n} Dateitypen", { n: chosen.length }));
+    return parts.length ? parts.join(" · ") : t("Filter");
+  });
+  const active = $derived(chosen.length > 0 || lib.editedFilter !== null);
+
+  function setEdited(v: boolean | null) {
+    lib.editedFilter = v;
+    void lib.loadImages(true, true);
+  }
 
   async function toggleOpen(e: MouseEvent) {
     e.stopPropagation();
@@ -66,10 +75,10 @@
 <div class="ftf">
   <button
     class="btn"
-    class:on={chosen.length > 0}
+    class:on={active}
     aria-expanded={open}
     aria-haspopup="dialog"
-    title={t("Nach Dateityp filtern (RAW, JPEG, PNG …)")}
+    title={t("Nach Bearbeitung und Dateityp filtern (RAW, JPEG, PNG …)")}
     onclick={toggleOpen}
   >
     <Icon name="filter" size={14} />
@@ -79,11 +88,21 @@
     <div
       class="pop"
       role="dialog"
-      aria-label={t("Dateityp")}
+      aria-label={t("Filter")}
       tabindex="-1"
       onclick={(e) => e.stopPropagation()}
       onkeydown={(e) => e.key === "Escape" && (open = false)}
     >
+      <div class="group">
+        <div class="title">{t("Bearbeitung")}</div>
+        {#each [[null, t("Alle Fotos")], [true, t("Nur bearbeitete")], [false, t("Nur unbearbeitete")]] as [v, l] (String(v))}
+          <label class="opt">
+            <input type="radio" name="edited" checked={lib.editedFilter === v} onchange={() => setEdited(v as boolean | null)} />
+            <span>{l}</span>
+          </label>
+        {/each}
+      </div>
+      <div class="title types">{t("Dateityp")}</div>
       {#if loading && !types.length}
         <p class="muted">{t("Wird geladen …")}</p>
       {:else if !types.length}
@@ -167,6 +186,19 @@
   .head {
     font-weight: 600;
   }
+  .title {
+    padding: 4px 6px 2px;
+    font-size: var(--step--1);
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .title.types {
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+  }
   .row {
     padding-left: 22px;
   }
@@ -175,7 +207,8 @@
     color: var(--muted);
     font-size: var(--step--1);
   }
-  input[type="checkbox"] {
+  input[type="checkbox"],
+  input[type="radio"] {
     accent-color: var(--accent);
     margin: 0;
   }

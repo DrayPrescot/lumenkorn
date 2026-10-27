@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- White balance: **Automatic** estimates the color of the light and makes it neutral, **As shot**
+  returns to the camera's white balance.
+- The **Filter** button (formerly File type) can also show only edited or only unedited photos.
+
+### Fixed
+- In Develop, `Enter` takes the focus away from a slider, so the arrow keys move through the
+  filmstrip again instead of changing the slider.
+- `Enter` applies the crop, also right after typing a straighten angle or picking an aspect ratio.
+- The Add/Subtract menus of a mask no longer get cut off at the left edge of the panel.
+
 ## [1.0.19] – 2026-10-27
 
 ### Fixed

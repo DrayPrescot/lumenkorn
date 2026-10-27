@@ -323,10 +323,94 @@ pub fn auto_tone_with_features(src: &Source, base: &DevelopParams) -> (AutoTone,
     (a, features)
 }
 
+/// Automatischer Weißabgleich: Temperatur und Tönung (−100…100), mit denen
+/// die geschätzte Lichtfarbe neutral wird. Schätzung „Shades of Gray“
+/// (Minkowski-Mittel mit p = 6) über das lineare Bild vor dem Weißabgleich;
+/// ausgefressene und sehr dunkle Pixel zählen nicht. Kehrt
+/// [`crate::pipeline::white_balance`] um: Temperatur gleicht Rot gegen Blau
+/// aus, Tönung Grün gegen das Mittel aus Rot und Blau.
+pub fn auto_white_balance(src: &Source, base: &DevelopParams) -> (f32, f32) {
+    let mut small = src.downscaled(EDGE);
+    if base.lens_correction
+        && let Some(l) = small.lens.take()
+    {
+        small.image = l.apply(&small.image);
+    }
+    let px = &small.image.data;
+    let peak = px
+        .iter()
+        .map(|p| p[0].max(p[1]).max(p[2]))
+        .fold(0f32, f32::max);
+    if peak <= 0.0 {
+        return (0.0, 0.0);
+    }
+    let mut lumas: Vec<f32> = px.iter().map(|p| luma(*p)).collect();
+    lumas.sort_by(|a, b| a.total_cmp(b));
+    let dark = lumas[lumas.len() / 50];
+    const P: f64 = 6.0;
+    let (mut s, mut n) = ([0f64; 3], 0usize);
+    for p in px {
+        let m = p[0].max(p[1]).max(p[2]);
+        if m >= 0.95 * peak || luma(*p) <= dark || p.iter().any(|c| *c <= 0.0) {
+            continue;
+        }
+        for c in 0..3 {
+            s[c] += (p[c] as f64).powf(P);
+        }
+        n += 1;
+    }
+    if n < 50 {
+        return (0.0, 0.0);
+    }
+    let [r, g, b] = s.map(|v| (v / n as f64).powf(1.0 / P));
+    // r·e^(0,35·T) = b·e^(−0,35·T)  und  g·e^(−0,25·t) = √(r·b)
+    let temperature = ((b / r).ln() / 0.7 * 100.0) as f32;
+    let tint = ((g / (r * b).sqrt()).ln() / 0.25 * 100.0) as f32;
+    (
+        temperature.clamp(-100.0, 100.0).round(),
+        tint.clamp(-100.0, 100.0).round(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::source::SourceKind;
+
+    /// Grauer Verlauf mit Farbstich: Der automatische Weißabgleich hebt ihn auf
+    #[test]
+    fn auto_white_balance_neutralizes_a_cast() {
+        let (w, h) = (300usize, 200usize);
+        let image = ImageF32::from_fn(w, h, |x, y| {
+            let v = 0.05 + 0.6 * ((x * 7 + y * 3) % 97) as f32 / 97.0;
+            // warmes, leicht grünes Licht
+            [v * 1.35, v * 1.1, v * 0.7]
+        });
+        let src = Source {
+            kind: SourceKind::Raster,
+            full_width: w,
+            full_height: h,
+            lens: None,
+            image,
+        };
+        let (t, tint) = auto_white_balance(&src, &DevelopParams::default());
+        assert!(t < -20.0, "Temperatur {t}");
+        assert!(tint > 0.0, "Tönung {tint}");
+        let wb = crate::pipeline::white_balance(t / 100.0, tint / 100.0);
+        let c = [1.35 * wb[0], 1.1 * wb[1], 0.7 * wb[2]];
+        let spread =
+            c.iter().copied().fold(f32::MIN, f32::max) / c.iter().copied().fold(f32::MAX, f32::min);
+        assert!(spread < 1.03, "nicht neutral: {c:?}");
+        // Neutrales Bild bleibt unverändert
+        let gray = Source {
+            image: ImageF32::from_fn(w, h, |x, y| [0.05 + 0.6 * ((x + y) % 50) as f32 / 50.0; 3]),
+            ..src
+        };
+        assert_eq!(
+            auto_white_balance(&gray, &DevelopParams::default()),
+            (0.0, 0.0)
+        );
+    }
 
     fn scene(gain: f32, contrast: f32) -> Source {
         // Verlauf mit Himmel, Wiese und Schatten – linear

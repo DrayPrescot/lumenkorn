@@ -281,6 +281,7 @@ pub fn run() {
             develop::develop_render_detail,
             develop::develop_detect_tilt,
             develop::develop_auto,
+            develop::develop_auto_wb,
             develop::develop_save,
             develop::develop_transfer,
             develop::preset_list,
