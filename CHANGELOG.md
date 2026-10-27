@@ -6,6 +6,25 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Perspective correction in the crop tab: vertical and horizontal sliders straighten converging
+  lines, for example buildings photographed from below. Lumenkorn zooms in just enough to avoid
+  empty corners, as with straightening.
+- "Line" next to straighten: drag along the horizon or an edge, and it becomes level (or plumb
+  if the line is steeper than 45°).
+- Clipping warning: `J`, or a click on the percentages under the histogram, shows blown
+  highlights in red and pure black in blue.
+- Edit metadata in the info panel: title, description, author, copyright, capture time (set or
+  shift), camera, lens, focal length, aperture, exposure time and ISO, for one or many photos.
+  Changes are stored in the catalog and in an XMP sidecar next to the photo; existing sidecars
+  from Lightroom or darktable are updated, not replaced. The photo file itself is not changed.
+  Each field can be reset to the value from the file. Title, description and author are
+  searchable.
+- Batch rename (`F2` or right-click → "Umbenennen …"): a name pattern with date, time, number,
+  camera, lens, folder and the old name, with a preview of every new name. Conflicts are shown
+  before anything happens, existing files are never overwritten, XMP sidecars move along, and
+  RAW+JPEG pairs keep a shared name.
+
 ### Fixed
 - GPU editing works on systems that run DirectX 12 instead of Vulkan: the RAW tone mapping
   shader no longer fails to compile there. If a driver cannot compile the shaders, Lumenkorn now

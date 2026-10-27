@@ -59,6 +59,13 @@ the catalog before you let Lumenkorn loose on your whole collection.
 - **Statistics** shows the photos of the current view by camera, lens, focal length, aperture,
   shutter speed, ISO, month or year, time of day, keyword, person, country, file type and rating.
   Clicking an entry filters by it.
+- **Metadata** (info panel → "Bearbeiten"): title, description, author, copyright, capture time
+  (set, or shift for many photos), camera, lens, focal length, aperture, exposure time and ISO.
+  Stored in the catalog and in an XMP sidecar (`photo.xmp`, or the existing `photo.ext.xmp`);
+  sidecars from other programs are updated, not replaced, and the photo file stays untouched.
+- **Batch rename** (`F2`): a pattern such as `{yyyy}{mm}{dd}_{hh}{min}{ss}_{n}` with date, time,
+  number, camera, lens, folder and the old name. The preview lists every new name and conflicts;
+  nothing is overwritten, XMP sidecars follow, RAW+JPEG pairs keep one name.
 - Culling: `Shift+X` rejects and moves on. Rejected photos can be sent to the system trash in
   one step, together with their sidecar files and Lumenkorn's own data for them.
 - Compare up to 12 photos side by side with linked zoom, with a filmstrip below to swap photos
@@ -87,7 +94,11 @@ the catalog before you let Lumenkorn loose on your whole collection.
 - Lens correction for RAW files (on by default): distortion, color fringes and vignetting,
   from the correction data the camera writes into the file (Sony ARW, DNG) or from a
   [Lensfun](https://lensfun.github.io/) profile for about 1,500 lenses.
-- Crop, rotate, flip, and straighten with automatic horizon detection. `Enter` applies the crop.
+- Crop, rotate, flip, and straighten with automatic horizon detection, or by dragging a line
+  along the horizon or an edge. Perspective correction (vertical and horizontal) for converging
+  lines. `Enter` applies the crop.
+- Clipping warning (`J`, or click the percentages under the histogram): blown highlights red,
+  pure black blue.
 - In Develop, `Enter` releases the focus from a slider, so the arrow keys move through the
   filmstrip again.
 - Local adjustments: linear and radial gradients, brush, color range, and AI masks for
@@ -262,9 +273,11 @@ additional keys (a key already in use is reported); arrow keys, Enter, Space and
 | `P` / `X` / `U` | Pick / reject / clear flag |
 | `Shift+X` | Reject and go to the next photo |
 | `Ctrl+Del` | Delete rejected photos (asks first) |
+| `F2` | Rename selected photos |
 | `C` | Compare selected photos |
 | `Z`, mouse wheel | Zoom (fit ↔ 100 %) |
 | `\` | Before / after |
+| `J` | Clipping warning on/off |
 | `R` | Crop |
 | `[` / `]` | Rotate left / right |
 | `O` | Show the selected mask in red |
@@ -625,7 +638,8 @@ GPU tests in CI), [tempfile](https://github.com/Stebalien/tempfile), and the RAW
 to test rawler updates.
 
 ## Roadmap
-- XMP sidecars, hierarchical keywords, and a multilingual text model for search.
+- Ratings and keywords in XMP sidecars, hierarchical keywords, and a multilingual text model
+  for search.
 - Presets, luminance range masks, and copying masks between photos.
 - Further GPU tuning based on measurements on real hardware.
 

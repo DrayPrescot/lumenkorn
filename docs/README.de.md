@@ -91,6 +91,16 @@ vergibt sie in der neuen Sprache neu.
   danach, und die Statistik rechnet für diese Fotos neu.
 - **Seitenleiste:** „Projekte“, „Personen“ und „Ordner“ lassen sich per Klick auf die Überschrift
   einklappen.
+- **Metadaten:** Im Info-Bereich unter „Metadaten“ → „Bearbeiten“: Titel, Beschreibung, Autor,
+  Urheberrecht, Aufnahmezeit (festlegen oder bei mehreren Fotos verschieben), Kamera, Objektiv,
+  Brennweite, Blende, Belichtungszeit und ISO, für ein oder viele Fotos. Gespeichert im Katalog und
+  in einer XMP-Datei neben dem Foto (`foto.xmp` bzw. eine vorhandene `foto.ext.xmp`); XMP-Dateien
+  anderer Programme werden ergänzt, nicht ersetzt. Das Foto selbst bleibt unverändert. Jedes Feld
+  lässt sich auf den Wert aus der Datei zurücksetzen; Titel, Beschreibung und Autor sind durchsuchbar.
+- **Umbenennen:** Fotos auswählen, dann F2 oder Rechtsklick → „Umbenennen …“. Ein Muster wie
+  `{yyyy}{mm}{dd}_{hh}{min}{ss}_{n}` mit Datum, Uhrzeit, Nummer, Kamera, Objektiv, Ordner und altem
+  Namen; die Vorschau zeigt jeden neuen Namen und Konflikte. Nichts wird überschrieben,
+  XMP-Dateien wandern mit, RAW+JPEG-Paare behalten einen gemeinsamen Namen.
 
 ### Vergleichen und Zoomen
 
@@ -216,8 +226,12 @@ Weitere Reiter:
 - **Reparatur:** Störendes mit KI entfernen.
 - **Zuschnitt:** Zuschneiden mit Drittel-Raster und festen Seitenverhältnissen (Original, 1:1, 4:5,
   3:2, 16:9, per ⇄ hoch oder quer), Geraderichten bis ±45° ohne leere Ecken, mit **Auto**: Lumenkorn
-  sucht Horizont und gerade Kanten und schlägt die Korrektur vor. Drehen und Spiegeln. Taste R
-  öffnet den Reiter, Enter übernimmt, Esc bricht ab.
+  sucht Horizont und gerade Kanten und schlägt die Korrektur vor. Mit **Linie** zieht man eine Linie
+  entlang des Horizonts oder einer Kante, die dann waagerecht (bzw. ab 45° senkrecht) steht.
+  **Perspektive** senkrecht und waagerecht richtet stürzende Linien auf, etwa bei Gebäuden von unten.
+  Drehen und Spiegeln. Taste R öffnet den Reiter, Enter übernimmt, Esc bricht ab.
+- **Clipping-Warnung:** Taste J oder ein Klick auf die Prozentangaben unter dem Histogramm zeigt
+  ausgebrannte Lichter rot und reines Schwarz blau.
 
 Außerdem:
 
@@ -482,6 +496,7 @@ Das sind die Vorgaben; unter **Einstellungen → Tastenkürzel** lassen sie sich
 | P / X / U | Markieren / Ablehnen / Aufheben |
 | Umschalt+X | Ablehnen und zum nächsten Foto |
 | Strg+Entf | Abgelehnte Fotos löschen (mit Rückfrage) |
+| F2 | Ausgewählte Fotos umbenennen |
 | Strg+A | Alles auswählen |
 | Strg- / Umschalt-Klick | Mehrfachauswahl |
 | C | Ausgewählte Fotos vergleichen |
@@ -491,6 +506,7 @@ Das sind die Vorgaben; unter **Einstellungen → Tastenkürzel** lassen sie sich
 | Entf | Foto aus dem Vergleich nehmen |
 | I | Infobereich ein/aus |
 | \ | Vorher/Nachher |
+| J | Clipping-Warnung an/aus |
 | F11 | Vollbild |
 | [ / ] | Links / rechts drehen |
 | Strg+U | Auto-Tonwerte (Entwickeln) |
