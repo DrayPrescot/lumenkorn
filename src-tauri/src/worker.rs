@@ -182,6 +182,16 @@ impl Worker {
                     });
                     if std::panic::catch_unwind(run).is_err() {
                         log::error!("Auftrag {job:?} abgebrochen (Panik, siehe oben)");
+                        // Die Kette nicht abreißen lassen: nächste Stufe starten, nie
+                        // denselben Auftrag erneut (sonst Endlosschleife bei Panik).
+                        match job {
+                            Job::Scan(_) | Job::Rescan(_) | Job::Changes(_) => {
+                                me.submit(Job::Thumbs)
+                            }
+                            Job::Thumbs => me.submit(Job::Ai),
+                            Job::Ai => me.submit(Job::Faces),
+                            Job::Faces => {}
+                        }
                     }
                 }
             })

@@ -693,8 +693,19 @@ pub struct PartModels<'a> {
     pub sam: Option<(&'a Sam, &'a SamEmbedding)>,
 }
 
+/// Zwischenergebnisse für ein Bild, damit mehrere Teile (Haare, Gesicht,
+/// Augen, Lippen …) nacheinander nicht jedes Mal OWLv2 und Face Mesh neu
+/// rechnen. Gilt nur für dieselbe Eingabe; der Aufrufer wirft es weg, sobald
+/// sich das Bild (oder die Objektivkorrektur) ändert.
+#[derive(Default)]
+pub struct DetectCache {
+    person: Option<Vec<Detection>>,
+    faces: Option<Vec<Face>>,
+    animal: Option<Vec<Detection>>,
+}
+
 /// Ein gefundenes Gesicht: Punkte in Maskenpixeln
-struct Face {
+pub struct Face {
     pts: Vec<[f32; 2]>,
 }
 
@@ -711,7 +722,12 @@ impl Face {
 
 /// Maske für einen Teil aller Personen im Foto (Größe: längste Kante
 /// [`PARTS_EDGE`]). Leer, wenn keine Person gefunden wurde.
-pub fn person_mask(img: &DynamicImage, part: PersonPart, m: &PartModels) -> Result<GrayImage> {
+pub fn person_mask(
+    img: &DynamicImage,
+    part: PersonPart,
+    m: &PartModels,
+    cache: &mut DetectCache,
+) -> Result<GrayImage> {
     let rgb = img.to_rgb8();
     let (mw, mh) = mask_size(rgb.width(), rgb.height());
     let rgb = if (mw, mh) != rgb.dimensions() {
@@ -724,9 +740,12 @@ pub fn person_mask(img: &DynamicImage, part: PersonPart, m: &PartModels) -> Resu
         .chain(FACE_QUERIES.iter())
         .map(|q| prompt(q))
         .collect();
-    let dets = m.owl.detect(&rgb, &queries, 0.05)?;
-    let persons = pick(&dets, &[0], &[], 0.1, 0.3);
-    let face_boxes = pick(&dets, &[1], &[], 0.1, 0.25);
+    if cache.person.is_none() {
+        cache.person = Some(m.owl.detect(&rgb, &queries, 0.05)?);
+    }
+    let dets = cache.person.as_deref().unwrap_or_default();
+    let persons = pick(dets, &[0], &[], 0.1, 0.3);
+    let face_boxes = pick(dets, &[1], &[], 0.1, 0.25);
     log::info!(
         "Personen: {} gefunden, Gesichter: {}",
         persons.len(),
@@ -786,8 +805,14 @@ pub fn person_mask(img: &DynamicImage, part: PersonPart, m: &PartModels) -> Resu
         | PersonPart::Iris
         | PersonPart::Brows
         | PersonPart::Lips => {
-            let faces = find_faces(&rgb, &face_boxes.iter().map(px).collect::<Vec<_>>(), m.mesh)?;
-            for f in &faces {
+            if cache.faces.is_none() {
+                cache.faces = Some(find_faces(
+                    &rgb,
+                    &face_boxes.iter().map(px).collect::<Vec<_>>(),
+                    m.mesh,
+                )?);
+            }
+            for f in cache.faces.as_deref().unwrap_or_default() {
                 face_part(&mut canvas, &rgb, f, part, m.seg)?;
             }
         }
@@ -989,6 +1014,7 @@ pub fn animal_mask(
     kind: AnimalKind,
     owl: &Owl,
     sam: (&Sam, &SamEmbedding),
+    cache: &mut DetectCache,
 ) -> Result<GrayImage> {
     let rgb = img.to_rgb8();
     let groups: [&[&str]; 3] = [&BIRDS, &MAMMALS, &REPTILES];
@@ -1002,14 +1028,17 @@ pub fn animal_mask(
     // Personen mitsuchen, damit ein Mensch nicht als Säugetier zählt
     let person = queries.len();
     queries.push(prompt("person"));
-    let dets = owl.detect(&rgb, &queries, 0.05)?;
+    if cache.animal.is_none() {
+        cache.animal = Some(owl.detect(&rgb, &queries, 0.05)?);
+    }
+    let dets = cache.animal.as_deref().unwrap_or_default();
     let human = [person];
     let all: Vec<usize> = idx.iter().flatten().copied().collect();
     let rects = match kind {
-        AnimalKind::All => pick(&dets, &all, &[&human], 0.1, 0.25),
-        AnimalKind::Bird => pick(&dets, &idx[0], &[&idx[1], &idx[2], &human], 0.1, 0.25),
-        AnimalKind::Mammal => pick(&dets, &idx[1], &[&idx[0], &idx[2], &human], 0.1, 0.25),
-        AnimalKind::Reptile => pick(&dets, &idx[2], &[&idx[0], &idx[1], &human], 0.1, 0.25),
+        AnimalKind::All => pick(dets, &all, &[&human], 0.1, 0.25),
+        AnimalKind::Bird => pick(dets, &idx[0], &[&idx[1], &idx[2], &human], 0.1, 0.25),
+        AnimalKind::Mammal => pick(dets, &idx[1], &[&idx[0], &idx[2], &human], 0.1, 0.25),
+        AnimalKind::Reptile => pick(dets, &idx[2], &[&idx[0], &idx[1], &human], 0.1, 0.25),
     };
     log::info!("Tiere ({kind:?}): {} gefunden", rects.len());
     let (w, h) = sam.1.size();

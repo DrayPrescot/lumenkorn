@@ -59,6 +59,9 @@ pub struct AiState {
     mesh: Mutex<Option<Arc<parts::FaceMesh>>>,
     /// SAM-Embedding des zuletzt geklickten Bildes – das Berechnen dauert Sekunden.
     sam_embedding: Mutex<Option<(SamKey, Arc<SamEmbedding>)>>,
+    /// OWLv2-Funde und Gesichtspunkte des zuletzt bearbeiteten Bildes: Teile wie
+    /// Haare, Augen, Lippen … nacheinander brauchen sie nicht jedes Mal neu.
+    detect_cache: Mutex<Option<(SamKey, parts::DetectCache)>>,
     denoiser: Mutex<Option<Arc<lumenkorn_ai::denoise::Denoiser>>>,
     /// Es wird gerade ein Bild entrauscht (hält DRUNet geladen)
     denoising: AtomicBool,
@@ -279,6 +282,7 @@ impl AiState {
             parts_seg: Mutex::new(None),
             mesh: Mutex::new(None),
             sam_embedding: Mutex::new(None),
+            detect_cache: Mutex::new(None),
             denoiser: Mutex::new(None),
             denoising: AtomicBool::new(false),
             denoise_cancel: AtomicBool::new(false),
@@ -400,6 +404,10 @@ pub(crate) fn release_models(
         if ai.sam.locked().is_none() {
             *ai.sam_embedding.locked() = None;
         }
+        // Die Funde gehören zu OWLv2 (und dem Face Mesh)
+        if ai.owl.locked().is_none() || ai.mesh.locked().is_none() {
+            *ai.detect_cache.locked() = None;
+        }
         if !ai.denoising.load(Ordering::SeqCst) && drop_if_unused(&ai.denoiser) {
             out.push("DRUNet");
         }
@@ -428,6 +436,7 @@ fn unload_models(state: &AppState) {
     *state.ai.parts_seg.locked() = None;
     *state.ai.mesh.locked() = None;
     *state.ai.sam_embedding.locked() = None;
+    *state.ai.detect_cache.locked() = None;
     *state.ai.denoiser.locked() = None;
 }
 
@@ -487,12 +496,20 @@ fn ensure_loaded(state: &AppState) -> Result<Loaded, Error> {
 /// Index → Katalog; umgekehrt hält niemand den Katalog, während er den Index sperrt.
 fn with_index<T>(state: &AppState, f: impl FnOnce(&EmbeddingIndex) -> T) -> Result<T, Error> {
     {
-        let guard = state.ai.index.read().unwrap();
+        let guard = state
+            .ai
+            .index
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(idx) = guard.as_ref() {
             return Ok(f(idx));
         }
     }
-    let mut guard = state.ai.index.write().unwrap();
+    let mut guard = state
+        .ai
+        .index
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     // Hat eine parallele Suche ihn inzwischen gebaut, nur noch benutzen
     let idx = match guard.take() {
         Some(idx) => idx,
@@ -580,7 +597,13 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
             .catalog
             .locked()
             .save_ai_result(*id, MODEL_KEY, &to_bytes(emb), &tags)?;
-        if let Some(idx) = state.ai.index.write().unwrap().as_mut() {
+        if let Some(idx) = state
+            .ai
+            .index
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_mut()
+        {
             idx.upsert(*id, emb);
         }
     }
@@ -1113,6 +1136,16 @@ fn sam_model(state: &AppState) -> Result<Arc<Sam>, Error> {
 /// (Bild, Objektivkorrektur): Die Eingabe des Embeddings hängt von beidem ab
 type SamKey = (i64, bool);
 
+/// Zwischenspeicher der Funde für dieses Bild entnehmen (leer, wenn er zu einem
+/// anderen Bild bzw. einer anderen Objektivkorrektur gehört).
+fn take_detect_cache(state: &AppState, id: i64) -> (SamKey, parts::DetectCache) {
+    let key = (id, crate::develop::lens_setting(state, id));
+    match state.ai.detect_cache.locked().take() {
+        Some((k, c)) if k == key => (key, c),
+        _ => (key, parts::DetectCache::default()),
+    }
+}
+
 fn sam_embedding(state: &AppState, sam: &Sam, id: i64) -> Result<Arc<SamEmbedding>, Error> {
     let key = (id, crate::develop::lens_setting(state, id));
     if let Some((cached, e)) = state.ai.sam_embedding.locked().as_ref()
@@ -1240,7 +1273,9 @@ pub async fn mask_person(
             mesh: &mesh,
             sam: sam.as_ref().map(|(s, e)| (s.as_ref(), e.as_ref())),
         };
-        let mask = parts::person_mask(&input, part, &m).map_err(err)?;
+        let (key, mut cache) = take_detect_cache(state, id);
+        let mask = parts::person_mask(&input, part, &m, &mut cache).map_err(err)?;
+        *state.ai.detect_cache.locked() = Some((key, cache));
         log::info!(
             "Personenmaske ({part:?}) für Bild {id} in {:.2?}",
             t.elapsed()
@@ -1264,7 +1299,9 @@ pub async fn mask_animal(
         let input = segmentation_input(state, id)?;
         let t = std::time::Instant::now();
         let _g = analysis_guard(state, tr_s("Tiere", "Animals"));
-        let mask = parts::animal_mask(&input, kind, &owl, (&sam, &emb)).map_err(err)?;
+        let (key, mut cache) = take_detect_cache(state, id);
+        let mask = parts::animal_mask(&input, kind, &owl, (&sam, &emb), &mut cache).map_err(err)?;
+        *state.ai.detect_cache.locked() = Some((key, cache));
         log::info!("Tiermaske ({kind:?}) für Bild {id} in {:.2?}", t.elapsed());
         store(state, id, "animal", &mask)
     })
