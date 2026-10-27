@@ -15,7 +15,7 @@
 //!    aktuelle Bild.
 
 use super::align::{self, Features};
-use super::{Loader, Merged, Progress, check};
+use super::{Loader, Merged, Prefetch, Progress, check};
 use crate::color::luma;
 use crate::error::{Error, Result};
 use crate::i18n::tr_s;
@@ -378,73 +378,79 @@ pub fn merge_report(
     let mut stack = Stack::new(refimg, levels);
 
     // --- Übrige Bilder: je eines laden, ausrichten, einarbeiten, freigeben ----------
-    for (k, i) in (0..n).filter(|&i| i != r).enumerate() {
-        check(cancel)?;
-        progress(step, k + 1, n);
-        let img = load(i)?;
-        if (img.width, img.height) != (w, h) {
-            return Err(Error::Params(crate::tr!(
-                "Alle Fotos müssen gleich groß sein (Nr. {} ist {}×{}, die Referenz {}×{})",
-                "All photos must be the same size (no. {} is {}×{}, the reference {}×{})",
-                i + 1,
-                img.width,
-                img.height,
-                w,
-                h
-            )));
-        }
-        // Referenzkoordinaten → Bild i
-        let hm = match &ref_align {
-            Some((rf, rd)) => {
-                let (fi, di) = align_data(&img);
-                let h0 = match align::align(rf, &fi, 25).and_then(|f| align::invert(&f.h)) {
-                    Some(h0) => h0,
-                    None => {
-                        log::warn!(
-                            "Focus Stacking: Bild {} nicht ausrichtbar, nehme Stativ an",
-                            i + 1
-                        );
-                        unaligned.push(i);
-                        align::IDENTITY
-                    }
-                };
-                // Eckpunkte verschieben sich mit der Unschärfe – pixelgenau nachführen
-                align::refine(rd, &di, &h0)
+    // Das nächste Foto wird auf einem Hilfsthread dekodiert, während das
+    // vorige ausgerichtet und eingearbeitet wird (höchstens ein Bild mehr im RAM).
+    std::thread::scope(|s| -> Result<()> {
+        let pf = Prefetch::new(s, (0..n).filter(|&i| i != r).collect(), load, cancel);
+        for (k, i) in (0..n).filter(|&i| i != r).enumerate() {
+            check(cancel)?;
+            progress(step, k + 1, n);
+            let img = pf.next()?;
+            if (img.width, img.height) != (w, h) {
+                return Err(Error::Params(crate::tr!(
+                    "Alle Fotos müssen gleich groß sein (Nr. {} ist {}×{}, die Referenz {}×{})",
+                    "All photos must be the same size (no. {} is {}×{}, the reference {}×{})",
+                    i + 1,
+                    img.width,
+                    img.height,
+                    w,
+                    h
+                )));
             }
-            None => align::IDENTITY,
-        };
-        if hm == align::IDENTITY {
-            // Keine Entzerrung (ohne Ausrichtung): Bild direkt, voll abgedeckt
-            stack.add(img, None);
-            continue;
+            // Referenzkoordinaten → Bild i
+            let hm = match &ref_align {
+                Some((rf, rd)) => {
+                    let (fi, di) = align_data(&img);
+                    let h0 = match align::align(rf, &fi, 25).and_then(|f| align::invert(&f.h)) {
+                        Some(h0) => h0,
+                        None => {
+                            log::warn!(
+                                "Focus Stacking: Bild {} nicht ausrichtbar, nehme Stativ an",
+                                i + 1
+                            );
+                            unaligned.push(i);
+                            align::IDENTITY
+                        }
+                    };
+                    // Eckpunkte verschieben sich mit der Unschärfe – pixelgenau nachführen
+                    align::refine(rd, &di, &h0)
+                }
+                None => align::IDENTITY,
+            };
+            if hm == align::IDENTITY {
+                // Keine Entzerrung (ohne Ausrichtung): Bild direkt, voll abgedeckt
+                stack.add(img, None);
+                continue;
+            }
+            // Auf die Referenz entzerren; nicht abgedeckte Stellen mit der Referenz
+            // füllen (keine künstlichen Kanten) und als ungültig markieren.
+            let refimg = reference.as_ref().expect("Referenz beim Ausrichten");
+            let mut data = vec![[0f32; 3]; w * h];
+            let mut cover = vec![0f32; w * h];
+            data.par_iter_mut()
+                .zip(cover.par_iter_mut())
+                .enumerate()
+                .for_each(|(p, (d, c))| {
+                    let (x, y) = (p % w, p / w);
+                    let (sx, sy) = align::apply(&hm, x as f64, y as f64);
+                    (*d, *c) = match align::sample(&img, sx, sy) {
+                        Some(v) => (v, 1.0),
+                        None => (refimg[p].map(half::f16::to_f32), 0.0),
+                    };
+                });
+            drop(img);
+            let masks = mask_pyramid(cover, w, h, levels);
+            stack.add(
+                ImageF32 {
+                    width: w,
+                    height: h,
+                    data,
+                },
+                Some(&masks),
+            );
         }
-        // Auf die Referenz entzerren; nicht abgedeckte Stellen mit der Referenz
-        // füllen (keine künstlichen Kanten) und als ungültig markieren.
-        let refimg = reference.as_ref().expect("Referenz beim Ausrichten");
-        let mut data = vec![[0f32; 3]; w * h];
-        let mut cover = vec![0f32; w * h];
-        data.par_iter_mut()
-            .zip(cover.par_iter_mut())
-            .enumerate()
-            .for_each(|(p, (d, c))| {
-                let (x, y) = (p % w, p / w);
-                let (sx, sy) = align::apply(&hm, x as f64, y as f64);
-                (*d, *c) = match align::sample(&img, sx, sy) {
-                    Some(v) => (v, 1.0),
-                    None => (refimg[p].map(half::f16::to_f32), 0.0),
-                };
-            });
-        drop(img);
-        let masks = mask_pyramid(cover, w, h, levels);
-        stack.add(
-            ImageF32 {
-                width: w,
-                height: h,
-                data,
-            },
-            Some(&masks),
-        );
-    }
+        Ok(())
+    })?;
     drop(reference);
     progress(step, n, n);
     Ok(Merged {

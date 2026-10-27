@@ -22,7 +22,7 @@
 //!    zuschneiden.
 
 use super::align::{self, Features, Mat3};
-use super::{FrameCache, Loader, Merged, Progress, check};
+use super::{FrameCache, Loader, Merged, Prefetch, Progress, check};
 use crate::color::luma;
 use crate::error::{Error, Result};
 use crate::i18n::tr_s;
@@ -398,15 +398,25 @@ pub fn merge_report(
     let mut feats: Vec<Features> = Vec::new();
     let mut smalls: Vec<ImageF32> = Vec::new();
     let mut sizes = Vec::new();
-    for i in 0..n {
-        check(cancel)?;
-        progress(tr_s("Bilder laden", "Loading images"), i, n);
-        let img = load(i)?;
-        feats.push(align::features(&img, 1200, 2500));
-        smalls.push(img.downscale_to(800));
-        sizes.push((img.width, img.height));
-        cache.offer(img);
-    }
+    // Das nächste Foto wird auf einem Hilfsthread dekodiert, während das
+    // vorige analysiert wird.
+    std::thread::scope(|s| -> Result<()> {
+        let pf = Prefetch::new(s, (0..n).collect(), load, cancel);
+        for i in 0..n {
+            check(cancel)?;
+            progress(tr_s("Bilder laden", "Loading images"), i, n);
+            let img = pf.next()?;
+            if i == 0 {
+                // Das vorgeladene Bild liegt zusätzlich im RAM: vom Budget abziehen
+                cache.reserve_prefetch(&img);
+            }
+            feats.push(align::features(&img, 1200, 2500));
+            smalls.push(img.downscale_to(800));
+            sizes.push((img.width, img.height));
+            cache.offer(img);
+        }
+        Ok(())
+    })?;
 
     // Paarweise Homografien (j → i). Bei vielen Fotos nicht jedes Paar voll
     // prüfen (200 Fotos = 19 900 Paare), sondern nur die aussichtsreichsten.
@@ -536,54 +546,65 @@ pub fn merge_report(
     let mut acc = vec![[0f32; 3]; out_w * out_h];
     let mut wsum = vec![0f32; out_w * out_h];
     let cols: Vec<(f64, f64)> = (0..out_w).map(|x| proj.column(x as f64 + u0)).collect();
-    for (i, cam) in cams.iter().enumerate() {
-        check(cancel)?;
-        progress(tr_s("Zusammenfügen", "Stitching"), i, n);
-        let img = cache.take(i)?;
-        // Ausdehnung dieses Bildes im Panorama (abbildbar, das wurde oben für
-        // alle Bilder geprüft; der Maßstab von `proj` ändert daran nichts)
-        let Some((bu0, bv0, bu1, bv1)) = cam.bounds(f, &proj) else {
-            continue;
-        };
-        let x0 = ((bu0 - u0).floor().max(0.0)) as usize;
-        let x1 = (((bu1 - u0).ceil() + 1.0) as usize).min(out_w);
-        let y0 = ((bv0 - v0).floor().max(0.0)) as usize;
-        let y1 = (((bv1 - v0).ceil() + 1.0) as usize).min(out_h);
-        let (iw, ih) = (cam.w as f64, cam.h as f64);
-        let gain = cam.gain;
-        let mask = seams.masks[i].as_ref();
-        acc[y0 * out_w..y1 * out_w]
-            .par_chunks_mut(out_w)
-            .zip(wsum[y0 * out_w..y1 * out_w].par_chunks_mut(out_w))
-            .enumerate()
-            .for_each(|(r, (arow, wrow))| {
-                let row = proj.row((y0 + r) as f64 + v0);
-                for x in x0..x1 {
-                    let ray = proj.inverse(cols[x], row);
-                    let Some((px, py)) = cam.to_pixel(f, ray) else {
-                        continue;
-                    };
-                    let Some(p) = align::sample(&img, px, py) else {
-                        continue;
-                    };
-                    // Gewicht: Anteil dieses Bildes laut Nahtmaske. Dazu sehr
-                    // schwach ein zur Bildmitte steigendes Gewicht; es zählt
-                    // nur, wo die gröbere Maske auf ein Bild zeigt, das hier in
-                    // voller Auflösung knapp nicht mehr hinreicht.
-                    let wx = (px.min(iw - 1.0 - px) / (iw * 0.5)).clamp(0.0, 1.0);
-                    let wy = (py.min(ih - 1.0 - py) / (ih * 0.5)).clamp(0.0, 1.0);
-                    let center = ((wx * wy) as f32).powi(2) + 1e-6;
-                    let m = mask.map_or(0.0, |m| {
-                        m.at(x as f64 * seams.scale, (y0 + r) as f64 * seams.scale)
-                    });
-                    let wt = m + 1e-4 * center;
-                    for c in 0..3 {
-                        arow[x][c] += wt * p[c] * gain;
+    // Aus dem Speicher verdrängte Bilder werden vorab neu geladen, während das
+    // vorige eingerechnet wird (Budget: siehe `reserve_prefetch` oben).
+    let evicted: Vec<usize> = (0..n).filter(|&i| !cache.has(i)).collect();
+    std::thread::scope(|s| -> Result<()> {
+        let pf = Prefetch::new(s, evicted, load, cancel);
+        for (i, cam) in cams.iter().enumerate() {
+            check(cancel)?;
+            progress(tr_s("Zusammenfügen", "Stitching"), i, n);
+            let img = if cache.has(i) {
+                cache.take(i)?
+            } else {
+                pf.next()?
+            };
+            // Ausdehnung dieses Bildes im Panorama (abbildbar, das wurde oben für
+            // alle Bilder geprüft; der Maßstab von `proj` ändert daran nichts)
+            let Some((bu0, bv0, bu1, bv1)) = cam.bounds(f, &proj) else {
+                continue;
+            };
+            let x0 = ((bu0 - u0).floor().max(0.0)) as usize;
+            let x1 = (((bu1 - u0).ceil() + 1.0) as usize).min(out_w);
+            let y0 = ((bv0 - v0).floor().max(0.0)) as usize;
+            let y1 = (((bv1 - v0).ceil() + 1.0) as usize).min(out_h);
+            let (iw, ih) = (cam.w as f64, cam.h as f64);
+            let gain = cam.gain;
+            let mask = seams.masks[i].as_ref();
+            acc[y0 * out_w..y1 * out_w]
+                .par_chunks_mut(out_w)
+                .zip(wsum[y0 * out_w..y1 * out_w].par_chunks_mut(out_w))
+                .enumerate()
+                .for_each(|(r, (arow, wrow))| {
+                    let row = proj.row((y0 + r) as f64 + v0);
+                    for x in x0..x1 {
+                        let ray = proj.inverse(cols[x], row);
+                        let Some((px, py)) = cam.to_pixel(f, ray) else {
+                            continue;
+                        };
+                        let Some(p) = align::sample(&img, px, py) else {
+                            continue;
+                        };
+                        // Gewicht: Anteil dieses Bildes laut Nahtmaske. Dazu sehr
+                        // schwach ein zur Bildmitte steigendes Gewicht; es zählt
+                        // nur, wo die gröbere Maske auf ein Bild zeigt, das hier in
+                        // voller Auflösung knapp nicht mehr hinreicht.
+                        let wx = (px.min(iw - 1.0 - px) / (iw * 0.5)).clamp(0.0, 1.0);
+                        let wy = (py.min(ih - 1.0 - py) / (ih * 0.5)).clamp(0.0, 1.0);
+                        let center = ((wx * wy) as f32).powi(2) + 1e-6;
+                        let m = mask.map_or(0.0, |m| {
+                            m.at(x as f64 * seams.scale, (y0 + r) as f64 * seams.scale)
+                        });
+                        let wt = m + 1e-4 * center;
+                        for c in 0..3 {
+                            arow[x][c] += wt * p[c] * gain;
+                        }
+                        wrow[x] += wt;
                     }
-                    wrow[x] += wt;
-                }
-            });
-    }
+                });
+        }
+        Ok(())
+    })?;
     progress(tr_s("Zusammenfügen", "Stitching"), n, n);
     drop(seams);
     drop(cache);
