@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.22] – 2026-10-27
+
 ### Added
 - While straightening, the crop shows a fine grid (about 30 px squares) for lining up edges and
   the horizon. It fades back to the thirds shortly after the last change.
@@ -22,6 +24,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ### Fixed
 - Exported DNGs now carry a large JPEG preview (2560 px) like Adobe's DNGs. Windows and image
   viewers that only show the embedded preview showed a tiny 256-px picture before.
+
+### Dependencies
+- Patch updates for Tauri (api, cli, build, dialog and single-instance plugins), vite,
+  svelte-check, serde_json and sha2; base64 0.23.
 
 ## [1.0.21] – 2026-10-27
 

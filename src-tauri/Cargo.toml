@@ -32,7 +32,7 @@ env_logger = "0.11"
 tiny_http = "0.12"
 dirs = "7"
 ureq = { version = "3", default-features = false }
-base64 = "0.22"
+base64 = "0.23"
 getrandom = "0.3"
 
 # Papierkorb des Betriebssystems (Windows, macOS, Linux/freedesktop)
