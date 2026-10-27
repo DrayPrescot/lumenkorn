@@ -94,7 +94,7 @@ impl Inpainter {
         let grow = (long / 400).max(3);
         let dil = dilate(&sel, w, h, grow);
         let feather = (long / 800).max(2);
-        let regions = regions(&dil, w, h);
+        let regions = merge_regions(regions(&dil, w, h));
 
         // Spätere Bereiche sollen frühere Reparaturen sehen – dafür braucht es
         // eine Arbeitskopie. Bei nur einem Bereich (häufigster Fall) spart das
@@ -332,6 +332,36 @@ fn regions(m: &[bool], w: usize, h: usize) -> Vec<(usize, usize, usize, usize)> 
         }
     }
     out
+}
+
+/// Größte Kantenlänge eines zusammengelegten Rahmens: Dann bleibt der Ausschnitt
+/// bei `S` (side = 2,2 × Rahmen ≤ 512), die Auflösung je Pixel also wie bei einem
+/// einzelnen kleinen Bereich.
+const MERGE_MAX: usize = (S as f32 / 2.2) as usize;
+
+/// Legt nahe beieinander liegende kleine Bereiche zusammen (z. B. viele
+/// Staubflecken), damit LaMa nicht für jeden einzeln mit fast gleichem Umfeld
+/// läuft. Ein Rahmen darf höchstens `MERGE_MAX` lang werden. Jedes maskierte
+/// Pixel liegt weiterhin in genau einem Rahmen der Eingabe und damit im
+/// zusammengelegten Rahmen.
+fn merge_regions(
+    mut regions: Vec<(usize, usize, usize, usize)>,
+) -> Vec<(usize, usize, usize, usize)> {
+    // Zeilenweise sortiert: Nachbarn landen nacheinander in derselben Gruppe
+    regions.sort_by_key(|r| (r.1, r.0));
+    let mut groups: Vec<(usize, usize, usize, usize)> = Vec::new();
+    for r in regions {
+        let fit = groups.iter_mut().find(|g| {
+            g.2.max(r.2) - g.0.min(r.0) <= MERGE_MAX && g.3.max(r.3) - g.1.min(r.1) <= MERGE_MAX
+        });
+        match fit {
+            Some(g) => {
+                *g = (g.0.min(r.0), g.1.min(r.1), g.2.max(r.2), g.3.max(r.3));
+            }
+            None => groups.push(r),
+        }
+    }
+    groups
 }
 
 /// Weiche Kante: Kastenfilter (zwei Durchläufe) der Auswahl im Teilbereich.
@@ -576,5 +606,26 @@ mod tests {
                 assert!(((a * 255.0).round() - (b * 255.0).round()).abs() <= 1.0);
             }
         }
+    }
+
+    #[test]
+    fn nahe_bereiche_werden_zusammengelegt() {
+        let r = vec![
+            (10, 10, 20, 20),
+            (60, 12, 70, 22),
+            (30, 90, 40, 100),
+            (2000, 2000, 2010, 2010),
+        ];
+        let m = merge_regions(r);
+        assert_eq!(m, vec![(10, 10, 70, 100), (2000, 2000, 2010, 2010)]);
+    }
+
+    #[test]
+    fn grosse_rahmen_bleiben_getrennt() {
+        let m = merge_regions(vec![
+            (0, 0, MERGE_MAX, 10),
+            (MERGE_MAX, 0, MERGE_MAX + 10, 10),
+        ]);
+        assert_eq!(m.len(), 2);
     }
 }

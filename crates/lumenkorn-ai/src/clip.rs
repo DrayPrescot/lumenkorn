@@ -19,6 +19,7 @@ use image::imageops::FilterType;
 use lumenkorn_develop::{i18n::tr_s, tr};
 use ort::session::Session;
 use ort::value::Tensor;
+use rayon::prelude::*;
 use std::path::Path;
 
 pub const EMBED_DIM: usize = 512;
@@ -106,15 +107,20 @@ impl Clip {
         }
         let px = (IMAGE_SIZE * IMAGE_SIZE) as usize;
         let mut data = vec![0f32; images.len() * 3 * px];
-        for (n, img) in images.iter().enumerate() {
-            let rgb = preprocess(img);
-            let base = n * 3 * px;
-            for (i, p) in rgb.pixels().enumerate() {
-                for c in 0..3 {
-                    data[base + c * px + i] = (p[c] as f32 / 255.0 - MEAN[c]) / STD[c];
+        // Normierung als p * scale + bias statt (p/255 - MEAN)/STD je Wert
+        let scale: [f32; 3] = std::array::from_fn(|c| 1.0 / (255.0 * STD[c]));
+        let bias: [f32; 3] = std::array::from_fn(|c| -MEAN[c] / STD[c]);
+        // Bilder parallel: Verkleinern und Normieren sind der teure Teil
+        data.par_chunks_mut(3 * px)
+            .zip(images.par_iter())
+            .for_each(|(out, img)| {
+                let rgb = preprocess(img);
+                for (i, p) in rgb.pixels().enumerate() {
+                    for c in 0..3 {
+                        out[c * px + i] = p[c] as f32 * scale[c] + bias[c];
+                    }
                 }
-            }
-        }
+            });
         let shape = [images.len(), 3, IMAGE_SIZE as usize, IMAGE_SIZE as usize];
         let input = Tensor::from_array((shape, data))?;
         let mut session = self.vision.lock();
