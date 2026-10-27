@@ -24,7 +24,13 @@ const CACHE_ENTRIES: usize = 4;
 struct FileStamp {
     path: PathBuf,
     stamp: Option<(u64, std::time::SystemTime)>,
+    /// Letzte Prüfung gegen das Dateisystem (`None`: beim nächsten Mal prüfen)
+    checked: Option<std::time::Instant>,
 }
+
+/// So selten wird die Quelldatei bei Zwischenabfragen (Regler) geprüft –
+/// auf einem NAS wäre jede Prüfung ein Netzwerkzugriff.
+const STAMP_INTERVAL: std::time::Duration = std::time::Duration::from_millis(1500);
 
 impl FileStamp {
     fn read(path: &Path) -> Option<(u64, std::time::SystemTime)> {
@@ -36,11 +42,28 @@ impl FileStamp {
         Self {
             path: path.to_path_buf(),
             stamp: Self::read(path),
+            checked: Some(std::time::Instant::now()),
         }
     }
 
     fn changed(&self) -> bool {
         Self::read(&self.path) != self.stamp
+    }
+
+    /// Wie [`Self::changed`], prüft aber höchstens alle `interval` wirklich.
+    fn changed_throttled(
+        &mut self,
+        now: std::time::Instant,
+        interval: std::time::Duration,
+    ) -> bool {
+        if self
+            .checked
+            .is_some_and(|t| now.saturating_duration_since(t) < interval)
+        {
+            return false;
+        }
+        self.checked = Some(now);
+        self.changed()
     }
 }
 
@@ -104,7 +127,9 @@ impl DevelopCache {
         let mut entries = self.entries.locked();
         let pos = entries.iter().position(|e| e.id == id)?;
         let mut e = entries.remove(pos);
-        if e.file.changed() {
+        if e.file
+            .changed_throttled(std::time::Instant::now(), STAMP_INTERVAL)
+        {
             log::info!("{} wurde geändert – neu laden", e.file.path.display());
             return None;
         }
@@ -122,6 +147,16 @@ impl DevelopCache {
         };
         entries.insert(0, e);
         Some(out)
+    }
+
+    /// Die nächste Abfrage prüft die Datei sicher (beim Öffnen eines Fotos).
+    fn recheck_file(&self, id: i64) {
+        for e in self.entries.locked().iter_mut().filter(|e| e.id == id) {
+            e.file.checked = None;
+        }
+        if let Some(f) = self.full.locked().as_mut().filter(|f| f.id == id) {
+            f.file.checked = None;
+        }
     }
 
     fn insert(&self, id: i64, file: FileStamp, proxy: Arc<Source>) {
@@ -292,7 +327,9 @@ fn load_full(state: &AppState, id: i64, max_edge: usize) -> Result<Arc<Source>, 
 fn cached_full(state: &AppState, id: i64, max_edge: usize) -> Option<Arc<Source>> {
     let mut f = state.develop.full.locked();
     let e = f.as_mut().filter(|e| e.id == id)?;
-    if e.file.changed() {
+    if e.file
+        .changed_throttled(std::time::Instant::now(), STAMP_INTERVAL)
+    {
         *f = None;
         return None;
     }
@@ -379,6 +416,8 @@ pub struct DevelopInfo {
 #[tauri::command]
 pub async fn develop_load(app: AppHandle, id: i64) -> Result<DevelopInfo, Error> {
     blocking(app, move |state| {
+        // Beim Öffnen immer prüfen, ob die Datei von außen geändert wurde
+        state.develop.recheck_file(id);
         let src = load_proxy(state, id, PROXY_EDGE)?;
         let cat = state.catalog.locked();
         let mut params = cat.develop_params(id)?;
@@ -610,41 +649,93 @@ pub fn develop_save(
     if let [id] = ids[..]
         && !params.is_default()
         && let Some(proxy) = state.develop.get(id, PROXY_EDGE)
+        // Ohne startbaren Thread: wie ohne Proxy über den Worker rendern
+        && let Some(q) = save_queue(&app)
     {
-        let spawned = std::thread::Builder::new()
-            .name("lumenkorn-save-thumbs".into())
-            .spawn(move || {
-                let state = app.state::<AppState>();
-                let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    thumbs_from_proxy(&state, id, &proxy, &params)
-                }))
-                .unwrap_or_else(|_| {
-                    Err(Error::Invalid(
-                        tr_s("Interner Fehler", "Internal error").into(),
-                    ))
-                });
-                match res {
-                    Ok(true) => {
-                        let _ = app.emit("thumbs-ready", serde_json::json!({ "ids": [id] }));
-                    }
-                    Ok(false) => {} // inzwischen neuer gespeichert – der rendert selbst
-                    Err(e) => {
-                        log::warn!("Vorschau aus Proxy für {id}: {e}");
-                        state.cache.remove(id);
-                        state.worker.submit(Job::Thumbs);
-                    }
-                }
-            });
-        if spawned.is_ok() {
-            return Ok(());
-        }
-        // Thread nicht startbar: wie ohne Proxy über den Worker rendern
+        q.push(id, proxy, params);
+        return Ok(());
     }
     for id in &ids {
         state.cache.remove(*id);
     }
     state.worker.submit(Job::Thumbs);
     Ok(())
+}
+
+/// Wartende Vorschau-Aufträge nach dem Speichern: je Foto nur der neueste.
+/// Ein einziger Hintergrundthread arbeitet sie nacheinander ab, damit mehrere
+/// Speichervorgänge nicht parallel mit der Live-Vorschau um die GPU konkurrieren.
+struct SaveQueue {
+    pending: Mutex<std::collections::HashMap<i64, (Arc<Source>, DevelopParams)>>,
+    wake: std::sync::Condvar,
+}
+
+impl SaveQueue {
+    fn push(&self, id: i64, proxy: Arc<Source>, params: DevelopParams) {
+        self.pending.locked().insert(id, (proxy, params));
+        self.wake.notify_one();
+    }
+}
+
+/// Kurz warten, ob schnell ein neuerer Stand desselben Fotos folgt.
+const SAVE_SETTLE: std::time::Duration = std::time::Duration::from_millis(300);
+
+/// Die Warteschlange; der Thread startet beim ersten Speichern.
+fn save_queue(app: &AppHandle) -> Option<Arc<SaveQueue>> {
+    static QUEUE: std::sync::OnceLock<Option<Arc<SaveQueue>>> = std::sync::OnceLock::new();
+    QUEUE
+        .get_or_init(|| {
+            let q = Arc::new(SaveQueue {
+                pending: Mutex::new(Default::default()),
+                wake: std::sync::Condvar::new(),
+            });
+            let (qt, app) = (q.clone(), app.clone());
+            std::thread::Builder::new()
+                .name("lumenkorn-save-thumbs".into())
+                .spawn(move || save_thumbs_loop(&app, &qt))
+                .ok()
+                .map(|_| q)
+        })
+        .clone()
+}
+
+fn save_thumbs_loop(app: &AppHandle, q: &SaveQueue) {
+    loop {
+        let id = {
+            let mut p = q.pending.locked();
+            loop {
+                if let Some(&id) = p.keys().next() {
+                    break id;
+                }
+                p = q.wake.wait(p).unwrap_or_else(|e| e.into_inner());
+            }
+        };
+        // Folgt gleich ein neuerer Stand, rendert nur dieser
+        std::thread::sleep(SAVE_SETTLE);
+        let Some((proxy, params)) = q.pending.locked().remove(&id) else {
+            continue;
+        };
+        let state = app.state::<AppState>();
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            thumbs_from_proxy(&state, id, &proxy, &params)
+        }))
+        .unwrap_or_else(|_| {
+            Err(Error::Invalid(
+                tr_s("Interner Fehler", "Internal error").into(),
+            ))
+        });
+        match res {
+            Ok(true) => {
+                let _ = app.emit("thumbs-ready", serde_json::json!({ "ids": [id] }));
+            }
+            Ok(false) => {} // inzwischen neuer gespeichert – der rendert selbst
+            Err(e) => {
+                log::warn!("Vorschau aus Proxy für {id}: {e}");
+                state.cache.remove(id);
+                state.worker.submit(Job::Thumbs);
+            }
+        }
+    }
 }
 
 /// Rendert Vorschau (2048 px) und Thumbnail (512 px) aus dem Bearbeitungs-
@@ -687,12 +778,18 @@ fn thumbs_from_proxy(
         output::encode_jpeg_rgb8(&preview, 84)?,
         output::encode_jpeg_rgb8(&thumb, 84)?,
     );
-    let cat = state.catalog.locked();
-    if cat.develop_params(id)? != params.sanitized() {
+    // Dateien ohne Katalogsperre schreiben; die Parameter vorher und nachher
+    // kurz prüfen. Ist es danach veraltet, wird nicht markiert – der neuere
+    // Stand rendert und überschreibt die Dateien.
+    if state.catalog.locked().develop_params(id)? != params.sanitized() {
         return Ok(false);
     }
     state.cache.write(Variant::Preview, id, &preview)?;
     state.cache.write(Variant::Thumb, id, &thumb)?;
+    let cat = state.catalog.locked();
+    if cat.develop_params(id)? != params.sanitized() {
+        return Ok(false);
+    }
     cat.set_thumb_state(id, true)?;
     Ok(true)
 }
@@ -1024,7 +1121,6 @@ pub fn export_images(
     Ok(())
 }
 
-/// `name.jpg`, bei Kollision `name-2.jpg`, `name-3.jpg` …
 /// Zieldatei eines Exports nach `mode`; `None`: überspringen. Originale der
 /// Bibliothek und Dateien aus diesem Export werden nie überschrieben, sondern
 /// bekommen einen neuen Namen.
@@ -1103,6 +1199,7 @@ pub fn export_conflicts(
     Ok(out)
 }
 
+/// `name.jpg`, bei Kollision `name-2.jpg`, `name-3.jpg` …
 pub(crate) fn unique_path(dir: &Path, stem: &str, ext: &str) -> PathBuf {
     let first = dir.join(format!("{stem}.{ext}"));
     if !first.exists() {
@@ -1161,9 +1258,19 @@ mod tests {
         assert!(!s.changed());
         std::fs::write(&p, b"neuer Inhalt").unwrap();
         assert!(s.changed(), "andere Größe");
-        let s = FileStamp::of(&p);
+        let mut s = FileStamp::of(&p);
         std::fs::remove_file(&p).unwrap();
         assert!(s.changed(), "Datei weg");
+        // Gedrosselt: innerhalb des Intervalls keine Prüfung, danach schon
+        let (t0, iv) = (std::time::Instant::now(), std::time::Duration::from_secs(2));
+        s.checked = Some(t0);
+        assert!(!s.changed_throttled(t0 + iv / 2, iv));
+        assert!(s.changed_throttled(t0 + iv, iv));
+        s.checked = None;
+        assert!(
+            s.changed_throttled(t0, iv),
+            "ohne Zeitstempel sofort prüfen"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
