@@ -38,6 +38,7 @@ export const ACTIONS: KeyAction[] = [
   { id: "info", group: "library", label: t("Informationen ein/aus"), keys: ["I"] },
   { id: "import", group: "files", label: t("Fotos importieren"), keys: ["Ctrl+Shift+I"] },
   { id: "export", group: "files", label: t("Exportieren"), keys: ["Ctrl+Shift+E"] },
+  { id: "rename", group: "files", label: t("Umbenennen"), keys: ["F2"] },
   { id: "deleteRejected", group: "files", label: t("Abgelehnte Fotos löschen"), keys: ["Ctrl+Delete", "Ctrl+Backspace"] },
   { id: "copySettings", group: "files", label: t("Basis-Einstellungen kopieren"), keys: ["Ctrl+Shift+C"] },
   { id: "pasteSettings", group: "files", label: t("Basis-Einstellungen einfügen"), keys: ["Ctrl+Shift+V"] },

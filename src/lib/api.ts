@@ -126,6 +126,24 @@ export interface RejectedSummary {
   trashSupported: boolean;
 }
 
+/** Einstellungen der Stapel-Umbenennung */
+export interface RenameOptions {
+  pattern: string;
+  start: number;
+  digits: number;
+  /** nach Aufnahmezeit nummerieren, sonst in der Reihenfolge der Auswahl */
+  byCapture: boolean;
+}
+export interface RenameItem {
+  id: number;
+  old: string;
+  new: string;
+  conflict: string | null;
+}
+export interface RenameReport {
+  renamed: { id: number; path: string; fileName: string }[];
+}
+
 export interface DeleteReport {
   deleted: number[];
   bytes: number;
@@ -903,6 +921,8 @@ export const api = {
   setFlag: (ids: number[], flag: number) => call<void>("set_flag", { ids, flag }),
   rejectedSummary: (ids: number[]) => call<RejectedSummary>("rejected_summary", { ids }),
   deleteRejected: (ids: number[], toTrash: boolean) => call<DeleteReport>("delete_rejected", { ids, toTrash }),
+  renamePreview: (ids: number[], options: RenameOptions) => call<RenameItem[]>("rename_preview", { ids, options }),
+  renameApply: (ids: number[], options: RenameOptions) => call<RenameReport>("rename_apply", { ids, options }),
   addTag: (imageId: number, name: string) => call<ImageTag[]>("add_tag", { imageId, name }),
   removeTag: (imageId: number, name: string) => call<ImageTag[]>("remove_tag", { imageId, name }),
 

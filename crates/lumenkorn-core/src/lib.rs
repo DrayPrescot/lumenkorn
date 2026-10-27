@@ -18,6 +18,7 @@ pub mod metadata;
 pub mod model;
 pub mod paths;
 pub mod people;
+pub mod rename;
 pub mod scanner;
 pub mod stats;
 pub mod thumbs;

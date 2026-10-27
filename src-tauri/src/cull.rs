@@ -9,7 +9,6 @@ use crate::AppState;
 use lumenkorn_core::Error;
 use lumenkorn_core::LockExt;
 use serde::Serialize;
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use tauri::State;
 
@@ -145,45 +144,9 @@ fn remove(path: &Path, to_trash: bool) -> Result<(), String> {
     std::fs::remove_file(path).map_err(|e| e.to_string())
 }
 
-/// XMP-Begleitdateien eines Fotos: `foto.cr3.xmp` gehört immer dazu,
-/// `foto.xmp` nur, wenn kein anderes Foto gleichen Namens daneben liegt
-/// (RAW+JPEG-Paare teilen sich diese Datei).
+/// XMP-Begleitdateien eines Fotos (siehe `lumenkorn_core::rename::sidecars_of`).
 fn sidecars(photo: &Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    let Some(name) = photo.file_name().and_then(|n| n.to_str()) else {
-        return out;
-    };
-    let dir = photo.parent().unwrap_or(Path::new("."));
-    let stem = photo.file_stem().and_then(|s| s.to_str()).unwrap_or(name);
-    let mut seen = HashSet::new();
-    let entries: Vec<String> = std::fs::read_dir(dir)
-        .map(|rd| {
-            rd.filter_map(|e| e.ok()?.file_name().into_string().ok())
-                .collect()
-        })
-        .unwrap_or_default();
-    let is_xmp = |n: &str| n.to_ascii_lowercase().ends_with(".xmp");
-    let sibling = entries.iter().any(|n| {
-        !is_xmp(n)
-            && n != name
-            && Path::new(n)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .is_some_and(|s| s == stem)
-    });
-    for n in &entries {
-        if !is_xmp(n) {
-            continue;
-        }
-        let base = &n[..n.len() - 4];
-        if base == name || (!sibling && base == stem) {
-            // Groß-/Kleinschreibung: dieselbe Datei nur einmal
-            if seen.insert(n.to_ascii_lowercase()) {
-                out.push(dir.join(n));
-            }
-        }
-    }
-    out
+    lumenkorn_core::rename::sidecars_of(&[photo])
 }
 
 /// Zwischenspeicher und Zusatzdateien gelöschter Bilder entfernen.

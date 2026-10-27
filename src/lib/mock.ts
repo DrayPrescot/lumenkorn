@@ -640,6 +640,63 @@ export const mock = {
         const r = images.filter((i) => a.ids.includes(i.id) && i.flag === -1);
         return out({ count: r.length, bytes: r.reduce((n, i) => n + i.size, 0), trashSupported: true });
       }
+      case "rename_preview":
+      case "rename_apply": {
+        const o = a.options;
+        const sel: Img[] = (a.ids as number[]).map((id) => images.find((i) => i.id === id)).filter((i): i is Img => !!i);
+        const order = o.byCapture ? [...sel].sort((x, y) => (x.capturedAt ?? "").localeCompare(y.capturedAt ?? "")) : sel;
+        // RAW+JPEG-Paare: gleicher Ordner und Namensstamm, eine Nummer
+        const stemOf = (i: Img) => i.fileName.replace(/\.[^.]*$/, "");
+        const groups = new Map<string, Img[]>();
+        for (const i of order) {
+          const k = `${i.dir}|${stemOf(i)}`;
+          groups.set(k, [...(groups.get(k) ?? []), i]);
+        }
+        const BAD = /[<>:"/\\|?*\u0000-\u001f]/;
+        const clean = (v: string) => v.replace(new RegExp(BAD.source, "g"), "-");
+        const items: { id: number; old: string; new: string; conflict: string | null }[] = [];
+        [...groups.values()].forEach((g, n) => {
+          const c = g[0];
+          const d = (c.capturedAt ?? "1970-01-01T00:00:00").padEnd(19, "0");
+          let err: string | null = null;
+          const stem = (o.pattern as string).replace(/\{([^{}]*)\}/g, (m, tok: string) => {
+            const v: Record<string, string> = {
+              name: clean(stemOf(c)), yyyy: d.slice(0, 4), mm: d.slice(5, 7), dd: d.slice(8, 10), hh: d.slice(11, 13), min: d.slice(14, 16), ss: d.slice(17, 19),
+              n: String(o.start + n).padStart(o.digits, "0"), camera: clean(c.camera ?? ""), lens: clean(c.lens ?? ""), folder: clean(c.dir.split(/[\\/]/).pop() ?? ""),
+            };
+            if (tok.toLowerCase() in v) return v[tok.toLowerCase()];
+            err = t("Unbekannter Platzhalter {tok}", { tok: `{${tok}}` });
+            return m;
+          });
+          if (!err && !stem.trim()) err = t("Der Name ist leer");
+          else if (!err && BAD.test(stem)) err = t("Ungültiges Zeichen im Namen");
+          else if (!err && /[. ]$/.test(stem)) err = t("Der Name darf nicht mit Punkt oder Leerzeichen enden");
+          else if (!err && /^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(stem)) err = t("„{stem}“ ist ein reservierter Name", { stem });
+          for (const i of g) items.push({ id: i.id, old: i.fileName, new: err ? i.fileName : stem + i.fileName.slice(stemOf(i).length), conflict: err });
+        });
+        // Gleiche Namen im selben Ordner
+        const dirOf = (id: number) => images.find((i) => i.id === id)!.dir;
+        const key = (it: { id: number; new: string }) => `${dirOf(it.id)}|${it.new.toLowerCase()}`;
+        const count = new Map<string, number>();
+        for (const it of items) count.set(key(it), (count.get(key(it)) ?? 0) + 1);
+        for (const it of items) {
+          if (it.conflict) continue;
+          if ((count.get(key(it)) ?? 0) > 1) it.conflict = t("Ein anderes Foto bekäme denselben Namen");
+          else if (it.new !== it.old && images.some((i) => i.dir === dirOf(it.id) && i.fileName.toLowerCase() === it.new.toLowerCase() && !items.some((x) => x.id === i.id)))
+            it.conflict = t("„{name}“ gibt es schon im Ordner", { name: it.new });
+        }
+        if (cmd === "rename_preview") return out((a.ids as number[]).map((id) => items.find((x) => x.id === id)).filter(Boolean));
+        if (items.some((x) => x.conflict)) throw t("Es gibt noch Konflikte bei den neuen Namen.");
+        const renamed = [];
+        for (const it of items) {
+          if (it.new === it.old) continue;
+          const img = images.find((i) => i.id === it.id)!;
+          img.fileName = it.new;
+          img.path = `${img.dir}${sep}${it.new}`;
+          renamed.push({ id: img.id, path: img.path, fileName: img.fileName });
+        }
+        return out({ renamed });
+      }
       case "delete_rejected": {
         const r = images.filter((i) => a.ids.includes(i.id) && i.flag === -1);
         for (const i of r) images.splice(images.indexOf(i), 1);

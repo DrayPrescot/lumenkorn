@@ -7,7 +7,7 @@
   import { keymap } from "../lib/keymap.svelte";
   import type { Preset, TransferGroups } from "../lib/api";
 
-  let { x, y, onclose }: { x: number; y: number; onclose: () => void } = $props();
+  let { x, y, onclose, onrename }: { x: number; y: number; onclose: () => void; onrename: () => void } = $props();
 
   const targets = $derived(lib.pasteTargets());
   const many = $derived(lib.selection.size >= 2);
@@ -122,6 +122,10 @@
     {/if}
   </div>
   <hr />
+  <button role="menuitem" disabled={!lib.focused} onclick={() => run(onrename)}>
+    <span>{lib.selection.size >= 2 ? t("Umbenennen … ({n} Fotos)", { n: lib.selection.size }) : t("Umbenennen …")}</span>
+    <kbd>{keymap.hint("rename")}</kbd>
+  </button>
   <button role="menuitem" disabled={!many} onclick={() => run(() => lib.compare())}>
     <span>{many ? t("Groß nebeneinander vergleichen ({n} Fotos)", { n: Math.min(lib.selection.size, 12) }) : t("Groß nebeneinander vergleichen")}</span>
     <kbd>{keymap.hint("compare")}</kbd>
