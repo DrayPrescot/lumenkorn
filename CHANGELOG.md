@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.19] – 2026-10-27
+
 ### Fixed
 - Panorama: objects close to the camera, such as a tree in the foreground, no longer appear as
   see-through double images. Each part of the panorama now comes from one shot, with the seams
