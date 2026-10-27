@@ -3119,6 +3119,7 @@ dependencies = [
  "half",
  "image",
  "jpeg-encoder",
+ "kamadak-exif",
  "log",
  "pollster",
  "rawler",
@@ -3126,6 +3127,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "tiff",
  "wgpu",
 ]
 

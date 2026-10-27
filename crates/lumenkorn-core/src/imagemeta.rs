@@ -360,6 +360,72 @@ fn apply_field<T: ToSql>(
 }
 
 impl Catalog {
+    /// Metadaten für eine exportierte Datei: alle gültigen Werte (bearbeitet
+    /// oder aus der Datei), als EXIF-Felder und als XMP-Paket mit eigenen
+    /// Schlagworten (ohne KI) und Bewertung. Kein Ort: GPS bleibt im Katalog.
+    pub fn export_meta(&self, id: i64) -> Result<lumenkorn_develop::output::ExportMeta> {
+        let m = self.image_meta(id)?;
+        let keywords: Vec<String> = self
+            .image_tags(id)?
+            .into_iter()
+            .filter(|t| t.source == crate::model::TagSource::Manual)
+            .map(|t| t.name)
+            .collect();
+        let rating: i64 = self
+            .conn
+            .query_row("SELECT rating FROM images WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
+            .optional()?
+            .unwrap_or(0);
+        let set = |v: &Option<String>| v.clone().map_or(Edit::Keep, Edit::Set);
+        let patch = MetaPatch {
+            title: set(&m.title.value),
+            description: set(&m.description.value),
+            creator: set(&m.creator.value),
+            copyright: set(&m.copyright.value),
+            captured_at: set(&m.captured_at.value),
+            camera: set(&m.camera.value),
+            lens: set(&m.lens.value),
+            iso: m.iso.value.map_or(Edit::Keep, Edit::Set),
+            exposure: set(&m.exposure.value),
+            aperture: m.aperture.value.map_or(Edit::Keep, Edit::Set),
+            focal_length: m.focal_length.value.map_or(Edit::Keep, Edit::Set),
+        };
+        let mut changes = patch.xmp_changes();
+        if !keywords.is_empty() {
+            changes.push(XmpChange {
+                name: xmp::DC_SUBJECT,
+                value: Some(Content::Bag(keywords)),
+            });
+        }
+        if (1..=5).contains(&rating) {
+            changes.push(XmpChange {
+                name: xmp::XMP_RATING,
+                value: Some(Content::Plain(rating.to_string())),
+            });
+        }
+        let xmp = if changes.is_empty() {
+            None
+        } else {
+            Some(xmp::merge(None, &changes)?)
+        };
+        Ok(lumenkorn_develop::output::ExportMeta {
+            title: m.title.value,
+            description: m.description.value,
+            creator: m.creator.value,
+            copyright: m.copyright.value,
+            captured_at: m.captured_at.value,
+            camera: m.camera.value,
+            lens: m.lens.value,
+            iso: m.iso.value.and_then(|v| u32::try_from(v).ok()),
+            exposure: m.exposure.value.as_deref().and_then(parse_exposure),
+            aperture: m.aperture.value,
+            focal_length: m.focal_length.value,
+            xmp,
+        })
+    }
+
     /// Metadaten eines Fotos mit Wert aus der Datei und Überschreibung
     pub fn image_meta(&self, id: i64) -> Result<ImageMeta> {
         self.conn
@@ -727,6 +793,46 @@ mod tests {
         let m = cat.image_meta(ids[1]).unwrap();
         assert_eq!(m.lens.value.as_deref(), Some("Mein Objektiv"));
         assert_eq!(m.camera.value.as_deref(), Some("Sony A7"));
+    }
+
+    #[test]
+    fn export_meta_has_all_values_keywords_and_rating() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let id = tests_support::insert_dummy_images(&mut cat, 1)[0];
+        cat.conn
+            .execute(
+                "UPDATE images SET camera = 'Canon R5', exposure = '1/200', rating = 4 WHERE id = ?1",
+                [id],
+            )
+            .unwrap();
+        cat.apply_meta(&[(
+            id,
+            MetaPatch {
+                title: set("Brücke & Fluss"),
+                ..Default::default()
+            },
+        )])
+        .unwrap();
+        cat.add_tag(id, "Herbst", crate::model::TagSource::Manual, None)
+            .unwrap();
+        cat.add_tag(id, "tree", crate::model::TagSource::Ai, Some(0.9))
+            .unwrap();
+        let m = cat.export_meta(id).unwrap();
+        // Werte aus der Datei und bearbeitete gleichermaßen
+        assert_eq!(m.camera.as_deref(), Some("Canon R5"));
+        assert_eq!(m.title.as_deref(), Some("Brücke & Fluss"));
+        assert!((m.exposure.unwrap() - 0.005).abs() < 1e-9);
+        let xmp = m.xmp.unwrap();
+        assert!(xmp.contains("Brücke &amp; Fluss"), "{xmp}");
+        assert!(
+            xmp.contains("<rdf:li>Herbst</rdf:li>") && xmp.contains("rdf:Bag"),
+            "{xmp}"
+        );
+        // KI-Schlagworte bleiben im Katalog
+        assert!(!xmp.contains("tree"), "{xmp}");
+        assert!(xmp.contains("<xmp:Rating>4</xmp:Rating>"), "{xmp}");
+        // Gültiges XML
+        assert!(crate::xmp::merge(Some(&xmp), &[]).is_ok());
     }
 
     #[test]

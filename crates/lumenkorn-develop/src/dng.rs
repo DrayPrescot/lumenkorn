@@ -237,23 +237,23 @@ fn mul(m: &[[f32; 3]; 3], c: [f32; 3]) -> [f32; 3] {
 /// Ein TIFF-Verzeichnis (little endian). Einträge werden nach Tag sortiert
 /// geschrieben, längere Werte folgen direkt dahinter.
 #[derive(Default)]
-struct Ifd {
+pub(crate) struct Ifd {
     entries: Vec<(u16, u16, u32, Vec<u8>)>,
 }
 
 impl Ifd {
-    fn add(&mut self, tag: u16, typ: u16, count: usize, data: Vec<u8>) {
+    pub(crate) fn add(&mut self, tag: u16, typ: u16, count: usize, data: Vec<u8>) {
         self.entries.push((tag, typ, count as u32, data));
     }
     fn bytes(&mut self, tag: u16, v: &[u8]) {
         self.add(tag, 1, v.len(), v.to_vec());
     }
-    fn ascii(&mut self, tag: u16, s: &str) {
+    pub(crate) fn ascii(&mut self, tag: u16, s: &str) {
         let mut d = s.as_bytes().to_vec();
         d.push(0);
         self.add(tag, 2, d.len(), d);
     }
-    fn short(&mut self, tag: u16, v: &[u16]) {
+    pub(crate) fn short(&mut self, tag: u16, v: &[u16]) {
         self.add(
             tag,
             3,
@@ -261,7 +261,7 @@ impl Ifd {
             v.iter().flat_map(|x| x.to_le_bytes()).collect(),
         );
     }
-    fn long(&mut self, tag: u16, v: &[u32]) {
+    pub(crate) fn long(&mut self, tag: u16, v: &[u32]) {
         self.add(
             tag,
             4,
@@ -269,7 +269,7 @@ impl Ifd {
             v.iter().flat_map(|x| x.to_le_bytes()).collect(),
         );
     }
-    fn rational(&mut self, tag: u16, v: &[(u32, u32)]) {
+    pub(crate) fn rational(&mut self, tag: u16, v: &[(u32, u32)]) {
         let d = v
             .iter()
             .flat_map(|(n, d)| [n.to_le_bytes(), d.to_le_bytes()].concat())
@@ -293,7 +293,7 @@ impl Ifd {
     }
 
     /// Hängt das Verzeichnis an `out` an und liefert seinen Offset.
-    fn write(mut self, out: &mut Vec<u8>) -> u32 {
+    pub(crate) fn write(mut self, out: &mut Vec<u8>) -> u32 {
         if out.len() % 2 == 1 {
             out.push(0);
         }

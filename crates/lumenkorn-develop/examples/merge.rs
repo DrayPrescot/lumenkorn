@@ -47,6 +47,7 @@ fn save(img: &ImageF32, dir: &Path, name: &str, scene: bool) -> Result<()> {
             quality: 88,
             long_edge: None,
         },
+        None,
     )?;
     println!(
         "  gespeichert: {name}.exr ({mb:.1} MB, geschrieben in {tw:.2?}, gelesen + entwickelt in {:.2?}) + {name}.jpg",

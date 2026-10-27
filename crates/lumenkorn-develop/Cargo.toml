@@ -19,6 +19,8 @@ exr = { version = "1.74", default-features = false, features = ["rayon"] }
 # Schneller JPEG-Encoder (SIMD): ~4× schneller als der von image-rs
 jpeg-encoder = { version = "0.7", features = ["simd"] }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "tiff", "webp", "rayon"] }
+# 16-Bit-TIFF mit Metadaten (EXIF, XMP) – dieselbe Version wie in image
+tiff = "0.11"
 log = "0.4.34"
 pollster = "1.0.1"
 rawler = "0.8.0"
@@ -28,3 +30,7 @@ serde_json = "1.0.151"
 thiserror = "2.0.21"
 # GPU-Pipeline: Vulkan (Linux, Android, Windows), DirectX 12 (Windows), Metal (macOS).
 wgpu = { version = "30", default-features = false, features = ["std", "parking_lot", "vulkan", "dx12", "metal", "wgsl"] }
+
+[dev-dependencies]
+# Prüft in Tests, dass exportiertes EXIF lesbar ist
+kamadak-exif = "0.6.1"

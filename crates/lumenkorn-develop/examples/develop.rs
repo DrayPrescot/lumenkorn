@@ -52,6 +52,7 @@ fn main() -> Result<()> {
             quality: 88,
             long_edge: None,
         },
+        None,
     )?;
     Ok(())
 }

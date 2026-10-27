@@ -50,6 +50,8 @@ pub const EXIF_FOCAL_LENGTH: PropName = prop("exif", NS_EXIF, "FocalLength");
 pub const EXIF_F_NUMBER: PropName = prop("exif", NS_EXIF, "FNumber");
 pub const EXIF_EXPOSURE_TIME: PropName = prop("exif", NS_EXIF, "ExposureTime");
 pub const EXIF_ISO: PropName = prop("exif", NS_EXIF, "ISOSpeedRatings");
+pub const DC_SUBJECT: PropName = prop("dc", NS_DC, "subject");
+pub const XMP_RATING: PropName = prop("xmp", NS_XMP, "Rating");
 
 /// Inhalt einer Eigenschaft
 #[derive(Debug, Clone, PartialEq)]
@@ -60,6 +62,8 @@ pub enum Content {
     Alt(String),
     /// Geordnete Liste mit einem Eintrag (`rdf:Seq`)
     Seq(String),
+    /// Ungeordnete Liste (`rdf:Bag`), etwa Schlagworte
+    Bag(Vec<String>),
 }
 
 /// Änderung einer Eigenschaft: `value = None` entfernt sie.
@@ -448,6 +452,12 @@ fn render(name: &PropName, prefix: &str, rdf: &str, c: &Content) -> String {
             "<{n}><{rdf}:Seq><{rdf}:li>{}</{rdf}:li></{rdf}:Seq></{n}>",
             escape(v)
         ),
+        Content::Bag(v) => format!(
+            "<{n}><{rdf}:Bag>{}</{rdf}:Bag></{n}>",
+            v.iter()
+                .map(|s| format!("<{rdf}:li>{}</{rdf}:li>", escape(s)))
+                .collect::<String>()
+        ),
     }
 }
 
@@ -533,9 +543,12 @@ pub fn merge(existing: Option<&str>, changes: &[XmpChange]) -> Result<String> {
         p
     };
     let mut items = Vec::new();
-    let need_rdf = changes
-        .iter()
-        .any(|c| matches!(c.value, Some(Content::Alt(_) | Content::Seq(_))));
+    let need_rdf = changes.iter().any(|c| {
+        matches!(
+            c.value,
+            Some(Content::Alt(_) | Content::Seq(_) | Content::Bag(_))
+        )
+    });
     let rdf_prefix = if need_rdf || target.is_none() {
         prefix_for("rdf", NS_RDF)
     } else {

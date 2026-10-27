@@ -29,6 +29,7 @@ pub mod curve;
 pub mod denoised;
 pub mod dng;
 pub(crate) mod dt;
+mod embed;
 mod error;
 pub mod exr_io;
 pub mod geometry;

@@ -996,9 +996,14 @@ pub fn export_images(
                 // Export nicht beenden: Das Bild gilt als fehlgeschlagen.
                 let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
                     || -> Result<String, Error> {
-                        let (job, params) = {
+                        let (job, params, meta) = {
                             let cat = state.catalog.locked();
-                            (cat.thumb_job(*id)?, cat.develop_params(*id)?)
+                            // Fehlende Metadaten verhindern den Export nicht
+                            let meta = cat
+                                .export_meta(*id)
+                                .inspect_err(|e| log::warn!("Metadaten für Export {id}: {e}"))
+                                .ok();
+                            (cat.thumb_job(*id)?, cat.develop_params(*id)?, meta)
                         };
                         let name = Path::new(&job.path)
                             .file_stem()
@@ -1070,7 +1075,8 @@ pub fn export_images(
                                             format: *format,
                                             ..options.clone()
                                         };
-                                        output::write(img, &target, &opts).map_err(Error::from)
+                                        output::write(img, &target, &opts, meta.as_ref())
+                                            .map_err(Error::from)
                                     }
                                     Err(e) => Err(Error::Invalid(e.to_string())),
                                 }

@@ -8,6 +8,8 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+pub use crate::embed::ExportMeta;
+
 // Direkt in den fertigen Puffer schreiben: `flat_map_iter().collect()` ist
 // nicht indexiert – rayon sammelte Teilstücke und fügte sie mit einer
 // weiteren Kopie zusammen (bei 45 MP 135 bzw. 270 MB).
@@ -45,6 +47,15 @@ pub fn encode_jpeg(img: &ImageF32, quality: u8) -> Result<Vec<u8>> {
 /// mit halbierter (4:2:0) wie bei Kamera-JPEGs – fürs Auge gleich, Vorschauen
 /// werden so ein Drittel kleiner.
 pub fn encode_jpeg_rgb8(rgb: &RgbImage, quality: u8) -> Result<Vec<u8>> {
+    encode_jpeg_rgb8_meta(rgb, quality, None)
+}
+
+/// Wie [`encode_jpeg_rgb8`], mit EXIF und XMP aus `meta`.
+pub fn encode_jpeg_rgb8_meta(
+    rgb: &RgbImage,
+    quality: u8,
+    meta: Option<&ExportMeta>,
+) -> Result<Vec<u8>> {
     let (w, h) = rgb.dimensions();
     if w > u16::MAX as u32 || h > u16::MAX as u32 {
         return Err(Error::Params(crate::tr!(
@@ -59,6 +70,9 @@ pub fn encode_jpeg_rgb8(rgb: &RgbImage, quality: u8) -> Result<Vec<u8>> {
     } else {
         jpeg_encoder::SamplingFactor::F_2_2
     });
+    for seg in meta.map(crate::embed::jpeg_segments).unwrap_or_default() {
+        enc.add_app_segment(1, seg)?;
+    }
     enc.encode(
         rgb.as_raw(),
         w as u16,
@@ -152,9 +166,15 @@ impl ExportOptions {
 }
 
 /// Schreibt das entwickelte Bild. Schreibt zuerst in eine temporäre Datei, damit
-/// nie eine halbe Datei am Ziel liegt.
-pub fn write(img: &ImageF32, path: &Path, opts: &ExportOptions) -> Result<()> {
-    write_as(img, path, opts, false)
+/// nie eine halbe Datei am Ziel liegt. `meta` landet in JPEG und TIFF (EXIF
+/// und XMP).
+pub fn write(
+    img: &ImageF32,
+    path: &Path,
+    opts: &ExportOptions,
+    meta: Option<&ExportMeta>,
+) -> Result<()> {
+    write_as(img, path, opts, false, meta)
 }
 
 /// DNG aus dem unbearbeiteten Original (`scene`: lineares Rec.709 aus
@@ -164,10 +184,66 @@ pub fn write_original_dng(scene: &ImageF32, path: &Path, opts: &ExportOptions) -
         format: ExportFormat::Dng,
         ..opts.clone()
     };
-    write_as(scene, path, &opts, true)
+    write_as(scene, path, &opts, true, None)
 }
 
-fn write_as(img: &ImageF32, path: &Path, opts: &ExportOptions, scene: bool) -> Result<()> {
+/// 16-Bit-TIFF, mit Metadaten im ersten Verzeichnis und einem EXIF-Verzeichnis
+fn write_tiff16<W: std::io::Write + std::io::Seek>(
+    img: &ImageF32,
+    w: W,
+    meta: Option<&ExportMeta>,
+) -> Result<()> {
+    use tiff::encoder::{Rational, TiffEncoder, colortype::RGB16};
+    use tiff::tags::Tag;
+    let err = |e: tiff::TiffError| Error::Params(format!("TIFF: {e}"));
+    let rgb = to_rgb16(img);
+    let mut enc = TiffEncoder::new(w).map_err(err)?;
+    let (ifd0, exif) = meta.map(crate::embed::tags).unwrap_or_default();
+    let write = |d: &mut tiff::encoder::DirectoryEncoder<_, _>,
+                 tags: &[(u16, crate::embed::Val)]| {
+        use crate::embed::Val;
+        for (t, v) in tags {
+            let tag = Tag::from_u16_exhaustive(*t);
+            match v {
+                Val::Ascii(s) => d.write_tag(tag, s.as_str()),
+                Val::Short(s) => d.write_tag(tag, *s),
+                Val::Rational(n, dd) => d.write_tag(tag, Rational { n: *n, d: *dd }),
+                // Kann das tiff-Crate nicht schreiben (ExifVersion), Leser kommen ohne aus
+                Val::Undefined(_) => Ok(()),
+            }?;
+        }
+        Ok::<_, tiff::TiffError>(())
+    };
+    let exif_off = if exif.is_empty() {
+        None
+    } else {
+        let mut d = enc.extra_directory().map_err(err)?;
+        write(&mut d, &exif).map_err(err)?;
+        Some(d.finish_with_offsets().map_err(err)?.offset)
+    };
+    let mut im = enc
+        .new_image::<RGB16>(rgb.width(), rgb.height())
+        .map_err(err)?;
+    let d = im.encoder();
+    write(d, &ifd0).map_err(err)?;
+    if let Some(off) = exif_off {
+        d.write_tag(Tag::ExifDirectory, off).map_err(err)?;
+    }
+    if let Some(x) = meta.and_then(|m| m.xmp.as_ref()) {
+        d.write_tag(Tag::from_u16_exhaustive(700), x.as_bytes())
+            .map_err(err)?;
+    }
+    im.write_data(rgb.as_raw()).map_err(err)?;
+    Ok(())
+}
+
+fn write_as(
+    img: &ImageF32,
+    path: &Path,
+    opts: &ExportOptions,
+    scene: bool,
+    meta: Option<&ExportMeta>,
+) -> Result<()> {
     // Ohne Verkleinern keine Kopie (bei 60 MP 720 MB)
     let img: std::borrow::Cow<ImageF32> = match opts.long_edge {
         Some(m) if m > 0 && m < img.long_edge() => std::borrow::Cow::Owned(img.downscale_to(m)),
@@ -184,9 +260,10 @@ fn write_as(img: &ImageF32, path: &Path, opts: &ExportOptions, scene: bool) -> R
     };
     let res = (|| -> Result<()> {
         match opts.format {
-            ExportFormat::Jpeg => {
-                std::fs::write(&tmp, encode_jpeg(&img, opts.quality.clamp(1, 100))?)?
-            }
+            ExportFormat::Jpeg => std::fs::write(
+                &tmp,
+                encode_jpeg_rgb8_meta(&to_rgb8(&img), opts.quality.clamp(1, 100), meta)?,
+            )?,
             ExportFormat::Png => {
                 let mut f = file(&tmp)?;
                 to_rgb8(&img).write_to(&mut f, image::ImageFormat::Png)?;
@@ -194,7 +271,7 @@ fn write_as(img: &ImageF32, path: &Path, opts: &ExportOptions, scene: bool) -> R
             }
             ExportFormat::Tiff16 => {
                 let mut f = file(&tmp)?;
-                to_rgb16(&img).write_to(&mut f, image::ImageFormat::Tiff)?;
+                write_tiff16(&img, &mut f, meta)?;
                 std::io::Write::flush(&mut f)?;
             }
             ExportFormat::Dng => {
@@ -281,6 +358,13 @@ mod tests {
         let d = std::env::temp_dir().join(format!("lw-export-{}", std::process::id()));
         std::fs::create_dir_all(&d).unwrap();
         let img = ImageF32::from_fn(300, 200, |x, y| [x as f32 / 300.0, y as f32 / 200.0, 0.5]);
+        let meta = ExportMeta {
+            camera: Some("Testkamera".into()),
+            exposure: Some(0.004),
+            captured_at: Some("2025-06-01T19:42:07".into()),
+            xmp: Some("<x:xmpmeta/>".into()),
+            ..Default::default()
+        };
         for (format, name) in [
             (ExportFormat::Jpeg, "a.jpg"),
             (ExportFormat::Tiff16, "a.tif"),
@@ -298,12 +382,42 @@ mod tests {
                     dng_edited: true,
                     on_conflict: OnConflict::Rename,
                 },
+                Some(&meta),
             )
             .unwrap();
             let back = image::open(&p).unwrap();
             assert_eq!((back.width(), back.height()), (150, 100), "{name}");
             if format == ExportFormat::Tiff16 {
                 assert_eq!(back.color(), image::ColorType::Rgb16);
+            }
+            // Metadaten in JPEG und TIFF, für einen unabhängigen Leser lesbar
+            if format != ExportFormat::Png {
+                let f = std::fs::File::open(&p).unwrap();
+                let exif = exif::Reader::new()
+                    .read_from_container(&mut std::io::BufReader::new(f))
+                    .unwrap_or_else(|e| panic!("{name}: {e}"));
+                let get = |t| {
+                    exif.get_field(t, exif::In::PRIMARY)
+                        .map(|f| f.display_value().to_string())
+                };
+                assert_eq!(
+                    get(exif::Tag::Model).as_deref(),
+                    Some("\"Testkamera\""),
+                    "{name}"
+                );
+                assert_eq!(
+                    get(exif::Tag::ExposureTime).as_deref(),
+                    Some("1/250"),
+                    "{name}"
+                );
+                assert_eq!(
+                    get(exif::Tag::Orientation).as_deref(),
+                    Some("row 0 at top and column 0 at left"),
+                    "{name}"
+                );
+                assert!(get(exif::Tag::DateTimeOriginal).is_some(), "{name}");
+                let raw = std::fs::read(&p).unwrap();
+                assert!(raw.windows(12).any(|w| w == b"<x:xmpmeta/>"), "{name}: XMP");
             }
         }
         // keine temporären Reste

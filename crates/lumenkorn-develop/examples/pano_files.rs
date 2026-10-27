@@ -68,6 +68,7 @@ fn main() -> Result<()> {
             quality: 90,
             long_edge: None,
         },
+        None,
     )?;
     std::fs::remove_file(&exr).ok();
     println!("gespeichert: {out}");
