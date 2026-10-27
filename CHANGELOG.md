@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.21] – 2026-10-27
+
 ### Added
 - Export to **DNG**, slightly lossy like Lightroom's lossy compression (linear data in JPEG tiles,
   a quarter to a third of the RAW's size). Either the finished photo with all edits, or the
