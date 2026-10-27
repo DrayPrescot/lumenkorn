@@ -1044,19 +1044,30 @@ mod tests {
 
     #[test]
     fn shapes_and_strokes_are_limited() {
-        let stroke = Stroke {
-            points: vec![[0.5, 0.5]; MAX_STROKE_POINTS + 10],
+        let stroke = |n: usize| Stroke {
+            points: vec![[0.5, 0.5]; n],
             radius: 0.05,
             feather: 0.5,
             opacity: 1.0,
             erase: false,
         };
-        let brush = MaskShape::Brush {
-            strokes: vec![stroke; MAX_BRUSH_STROKES + 10],
+        // Nur der erste Strich ist lang: alle Grenzen zugleich voll ausgereizt
+        // wären ~12 GB und bringen den CI-Runner um
+        let mut strokes = vec![stroke(1); MAX_BRUSH_STROKES + 10];
+        strokes[0] = stroke(MAX_STROKE_POINTS + 10);
+        let mut shapes = vec![
+            MaskShape::Brush {
+                strokes: vec![stroke(1)],
+                subtract: false,
+            };
+            MAX_SHAPES_PER_LAYER + 10
+        ];
+        shapes[0] = MaskShape::Brush {
+            strokes,
             subtract: false,
         };
         let layer = MaskLayer {
-            shapes: vec![brush; MAX_SHAPES_PER_LAYER + 10],
+            shapes,
             ..Default::default()
         };
         let p = DevelopParams {

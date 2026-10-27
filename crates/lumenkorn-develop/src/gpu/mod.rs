@@ -593,6 +593,10 @@ impl Gpu {
                 .to_string(),
         };
 
+        // Übersetzungsfehler des Treibers (z. B. FXC unter DirectX 12) sind
+        // „intern“, keine Validierungsfehler – beide abfangen, sonst ist die
+        // Pipeline erst beim ersten Bild ungültig.
+        let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("pipeline.wgsl"),
@@ -652,7 +656,8 @@ impl Gpu {
                 })
             })
             .collect();
-        if let Some(e) = pollster::block_on(scope.pop()) {
+        let errors = [scope.pop(), internal.pop()].map(pollster::block_on);
+        if let Some(e) = errors.into_iter().flatten().next() {
             return Err(crate::tr!(
                 "Shader nicht übersetzbar: {e}",
                 "Shader failed to compile: {e}"

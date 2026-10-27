@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- GPU editing works on systems that run DirectX 12 instead of Vulkan: the RAW tone mapping
+  shader no longer fails to compile there. If a driver cannot compile the shaders, Lumenkorn now
+  notices at startup and uses the CPU right away.
+- CI runs again: a mask limit test no longer allocates about 12 GB.
+
 ## [1.0.23] – 2026-10-27
 
 ### Changed

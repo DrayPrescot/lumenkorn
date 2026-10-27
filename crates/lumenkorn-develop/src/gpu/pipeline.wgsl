@@ -139,6 +139,15 @@ fn sig_curve(v: f32) -> f32 {
     return paper;
 }
 
+// Werte für die Kanäle o.x (min), o.y (mid), o.z (max) einsetzen. Ohne
+// Schreiben mit dynamischem Index (`r[o.x] = …`) – das lehnt der ältere
+// DirectX-Shadercompiler FXC ab („not natively addressable“).
+fn by_order(o: vec3<u32>, vmin: f32, vmid: f32, vmax: f32) -> vec3<f32> {
+    let k = vec3<u32>(0u, 1u, 2u);
+    let mid_or_max = select(vec3<f32>(vmax), vec3<f32>(vmid), k == vec3<u32>(o.y));
+    return select(mid_or_max, vec3<f32>(vmin), k == vec3<u32>(o.x));
+}
+
 fn raw_tone(c_in: vec3<f32>) -> vec3<f32> {
     var p = vec3<f32>(dot(TO2020_0, c_in), dot(TO2020_1, c_in), dot(TO2020_2, c_in));
     // Negative Werte entsättigen (_desaturate_negative_values)
@@ -184,19 +193,15 @@ fn raw_tone(c_in: vec3<f32>) -> vec3<f32> {
         blend = 2.0 * p[o.x] / mm;
     }
     let etarget = blend * energy + (1.0 - blend) * naive_energy;
-    var r = vec3<f32>(0.0);
+    var r: vec3<f32>;
     if (naive_mid <= pc[o.y]) {
         let cm = ((1.0 - h) * pc[o.y] + h * (midscale * pc[o.z] + (1.0 - midscale) * (etarget - pc[o.z])))
             / (1.0 + h * (1.0 - midscale));
-        r[o.x] = etarget - pc[o.z] - cm;
-        r[o.y] = cm;
-        r[o.z] = pc[o.z];
+        r = by_order(o, etarget - pc[o.z] - cm, cm, pc[o.z]);
     } else {
         let cm = ((1.0 - h) * pc[o.y] + h * (pc[o.x] * (1.0 - midscale) + midscale * (etarget - pc[o.x])))
             / (1.0 + h * midscale);
-        r[o.x] = pc[o.x];
-        r[o.y] = cm;
-        r[o.z] = etarget - pc[o.x] - cm;
+        r = by_order(o, pc[o.x], cm, etarget - pc[o.x] - cm);
     }
     return vec3<f32>(dot(TOSRGB_0, r), dot(TOSRGB_1, r), dot(TOSRGB_2, r));
 }
