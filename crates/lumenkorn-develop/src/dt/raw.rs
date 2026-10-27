@@ -51,6 +51,25 @@ fn xyz_to_cam(raw: &rawler::RawImage) -> Option<M3> {
     }))
 }
 
+/// Farbtemperatur des Kamera-Weißabgleichs in Kelvin: Weiß der Kamera durch
+/// die Weißabgleich-Faktoren, über die Kameramatrix nach XYZ.
+pub(crate) fn as_shot_kelvin(raw: &rawler::RawImage) -> Option<f32> {
+    let wb = raw.wb_coeffs;
+    if !wb[..3].iter().all(|c| c.is_finite() && *c > 0.0) {
+        return None;
+    }
+    let cam_to_xyz = color::inv(&xyz_to_cam(raw)?)?;
+    let xyz = color::mul_v(
+        &cam_to_xyz,
+        [1.0 / wb[0] as f64, 1.0 / wb[1] as f64, 1.0 / wb[2] as f64],
+    );
+    let s = xyz[0] + xyz[1] + xyz[2];
+    if !(s.is_finite() && s > 0.0) {
+        return None;
+    }
+    crate::wb::xy_to_kelvin(xyz[0] / s, xyz[1] / s)
+}
+
 /// Ist die darktable-Entwicklung für dieses RAW möglich? (RGB-Bayer oder
 /// X-Trans mit D65-Kameramatrix; Sonderfälle übernimmt rawler.)
 pub(crate) fn applies(raw: &rawler::RawImage) -> bool {

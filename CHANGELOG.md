@@ -6,6 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- White balance for RAW files is set in **Kelvin** (2000–25000 K), starting from the camera's
+  white balance, instead of a relative −100…100 that often ran out of range. The slider moves
+  evenly in mired. **Automatic** suggests a Kelvin value too. Older edits are shown in Kelvin
+  and look the same. JPEGs and other finished images keep the relative temperature.
+
 ## [1.0.21] – 2026-10-27
 
 ### Added

@@ -26,6 +26,7 @@ fn main() {
         full_width: w,
         full_height: h,
         lens: None,
+        as_shot_kelvin: None,
         image: ImageF32::from_fn(w, h, |x, y| {
             let n = ((x * 7 + y * 13) % 17) as f32 / 170.0;
             [x as f32 / w as f32 + n, 0.3 + n, y as f32 / h as f32]

@@ -18,6 +18,10 @@ pub struct DevelopParams {
     // Weißabgleich, relativ zur Aufnahme. −100…100
     pub temperature: f32,
     pub tint: f32,
+    /// Farbtemperatur des Lichts in Kelvin (RAWs mit Kamera-Weißabgleich,
+    /// siehe [`crate::wb`]); 0 = wie aufgenommen. Wirkt zusätzlich zu
+    /// `temperature`, die Oberfläche zeigt bei RAWs nur Kelvin.
+    pub kelvin: f32,
 
     // Licht
     /// Belichtung in Blendenstufen, −5…5
@@ -639,6 +643,7 @@ impl Default for DevelopParams {
             version: CURRENT_VERSION,
             temperature: 0.0,
             tint: 0.0,
+            kelvin: 0.0,
             exposure: 0.0,
             contrast: 0.0,
             highlights: 0.0,
@@ -689,6 +694,11 @@ impl DevelopParams {
             version: self.version,
             temperature: c(self.temperature, -100.0, 100.0),
             tint: c(self.tint, -100.0, 100.0),
+            kelvin: if self.kelvin > 0.0 {
+                c(self.kelvin, crate::wb::KELVIN_MIN, crate::wb::KELVIN_MAX)
+            } else {
+                0.0
+            },
             exposure: c(self.exposure, -5.0, 5.0),
             contrast: c(self.contrast, -100.0, 100.0),
             highlights: c(self.highlights, -100.0, 100.0),
@@ -797,6 +807,7 @@ impl DevelopParams {
         if g.basic || g.white_balance {
             out.temperature = src.temperature;
             out.tint = src.tint;
+            out.kelvin = src.kelvin;
         }
         if g.basic || g.light {
             out.exposure = src.exposure;

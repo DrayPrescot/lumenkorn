@@ -47,6 +47,7 @@ pub mod raster;
 pub mod repair;
 pub mod source;
 pub mod style;
+pub mod wb;
 
 pub use error::{Error, Result};
 

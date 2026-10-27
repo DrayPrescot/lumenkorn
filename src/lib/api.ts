@@ -347,6 +347,8 @@ export interface DevelopParams {
   version: number;
   temperature: number;
   tint: number;
+  /** Lichtfarbe in Kelvin (RAWs), 0 = wie aufgenommen */
+  kelvin: number;
   exposure: number;
   contrast: number;
   highlights: number;
@@ -586,6 +588,7 @@ export const DEFAULT_PARAMS: DevelopParams = {
   version: 1,
   temperature: 0,
   tint: 0,
+  kelvin: 0,
   exposure: 0,
   contrast: 0,
   highlights: 0,
@@ -628,7 +631,7 @@ export function transferParams(target: DevelopParams, src: DevelopParams, g: Tra
   const copy = (keys: readonly (keyof DevelopParams)[]) => {
     for (const k of keys) (out as unknown as Record<string, unknown>)[k] = src[k];
   };
-  if (g.basic || g.whiteBalance) copy(["temperature", "tint"]);
+  if (g.basic || g.whiteBalance) copy(["temperature", "tint", "kelvin"]);
   if (g.basic || g.light) {
     copy(["exposure", "contrast", "highlights", "shadows", "whites", "blacks"]);
     out.toneCurve = JSON.parse(JSON.stringify(src.toneCurve ?? DEFAULT_PARAMS.toneCurve));
@@ -669,6 +672,15 @@ export interface DevelopInfo {
   snapshots: Edit[];
   /** Korrekturdaten der Kamera; null = keine */
   lens: LensSummary | null;
+  /** Farbtemperatur des Kamera-Weißabgleichs (RAWs); null = nur relativer Weißabgleich */
+  asShotKelvin: number | null;
+}
+
+/** Vorschlag des automatischen Weißabgleichs (`kelvin` 0: relativ) */
+export interface AutoWb {
+  temperature: number;
+  tint: number;
+  kelvin: number;
 }
 
 /** Vorschlag von „Auto“ für die Tonregler */
@@ -927,7 +939,7 @@ export const api = {
   },
   developAuto: (id: number, params: DevelopParams) => call<AutoTone>("develop_auto", { id, params }),
   /** Automatischer Weißabgleich: [Temperatur, Tönung] */
-  developAutoWb: (id: number, params: DevelopParams) => call<[number, number]>("develop_auto_wb", { id, params }),
+  developAutoWb: (id: number, params: DevelopParams) => call<AutoWb>("develop_auto_wb", { id, params }),
   developDetectTilt: (id: number, rotate: number, flip: boolean) =>
     call<number | null>("develop_detect_tilt", { id, rotate, flip }),
   developSave: (ids: number[], params: DevelopParams) => call<void>("develop_save", { ids, params }),

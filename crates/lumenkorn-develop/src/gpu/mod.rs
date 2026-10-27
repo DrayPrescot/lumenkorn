@@ -1263,7 +1263,7 @@ impl Gpu {
             };
 
             // --- Szenenbezogene Stufen und Kodierung
-            let wb = white_balance(p.temperature / 100.0, p.tint / 100.0);
+            let wb = crate::pipeline::global_white_balance(p, src.as_shot_kelvin);
             let mut u = U {
                 wb_r: wb[0],
                 wb_g: wb[1],
@@ -1289,7 +1289,7 @@ impl Gpu {
             // --- Dunst (Dunsthelligkeit wie auf der CPU aus der Quelle)
             if p.dehaze != 0.0 {
                 let amount = p.dehaze / 100.0;
-                let haze = crate::pipeline::haze_level(&src.image, p, raw, amount);
+                let haze = crate::pipeline::haze_level(&src.image, p, wb, raw, amount);
                 cx.dehaze(&set.img, amount, haze);
             }
 

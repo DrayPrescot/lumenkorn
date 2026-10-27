@@ -38,6 +38,8 @@ fn source(kind: SourceKind, w: usize, h: usize) -> Source {
         full_width: w,
         full_height: h,
         lens: None,
+        // RAWs mit Kamera-Weißabgleich, damit auch Kelvin geprüft wird
+        as_shot_kelvin: (kind == SourceKind::Raw).then_some(5200.0),
         image,
     }
 }
@@ -159,6 +161,15 @@ fn cases() -> Vec<(&'static str, DevelopParams)> {
                 temperature: 35.0,
                 tint: -20.0,
                 contrast: 40.0,
+                ..d()
+            },
+        ),
+        (
+            "Kelvin mit Dunst",
+            DevelopParams {
+                kelvin: 3400.0,
+                tint: 15.0,
+                dehaze: 40.0,
                 ..d()
             },
         ),

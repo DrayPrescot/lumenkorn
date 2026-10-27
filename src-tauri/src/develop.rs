@@ -370,6 +370,9 @@ pub struct DevelopInfo {
     snapshots: Vec<Edit>,
     /// Korrekturdaten der Kamera, falls das RAW welche enthält
     lens: Option<lumenkorn_develop::LensSummary>,
+    /// Farbtemperatur des Kamera-Weißabgleichs (nur RAWs): Dann zeigt der
+    /// Weißabgleich Kelvin statt einer relativen Temperatur
+    as_shot_kelvin: Option<f32>,
 }
 
 /// Lädt das Bild in den Bearbeitungs-Cache und liefert die aktuelle Bearbeitung.
@@ -378,13 +381,26 @@ pub async fn develop_load(app: AppHandle, id: i64) -> Result<DevelopInfo, Error>
     blocking(app, move |state| {
         let src = load_proxy(state, id, PROXY_EDGE)?;
         let cat = state.catalog.locked();
+        let mut params = cat.develop_params(id)?;
+        // Ältere Bearbeitung mit relativer Temperatur: als Kelvin zeigen
+        // (gleiches Verhältnis Rot zu Blau); gespeichert wird erst bei einer Änderung
+        if let Some(k0) = src.as_shot_kelvin
+            && params.kelvin == 0.0
+            && params.temperature != 0.0
+        {
+            let ratio = (0.7 * params.temperature / 100.0).exp();
+            params.kelvin =
+                (lumenkorn_develop::wb::kelvin_for_ratio(k0, ratio) / 10.0).round() * 10.0;
+            params.temperature = 0.0;
+        }
         Ok(DevelopInfo {
-            params: cat.develop_params(id)?,
+            params,
             full_width: src.full_width,
             full_height: src.full_height,
             raw: src.kind == lumenkorn_develop::SourceKind::Raw,
             snapshots: snapshots(&cat, id)?,
             lens: src.lens.as_ref().map(|l| l.summary()),
+            as_shot_kelvin: src.as_shot_kelvin.map(|k| (k / 10.0).round() * 10.0),
         })
     })
     .await
@@ -550,7 +566,7 @@ pub async fn develop_auto_wb(
     app: AppHandle,
     id: i64,
     params: DevelopParams,
-) -> Result<(f32, f32), Error> {
+) -> Result<lumenkorn_develop::auto::AutoWb, Error> {
     blocking(app, move |state| {
         let src = load_proxy(state, id, PROXY_EDGE)?;
         let wb = lumenkorn_develop::auto::auto_white_balance(&src, &params);

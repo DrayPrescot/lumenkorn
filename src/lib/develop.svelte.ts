@@ -111,6 +111,8 @@ class Develop {
   imageId = $state<number | null>(null);
   params = $state<DevelopParams>(clone(DEFAULT_PARAMS));
   raw = $state(false);
+  /** Farbtemperatur des Kamera-Weißabgleichs; dann zeigt der Weißabgleich Kelvin */
+  asShotKelvin = $state<number | null>(null);
   /** Korrekturdaten der Kamera für das geöffnete Foto */
   lensInfo = $state<LensSummary | null>(null);
   fullSize = $state<[number, number]>([0, 0]);
@@ -327,6 +329,7 @@ class Develop {
       this.#setCommitted(clone(p));
       this.#saved = clone(p);
       this.raw = info.raw;
+      this.asShotKelvin = info.asShotKelvin ?? null;
       this.lensInfo = info.lens ?? null;
       this.fullSize = [info.fullWidth, info.fullHeight];
       this.snapshots = info.snapshots;
@@ -1081,10 +1084,11 @@ class Develop {
     if (id === null || !this.ready || this.autoBusy) return;
     this.autoBusy = true;
     try {
-      const [temperature, tint] = await api.developAutoWb(id, $state.snapshot(this.params) as DevelopParams);
+      const wb = await api.developAutoWb(id, $state.snapshot(this.params) as DevelopParams);
       if (this.imageId !== id) return;
-      this.params.temperature = temperature;
-      this.params.tint = tint;
+      this.params.temperature = wb.temperature;
+      this.params.tint = wb.tint;
+      this.params.kelvin = wb.kelvin;
       this.schedule();
       this.commit();
     } catch (e) {
@@ -1138,7 +1142,7 @@ class Develop {
     const differs = (keys: (keyof DevelopParams)[]) => keys.some((k) => JSON.stringify(p[k]) !== JSON.stringify(d[k]));
     return {
       ...NO_GROUPS,
-      whiteBalance: differs(["temperature", "tint"]),
+      whiteBalance: differs(["temperature", "tint", "kelvin"]),
       light: differs(["exposure", "contrast", "highlights", "shadows", "whites", "blacks"]),
       color: differs(["vibrance", "saturation", "monochrome"]),
       hsl: differs(["hsl"]),

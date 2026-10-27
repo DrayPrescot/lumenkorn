@@ -361,13 +361,15 @@ export const mock = {
       case "develop_load": {
         const img = images.find((i) => i.id === a.id)!;
         await new Promise((r) => setTimeout(r, 400)); // RAW-Dekodierung simulieren
-        return out({ params: img.edit ?? null, fullWidth: img.width, fullHeight: img.height, raw: img.ext !== "jpg", snapshots: img.snapshots, lens: img.ext !== "jpg" ? { distortion: "sony", chromatic: "sony", vignetting: "lensfun", lens: "Sony FE 24-70mm f/2.8 GM II" } : null });
+        return out({ params: img.edit ?? null, fullWidth: img.width, fullHeight: img.height, raw: img.ext !== "jpg", asShotKelvin: img.ext !== "jpg" ? 5350 : null, snapshots: img.snapshots, lens: img.ext !== "jpg" ? { distortion: "sony", chromatic: "sony", vignetting: "lensfun", lens: "Sony FE 24-70mm f/2.8 GM II" } : null });
       }
       case "develop_auto":
         await new Promise((r) => setTimeout(r, 300));
         return out({ exposure: 0.45, contrast: 18, highlights: -22, shadows: 15, whites: 34, blacks: -21, vibrance: 12 });
-      case "develop_auto_wb":
-        return out([-18, 6]);
+      case "develop_auto_wb": {
+        const raw = images.find((i) => i.id === a.id)?.ext !== "jpg";
+        return out(raw ? { temperature: 0, tint: 6, kelvin: 4380 } : { temperature: -18, tint: 6, kelvin: 0 });
+      }
       case "develop_detect_tilt":
         return out(1.5);
       case "develop_params": {

@@ -13,6 +13,7 @@
     decimals = 0,
     unit = "",
     track,
+    scale,
     oninput,
     oncommit,
   }: {
@@ -26,6 +27,8 @@
     unit?: string;
     /** CSS-Hintergrund der Schiene, z. B. ein Verlauf für den Weißabgleich */
     track?: string;
+    /** Nichtlineare Skala: Wert → Position 0…1 und zurück (z. B. Kelvin in Mired) */
+    scale?: { to: (v: number) => number; from: (p: number) => number };
     oninput: (v: number) => void;
     oncommit: () => void;
   } = $props();
@@ -35,11 +38,16 @@
   const id = `s-${Math.random().toString(36).slice(2, 8)}`;
 
   const fmt = (v: number) => {
-    const s = v.toLocaleString(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    // Ohne Tausenderpunkt: „5.350“ läse sich beim Eintippen als 5,35
+    const s = v.toLocaleString(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals, useGrouping: false });
     return v > 0 && neutral === 0 && min < 0 ? `+${s}` : s;
   };
   // Position des Neutralwerts, damit die Füllung von dort ausgeht
-  const pct = (v: number) => ((v - min) / (max - min)) * 100;
+  const pct = (v: number) => (scale ? scale.to(v) : (v - min) / (max - min)) * 100;
+  // Mit Skala arbeitet die Schiene in Positionen 0…STEPS
+  const STEPS = 1000;
+  const toPos = (v: number) => (scale ? Math.round(scale.to(v) * STEPS) : v);
+  const fromPos = (p: number) => (scale ? scale.from(p / STEPS) : p);
   const fill = $derived.by(() => {
     const a = pct(Math.min(value, neutral));
     const b = pct(Math.max(value, neutral));
@@ -127,12 +135,12 @@
   <input
     {id}
     type="range"
-    {min}
-    {max}
-    {step}
-    {value}
+    min={scale ? 0 : min}
+    max={scale ? STEPS : max}
+    step={scale ? 1 : step}
+    value={toPos(value)}
     style:background-image="{fill}, {track ?? 'linear-gradient(var(--line), var(--line))'}"
-    oninput={(e) => oninput(Number(e.currentTarget.value))}
+    oninput={(e) => oninput(clamp(fromPos(Number(e.currentTarget.value))))}
     onchange={oncommit}
     ondblclick={reset}
     tabindex="-1"

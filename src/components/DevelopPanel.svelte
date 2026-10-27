@@ -29,6 +29,20 @@
     track?: string;
   }
 
+  // Kelvin wie in pipeline/wb.rs; der Regler ist in Mired gleichmäßig
+  // (gleiche Wege, gleich starke Farbänderung)
+  const KELVIN_MIN = 2000;
+  const KELVIN_MAX = 25000;
+  const MIRED = {
+    to: (k: number) => (1e6 / KELVIN_MIN - 1e6 / k) / (1e6 / KELVIN_MIN - 1e6 / KELVIN_MAX),
+    from: (p: number) => 1e6 / (1e6 / KELVIN_MIN - p * (1e6 / KELVIN_MIN - 1e6 / KELVIN_MAX)),
+  };
+  /** Wie aufgenommen wird als 0 gespeichert (bleibt dann „unbearbeitet“) */
+  function setKelvin(v: number) {
+    const k = Math.round(v / 10) * 10;
+    dev.set("kelvin", dev.asShotKelvin && Math.abs(k - dev.asShotKelvin) < 10 ? 0 : k);
+  }
+
   const groups: { id: string; title: string; sliders: Def[] }[] = [
     {
       id: "wb",
@@ -233,17 +247,34 @@
         <summary tabindex="-1">{g.title}</summary>
         <div class="sliders">
           {#each g.sliders as s (s.key)}
-            <Slider
-              label={s.label}
-              value={dev.params[s.key] as number}
-              min={s.min}
-              max={s.max}
-              step={s.step ?? 1}
-              decimals={s.decimals ?? 0}
-              track={s.track}
-              oninput={(v) => dev.set(s.key, v)}
-              oncommit={() => dev.commit()}
-            />
+            {#if s.key === "temperature" && dev.asShotKelvin}
+              <!-- RAW mit Kamera-Weißabgleich: Lichtfarbe in Kelvin -->
+              <Slider
+                label={s.label}
+                value={dev.params.kelvin || dev.asShotKelvin}
+                min={KELVIN_MIN}
+                max={KELVIN_MAX}
+                step={50}
+                neutral={dev.asShotKelvin}
+                unit=" K"
+                scale={MIRED}
+                track={s.track}
+                oninput={setKelvin}
+                oncommit={() => dev.commit()}
+              />
+            {:else}
+              <Slider
+                label={s.label}
+                value={dev.params[s.key] as number}
+                min={s.min}
+                max={s.max}
+                step={s.step ?? 1}
+                decimals={s.decimals ?? 0}
+                track={s.track}
+                oninput={(v) => dev.set(s.key, v)}
+                oncommit={() => dev.commit()}
+              />
+            {/if}
           {/each}
         </div>
         {#if g.id === "wb"}

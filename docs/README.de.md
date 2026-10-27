@@ -169,8 +169,9 @@ Der Reiter **Basis** enthält von oben nach unten:
   einen dramatischen Himmel), und Masken färben das Bild nicht wieder ein. Color Grading wirkt
   danach und tont das Schwarzweißbild, etwa kühle Tiefen und warme Lichter oder Sepia.
 
-- **Weißabgleich:** Temperatur und Tönung, relativ zum Kamera-Weißabgleich. „Automatisch“ schätzt
-  die Lichtfarbe und stellt sie neutral.
+- **Weißabgleich:** Bei RAWs Temperatur in Kelvin (2000–25000 K, ausgehend vom
+  Kamera-Weißabgleich) und Tönung; bei JPEGs und anderen fertigen Bildern relativ zur Aufnahme.
+  „Automatisch“ schätzt die Lichtfarbe und stellt sie neutral.
 - **Enter** löst im Entwickeln den Fokus von einem Regler, damit die Pfeiltasten wieder durch den
   Filmstreifen blättern; beim Zuschneiden übernimmt Enter den Zuschnitt.
 - **Licht:** Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz. Lichter und Tiefen wirken auf die
@@ -811,7 +812,7 @@ npm run tauri android dev
 
 - Windows: Pfadvergleiche unterscheiden Groß- und Kleinschreibung (`D:\Fotos` und `d:\fotos` wären
   zwei Ordner).
-- Die Temperatur ist relativ zum Kamera-Weißabgleich, nicht in Kelvin.
+- Bei JPEGs und anderen fertigen Bildern ist die Temperatur relativ zur Aufnahme, nicht in Kelvin.
 - Jede aktive Maskenebene kostet einen weiteren Durchlauf der Tonwert-Pipeline; ohne Grafikkarte wird
   die Vorschau bei vielen Ebenen spürbar langsamer.
 - Die Vorschau wird nach dem Rechnen auf der GPU als JPEG an die Oberfläche übergeben. Bei sehr

@@ -315,6 +315,7 @@ fn repaired_source(src: &Source, p: &DevelopParams, opts: &RenderOptions) -> (Ar
         full_width: src.full_width,
         full_height: src.full_height,
         lens: src.lens.clone(),
+        as_shot_kelvin: src.as_shot_kelvin,
     });
     let id = REPAIRED_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     if !opts.keep_prepared {
@@ -479,7 +480,7 @@ fn render_sanitized(
     let (w, h) = (img.width, img.height);
 
     // --- Szenenbezogene Stufen und Kodierung -------------------------------
-    let wb = white_balance(p.temperature / 100.0, p.tint / 100.0);
+    let wb = global_white_balance(p, src.as_shot_kelvin);
     let gain = 2f32.powf(p.exposure);
     img.data.par_iter_mut().for_each(|px| {
         let mut c = [
@@ -505,7 +506,8 @@ fn render_sanitized(
     if p.dehaze != 0.0 {
         let est = repaired.as_ref().map_or(&src.image, |r| &r.image);
         let amount = p.dehaze / 100.0;
-        dehaze(&mut img, amount, haze_level(est, p, raw, amount));
+        let wb = global_white_balance(p, src.as_shot_kelvin);
+        dehaze(&mut img, amount, haze_level(est, p, wb, raw, amount));
     }
 
     // --- Tonwerte und Farbe ------------------------------------------------
@@ -638,7 +640,13 @@ fn gcd(a: usize, b: usize) -> usize {
 /// Abziehen dieser Farbe lässt das ganze Bild ins Gelbe bzw. Blaue kippen.
 /// Gerechnet wird auf einer Stichprobe der Quelle mit Weißabgleich, Belichtung
 /// und Basiskurve – für CPU und GPU dieselben Zahlen.
-pub(crate) fn haze_level(src: &ImageF32, p: &DevelopParams, raw: bool, amount: f32) -> Haze {
+pub(crate) fn haze_level(
+    src: &ImageF32,
+    p: &DevelopParams,
+    wb: [f32; 3],
+    raw: bool,
+    amount: f32,
+) -> Haze {
     let n = src.data.len();
     if n == 0 {
         return Haze {
@@ -646,7 +654,6 @@ pub(crate) fn haze_level(src: &ImageF32, p: &DevelopParams, raw: bool, amount: f
             lift: 0.0,
         };
     }
-    let wb = white_balance(p.temperature / 100.0, p.tint / 100.0);
     let gain = 2f32.powf(p.exposure);
     // Etwa 65 000 gleichmäßig verteilte Stichproben genügen. Die Schrittweite
     // teilerfremd zur Breite, sonst fielen alle Proben auf dieselben Spalten
@@ -1097,6 +1104,21 @@ fn soft_clip(v: f32) -> f32 {
     }
 }
 
+/// Weißabgleich des ganzen Bildes: Kelvin (wenn gesetzt und die Quelle ihre
+/// Aufnahme-Temperatur kennt) und relativ. Für CPU und GPU dieselben Zahlen.
+pub(crate) fn global_white_balance(p: &DevelopParams, as_shot: Option<f32>) -> [f32; 3] {
+    let rel = white_balance(p.temperature / 100.0, p.tint / 100.0);
+    match as_shot {
+        Some(k0) if p.kelvin > 0.0 => {
+            let k = crate::wb::kelvin_multipliers(k0, p.kelvin);
+            let m = [rel[0] * k[0], rel[1] * k[1], rel[2] * k[2]];
+            let y = luma(m);
+            m.map(|v| v / y)
+        }
+        _ => rel,
+    }
+}
+
 /// Multiplikatoren für einen relativen Weißabgleich. Die Gesamthelligkeit bleibt gleich.
 pub(crate) fn white_balance(temperature: f32, tint: f32) -> [f32; 3] {
     let r = (0.35 * temperature).exp();
@@ -1278,6 +1300,7 @@ mod tests {
             full_width: w,
             full_height: h,
             lens: None,
+            as_shot_kelvin: None,
         }
     }
 
@@ -1646,6 +1669,7 @@ mod tests {
             full_width: 3,
             full_height: 1,
             lens: None,
+            as_shot_kelvin: None,
         };
         let lin = |v: f32| crate::color::srgb_to_linear(v);
         // Ohne Grundabstimmung: Mittelgrau bleibt Mittelgrau (sigmoid)

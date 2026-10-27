@@ -323,13 +323,29 @@ pub fn auto_tone_with_features(src: &Source, base: &DevelopParams) -> (AutoTone,
     (a, features)
 }
 
-/// Automatischer Weißabgleich: Temperatur und Tönung (−100…100), mit denen
-/// die geschätzte Lichtfarbe neutral wird. Schätzung „Shades of Gray“
+/// Ergebnis des automatischen Weißabgleichs: bei RAWs mit Kamera-Weißabgleich
+/// Kelvin und Tönung (`temperature` = 0), sonst relative Temperatur und Tönung.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoWb {
+    pub temperature: f32,
+    pub tint: f32,
+    /// 0 = kein Kelvin (Quelle ohne Aufnahme-Temperatur)
+    pub kelvin: f32,
+}
+
+/// Automatischer Weißabgleich: die Einstellung, mit der die geschätzte
+/// Lichtfarbe neutral wird. Schätzung „Shades of Gray“
 /// (Minkowski-Mittel mit p = 6) über das lineare Bild vor dem Weißabgleich;
 /// ausgefressene und sehr dunkle Pixel zählen nicht. Kehrt
 /// [`crate::pipeline::white_balance`] um: Temperatur gleicht Rot gegen Blau
 /// aus, Tönung Grün gegen das Mittel aus Rot und Blau.
-pub fn auto_white_balance(src: &Source, base: &DevelopParams) -> (f32, f32) {
+pub fn auto_white_balance(src: &Source, base: &DevelopParams) -> AutoWb {
+    const NONE: AutoWb = AutoWb {
+        temperature: 0.0,
+        tint: 0.0,
+        kelvin: 0.0,
+    };
     let mut small = src.downscaled(EDGE);
     if base.lens_correction
         && let Some(l) = small.lens.take()
@@ -342,7 +358,7 @@ pub fn auto_white_balance(src: &Source, base: &DevelopParams) -> (f32, f32) {
         .map(|p| p[0].max(p[1]).max(p[2]))
         .fold(0f32, f32::max);
     if peak <= 0.0 {
-        return (0.0, 0.0);
+        return NONE;
     }
     let mut lumas: Vec<f32> = px.iter().map(|p| luma(*p)).collect();
     lumas.sort_by(|a, b| a.total_cmp(b));
@@ -360,16 +376,31 @@ pub fn auto_white_balance(src: &Source, base: &DevelopParams) -> (f32, f32) {
         n += 1;
     }
     if n < 50 {
-        return (0.0, 0.0);
+        return NONE;
     }
     let [r, g, b] = s.map(|v| (v / n as f64).powf(1.0 / P));
+    if let Some(k0) = src.as_shot_kelvin {
+        // Kelvin gleicht Rot gegen Blau aus, die Tönung den Rest an Grün
+        let kelvin = crate::wb::kelvin_for_ratio(k0, (b / r) as f32);
+        let m = crate::wb::kelvin_multipliers(k0, kelvin).map(f64::from);
+        let green = (r * b).sqrt() / g / (m[1] / (m[0] * m[2]).sqrt());
+        let tint = (-green.ln() / 0.25 * 100.0) as f32;
+        return AutoWb {
+            temperature: 0.0,
+            // „+ 0.0“: keine −0 in der Anzeige
+            tint: tint.clamp(-100.0, 100.0).round() + 0.0,
+            kelvin: (kelvin / 10.0).round() * 10.0,
+        };
+    }
     // r·e^(0,35·T) = b·e^(−0,35·T)  und  g·e^(−0,25·t) = √(r·b)
     let temperature = ((b / r).ln() / 0.7 * 100.0) as f32;
     let tint = ((g / (r * b).sqrt()).ln() / 0.25 * 100.0) as f32;
-    (
-        temperature.clamp(-100.0, 100.0).round(),
-        tint.clamp(-100.0, 100.0).round(),
-    )
+    AutoWb {
+        temperature: temperature.clamp(-100.0, 100.0).round() + 0.0,
+        // „+ 0.0“: keine −0 in der Anzeige
+        tint: tint.clamp(-100.0, 100.0).round() + 0.0,
+        kelvin: 0.0,
+    }
 }
 
 #[cfg(test)]
@@ -391,9 +422,15 @@ mod tests {
             full_width: w,
             full_height: h,
             lens: None,
+            as_shot_kelvin: None,
             image,
         };
-        let (t, tint) = auto_white_balance(&src, &DevelopParams::default());
+        let AutoWb {
+            temperature: t,
+            tint,
+            kelvin,
+        } = auto_white_balance(&src, &DevelopParams::default());
+        assert_eq!(kelvin, 0.0);
         assert!(t < -20.0, "Temperatur {t}");
         assert!(tint > 0.0, "Tönung {tint}");
         let wb = crate::pipeline::white_balance(t / 100.0, tint / 100.0);
@@ -404,12 +441,31 @@ mod tests {
         // Neutrales Bild bleibt unverändert
         let gray = Source {
             image: ImageF32::from_fn(w, h, |x, y| [0.05 + 0.6 * ((x + y) % 50) as f32 / 50.0; 3]),
+            ..src.clone()
+        };
+        let neutral = auto_white_balance(&gray, &DevelopParams::default());
+        assert_eq!((neutral.temperature, neutral.tint), (0.0, 0.0));
+
+        // RAW mit Kamera-Weißabgleich: Ergebnis in Kelvin, wärmeres Licht als
+        // aufgenommen → niedrigere Temperatur; danach ist das Bild neutral
+        let raw = Source {
+            kind: SourceKind::Raw,
+            as_shot_kelvin: Some(5500.0),
             ..src
         };
-        assert_eq!(
-            auto_white_balance(&gray, &DevelopParams::default()),
-            (0.0, 0.0)
-        );
+        let a = auto_white_balance(&raw, &DevelopParams::default());
+        assert_eq!(a.temperature, 0.0);
+        assert!(a.kelvin > 2000.0 && a.kelvin < 5000.0, "{a:?}");
+        let p = DevelopParams {
+            kelvin: a.kelvin,
+            tint: a.tint,
+            ..Default::default()
+        };
+        let wb = crate::pipeline::global_white_balance(&p, Some(5500.0));
+        let c = [1.35 * wb[0], 1.1 * wb[1], 0.7 * wb[2]];
+        let spread =
+            c.iter().copied().fold(f32::MIN, f32::max) / c.iter().copied().fold(f32::MAX, f32::min);
+        assert!(spread < 1.04, "nicht neutral: {c:?}");
     }
 
     fn scene(gain: f32, contrast: f32) -> Source {
@@ -432,6 +488,7 @@ mod tests {
             full_width: w,
             full_height: h,
             lens: None,
+            as_shot_kelvin: None,
             image,
         }
     }
@@ -507,6 +564,7 @@ mod tests {
             full_width: w,
             full_height: h,
             lens: None,
+            as_shot_kelvin: None,
             image,
         };
         let a = auto_tone(&night, &DevelopParams::default());

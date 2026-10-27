@@ -25,6 +25,9 @@ pub struct Source {
     pub full_height: usize,
     /// Objektivkorrektur aus den Daten der Kamera (nur RAWs, falls vorhanden)
     pub lens: Option<std::sync::Arc<crate::lens::LensProfile>>,
+    /// Farbtemperatur, auf die das Bild abgeglichen ist (Kamera-Weißabgleich
+    /// eines RAWs); ohne sie gibt es nur den relativen Weißabgleich
+    pub as_shot_kelvin: Option<f32>,
 }
 
 impl Source {
@@ -57,12 +60,14 @@ impl Source {
                 full_width,
                 full_height,
                 lens: None,
+                as_shot_kelvin: None,
             });
         }
         // Volle Abmessungen (vor Verkleinerung); Rasterbilder setzen sie
         // selbst, weil sehr große schon beim Linearisieren verkleinert werden.
         let mut full = None;
         let mut lens = None;
+        let mut as_shot_kelvin = None;
         let (kind, image) = if crate::exr_io::is_exr(path) {
             let (img, scene) = crate::exr_io::read(path)?;
             let kind = if scene {
@@ -78,6 +83,7 @@ impl Source {
             lens = crate::lens::LensProfile::read_from(&opened.file, opened.meta.as_ref(), o, size)
                 .map(std::sync::Arc::new);
             full = Some(size);
+            as_shot_kelvin = opened.kelvin;
             // Erst verkleinern, dann aufrichten: Bei Hochformat drehte sonst
             // jede Vorschau das volle Bild (bis 720 MB Kopie)
             let img = match max_edge {
@@ -104,6 +110,7 @@ impl Source {
             full_width,
             full_height,
             lens,
+            as_shot_kelvin,
         })
     }
 
@@ -117,6 +124,7 @@ impl Source {
             full_width: self.full_width,
             full_height: self.full_height,
             lens: self.lens.clone(),
+            as_shot_kelvin: self.as_shot_kelvin,
         }
     }
 }
@@ -138,6 +146,8 @@ fn img_size(img: &ImageF32, o: u16) -> (usize, usize) {
 struct Opened {
     file: rawler::rawsource::RawSource,
     meta: Option<rawler::decoders::RawMetadata>,
+    /// Farbtemperatur des Kamera-Weißabgleichs
+    kelvin: Option<f32>,
 }
 
 fn decode_raw(path: &Path) -> Result<(ImageF32, u16, Opened)> {
@@ -149,6 +159,7 @@ fn decode_raw(path: &Path) -> Result<(ImageF32, u16, Opened)> {
         .ok()
         .and_then(|d| d.raw_metadata(&file, &RawDecodeParams::default()).ok());
     let orientation = raw.orientation.to_u16();
+    let kelvin = crate::dt::raw::as_shot_kelvin(&raw);
     let mut img = if crate::dt::raw::applies(&raw) {
         let exif = meta
             .as_ref()
@@ -162,7 +173,7 @@ fn decode_raw(path: &Path) -> Result<(ImageF32, u16, Opened)> {
         return Err(Error::Raw(tr_s("leeres Bild", "empty image").into()));
     }
     crate::capture_sharpen::apply(&mut img);
-    Ok((img, orientation, Opened { file, meta }))
+    Ok((img, orientation, Opened { file, meta, kelvin }))
 }
 
 /// rawler komplett: Sonderfälle (Fuji SuperCCD, Vierfarb-Sensoren, Monochrom).

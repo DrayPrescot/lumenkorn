@@ -55,6 +55,7 @@ fn main() {
             full_width: img.width,
             full_height: img.height,
             lens: None,
+            as_shot_kelvin: src.as_shot_kelvin,
         };
         render(&s, &params)
     };
