@@ -11,6 +11,8 @@ pub mod pano;
 use crate::error::{Error, Result};
 use crate::image_f32::ImageF32;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{Receiver, sync_channel};
+use std::thread::{Scope, ScopedJoinHandle};
 
 /// Fortschritt: (Schritt, erledigt, gesamt)
 pub type Progress<'a> = &'a (dyn Fn(&str, usize, usize) + Sync);
@@ -56,6 +58,18 @@ impl<'a> FrameCache<'a> {
         }
     }
 
+    /// Zieht die Größe eines vorab geladenen Bildes vom Budget ab (siehe
+    /// [`Prefetch`]): Das Vorlade-Bild liegt neben dem Zwischenspeicher im RAM,
+    /// der Spitzenverbrauch soll aber bei `keep_bytes()` bleiben.
+    pub(crate) fn reserve_prefetch(&mut self, img: &ImageF32) {
+        self.budget = self.budget.saturating_sub(img.data.len() * 12);
+    }
+
+    /// Ob Bild `i` im Speicher liegt (sonst muss es geladen werden).
+    pub(crate) fn has(&self, i: usize) -> bool {
+        self.full.get(i).is_some_and(Option::is_some)
+    }
+
     /// Nimmt das nächste Bild (Ladereihenfolge) auf, wenn es noch ins Budget passt.
     pub(crate) fn offer(&mut self, img: ImageF32) {
         let bytes = img.data.len() * 12;
@@ -92,6 +106,65 @@ impl<'a> FrameCache<'a> {
     /// nur für Bilder, die gleich noch einmal gebraucht werden).
     pub(crate) fn put(&mut self, i: usize, img: ImageF32) {
         self.full[i] = Some(img);
+    }
+}
+
+/// Lädt die Bilder aus `order` der Reihe nach auf einem Hilfsthread vor, während
+/// der Aufrufer das vorige verarbeitet (RAW-Dekodierung ist größtenteils
+/// einfädig, die übrigen Kerne liefen sonst leer). Ergebnisse kommen in
+/// genau der Reihenfolge von `order`, Ladefehler an der Stelle, an der das
+/// Bild gebraucht wird – das Ergebnis ist dasselbe wie beim sequenziellen Laden.
+///
+/// Der Kanal hat Tiefe 0 (Übergabe): Der Lader hält höchstens ein fertig
+/// dekodiertes Bild, das auf Abholung wartet, nie mehrere. Dieses eine Bild
+/// ist zusätzlicher Speicher (siehe [`FrameCache::reserve_prefetch`]).
+/// Wird `Prefetch` vorzeitig fallengelassen (Fehler, Abbruch), bricht der
+/// Lader nach dem laufenden Bild ab; der Scope wartet darauf.
+pub(crate) struct Prefetch<'s> {
+    rx: Receiver<Result<ImageF32>>,
+    _handle: ScopedJoinHandle<'s, ()>,
+    cancel: &'s AtomicBool,
+}
+
+impl<'s> Prefetch<'s> {
+    pub(crate) fn new<'env>(
+        scope: &'s Scope<'s, 'env>,
+        order: Vec<usize>,
+        load: Loader<'env>,
+        cancel: &'env AtomicBool,
+    ) -> Self
+    where
+        'env: 's,
+    {
+        let (tx, rx) = sync_channel(0);
+        let handle = scope.spawn(move || {
+            for i in order {
+                // Nach Abbruch nichts mehr laden; `next` meldet ihn selbst.
+                if cancel.load(Ordering::Relaxed) {
+                    return;
+                }
+                if tx.send(load(i)).is_err() {
+                    return;
+                }
+            }
+        });
+        Self {
+            rx,
+            _handle: handle,
+            cancel,
+        }
+    }
+
+    /// Das nächste vorgeladene Bild (oder dessen Ladefehler).
+    pub(crate) fn next(&self) -> Result<ImageF32> {
+        match self.rx.recv() {
+            Ok(r) => r,
+            // Lader ist ohne Bild beendet: nur nach Abbruch vorgesehen
+            Err(_) => {
+                check(self.cancel)?;
+                Err(Error::Params("Vorladen beendet".into()))
+            }
+        }
     }
 }
 
@@ -152,6 +225,50 @@ pub(crate) fn check(cancel: &AtomicBool) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    fn fake(i: usize) -> Result<ImageF32> {
+        if i == 3 {
+            return Err(Error::Params("kaputt".into()));
+        }
+        Ok(ImageF32 {
+            width: i + 1,
+            height: 1,
+            data: vec![[0.0; 3]; i + 1],
+        })
+    }
+
+    #[test]
+    fn prefetch_keeps_order_and_propagates_errors() {
+        let cancel = AtomicBool::new(false);
+        let load = |i: usize| fake(i);
+        std::thread::scope(|s| {
+            let pf = Prefetch::new(s, vec![4, 0, 2, 3, 1], &load, &cancel);
+            assert_eq!(pf.next().unwrap().width, 5);
+            assert_eq!(pf.next().unwrap().width, 1);
+            assert_eq!(pf.next().unwrap().width, 3);
+            // Fehler an der Stelle des betroffenen Bildes
+            assert!(pf.next().is_err());
+            assert_eq!(pf.next().unwrap().width, 2);
+        });
+    }
+
+    #[test]
+    fn prefetch_stops_when_dropped_or_cancelled() {
+        let cancel = AtomicBool::new(false);
+        let load = |i: usize| fake(i);
+        std::thread::scope(|s| {
+            let pf = Prefetch::new(s, vec![0, 1, 2], &load, &cancel);
+            assert_eq!(pf.next().unwrap().width, 1);
+            // vorzeitig fallenlassen: der Scope darf nicht hängen
+        });
+        let cancel = AtomicBool::new(true);
+        std::thread::scope(|s| {
+            let pf = Prefetch::new(s, vec![0, 1], &load, &cancel);
+            assert!(pf.next().is_err());
+        });
+    }
+
     #[test]
     fn available_memory_is_known() {
         // Unter Linux und Windows muss die Abfrage funktionieren

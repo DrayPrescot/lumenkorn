@@ -18,7 +18,7 @@
 //! dunkleren Aufnahmen gewonnenen Lichter.
 
 use super::align::{self, Features, Mat3};
-use super::{FrameCache, Loader, Progress, check};
+use super::{FrameCache, Loader, Prefetch, Progress, check};
 use crate::color::luma;
 use crate::error::{Error, Result};
 use crate::i18n::tr_s;
@@ -91,25 +91,33 @@ pub fn merge(
     // Mittlere Helligkeit (aus 600 px) für die Wahl der Referenz
     let mut means: Vec<f32> = Vec::new();
     let mut size = (0, 0);
-    for i in 0..n {
-        check(cancel)?;
-        progress(tr_s("Bilder laden", "Loading images"), i, n);
-        let img = load(i)?;
-        if i == 0 {
-            size = (img.width, img.height);
-        } else if (img.width, img.height) != size {
-            return Err(Error::Params(
-                tr_s(
-                    "Die Belichtungsreihe muss aus gleich großen Fotos bestehen",
-                    "The bracketed series must consist of photos of the same size",
-                )
-                .into(),
-            ));
+    // Das nächste Foto wird auf einem Hilfsthread dekodiert, während das
+    // vorige analysiert wird.
+    std::thread::scope(|s| -> Result<()> {
+        let pf = Prefetch::new(s, (0..n).collect(), load, cancel);
+        for i in 0..n {
+            check(cancel)?;
+            progress(tr_s("Bilder laden", "Loading images"), i, n);
+            let img = pf.next()?;
+            if i == 0 {
+                size = (img.width, img.height);
+                // Das vorgeladene Bild liegt zusätzlich im RAM: vom Budget abziehen
+                cache.reserve_prefetch(&img);
+            } else if (img.width, img.height) != size {
+                return Err(Error::Params(
+                    tr_s(
+                        "Die Belichtungsreihe muss aus gleich großen Fotos bestehen",
+                        "The bracketed series must consist of photos of the same size",
+                    )
+                    .into(),
+                ));
+            }
+            feats.push(align::features(&img, 1200, 2000));
+            means.push(mean(&img.downscale_to(600)));
+            cache.offer(img);
         }
-        feats.push(align::features(&img, 1200, 2000));
-        means.push(mean(&img.downscale_to(600)));
-        cache.offer(img);
-    }
+        Ok(())
+    })?;
     let (w, h) = size;
     // Ergebnispuffer (acc + wsum + Referenzhelligkeit, 20 Byte je Pixel)
     // zählen mit: überzählige Bilder freigeben, sie werden neu geladen.
@@ -231,38 +239,53 @@ pub fn merge(
     add(&mut acc, &mut wsum, &reference, r, 1.0);
     // Zuletzt bearbeitetes Bild (Nachbarin des nächsten Kettenglieds)
     let mut prev: Option<(usize, ImageF32)> = None;
-    for (kk, &(i, j)) in chain.iter().enumerate() {
-        check(cancel)?;
-        progress(tr_s("Zusammenführen", "Merging"), kk + 1, n);
-        let img_i = cache.take(i)?;
-        let lj;
-        let img_j: &ImageF32 = match &prev {
-            _ if j == r => &reference,
-            Some((pj, img)) if *pj == j => img,
-            // Kommt bei der Kettenfolge nicht vor – sicherheitshalber laden
-            _ => {
-                lj = cache.take(j)?;
-                &lj
-            }
-        };
-        let Some(q) = exposure_ratio(&img_i, &homs[i], img_j, &homs[j]) else {
-            return Err(Error::Params(
+    // Verdrängte Bilder (jedes Kettenglied `i` kommt nur einmal vor) werden
+    // vorab geladen, während das vorige eingerechnet wird.
+    let evicted: Vec<usize> = chain
+        .iter()
+        .map(|&(i, _)| i)
+        .filter(|&i| !cache.has(i))
+        .collect();
+    std::thread::scope(|s| -> Result<()> {
+        let pf = Prefetch::new(s, evicted, load, cancel);
+        for (kk, &(i, j)) in chain.iter().enumerate() {
+            check(cancel)?;
+            progress(tr_s("Zusammenführen", "Merging"), kk + 1, n);
+            let img_i = if cache.has(i) {
+                cache.take(i)?
+            } else {
+                pf.next()?
+            };
+            let lj;
+            let img_j: &ImageF32 = match &prev {
+                _ if j == r => &reference,
+                Some((pj, img)) if *pj == j => img,
+                // Kommt bei der Kettenfolge nicht vor – sicherheitshalber laden
+                _ => {
+                    lj = cache.take(j)?;
+                    &lj
+                }
+            };
+            let Some(q) = exposure_ratio(&img_i, &homs[i], img_j, &homs[j]) else {
+                return Err(Error::Params(
                 tr_s(
                     "Die Belichtungen überlappen sich kaum – ist das wirklich eine Reihe? (Abstand höchstens ~3 EV)",
                     "The exposures barely overlap – is this really a bracketed series? (spacing at most ~3 EV)",
                 )
                 .into(),
             ));
-        };
-        ratio[i] = ratio[j] * q;
-        add(&mut acc, &mut wsum, &img_i, i, ratio[i]);
-        // Fallback-Bilder brauchen wir gleich noch; die übrigen sind fertig
-        if let Some((d, img)) = prev.replace((i, img_i))
-            && (d == darkest || d == brightest)
-        {
-            cache.put(d, img);
+            };
+            ratio[i] = ratio[j] * q;
+            add(&mut acc, &mut wsum, &img_i, i, ratio[i]);
+            // Fallback-Bilder brauchen wir gleich noch; die übrigen sind fertig
+            if let Some((d, img)) = prev.replace((i, img_i))
+                && (d == darkest || d == brightest)
+            {
+                cache.put(d, img);
+            }
         }
-    }
+        Ok(())
+    })?;
     if let Some((d, img)) = prev
         && (d == darkest || d == brightest)
     {
