@@ -7,6 +7,7 @@ use crate::color::linear_to_srgb;
 use crate::error::Result;
 use crate::image_f32::ImageF32;
 use crate::output::to_rgb8;
+use crate::wb::XYZ_TO_SRGB;
 use rayon::prelude::*;
 
 const TILE: usize = 256;
@@ -19,13 +20,9 @@ const THUMB: usize = 256;
 const PREVIEW: usize = 2560;
 const PREVIEW_QUALITY: u8 = 85;
 
-/// XYZ (D65) → lineares sRGB bzw. Rec.2020: `ColorMatrix1` der DNG-Datei. Der
-/// „Kamera-Farbraum“ ist hier der Farbraum der gespeicherten Daten.
-const XYZ_TO_SRGB: [[f64; 3]; 3] = [
-    [3.2404542, -1.5371385, -0.4985314],
-    [-0.9692660, 1.8760108, 0.0415560],
-    [0.0556434, -0.2040259, 1.0572252],
-];
+/// XYZ (D65) → Rec.2020 bzw. lineares sRGB (`wb::XYZ_TO_SRGB`): `ColorMatrix1`
+/// der DNG-Datei. Der „Kamera-Farbraum“ ist hier der Farbraum der
+/// gespeicherten Daten.
 const XYZ_TO_REC2020: [[f64; 3]; 3] = [
     [1.7166512, -0.3556708, -0.2533663],
     [-0.6666844, 1.6164812, 0.0157685],

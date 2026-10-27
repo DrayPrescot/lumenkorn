@@ -138,10 +138,6 @@ fn img_size(img: &ImageF32, o: u16) -> (usize, usize) {
     }
 }
 
-/// Entwickelt ein RAW bis zum szenenbezogenen, linearen sRGB wie darktable
-/// (siehe [`crate::dt::raw`]); Sonderfälle (Fuji SuperCCD, Vierfarb-Sensoren,
-/// Monochrom, fehlende Kameramatrix) rechnet rawler. Mit Eingangsschärfung
-/// (siehe [`crate::capture_sharpen`]).
 /// Die einmal geöffnete RAW-Datei mit ihren Metadaten (für Objektivdaten).
 struct Opened {
     file: rawler::rawsource::RawSource,
@@ -150,6 +146,10 @@ struct Opened {
     kelvin: Option<f32>,
 }
 
+/// Entwickelt ein RAW bis zum szenenbezogenen, linearen sRGB wie darktable
+/// (siehe [`crate::dt::raw`]); Sonderfälle (Fuji SuperCCD, Vierfarb-Sensoren,
+/// Monochrom, fehlende Kameramatrix) rechnet rawler. Mit Eingangsschärfung
+/// (siehe [`crate::capture_sharpen`]).
 fn decode_raw(path: &Path) -> Result<(ImageF32, u16, Opened)> {
     use rawler::decoders::RawDecodeParams;
     // Eine Öffnung und ein Lesen der Metadaten für Entwicklung und Objektivprofil

@@ -13,7 +13,9 @@ use crate::geometry;
 use crate::image_f32::ImageF32;
 use crate::masks;
 use crate::params::DevelopParams;
-use crate::pipeline::{RenderOptions, Tone, base_look, white_balance};
+use crate::pipeline::{
+    BASE_MAP, DEHAZE_MAP, DETAIL_MAP, RenderOptions, Tone, base_look, white_balance,
+};
 use crate::source::{Source, SourceKind};
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -275,8 +277,13 @@ fn lines(n: usize) -> [u32; 3] {
     [n.div_ceil(64) as u32, 1, 1]
 }
 
-/// Größte Helligkeitskarte (local.rs: 640 px lange Kante)
-const MAP_CAP: usize = 640 * 640;
+/// Größte Helligkeitskarte (Klarheit, siehe `pipeline::DETAIL_MAP`)
+const MAP_CAP: usize = crate::pipeline::DETAIL_MAP.0 * crate::pipeline::DETAIL_MAP.0;
+const _: () = assert!(
+    crate::pipeline::DETAIL_MAP.0 >= crate::pipeline::BASE_MAP.0
+        && crate::pipeline::DETAIL_MAP.0 >= crate::pipeline::DEHAZE_MAP.0,
+    "MAP_CAP muss die größte Karte fassen"
+);
 /// Größere Sätze bleiben bis hierhin für die Zoomansicht erhalten (sonst
 /// würde jedes Verschieben bei 100 % Gigabytes neu anlegen und hochladen);
 /// freigegeben werden sie beim Verlassen des Entwickelns bzw. nach dem Export.
@@ -379,14 +386,14 @@ fn raw_tone_consts() -> String {
 /// Dezimalpunkt und exakt umkehrbar, der Shader rechnet also mit denselben Werten.
 fn shader_source() -> String {
     use crate::color::{
-        HSL_GRAY_EDGE, HSL_HUE_RANGE, HSL_LUM_RANGE, OKLAB_LAB_TO_LMS, OKLAB_LIN_TO_LMS,
-        OKLAB_LMS_TO_LAB, OKLAB_LMS_TO_LIN,
+        HSL_GRAY_EDGE, HSL_HUE_RANGE, HSL_LUM_RANGE, HSL_MIN_CHROMA, LUMA, OKLAB_LAB_TO_LMS,
+        OKLAB_LIN_TO_LMS, OKLAB_LMS_TO_LAB, OKLAB_LMS_TO_LIN,
     };
     use crate::pipeline::{
-        BLACKS_GAIN, BLACKS_RANGE, CLARITY_GAIN, CONTRAST_MIX, DEHAZE_CHROMA, DEHAZE_GAIN,
-        DEHAZE_MIN_T, HAZE_ADD, HIGHLIGHT_RANGE, MID_WEIGHT_K, OVERLAY_COLOR, OVERLAY_OPACITY,
-        SHADOW_HIGHLIGHT_GAIN, SHADOW_RANGE, SHARPEN_GAIN, SHARPEN_THRESHOLD, SKIN_EDGE,
-        SKIN_PROTECT, SOFT_CLIP_KNEE, WHITES_GAIN, WHITES_RANGE,
+        APPLY_LUMA_EPS, BLACKS_GAIN, BLACKS_RANGE, CLARITY_GAIN, CONTRAST_MIX, DEHAZE_CHROMA,
+        DEHAZE_GAIN, DEHAZE_MIN_T, HAZE_ADD, HIGHLIGHT_RANGE, MID_WEIGHT_K, OVERLAY_COLOR,
+        OVERLAY_OPACITY, SHADOW_HIGHLIGHT_GAIN, SHADOW_RANGE, SHARPEN_GAIN, SHARPEN_THRESHOLD,
+        SKIN_EDGE, SKIN_PROTECT, SOFT_CLIP_KNEE, WHITES_GAIN, WHITES_RANGE,
     };
     let f = |name: &str, v: f32| format!("const {name}: f32 = {v:?};\n");
     let list = |v: &[f32]| {
@@ -431,6 +438,13 @@ fn shader_source() -> String {
         v2("WHITES_RANGE", WHITES_RANGE),
         v2("BLACKS_RANGE", BLACKS_RANGE),
         f("MID_WEIGHT_K", MID_WEIGHT_K),
+        f("APPLY_LUMA_EPS", APPLY_LUMA_EPS),
+        f("HSL_MIN_CHROMA", HSL_MIN_CHROMA),
+        format!(
+            "const LUMA = vec3<f32>({});
+",
+            list(&LUMA)
+        ),
         f("SKIN_PROTECT", SKIN_PROTECT),
         f("HSL_GRAY_EDGE", HSL_GRAY_EDGE),
         f("HSL_HUE_RANGE", HSL_HUE_RANGE),
@@ -936,14 +950,14 @@ impl<'a> Ctx<'a> {
             ..Default::default()
         };
         if t.highlights != 0.0 || t.shadows != 0.0 {
-            let (mw, mh) = self.build_map(base, 128, 3);
+            let (mw, mh) = self.build_map(base, BASE_MAP.0, BASE_MAP.1);
             u.mw = mw;
             u.mh = mh;
             u.flags |= F_BASE;
             b.fb = Some(base);
         }
         if t.clarity != 0.0 {
-            let (dw, dh) = self.build_map(detail, 640, 3);
+            let (dw, dh) = self.build_map(detail, DETAIL_MAP.0, DETAIL_MAP.1);
             u.dw = dw;
             u.dh = dh;
             u.flags |= F_DETAIL;
@@ -987,7 +1001,7 @@ impl<'a> Ctx<'a> {
                 img2d(self.w, self.h),
             );
             let map = &self.maps[0];
-            let (mw, mh) = self.build_map(map, 256, 2);
+            let (mw, mh) = self.build_map(map, DEHAZE_MAP.0, DEHAZE_MAP.1);
             u.mw = mw;
             u.mh = mh;
             b.fa = Some(self.y);

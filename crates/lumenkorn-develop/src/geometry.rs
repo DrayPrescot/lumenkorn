@@ -145,11 +145,7 @@ pub fn detect_tilt(img: &ImageF32) -> Option<f32> {
     if w < 16 || h < 16 {
         return None;
     }
-    let lum: Vec<f32> = small
-        .data
-        .iter()
-        .map(|p| 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2])
-        .collect();
+    let lum: Vec<f32> = small.data.iter().map(|p| crate::color::luma(*p)).collect();
     let at = |x: usize, y: usize| lum[y * w + x];
 
     // Kantenpunkte (Sobel), getrennt nach waagerechten und senkrechten Kanten

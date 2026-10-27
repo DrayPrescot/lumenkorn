@@ -36,8 +36,15 @@ fn loglogistic(
 ) -> f32 {
     let clamped = value.max(0.0);
     let film_response = (film_fog + clamped).powf(film_power);
-    let paper_response =
-        magnitude * (film_response / (paper_exp + film_response)).powf(paper_power);
+    let ratio = film_response / (paper_exp + film_response);
+    // Ohne Schiefe ist der Exponent genau 1 (`x^1 == x` exakt) – spart je
+    // Kanal ein `powf`, bei jeder RAW-Vorschau Millionen davon
+    let paper_response = magnitude
+        * if paper_power == 1.0 {
+            ratio
+        } else {
+            ratio.powf(paper_power)
+        };
     if paper_response.is_nan() {
         magnitude
     } else {

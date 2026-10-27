@@ -4,6 +4,8 @@ use std::sync::OnceLock;
 
 /// Luminanzgewichte für Rec.709/sRGB-Primärvalenzen.
 pub const LUMA: [f32; 3] = [0.2126, 0.7152, 0.0722];
+/// Buntheit (Oklab), unter der HSL ein Pixel als farblos überspringt (CPU und GPU)
+pub(crate) const HSL_MIN_CHROMA: f32 = 1e-5;
 
 #[inline]
 pub fn luma(p: [f32; 3]) -> f32 {
@@ -208,7 +210,7 @@ pub fn hsl_pixel(p: [f32; 3], adj: &HslAdjust) -> [f32; 3] {
     let lin = p.map(|v| srgb_to_linear(v.clamp(0.0, 1.0)));
     let [l, a, b] = oklab(lin);
     let c = (a * a + b * b).sqrt();
-    if c < 1e-5 {
+    if c < HSL_MIN_CHROMA {
         return p;
     }
     let hue = b.atan2(a).to_degrees();

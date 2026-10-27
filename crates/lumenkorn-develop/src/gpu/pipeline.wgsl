@@ -49,7 +49,7 @@ const F_STRAIGHTEN: u32 = 32u;
 // --- Hilfsfunktionen (color.rs, pipeline.rs) ----------------------------------
 
 fn luma(c: vec3<f32>) -> f32 {
-    return 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z;
+    return LUMA.x * c.x + LUMA.y * c.y + LUMA.z * c.z;
 }
 
 fn srgb_to_linear(v: f32) -> f32 {
@@ -107,7 +107,7 @@ fn fit_gamut(c: vec3<f32>, y_in: f32) -> vec3<f32> {
 
 fn apply_luma(c: vec3<f32>, y_old: f32, y_new: f32) -> vec3<f32> {
     var o: vec3<f32>;
-    if (y_old > 1e-4) {
+    if (y_old > APPLY_LUMA_EPS) {
         o = c * (y_new / y_old);
     } else {
         o = c + vec3<f32>(y_new);
@@ -500,7 +500,7 @@ fn hsl(@builtin(global_invocation_id) id: vec3<u32>) {
     let p = clamp(outa[idx].xyz, vec3<f32>(0.0), vec3<f32>(1.0));
     let lab = oklab(vec3<f32>(srgb_to_linear(p.x), srgb_to_linear(p.y), srgb_to_linear(p.z)));
     let c = sqrt(lab.y * lab.y + lab.z * lab.z);
-    if (c < 1e-5) { return; }
+    if (c < HSL_MIN_CHROMA) { return; }
     let hue = degrees(atan2(lab.z, lab.y));
     var h = hue - floor(hue / 360.0) * 360.0;
     var dh = 0.0;

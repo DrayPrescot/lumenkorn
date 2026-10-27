@@ -72,6 +72,14 @@ pub(crate) fn base_look(p: &DevelopParams, raw: bool) -> (f32, f32, f32) {
 
 /// Dynamik: Breite des Übergangs zur Schonung der Hauttöne (Abstand der
 /// Kanäle in Kodierungseinheiten)
+/// Helligkeitskarten (lange Kante in px, Weichzeichner-Radius) für Lichter/
+/// Tiefen, Klarheit und Dunst – CPU und GPU (`gpu::MAP_CAP` hängt daran)
+pub(crate) const BASE_MAP: (usize, usize) = (128, 3);
+pub(crate) const DETAIL_MAP: (usize, usize) = (640, 3);
+pub(crate) const DEHAZE_MAP: (usize, usize) = (256, 2);
+/// Darunter gilt ein Pixel in `apply_luma` als schwarz (Helligkeit addieren
+/// statt skalieren)
+pub(crate) const APPLY_LUMA_EPS: f32 = 1e-4;
 pub(crate) const SKIN_EDGE: f32 = 0.02;
 /// Beginn der weichen Schulter von [`soft_clip`].
 pub(crate) const SOFT_CLIP_KNEE: f32 = 0.8;
@@ -228,16 +236,17 @@ fn needs_prepared(src: &Source, p: &DevelopParams) -> bool {
     lens_of(src, p).is_some() || has_repairs(p, false)
 }
 
+/// Schlüssel einer vorbereiteten Quelle: Quelle und entrauschte Fassung wie
+/// für die GPU (Adresse, Größe und Stichproben – eine freigegebene Quelle kann
+/// an derselben Adresse durch ein anderes Bild ersetzt werden) plus Stärke und
+/// Flicken.
+type RepairedKey = (crate::gpu::ImageKey, Option<crate::gpu::ImageKey>, String);
 /// Für GPU und CPU: Quellbild mit bereits eingesetzten Reparaturen (und
 /// eingemischter Rauschreduzierung), zwischengespeichert – beim Ziehen eines
-/// Reglers ändert sich daran nichts.
-/// Schlüssel: Quelle und entrauschte Fassung wie für die GPU (Adresse, Größe
-/// und Stichproben – eine freigegebene Quelle kann an derselben Adresse durch
-/// ein anderes Bild ersetzt werden) plus Stärke und Flicken.
-type RepairedKey = (crate::gpu::ImageKey, Option<crate::gpu::ImageKey>, String);
-/// Zwei Einträge: Vorschau (Proxy) und Zoomansicht (volle Auflösung) wechseln
-/// sich ab – mit nur einem würde jeder Wechsel alles neu einsetzen.
-/// Die Zahl ist die Kennung der Fassung für den GPU-Puffer-Cache.
+/// Reglers ändert sich daran nichts. Zwei Einträge: Vorschau (Proxy) und
+/// Zoomansicht (volle Auflösung) wechseln sich ab – mit nur einem würde jeder
+/// Wechsel alles neu einsetzen. Die Zahl ist die Kennung der Fassung für den
+/// GPU-Puffer-Cache.
 static REPAIRED: Mutex<Vec<(RepairedKey, Arc<Source>, u64)>> = Mutex::new(Vec::new());
 /// Fortlaufende Kennung reparierter Fassungen. Eine neue Fassung kann an der
 /// Adresse einer verworfenen liegen und sich nur im Flicken unterscheiden –
@@ -747,7 +756,7 @@ fn dehaze(img: &mut ImageF32, amount: f32, haze: Haze) {
         .par_iter()
         .map(|c| c[0].min(c[1]).min(c[2]))
         .collect();
-    let map = LumaMap::build(&dark, w, h, 256, 2);
+    let map = LumaMap::build(&dark, w, h, DEHAZE_MAP.0, DEHAZE_MAP.1);
     img.data.par_iter_mut().enumerate().for_each(|(i, px)| {
         let d = dark[i].min(map.sample(i % w, i / w));
         *px = dehaze_px(*px, d, amount, haze);
@@ -808,8 +817,8 @@ impl ToneMaps {
         // Grobe Karte (~ 5 % der Bildbreite) für Lichter/Tiefen, feinere für Klarheit.
         Self {
             base: (t.highlights != 0.0 || t.shadows != 0.0)
-                .then(|| LumaMap::build(y, w, h, 128, 3)),
-            detail: (t.clarity != 0.0).then(|| LumaMap::build(y, w, h, 640, 3)),
+                .then(|| LumaMap::build(y, w, h, BASE_MAP.0, BASE_MAP.1)),
+            detail: (t.clarity != 0.0).then(|| LumaMap::build(y, w, h, DETAIL_MAP.0, DETAIL_MAP.1)),
         }
     }
 }
@@ -1187,7 +1196,7 @@ fn s_curve(v: f32, amount: f32) -> f32 {
 /// Überträgt eine Helligkeitsänderung auf RGB, ohne den Farbton zu verschieben.
 #[inline]
 pub(crate) fn apply_luma(c: [f32; 3], y_old: f32, y_new: f32) -> [f32; 3] {
-    let out = if y_old > 1e-4 {
+    let out = if y_old > APPLY_LUMA_EPS {
         let k = y_new / y_old;
         [c[0] * k, c[1] * k, c[2] * k]
     } else {
