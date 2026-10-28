@@ -96,13 +96,25 @@ export type AlbumStyle = "margins" | "borderless";
 export type CaptionMode = "both" | "date" | "place" | "none";
 /** Kartenseite mit den besuchten Orten */
 export type MapPlacement = "none" | "first" | "last";
-export type AlbumFont = "sans" | "serif";
+/** „sans“ und „serif“: die mitgelieferten Schriften; sonst der Name einer
+ *  Schriftfamilie des Systems */
+export type AlbumFont = string;
 
-/** CSS-Schriftfamilie (über @fontsource eingebunden, siehe main.ts) */
-export const FONT_FAMILY: Record<AlbumFont, string> = {
-  sans: '"Instrument Sans Variable"',
-  serif: '"Lora Variable"',
+/** Mitgelieferte Schriften (über @fontsource eingebunden, siehe main.ts) */
+export const BUILTIN_FONTS: Record<string, { family: string; label: string }> = {
+  sans: { family: '"Instrument Sans Variable"', label: "Instrument Sans" },
+  serif: { family: '"Lora Variable"', label: "Lora" },
 };
+
+/** CSS-Schriftfamilie zu einer Album-Schrift */
+export function fontFamily(font: AlbumFont): string {
+  return Object.hasOwn(BUILTIN_FONTS, font) ? BUILTIN_FONTS[font].family : `"${font.replace(/["\\]/g, "\\$&")}"`;
+}
+
+/** Name zum Anzeigen */
+export function fontLabel(font: AlbumFont): string {
+  return Object.hasOwn(BUILTIN_FONTS, font) ? BUILTIN_FONTS[font].label : font;
+}
 
 /** Text auf einer Seite. */
 export interface AlbumText {
@@ -243,7 +255,7 @@ let measureCtx: CanvasRenderingContext2D | null = null;
 
 /** CSS-Schriftangabe für Canvas, Größe in Pixeln */
 export function canvasFont(font: AlbumFont, px: number, bold = false): string {
-  return `${bold ? 600 : 400} ${px}px ${FONT_FAMILY[font]}, sans-serif`;
+  return `${bold ? 600 : 400} ${px}px ${fontFamily(font)}, sans-serif`;
 }
 
 /**

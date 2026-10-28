@@ -9,6 +9,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ### Added
 - Nextcloud upload: choose between the project's exports and all of its photos as originals
   (RAWs included, rejected photos left out). The choice is remembered per project.
+- Photo album: besides Instrument Sans and Lora, every font installed on the system can be used
+  for captions and texts. An album whose font is missing on another computer shows it as
+  "not installed" and falls back to a standard font there.
 - Settings → General: a limit for the preview cache on disk (5 GB by default). Previews not
   viewed for the longest time are deleted and rendered again when needed.
 

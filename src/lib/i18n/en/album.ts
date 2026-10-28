@@ -131,4 +131,8 @@ export default {
   "Städte": "Cities",
   "Berge": "Mountains",
   "Flüsse und Seen": "Rivers and lakes",
+  "Mitgeliefert": "Included",
+  "{name} (nicht installiert)": "{name} (not installed)",
+  "Schriften des Systems werden gesucht …": "Looking for system fonts…",
+  "Schriften des Systems": "System fonts",
 } satisfies Record<string, string>;

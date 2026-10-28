@@ -707,6 +707,8 @@ export const mock = {
       case "cull_reset":
         mockCullSamples = 0;
         return out(null);
+      case "system_fonts":
+        return out(["Arial", "Bahnschrift", "Cambria", "Comic Sans MS", "Consolas", "Courier New", "Georgia", "Segoe Print", "Segoe UI", "Times New Roman", "Trebuchet MS", "Verdana", "Gibt es nicht"]);
       case "cull_suggest_cancel":
       case "album_suggest_cancel":
       case "album_export_cancel":

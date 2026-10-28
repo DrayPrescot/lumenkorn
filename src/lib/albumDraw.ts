@@ -7,8 +7,8 @@ import {
   BACKGROUNDS,
   BLEED_MM,
   DPI,
-  FONT_FAMILY,
   LINE,
+  fontFamily,
   PT_MM,
   canvasFont,
   shortPlace,
@@ -26,7 +26,7 @@ import { loadMapDetails, type MapDetails } from "./mapdetails";
 /** Schriften laden, bevor auf Canvas gezeichnet wird (sonst Ersatzschrift) */
 export async function ensureFonts(font: AlbumFont): Promise<void> {
   try {
-    await Promise.all([document.fonts.load(`400 16px ${FONT_FAMILY[font]}`), document.fonts.load(`600 16px ${FONT_FAMILY[font]}`)]);
+    await Promise.all([document.fonts.load(`400 16px ${fontFamily(font)}`), document.fonts.load(`600 16px ${fontFamily(font)}`)]);
   } catch {
     // Ohne Schrift zeichnet Canvas mit der Ersatzschrift – besser als nichts
   }

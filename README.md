@@ -196,7 +196,7 @@ photos and pages, with or without margins.
 - **Texts:** date and place are written once on the page where a new day or place begins (date
   and place, date only, place only, or none). Add your own texts above or below the photos (the
   photos move together) or anywhere on the page by dragging, with size, alignment, colour and
-  bold, in Instrument Sans or Lora; the style of the captions (and the default for new texts) is
+  bold, in Instrument Sans, Lora or any font installed on the system; the style of the captions (and the default for new texts) is
   chosen when creating the album and can be changed for all of them later. Texts are drawn the same way for the preview and the print.
 - **Map:** a map page as first or last page shows the country outlines, highlights the countries
   you visited and puts a pin on every place; places close together share one pin, named after
@@ -605,6 +605,7 @@ The same list is shown in the app: click ⓘ (**About Lumenkorn**) at the bottom
 | [ureq](https://github.com/algesten/ureq) | model downloads, map, Nextcloud | MIT or Apache-2.0 |
 | [quick-xml](https://github.com/tafia/quick-xml) | XMP sidecars, Nextcloud (WebDAV) | MIT |
 | [keyring](https://github.com/open-source-cooperative/keyring-rs) | Nextcloud app password in the system credential store | MIT or Apache-2.0 |
+| [fontdb](https://github.com/RazrFalcon/fontdb) | list of system fonts for the photo album | MIT |
 | [tiny_http](https://github.com/tiny-http/tiny-http) | interface for AI agents (MCP) | MIT or Apache-2.0 |
 | [serde](https://github.com/serde-rs/serde), [serde_json](https://github.com/serde-rs/json) | settings, edits, IPC | MIT or Apache-2.0 |
 | [RustCrypto sha2](https://github.com/RustCrypto/hashes) | download checksums | MIT or Apache-2.0 |

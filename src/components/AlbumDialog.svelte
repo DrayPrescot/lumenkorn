@@ -6,6 +6,7 @@
   import { DEFAULT_SETTINGS, FORMATS, formatName, textStyleOf, autoPages, MAX_PER_PAGE, THEME_KEYS, type AlbumSettings, type ThemeKey } from "../lib/album";
   import { album } from "../lib/album.svelte";
   import TextStyleFields from "./TextStyleFields.svelte";
+  import FontSelect from "./FontSelect.svelte";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
 
@@ -202,10 +203,7 @@
       </label>
       <label class="row">
         <span>{t("Schrift")}</span>
-        <select bind:value={s.font}>
-          <option value="sans">Instrument Sans</option>
-          <option value="serif">Lora</option>
-        </select>
+        <FontSelect value={s.font} onchange={(f) => (s.font = f)} />
       </label>
       <TextStyleFields value={textStyleOf(s)} onchange={(v) => (s.textStyle = v)} />
       <p class="meta small">{t("Schriftstil für Datum und Ort und als Vorgabe für eigene Texte – einzelne Texte lassen sich später anpassen.")}</p>

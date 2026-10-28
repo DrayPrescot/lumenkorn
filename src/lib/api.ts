@@ -1174,6 +1174,8 @@ export const api = {
   albumSuggest: (request: { scope: Scope; theme: string; customTheme: string | null; count: number; skipUneditedRaw: boolean }) =>
     call<AlbumSuggestion>("album_suggest", { request }),
   albumSuggestCancel: () => call<void>("album_suggest_cancel"),
+  /** Schriftfamilien des Betriebssystems (für das Fotoalbum) */
+  systemFonts: () => call<string[]>("system_fonts"),
   cullSuggest: (scope: Scope) => call<CullResult>("cull_suggest", { scope }),
   cullSuggestCancel: () => call<void>("cull_suggest_cancel"),
   cullLearn: (decisions: CullDecision[]) => call<void>("cull_learn", { decisions }),

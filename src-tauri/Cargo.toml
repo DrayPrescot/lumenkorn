@@ -37,6 +37,7 @@ base64 = "0.23"
 quick-xml = "0.42"
 keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native-sync-persistent", "crypto-rust"] }
 getrandom = "0.3"
+fontdb = "0.24.0"
 
 # Papierkorb des Betriebssystems (Windows, macOS, Linux/freedesktop)
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]

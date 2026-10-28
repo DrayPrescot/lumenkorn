@@ -484,7 +484,7 @@ A3 oder eigene Maße in mm), die Anzahl der Fotos und Seiten und ob mit Rand ode
 - **Texte:** Datum und Ort stehen einmal auf der Seite, auf der ein neuer Tag bzw. Ort beginnt
   (Datum und Ort, nur Datum, nur Ort oder keine). Eigene Texte kommen über oder unter die Fotos
   (die Fotos rücken zusammen) oder frei auf die Seite (ziehen), mit Größe, Ausrichtung, Farbe und
-  Fett, in Instrument Sans oder Lora; den Stil der Beschriftung (und die Vorgabe für neue Texte)
+  Fett, in Instrument Sans, Lora oder jeder auf dem System installierten Schrift; den Stil der Beschriftung (und die Vorgabe für neue Texte)
   wählt man beim Erstellen und kann ihn später für alle auf einmal ändern. Vorschau und Druck zeichnen Texte auf dieselbe Weise.
 - **Karte:** Eine Kartenseite als erste oder letzte Seite zeigt die Ländergrenzen, hebt die
   besuchten Länder hervor und setzt eine Stecknadel für jeden Ort; nahe Orte teilen sich eine
@@ -726,6 +726,7 @@ die Kameradaten von [rawspeed](https://github.com/darktable-org/rawspeed) (LGPL-
 [ureq](https://github.com/algesten/ureq) (MIT/Apache-2.0),
 [quick-xml](https://github.com/tafia/quick-xml) für XMP-Dateien und Nextcloud (MIT),
 [keyring](https://github.com/open-source-cooperative/keyring-rs) für das Nextcloud-App-Passwort (MIT/Apache-2.0),
+[fontdb](https://github.com/RazrFalcon/fontdb) für die Liste der Systemschriften im Fotoalbum (MIT),
 [tiny_http](https://github.com/tiny-http/tiny-http) für die Schnittstelle für KI-Agenten (MIT/Apache-2.0),
 [serde](https://github.com/serde-rs/serde) und [serde_json](https://github.com/serde-rs/json) (MIT/Apache-2.0),
 [sha2](https://github.com/RustCrypto/hashes) (MIT/Apache-2.0),

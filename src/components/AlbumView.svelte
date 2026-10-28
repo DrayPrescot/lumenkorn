@@ -6,6 +6,7 @@
   import { alternatives, effectiveDpi, formatName, textStyleOf, type AlbumCandidate, type AlbumCell, type AlbumText, type CaptionMode, type PlacedText } from "../lib/album";
   import AlbumPageCanvas from "./AlbumPageCanvas.svelte";
   import TextStyleFields from "./TextStyleFields.svelte";
+  import FontSelect from "./FontSelect.svelte";
   import { mapPins } from "../lib/albumDraw";
   import { album } from "../lib/album.svelte";
   import { lib } from "../lib/store.svelte";
@@ -436,10 +437,7 @@
         <p class="muted small">{t("Steht einmal auf der Seite, auf der ein neuer Tag bzw. Ort beginnt. Eigene Texte bleiben beim Ändern erhalten.")}</p>
         <label class="field">
           <span>{t("Schrift")}</span>
-          <select value={s.font} onchange={(e) => album.setFont(e.currentTarget.value as "sans" | "serif")}>
-            <option value="sans">Instrument Sans</option>
-            <option value="serif">Lora</option>
-          </select>
+          <FontSelect value={s.font} onchange={(f) => album.setFont(f)} />
         </label>
         <div class="style">
           <TextStyleFields stacked value={textStyleOf(s)} onchange={(v) => album.setTextStyle(v)} />

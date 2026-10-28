@@ -7,6 +7,7 @@ mod commands;
 mod cull;
 mod cull_assist;
 mod develop;
+mod fonts;
 mod geo;
 mod guard;
 mod import;
@@ -243,6 +244,7 @@ pub fn run() {
             album::export::album_export,
             album::export::album_export_cancel,
             album::select::album_suggest,
+            fonts::system_fonts,
             album::select::album_suggest_cancel,
             album::select::album_places,
             style::style_status,
