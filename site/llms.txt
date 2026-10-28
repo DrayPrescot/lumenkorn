@@ -24,6 +24,8 @@ catalog and never changes the original files. Interface in English and German.
 - Map: photos on an OpenStreetMap map, place names; can be switched off completely.
 - Photo album: automatic photo book from a project, print-ready PDF.
 - HDR, panorama and focus stacking.
+- Nextcloud (optional): upload a project's exports to the user's own Nextcloud and share them
+  as a link (password, expiry date); later uploads only send new and changed files.
 - Built-in MCP server so AI agents can operate the app (off by default, local only).
 
 ## Links

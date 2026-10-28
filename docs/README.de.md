@@ -6,7 +6,9 @@ Lumenkorn ist eine Fotoverwaltung mit RAW-Entwicklung, die komplett auf dem eige
 Gedacht ist es als Ersatz für Lightroom Classic: Fotos und Bearbeitungen bleiben auf der eigenen
 Platte, es gibt kein Konto, keine Cloud und kein Abo. Die KI-Funktionen nutzen offene Modelle,
 die einmal heruntergeladen werden und danach offline auf Prozessor oder Grafikkarte rechnen. Nur
-die Kartenansicht braucht das Internet (siehe [Karte](#karte)).
+die Kartenansicht braucht das Internet (siehe [Karte](#karte)). Zum Teilen kann Lumenkorn die
+Exporte eines Projekts in deine eigene Nextcloud hochladen und einen Freigabelink anlegen, aber
+erst, wenn du sie selbst verbindest.
 
 Lumenkorn ist in Rust geschrieben, die Oberfläche in Svelte, zusammengehalten von Tauri 2. Es läuft
 unter Windows und Linux; für Android ist der Code vorbereitet. Bildbearbeitung und KI nutzen die

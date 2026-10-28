@@ -23,7 +23,8 @@ catalog, and you rate, sort, develop and export from there. The originals are ne
 There is no account, no cloud and no subscription. The AI features (keywords, search by image
 content, masks, noise reduction, object removal, face recognition) use open models that are
 downloaded once and then run offline on your CPU or GPU. Only the map view needs the internet
-(see [Map](#map)).
+(see [Map](#map)). If you want to share photos, Lumenkorn can upload a project's exports to your
+own Nextcloud and create a share link, but only once you connect it yourself.
 
 Lumenkorn has reached version 1.0. It is mainly used on Windows and is also built and tested
 on Linux. The interface is in German and English and follows
