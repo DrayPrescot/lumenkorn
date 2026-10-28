@@ -35,6 +35,7 @@ catalog and never changes the original files. Interface in English and German.
 - [Features](https://lumenkorn.com/features): all features with screenshots
 - [Getting started](https://lumenkorn.com/guide): installation, first steps, keyboard shortcuts
 - [Privacy](https://lumenkorn.com/privacy): what the app sends over the internet
+- [Credits](https://lumenkorn.com/credits): open-source projects, AI models and data Lumenkorn uses
 - [Download (latest release)](https://github.com/DrayPrescot/lumenkorn/releases/latest)
 - [Source code and full documentation](https://github.com/DrayPrescot/lumenkorn)
 - [Changelog](https://github.com/DrayPrescot/lumenkorn/blob/main/CHANGELOG.md)

@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Credits – Lumenkorn</title>
+  <meta name="description" content="The open-source projects, AI models and data Lumenkorn is built on.">
+  <link rel="canonical" href="https://lumenkorn.com/credits">
+  <link rel="alternate" hreflang="en" href="https://lumenkorn.com/credits">
+  <link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/danksagung">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Lumenkorn">
+  <meta property="og:title" content="Credits – Lumenkorn">
+  <meta property="og:description" content="The open-source projects, AI models and data Lumenkorn is built on.">
+  <meta property="og:url" content="https://lumenkorn.com/credits">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:image" content="https://lumenkorn.com/img/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/img/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="preload" href="/fonts/instrument-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/"><img src="/img/icon-128.png" alt="" width="28" height="28">Lumenkorn</a>
+    <nav class="nav" aria-label="Main">
+      <a href="/features">Features</a>
+      <a href="/guide">Guide</a>
+      <a href="/privacy">Privacy</a>
+      <a class="lang push" href="/de/danksagung" hreflang="de" lang="de" title="Deutsch">DE</a>
+      <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
+      <a class="btn primary small" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="page">
+  <div class="wrap narrow">
+    <h1>Credits</h1>
+    <p class="lead">Lumenkorn would not exist without the work of many people who share their code, models and data openly. Thank you to everyone who works on these projects.</p>
+    <ul class="toc">
+      <li><a href="#models">AI models</a></li>
+      <li><a href="#libraries">Libraries in the app</a></li>
+      <li><a href="#data">Data, maps and fonts</a></li>
+      <li><a href="#methods">Published methods</a></li>
+      <li><a href="#dev">Development and testing</a></li>
+    </ul>
+
+    <h2 id="models">AI models</h2>
+    <p>Downloaded on demand from within the app, not shipped with it. Face recognition deliberately does not use the common InsightFace models, because their license only allows non-commercial use.</p>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Model</th><th>Authors and source</th><th>Used for</th><th>License</th></tr></thead>
+      <tbody>
+        <tr><td><a href="https://github.com/openai/CLIP">CLIP ViT-B/32</a></td><td>OpenAI; ONNX: <a href="https://huggingface.co/Xenova/clip-vit-base-patch32">Xenova</a></td><td>keywords, search by content, “is there an animal?”</td><td>MIT</td></tr>
+        <tr><td><a href="https://huggingface.co/imageomics/bioclip-2">BioCLIP 2</a></td><td>Imageomics Institute (Gu et al., NeurIPS 2025); ONNX: <a href="https://huggingface.co/DrayPrescot/bioclip2-onnx">DrayPrescot/bioclip2-onnx</a></td><td>animal species</td><td>MIT</td></tr>
+        <tr><td><a href="https://github.com/xuebinqin/DIS">IS-Net / DIS</a></td><td>Xuebin Qin et al.; via <a href="https://github.com/danielgatis/rembg">rembg</a></td><td>subject mask</td><td>Apache-2.0</td></tr>
+        <tr><td><a href="https://github.com/facebookresearch/segment-anything">Segment Anything</a></td><td>Meta AI; via rembg</td><td>object mask by click, outlines of people and animals</td><td>Apache-2.0</td></tr>
+        <tr><td><a href="https://github.com/xiongzhu666/Sky-Segmentation-and-Post-processing">skyseg</a></td><td>xiongzhu666, based on <a href="https://github.com/xuebinqin/U-2-Net">U²-Net</a></td><td>sky mask</td><td>MIT</td></tr>
+        <tr><td><a href="https://github.com/google-research/scenic/tree/main/scenic/projects/owl_vit">OWLv2</a></td><td>Google Research; ONNX: <a href="https://huggingface.co/Xenova/owlv2-base-patch16">Xenova</a></td><td>finding people and animals for masks</td><td>Apache-2.0</td></tr>
+        <tr><td><a href="https://ai.google.dev/edge/mediapipe/solutions/vision/image_segmenter">MediaPipe Selfie Multiclass</a></td><td>Google; ONNX: <a href="https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX">senty-au</a></td><td>hair, skin and clothes masks</td><td>Apache-2.0</td></tr>
+        <tr><td><a href="https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker">MediaPipe Face Mesh V2</a></td><td>Google; ONNX: <a href="https://huggingface.co/fernandotonon/QtMeshEditor-facemesh-onnx">QtMeshEditor</a></td><td>eye, lip and brow masks, closed eyes when culling</td><td>Apache-2.0</td></tr>
+        <tr><td><a href="https://github.com/cszn/KAIR">DRUNet</a></td><td>Kai Zhang et al. (KAIR)</td><td>noise reduction</td><td>MIT</td></tr>
+        <tr><td><a href="https://github.com/advimman/lama">LaMa</a></td><td>Samsung AI; via <a href="https://github.com/opencv/opencv_zoo">OpenCV Model Zoo</a></td><td>removing objects</td><td>Apache-2.0</td></tr>
+        <tr><td><a href="https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet">YuNet</a></td><td>Shiqi Yu et al.; OpenCV Model Zoo</td><td>finding faces</td><td>MIT</td></tr>
+        <tr><td><a href="https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface">SFace</a></td><td>Yaoyao Zhong et al.; OpenCV Model Zoo</td><td>recognising people</td><td>Apache-2.0</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="libraries">Libraries in the app</h2>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Project</th><th>Used for</th><th>License</th></tr></thead>
+      <tbody>
+        <tr><td><a href="https://github.com/tauri-apps/tauri">Tauri</a> + <a href="https://github.com/tauri-apps/plugins-workspace">plugins</a></td><td>app shell, windows, dialogs, updates</td><td>MIT / Apache-2.0</td></tr>
+        <tr><td><a href="https://github.com/sveltejs/svelte">Svelte</a></td><td>user interface</td><td>MIT</td></tr>
+        <tr><td><a href="https://github.com/dnglab/dnglab">rawler</a> (dnglab)</td><td>reading RAW files</td><td>LGPL-2.1</td></tr>
+        <tr><td><a href="https://github.com/darktable-org/darktable">darktable</a></td><td>RAW development: highlight reconstruction, demosaicing, color calibration, sigmoid (translated to Rust)</td><td>GPL-3.0-or-later</td></tr>
+        <tr><td><a href="https://github.com/darktable-org/rawspeed">rawspeed</a> camera data</td><td>sensor white and black levels</td><td>LGPL-2.1-or-later</td></tr>
+        <tr><td><a href="https://github.com/gfx-rs/wgpu">wgpu</a></td><td>image processing on the GPU</td><td>MIT / Apache-2.0</td></tr>
+        <tr><td><a href="https://github.com/microsoft/onnxruntime">ONNX Runtime</a> via <a href="https://github.com/pykeio/ort">ort</a></td><td>running the AI models</td><td>MIT / Apache-2.0</td></tr>
+        <tr><td><a href="https://dawn.googlesource.com/dawn">Dawn</a>, <a href="https://github.com/microsoft/DirectXShaderCompiler">DirectX Shader Compiler</a></td><td>WebGPU build of ONNX Runtime</td><td>BSD-3-Clause, NCSA</td></tr>
+        <tr><td><a href="https://sqlite.org">SQLite</a> via <a href="https://github.com/rusqlite/rusqlite">rusqlite</a></td><td>catalog and search index</td><td>Public domain / MIT</td></tr>
+        <tr><td><a href="https://github.com/image-rs/image">image</a>, <a href="https://github.com/vstroebel/jpeg-encoder">jpeg-encoder</a>, <a href="https://github.com/johannesvollmer/exrs">exrs</a></td><td>reading and writing JPEG, PNG, TIFF, WebP, OpenEXR</td><td>MIT / Apache-2.0, IJG, BSD-3-Clause</td></tr>
+        <tr><td><a href="https://github.com/kamadak/exif-rs">kamadak-exif</a>, <a href="https://github.com/tafia/quick-xml">quick-xml</a></td><td>EXIF and XMP metadata, WebDAV</td><td>BSD-2-Clause, MIT</td></tr>
+        <tr><td><a href="https://github.com/rayon-rs/rayon">Rayon</a></td><td>parallel processing</td><td>MIT / Apache-2.0</td></tr>
+        <tr><td><a href="https://github.com/notify-rs/notify">notify</a>, <a href="https://github.com/BurntSushi/walkdir">walkdir</a>, <a href="https://github.com/Byron/trash-rs">trash</a></td><td>watching and scanning folders, system trash</td><td>CC0-1.0, MIT / Unlicense, MIT</td></tr>
+        <tr><td><a href="https://github.com/BLAKE3-team/BLAKE3">BLAKE3</a>, <a href="https://github.com/RustCrypto/hashes">RustCrypto sha2</a></td><td>content hashes, download checksums</td><td>CC0-1.0 / Apache-2.0, MIT / Apache-2.0</td></tr>
+        <tr><td><a href="https://github.com/algesten/ureq">ureq</a></td><td>downloads, map, Nextcloud</td><td>MIT / Apache-2.0</td></tr>
+        <tr><td><a href="https://github.com/open-source-cooperative/keyring-rs">keyring</a></td><td>Nextcloud password in the system credential store</td><td>MIT / Apache-2.0</td></tr>
+        <tr><td><a href="https://github.com/RazrFalcon/fontdb">fontdb</a></td><td>system fonts for the photo album</td><td>MIT</td></tr>
+        <tr><td><a href="https://github.com/tiny-http/tiny-http">tiny_http</a></td><td>interface for AI agents (MCP)</td><td>MIT / Apache-2.0</td></tr>
+        <tr><td><a href="https://github.com/Leaflet/Leaflet">Leaflet</a> + <a href="https://github.com/Leaflet/Leaflet.markercluster">markercluster</a></td><td>map display</td><td>BSD-2-Clause, MIT</td></tr>
+        <tr><td>serde, flate2, tar, zip, half, bytemuck, pollster, regex, log, env_logger, thiserror, libloading, dirs, base64</td><td>settings, archives, GPU buffers, logging and more</td><td>MIT / Apache-2.0, ISC</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="muted">Not open source, but needed: on Windows the interface runs in Microsoft WebView2, which is part of Windows, and the GPU build of ONNX Runtime needs the Microsoft Visual C++ Redistributable. Neither is shipped with Lumenkorn.</p>
+
+    <h2 id="data">Data, maps and fonts</h2>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Project</th><th>Used for</th><th>License</th></tr></thead>
+      <tbody>
+        <tr><td><a href="https://github.com/lensfun/lensfun">Lensfun</a> database</td><td>lens profiles</td><td>CC BY-SA 3.0</td></tr>
+        <tr><td><a href="https://www.naturalearthdata.com">Natural Earth</a></td><td>countries, places, mountains, rivers and lakes for the album map</td><td>Public domain</td></tr>
+        <tr><td><a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> and Nominatim</td><td>map tiles, place search, place names (online service)</td><td>ODbL, CC BY-SA 2.0</td></tr>
+        <tr><td><a href="https://github.com/Instrument/instrument-sans">Instrument Sans</a>, <a href="https://github.com/cyrealtype/Lora-Cyrillic">Lora</a> via <a href="https://fontsource.org">Fontsource</a></td><td>fonts of the app, this website and the photo album</td><td>OFL-1.1</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="methods">Published methods</h2>
+    <p>Lumenkorn implements these methods itself, partly by translating code (darktable).</p>
+    <ul>
+      <li>From darktable (translated to Rust): RCD demosaicing (Luis Sanz Rodríguez), the highlight reconstruction “inpaint opposed” (garagecoder and Iain from the G'MIC team, Hanno Schwalm), color calibration with CAT16 and the sigmoid tone mapper.</li>
+      <li>Markesteijn demosaicing for X-Trans (Frank Markesteijn), through rawler.</li>
+      <li>Oklab and Oklch (Björn Ottosson) for HSL, color ranges and color grading.</li>
+      <li>Dark channel prior (Kaiming He et al.) as the basis of dehaze.</li>
+      <li>Lens models of Lensfun/Hugin, the DNG opcodes WarpRectilinear and FixVignetteRadial, the meaning of Sony's correction data as worked out by <a href="https://github.com/darktable-org/darktable">darktable</a> and <a href="https://github.com/Beep6581/RawTherapee">RawTherapee</a>, and Panasonic's distortion data following Raphaël Rigo (<a href="https://github.com/trou/panasonic-rw2">trou/panasonic-rw2</a>).</li>
+      <li>Harris corners, BRIEF descriptors, RANSAC and Hartley normalization for aligning photos; Laplacian pyramids (Burt and Adelson) for focus stacking.</li>
+    </ul>
+
+    <h2 id="dev">Development and testing</h2>
+    <p>Used to build and test Lumenkorn: <a href="https://github.com/microsoft/TypeScript">TypeScript</a>, <a href="https://github.com/vitejs/vite">Vite</a>, <a href="https://github.com/sveltejs/language-tools">svelte-check</a>, <a href="https://github.com/tauri-apps/tauri">Tauri CLI</a>, <a href="https://www.mesa3d.org">Mesa</a>, <a href="https://github.com/Stebalien/tempfile">tempfile</a>, <a href="https://github.com/AcademySoftwareFoundation/OpenImageIO-images">OpenImageIO-images</a>.</p>
+
+    <p class="muted">The <a href="https://github.com/DrayPrescot/lumenkorn#open-source-projects-used-by-lumenkorn">README on GitHub</a> has the complete list with every library. In the app, ⓘ (About Lumenkorn) at the bottom left shows it too.</p>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <span>Lumenkorn · GPL-3.0-or-later</span>
+    <nav aria-label="Footer">
+      <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
+      <a href="https://github.com/DrayPrescot/lumenkorn/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/credits" aria-current="page">Credits</a>
+      <a href="/imprint">Legal notice</a>
+      <a href="/de/danksagung" hreflang="de" lang="de">Deutsch</a>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>

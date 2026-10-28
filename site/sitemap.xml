@@ -42,4 +42,14 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://lumenkorn.com/privacy"/>
     <xhtml:link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/datenschutz"/>
   </url>
+  <url>
+    <loc>https://lumenkorn.com/credits</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://lumenkorn.com/credits"/>
+    <xhtml:link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/danksagung"/>
+  </url>
+  <url>
+    <loc>https://lumenkorn.com/de/danksagung</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://lumenkorn.com/credits"/>
+    <xhtml:link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/danksagung"/>
+  </url>
 </urlset>

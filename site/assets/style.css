@@ -550,6 +550,11 @@ section.block {
   list-style: none;
 }
 
+/* Breite Tabellen scrollen in sich, nicht die Seite */
+.table-scroll {
+  overflow-x: auto;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
