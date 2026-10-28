@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.26] – 2026-10-28
+
 ### Added
 - Leave subfolders out of the library, per folder: right-click a folder → "Unterordner
   einbeziehen". The default (include subfolders) can be changed under Settings → Folders. Photos
