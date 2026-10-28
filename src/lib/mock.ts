@@ -709,6 +709,8 @@ export const mock = {
         mockNc = null;
         mockShares.clear();
         return out(null);
+      case "nc_shared_projects":
+        return out(mockNc ? Object.fromEntries(mockShares) : {});
       case "nc_set_base_folder":
         if (mockNc) mockNc.baseFolder = String(a.folder).trim() || "Lumenkorn";
         return out(mockNc?.baseFolder ?? "Lumenkorn");

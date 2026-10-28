@@ -32,6 +32,7 @@
     } catch {
       st = null;
     }
+    void lib.refreshNcShared();
     base = st?.baseFolder ?? "";
     loaded = true;
   }

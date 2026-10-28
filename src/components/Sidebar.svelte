@@ -290,7 +290,11 @@
           <button
             class="item"
             class:active={lib.isScope({ type: "project", id: p.id })}
-            onclick={() => lib.setScope({ type: "project", id: p.id })}
+            onclick={(e) => {
+              // Klick auf die Wolke: Nextcloud-Dialog mit dem Link
+              if ((e.target as Element).closest(".shared")) uploadProject(p);
+              else lib.setScope({ type: "project", id: p.id });
+            }}
             ondblclick={() => (renaming = p.id)}
             oncontextmenu={(e) => {
               e.preventDefault();
@@ -302,6 +306,9 @@
           >
             <Icon name="stack" size={15} />
             <span>{p.name}</span>
+            {#if lib.ncShared[p.id]}
+              <span class="shared" title={t("In Nextcloud geteilt: {url}", { url: lib.ncShared[p.id] })}><Icon name="cloud" size={14} /></span>
+            {/if}
             <span class="count">{p.imageCount}</span>
           </button>
         {/if}
@@ -632,6 +639,10 @@
   .count {
     color: var(--faint);
     font-size: var(--step--1);
+  }
+  .shared {
+    display: inline-flex;
+    cursor: pointer;
   }
   .tree {
     list-style: none;

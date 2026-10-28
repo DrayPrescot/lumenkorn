@@ -242,6 +242,7 @@ pub fn run() {
             nextcloud::nc_login_cancel,
             nextcloud::nc_logout,
             nextcloud::nc_set_base_folder,
+            nextcloud::nc_shared_projects,
             nextcloud::nc_project_info,
             nextcloud::nc_upload_project,
             style::style_reset,

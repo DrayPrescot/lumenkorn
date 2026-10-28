@@ -1068,6 +1068,8 @@ export const api = {
   ncLoginCancel: () => call<void>("nc_login_cancel"),
   ncLogout: () => call<void>("nc_logout"),
   ncSetBaseFolder: (folder: string) => call<string>("nc_set_base_folder", { folder }),
+  /** Projekt-ID → Freigabelink */
+  ncSharedProjects: () => call<Record<number, string>>("nc_shared_projects"),
   ncProjectInfo: (projectId: number) => call<NcProjectInfo>("nc_project_info", { projectId }),
   /** Läuft im Hintergrund; Fortschritt per `nextcloud-progress` */
   ncUploadProject: (projectId: number, options: NcUploadOptions) => call<void>("nc_upload_project", { projectId, options }),

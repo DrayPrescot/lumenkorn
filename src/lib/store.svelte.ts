@@ -192,6 +192,7 @@ class Library {
         this.exportSubfolder = s.exportSubfolder;
       })
       .catch(() => {});
+    void this.refreshNcShared();
     let peopleTimer: ReturnType<typeof setTimeout> | undefined;
     listen("faces-progress", ({ done, total, faces, ids }) => {
       if (this.peopleStatus) this.peopleStatus = { ...this.peopleStatus, analyzed: done, total, faces };
@@ -985,6 +986,13 @@ class Library {
 
   /** Karte und Ortsnamen über OpenStreetMap (Einstellungen → Allgemein) */
   mapEnabled = $state(true);
+
+  /** In Nextcloud geteilte Projekte: Projekt-ID → Link */
+  ncShared = $state<Record<number, string>>({});
+
+  async refreshNcShared() {
+    this.ncShared = await api.ncSharedProjects().catch(() => ({}));
+  }
 
   /** Exportziel ohne gewählten Ordner: relativ zum Ordner des Originals
    *  („.“ = derselbe Ordner) */

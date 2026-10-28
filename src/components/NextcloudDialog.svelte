@@ -30,6 +30,7 @@
       progress = p;
       if (p.finished) {
         running = false;
+        void lib.refreshNcShared();
         if (p.error) error = p.error;
         else if (info) info = { ...info, shareUrl: p.shareUrl };
       }

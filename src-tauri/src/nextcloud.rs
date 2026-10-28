@@ -788,6 +788,20 @@ pub async fn nc_logout(app: AppHandle) -> Result<(), Error> {
     .await
 }
 
+/// Projekte mit Freigabelink (Projekt-ID → Link), für das Symbol in der
+/// Seitenleiste; leer, solange nicht verbunden.
+#[tauri::command]
+pub fn nc_shared_projects(state: State<AppState>) -> HashMap<i64, String> {
+    let c = load(&state.data_dir);
+    if c.server.is_empty() {
+        return HashMap::new();
+    }
+    c.projects
+        .iter()
+        .filter_map(|(id, l)| Some((id.parse().ok()?, l.share_url.clone()?)))
+        .collect()
+}
+
 #[tauri::command]
 pub fn nc_set_base_folder(state: State<AppState>, folder: String) -> Result<String, Error> {
     let mut c = load(&state.data_dir);
