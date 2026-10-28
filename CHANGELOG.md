@@ -6,6 +6,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Linux: the Nextcloud app password is now kept in the keyring (Secret Service: GNOME Keyring,
+  KWallet, KeePassXC) and survives logging out and restarting. Before, it was only held in the
+  session's kernel keyring and you had to log in again after every restart.
+
 ## [1.0.26] – 2026-10-28
 
 ### Added

@@ -717,7 +717,15 @@ fn poll_login(app: &AppHandle, attempt: u64, endpoint: &str, token: &str) -> Res
         c.login_name = login.to_string();
         keyring_entry(&c)?
             .set_password(pw)
-            .map_err(|e| Error::Invalid(e.to_string()))?;
+            .map_err(|e| {
+                Error::Invalid(format!(
+                    "{} ({e})",
+                    tr_s(
+                        "Das App-Passwort ließ sich nicht im Anmeldespeicher des Systems ablegen. Unter Linux wird ein Schlüsselbund mit Secret Service gebraucht (GNOME Keyring, KWallet, KeePassXC).",
+                        "Could not store the app password in the system's credential store. On Linux this needs a keyring with Secret Service (GNOME Keyring, KWallet, KeePassXC).",
+                    )
+                ))
+            })?;
         // Benutzer-ID für WebDAV (Anmeldung per E-Mail-Adresse u. Ä.)
         let conn = Conn::new(&c)?;
         if let Ok(d) = conn.ocs("GET", "cloud/user", &[]) {

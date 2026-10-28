@@ -47,7 +47,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev \
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libdbus-1-dev \
             libssl-dev libayatana-appindicator3-dev librsvg2-dev mesa-vulkan-drivers
 
       - uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # 1.95.0

@@ -70,7 +70,8 @@ the catalog before you let Lumenkorn loose on your whole collection.
   a folder in your Nextcloud and shares it as a link (optionally with password and expiry date).
   Uploading again only sends new and changed files and keeps the link. Connect under
   Settings → Nextcloud: you log in in the browser and Lumenkorn gets its own app password, kept in
-  the Windows Credential Manager and revocable in Nextcloud at any time.
+  the system's credential store (Windows Credential Manager, on Linux the keyring via Secret
+  Service) and revocable in Nextcloud at any time.
 - **Batch rename** (`F2`): a pattern such as `{yyyy}{mm}{dd}_{hh}{min}{ss}_{n}` with date, time,
   number, camera, lens, folder and the old name. The preview lists every new name and conflicts;
   nothing is overwritten, XMP sidecars follow, RAW+JPEG pairs keep one name.
@@ -459,7 +460,8 @@ RANSAC.
   is sent to OpenStreetMap (the map in the photo album still works, it is built in).
 - Nextcloud: only after you connect under Settings → Nextcloud, and only to the server you
   enter. Uploads go there when you start them for a project; the app password is kept in the
-  system's credential store (Windows Credential Manager), not in the data folder.
+  system's credential store (Windows Credential Manager; on Linux GNOME Keyring, KWallet or
+  another Secret Service), not in the data folder.
 - A log file (`lumenkorn.log`) in the data folder records errors and what the AI did.
   Before risky native steps (loading a GPU runtime, opening a model) Lumenkorn leaves a marker
   file. If the app crashes there, the next start switches the cause off and explains why.
@@ -490,7 +492,7 @@ RANSAC.
   - **Windows:** Microsoft C++ Build Tools and WebView2 (usually preinstalled on Windows 10 and 11).
   - **Debian/Ubuntu:**
     ```bash
-    sudo apt install libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev \
+    sudo apt install libwebkit2gtk-4.1-dev build-essential libxdo-dev libdbus-1-dev libssl-dev \
       libayatana-appindicator3-dev librsvg2-dev
     ```
 

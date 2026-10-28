@@ -107,7 +107,8 @@ vergibt sie in der neuen Sprache neu.
   Ablaufdatum. Ein erneutes Hochladen überträgt nur neue und geänderte Dateien, der Link bleibt
   derselbe; Dateien, die es im Projekt nicht mehr gibt, lassen sich entfernen. Verbinden unter
   Einstellungen → Nextcloud: Du meldest dich im Browser an, Lumenkorn bekommt ein eigenes
-  App-Passwort, das in der Windows-Anmeldeinformationsverwaltung liegt und sich in Nextcloud
+  App-Passwort, das im Anmeldespeicher des Systems liegt (Windows-Anmeldeinformationsverwaltung,
+  unter Linux der Schlüsselbund über Secret Service) und sich in Nextcloud
   jederzeit widerrufen lässt. Gezählt werden alle Exporte der Fotos des Projekts, auch solche in
   einen festen Zielordner, und ältere Exporte in den Export-Ordnern seiner Ordner.
 - **Umbenennen:** Fotos auswählen, dann F2 oder Rechtsklick → „Umbenennen …“. Ein Muster wie
@@ -643,8 +644,8 @@ zerlegt jedes Bild in eine Laplace-Pyramide und behält je Stufe das schärfste 
   Zusammenfügen, Export.
 - **Nextcloud:** Verbindungen erst, wenn du unter Einstellungen → Nextcloud verbindest, und nur
   zu dem Server, den du einträgst. Hochgeladen wird, wenn du es für ein Projekt startest; das
-  App-Passwort liegt im Anmeldespeicher des Systems (Windows-Anmeldeinformationsverwaltung), nicht
-  im Datenordner.
+  App-Passwort liegt im Anmeldespeicher des Systems (Windows-Anmeldeinformationsverwaltung; unter
+  Linux GNOME Keyring, KWallet oder ein anderer Secret Service), nicht im Datenordner.
 - **Netzwerk** braucht Lumenkorn für die KI-Downloads und für die Karte. Downloads nutzen den
   Zertifikatsspeicher des Betriebssystems und funktionieren damit auch hinter Firmen-Proxys.
   `ki/quellen.json` im Datenordner kann die Download-Adressen überschreiben, z. B. für einen
@@ -767,7 +768,7 @@ Voraussetzungen: Rust 1.95 (in `rust-toolchain.toml` festgelegt, rustup installi
 Node.js ab 20 und die Tauri-Systemabhängigkeiten:
 
 - **Windows:** Microsoft C++ Build Tools und WebView2 (ab Windows 10 meist vorhanden).
-- **Linux (Debian/Ubuntu):** `sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev libayatana-appindicator3-dev build-essential`
+- **Linux (Debian/Ubuntu):** `sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev librsvg2-dev libayatana-appindicator3-dev libdbus-1-dev build-essential`
 - Details: <https://v2.tauri.app/start/prerequisites/>
 
 ```bash

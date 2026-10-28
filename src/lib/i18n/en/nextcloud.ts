@@ -31,7 +31,7 @@ export default {
   "Adresse deiner Nextcloud": "Address of your Nextcloud",
   "Verbinden": "Connect",
   "Im Browser hat sich die Anmeldeseite deiner Nextcloud geöffnet. Melde dich dort an und erlaube den Zugriff – Lumenkorn wartet hier.": "Your Nextcloud's login page has opened in the browser. Log in there and grant access – Lumenkorn is waiting here.",
-  "Lumenkorn bekommt ein eigenes App-Passwort, das du in Nextcloud unter Einstellungen → Sicherheit jederzeit widerrufen kannst. Es liegt in der Windows-Anmeldeinformationsverwaltung, nicht im Datenordner. Lumenkorn verbindet sich nur mit diesem Server.": "Lumenkorn gets its own app password, which you can revoke at any time in Nextcloud under Settings → Security. It is kept in the Windows Credential Manager, not in the data folder. Lumenkorn only connects to this server.",
+  "Lumenkorn bekommt ein eigenes App-Passwort, das du in Nextcloud unter Einstellungen → Sicherheit jederzeit widerrufen kannst. Es liegt im Anmeldespeicher des Systems (Windows-Anmeldeinformationsverwaltung bzw. Schlüsselbund unter Linux), nicht im Datenordner. Lumenkorn verbindet sich nur mit diesem Server.": "Lumenkorn gets its own app password, which you can revoke at any time in Nextcloud under Settings → Security. It is kept in the system's credential store (Windows Credential Manager, or the keyring on Linux), not in the data folder. Lumenkorn only connects to this server.",
   "Zuerst mit Nextcloud verbinden": "Connect to Nextcloud first",
   "In Nextcloud geteilt: {url}": "Shared in Nextcloud: {url}",
 } satisfies Record<string, string>;

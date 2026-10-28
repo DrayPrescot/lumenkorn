@@ -129,7 +129,7 @@
     {/if}
     {#if error}<p class="small error">{error}</p>{/if}
     <p class="muted small">
-      {t("Lumenkorn bekommt ein eigenes App-Passwort, das du in Nextcloud unter Einstellungen → Sicherheit jederzeit widerrufen kannst. Es liegt in der Windows-Anmeldeinformationsverwaltung, nicht im Datenordner. Lumenkorn verbindet sich nur mit diesem Server.")}
+      {t("Lumenkorn bekommt ein eigenes App-Passwort, das du in Nextcloud unter Einstellungen → Sicherheit jederzeit widerrufen kannst. Es liegt im Anmeldespeicher des Systems (Windows-Anmeldeinformationsverwaltung bzw. Schlüsselbund unter Linux), nicht im Datenordner. Lumenkorn verbindet sich nur mit diesem Server.")}
     </p>
   </div>
 {/if}
