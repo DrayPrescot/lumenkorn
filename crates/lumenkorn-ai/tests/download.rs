@@ -112,6 +112,7 @@ fn downloads_runtime_and_model_with_progress() {
         gpu_runtimes: vec![],
         faces: vec![],
         repair: vec![],
+        animals: vec![],
     };
     std::fs::write(
         ai.join("quellen.json"),
@@ -175,6 +176,7 @@ fn cancel_and_404_leave_no_partial_files() {
         gpu_runtimes: vec![],
         faces: vec![],
         repair: vec![],
+        animals: vec![],
     };
     std::fs::write(
         ai.join("quellen.json"),
@@ -214,6 +216,7 @@ fn truncated_download_is_rejected() {
         gpu_runtimes: vec![],
         faces: vec![],
         repair: vec![],
+        animals: vec![],
     };
     std::fs::write(
         ai.join("quellen.json"),
@@ -287,6 +290,7 @@ fn gpu_runtime_from_wheel_checks_sha256() {
             }],
             faces: vec![],
             repair: vec![],
+            animals: vec![],
         };
         std::fs::write(
             ai.join("quellen.json"),
@@ -342,6 +346,7 @@ fn single_file_manifest(data: &std::path::Path, spec: FileSpec) {
         gpu_runtimes: vec![],
         faces: vec![],
         repair: vec![],
+        animals: vec![],
     };
     std::fs::write(
         ai.join("quellen.json"),
@@ -513,6 +518,7 @@ fn manifest_with_unsafe_names_or_urls_is_ignored() {
             gpu_runtimes: vec![],
             faces: vec![],
             repair: vec![],
+            animals: vec![],
         };
         std::fs::write(
             ai.join("quellen.json"),

@@ -221,6 +221,7 @@ class Library {
       if (e.finished) {
         if (e.error) this.notify(t("KI-Download: {error}", { error: e.error }), "error");
         else if (e.component === "clip") this.notify(t("KI ist bereit. Fotos werden jetzt im Hintergrund verschlagwortet."));
+        else if (e.component === "animals") this.notify(t("Tierarten werden jetzt genauer bestimmt – schon analysierte Fotos im Hintergrund."));
         else this.notify(t("Download abgeschlossen."));
         await Promise.all([this.refreshAi(), this.refreshPeople()]);
       }

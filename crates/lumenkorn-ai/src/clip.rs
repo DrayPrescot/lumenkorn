@@ -105,23 +105,7 @@ impl Clip {
         if images.is_empty() {
             return Ok(vec![]);
         }
-        let px = (IMAGE_SIZE * IMAGE_SIZE) as usize;
-        let mut data = vec![0f32; images.len() * 3 * px];
-        // Normierung als p * scale + bias statt (p/255 - MEAN)/STD je Wert
-        let scale: [f32; 3] = std::array::from_fn(|c| 1.0 / (255.0 * STD[c]));
-        let bias: [f32; 3] = std::array::from_fn(|c| -MEAN[c] / STD[c]);
-        // Bilder parallel: Verkleinern und Normieren sind der teure Teil
-        data.par_chunks_mut(3 * px)
-            .zip(images.par_iter())
-            .for_each(|(out, img)| {
-                let rgb = preprocess(img);
-                for (i, p) in rgb.pixels().enumerate() {
-                    for c in 0..3 {
-                        out[c * px + i] = p[c] as f32 * scale[c] + bias[c];
-                    }
-                }
-            });
-        let shape = [images.len(), 3, IMAGE_SIZE as usize, IMAGE_SIZE as usize];
+        let (shape, data) = pixel_values(images);
         let input = Tensor::from_array((shape, data))?;
         let mut session = self.vision.lock();
         let outputs = session.run(vec![(self.vision_in.as_str(), input.into_dyn())])?;
@@ -168,6 +152,29 @@ pub fn mean_normalized(rows: &[Vec<f32>]) -> Vec<f32> {
     mean
 }
 
+/// Eingabe im Format von CLIP (und BioCLIP): je Bild 224 × 224, normiert,
+/// Kanäle hintereinander ([N, 3, 224, 224]).
+pub(crate) fn pixel_values(images: &[DynamicImage]) -> ([usize; 4], Vec<f32>) {
+    let px = (IMAGE_SIZE * IMAGE_SIZE) as usize;
+    let mut data = vec![0f32; images.len() * 3 * px];
+    // Normierung als p * scale + bias statt (p/255 - MEAN)/STD je Wert
+    let scale: [f32; 3] = std::array::from_fn(|c| 1.0 / (255.0 * STD[c]));
+    let bias: [f32; 3] = std::array::from_fn(|c| -MEAN[c] / STD[c]);
+    // Bilder parallel: Verkleinern und Normieren sind der teure Teil
+    data.par_chunks_mut(3 * px)
+        .zip(images.par_iter())
+        .for_each(|(out, img)| {
+            let rgb = preprocess(img);
+            for (i, p) in rgb.pixels().enumerate() {
+                for c in 0..3 {
+                    out[c * px + i] = p[c] as f32 * scale[c] + bias[c];
+                }
+            }
+        });
+    let shape = [images.len(), 3, IMAGE_SIZE as usize, IMAGE_SIZE as usize];
+    (shape, data)
+}
+
 /// Kürzere Seite auf 224, dann mittig zuschneiden (wie der CLIP-Preprocessor).
 fn preprocess(img: &DynamicImage) -> image::RgbImage {
     let (w, h) = (img.width().max(1), img.height().max(1));
@@ -180,7 +187,7 @@ fn preprocess(img: &DynamicImage) -> image::RgbImage {
     resized.crop_imm(x, y, IMAGE_SIZE, IMAGE_SIZE).to_rgb8()
 }
 
-fn split_rows(shape: &[i64], values: &[f32], n: usize) -> Result<Vec<Vec<f32>>> {
+pub(crate) fn split_rows(shape: &[i64], values: &[f32], n: usize) -> Result<Vec<Vec<f32>>> {
     let dim = *shape
         .last()
         .ok_or_else(|| Error::ModelFormat(tr_s("leerer Ausgang", "empty output").into()))?;

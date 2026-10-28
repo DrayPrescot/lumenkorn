@@ -57,6 +57,48 @@ impl Catalog {
         })
     }
 
+    /// KI-Schlagworte mit diesen Namen (`names`, z. B. alle Tierarten) durch
+    /// neue ersetzen – die übrigen KI- und alle eigenen Schlagworte bleiben.
+    pub fn replace_ai_tags_named(
+        &mut self,
+        items: &[(i64, Vec<(String, f64)>)],
+        names: &[&str],
+    ) -> Result<()> {
+        self.with_tx(|tx| {
+            let mut ids: Vec<i64> = Vec::new();
+            {
+                let mut st = tx.prepare_cached("SELECT id FROM tags WHERE name = ?1")?;
+                for n in names {
+                    if let Some(id) = st.query_row([n], |r| r.get(0)).optional()? {
+                        ids.push(id);
+                    }
+                }
+            }
+            // IDs sind Zahlen aus der Datenbank – direkt in die Abfrage
+            let list = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
+            for (image_id, tags) in items {
+                if !list.is_empty() {
+                    tx.execute(
+                        &format!(
+                            "DELETE FROM image_tags WHERE image_id = ?1 AND source = 'ai' AND tag_id IN ({list})"
+                        ),
+                        [image_id],
+                    )?;
+                }
+                for (name, confidence) in tags {
+                    tx.execute("INSERT INTO tags (name) VALUES (?1) ON CONFLICT (name) DO NOTHING", [name])?;
+                    tx.execute(
+                        "INSERT INTO image_tags (image_id, tag_id, source, confidence)
+                         SELECT ?1, id, 'ai', ?3 FROM tags WHERE name = ?2
+                         ON CONFLICT (image_id, tag_id) DO NOTHING",
+                        params![image_id, name, confidence],
+                    )?;
+                }
+            }
+            Ok(())
+        })
+    }
+
     /// (analysiert, gesamt) – für die Fortschrittsanzeige.
     pub fn ai_counts(&self) -> Result<(i64, i64)> {
         Ok(self.conn.query_row(

@@ -1,0 +1,289 @@
+deutsch	english	scientific	path	note
+Säugetier	Mammal	Mammalia	Animalia Chordata Mammalia	
+Vogel	Bird	Aves	Animalia Chordata Aves	
+Reptil	Reptile	Reptilia	Animalia Chordata Reptilia	
+Amphibie	Amphibian	Amphibia	Animalia Chordata Amphibia	
+Fisch	Fish	Actinopterygii	Animalia Chordata Actinopterygii	unsicher: Fisch umfasst auch Haie/Rochen (Chondrichthyes)
+Insekt	Insect	Insecta	Animalia Arthropoda Insecta	
+Spinnentier	Arachnid	Arachnida	Animalia Arthropoda Arachnida	
+Meerestier	Sea creature	-		unsicher: Meerestier ist kein Taxon (Cnidaria, Echinodermata, Crustacea, Cephalopoda)
+Schnecke	Snail	Gastropoda	Animalia Mollusca Gastropoda	
+Affe	Monkey	Primates	Animalia Chordata Mammalia Primates	unsicher: Affe inkl. Menschenaffen
+Schimpanse	Chimpanzee	Pan troglodytes	Animalia Chordata Mammalia Primates Hominidae Pan troglodytes	
+Gorilla	Gorilla	Gorilla gorilla	Animalia Chordata Mammalia Primates Hominidae Gorilla gorilla	
+Orang-Utan	Orangutan	Pongo pygmaeus	Animalia Chordata Mammalia Primates Hominidae Pongo pygmaeus	unsicher: Gattung Pongo (auch P. abelii)
+Pavian	Baboon	Papio	Animalia Chordata Mammalia Primates Cercopithecidae Papio	Gattung
+Makak	Macaque	Macaca	Animalia Chordata Mammalia Primates Cercopithecidae Macaca	Gattung
+Kapuzineraffe	Capuchin monkey	Cebus	Animalia Chordata Mammalia Primates Cebidae Cebus	unsicher: Gattung (auch Sapajus)
+Totenkopfaffe	Squirrel monkey	Saimiri	Animalia Chordata Mammalia Primates Cebidae Saimiri	Gattung
+Gibbon	Gibbon	Hylobatidae	Animalia Chordata Mammalia Primates Hylobatidae	Familie
+Lemur	Lemur	Lemur catta	Animalia Chordata Mammalia Primates Lemuridae Lemur catta	
+Katze	Cat	Felidae	Animalia Chordata Mammalia Carnivora Felidae	
+Hauskatze	Domestic cat	Felis catus	Animalia Chordata Mammalia Carnivora Felidae Felis catus	
+Löwe	Lion	Panthera leo	Animalia Chordata Mammalia Carnivora Felidae Panthera leo	
+Tiger	Tiger	Panthera tigris	Animalia Chordata Mammalia Carnivora Felidae Panthera tigris	
+Leopard	Leopard	Panthera pardus	Animalia Chordata Mammalia Carnivora Felidae Panthera pardus	
+Gepard	Cheetah	Acinonyx jubatus	Animalia Chordata Mammalia Carnivora Felidae Acinonyx jubatus	
+Jaguar	Jaguar	Panthera onca	Animalia Chordata Mammalia Carnivora Felidae Panthera onca	
+Luchs	Lynx	Lynx lynx	Animalia Chordata Mammalia Carnivora Felidae Lynx lynx	
+Schneeleopard	Snow leopard	Panthera uncia	Animalia Chordata Mammalia Carnivora Felidae Panthera uncia	
+Hundeartige	Canine	Canidae	Animalia Chordata Mammalia Carnivora Canidae	
+Hund	Dog	Canis lupus familiaris	Animalia Chordata Mammalia Carnivora Canidae Canis lupus familiaris	so in TreeOfLife-200M
+Wolf	Wolf	Canis lupus	Animalia Chordata Mammalia Carnivora Canidae Canis lupus	
+Fuchs	Fox	Vulpes vulpes	Animalia Chordata Mammalia Carnivora Canidae Vulpes vulpes	
+Polarfuchs	Arctic fox	Vulpes lagopus	Animalia Chordata Mammalia Carnivora Canidae Vulpes lagopus	
+Bär	Bear	Ursidae	Animalia Chordata Mammalia Carnivora Ursidae	
+Braunbär	Brown bear	Ursus arctos	Animalia Chordata Mammalia Carnivora Ursidae Ursus arctos	
+Eisbär	Polar bear	Ursus maritimus	Animalia Chordata Mammalia Carnivora Ursidae Ursus maritimus	
+Schwarzbär	Black bear	Ursus americanus	Animalia Chordata Mammalia Carnivora Ursidae Ursus americanus	
+Großer Panda	Giant panda	Ailuropoda melanoleuca	Animalia Chordata Mammalia Carnivora Ursidae Ailuropoda melanoleuca	
+Pferd	Horse	Equus	Animalia Chordata Mammalia Perissodactyla Equidae Equus	
+Hauspferd	Domestic horse	Equus caballus	Animalia Chordata Mammalia Perissodactyla Equidae Equus caballus	
+Pony	Pony	Equus caballus	Animalia Chordata Mammalia Perissodactyla Equidae Equus caballus	Pony ist keine Art, Hauspferd-Schlag
+Esel	Donkey	Equus asinus	Animalia Chordata Mammalia Perissodactyla Equidae Equus asinus	
+Zebra	Zebra	Equus quagga	Animalia Chordata Mammalia Perissodactyla Equidae Equus quagga	unsicher: Zebra umfasst mehrere Arten (Hippotigris)
+Rind	Cattle	Bovinae	Animalia Chordata Mammalia Artiodactyla Bovidae Bovinae	Unterfamilie
+Kuh	Cow	Bos taurus	Animalia Chordata Mammalia Artiodactyla Bovidae Bos taurus	
+Wasserbüffel	Water buffalo	Bubalus bubalis	Animalia Chordata Mammalia Artiodactyla Bovidae Bubalus bubalis	
+Bison	Bison	Bison bison	Animalia Chordata Mammalia Artiodactyla Bovidae Bison bison	unsicher: auch Bison bonasus (Wisent)
+Yak	Yak	Bos grunniens	Animalia Chordata Mammalia Artiodactyla Bovidae Bos grunniens	
+Hochlandrind	Highland cattle	Bos taurus	Animalia Chordata Mammalia Artiodactyla Bovidae Bos taurus	Hochlandrind ist Hausrind-Schlag
+Hirsch	Deer	Cervidae	Animalia Chordata Mammalia Artiodactyla Cervidae	
+Rothirsch	Red deer	Cervus elaphus	Animalia Chordata Mammalia Artiodactyla Cervidae Cervus elaphus	
+Reh	Roe deer	Capreolus capreolus	Animalia Chordata Mammalia Artiodactyla Cervidae Capreolus capreolus	
+Damhirsch	Fallow deer	Dama dama	Animalia Chordata Mammalia Artiodactyla Cervidae Dama dama	
+Elch	Moose	Alces alces	Animalia Chordata Mammalia Artiodactyla Cervidae Alces alces	
+Rentier	Reindeer	Rangifer tarandus	Animalia Chordata Mammalia Artiodactyla Cervidae Rangifer tarandus	
+Ziege und Schaf	Goat and sheep	Caprinae	Animalia Chordata Mammalia Artiodactyla Bovidae Caprinae	Unterfamilie
+Ziege	Goat	Capra hircus	Animalia Chordata Mammalia Artiodactyla Bovidae Capra hircus	
+Schaf	Sheep	Ovis aries	Animalia Chordata Mammalia Artiodactyla Bovidae Ovis aries	
+Steinbock	Ibex	Capra ibex	Animalia Chordata Mammalia Artiodactyla Bovidae Capra ibex	
+Gämse	Chamois	Rupicapra rupicapra	Animalia Chordata Mammalia Artiodactyla Bovidae Rupicapra rupicapra	
+Mufflon	Mouflon	Ovis orientalis	Animalia Chordata Mammalia Artiodactyla Bovidae Ovis orientalis	Europaeischer Mufflon (O. o. musimon)
+Schwein	Pig	Suidae	Animalia Chordata Mammalia Artiodactyla Suidae	
+Hausschwein	Domestic pig	Sus scrofa domesticus	Animalia Chordata Mammalia Artiodactyla Suidae Sus scrofa domesticus	Unterart
+Wildschwein	Wild boar	Sus scrofa	Animalia Chordata Mammalia Artiodactyla Suidae Sus scrofa	
+Warzenschwein	Warthog	Phacochoerus africanus	Animalia Chordata Mammalia Artiodactyla Suidae Phacochoerus africanus	
+Antilope	Antelope	Bovidae	Animalia Chordata Mammalia Artiodactyla Bovidae	unsicher: Antilope ist kein Taxon
+Gazelle	Gazelle	Gazella	Animalia Chordata Mammalia Artiodactyla Bovidae Gazella	Gattung
+Gnu	Wildebeest	Connochaetes	Animalia Chordata Mammalia Artiodactyla Bovidae Connochaetes	Gattung
+Impala	Impala	Aepyceros melampus	Animalia Chordata Mammalia Artiodactyla Bovidae Aepyceros melampus	
+Springbock	Springbok	Antidorcas marsupialis	Animalia Chordata Mammalia Artiodactyla Bovidae Antidorcas marsupialis	
+Oryx	Oryx	Oryx	Animalia Chordata Mammalia Artiodactyla Bovidae Oryx	Gattung
+Kamel	Camel	Camelidae	Animalia Chordata Mammalia Artiodactyla Camelidae	
+Dromedar	Dromedary	Camelus dromedarius	Animalia Chordata Mammalia Artiodactyla Camelidae Camelus dromedarius	
+Trampeltier	Bactrian camel	Camelus bactrianus	Animalia Chordata Mammalia Artiodactyla Camelidae Camelus bactrianus	
+Lama	Llama	Lama glama	Animalia Chordata Mammalia Artiodactyla Camelidae Lama glama	
+Alpaka	Alpaca	Vicugna pacos	Animalia Chordata Mammalia Artiodactyla Camelidae Vicugna pacos	
+Elefant	Elephant	Elephantidae	Animalia Chordata Mammalia Proboscidea Elephantidae	
+Afrikanischer Elefant	African elephant	Loxodonta africana	Animalia Chordata Mammalia Proboscidea Elephantidae Loxodonta africana	
+Asiatischer Elefant	Asian elephant	Elephas maximus	Animalia Chordata Mammalia Proboscidea Elephantidae Elephas maximus	
+Giraffe	Giraffe	Giraffa camelopardalis	Animalia Chordata Mammalia Artiodactyla Giraffidae Giraffa camelopardalis	
+Nashorn	Rhinoceros	Rhinocerotidae	Animalia Chordata Mammalia Perissodactyla Rhinocerotidae	Familie
+Flusspferd	Hippopotamus	Hippopotamus amphibius	Animalia Chordata Mammalia Artiodactyla Hippopotamidae Hippopotamus amphibius	
+Nagetier	Rodent	Rodentia	Animalia Chordata Mammalia Rodentia	
+Eichhörnchen	Squirrel	Sciurus vulgaris	Animalia Chordata Mammalia Rodentia Sciuridae Sciurus vulgaris	
+Streifenhörnchen	Chipmunk	Tamias	Animalia Chordata Mammalia Rodentia Sciuridae Tamias	Gattung (T. striatus)
+Maus	Mouse	Mus musculus	Animalia Chordata Mammalia Rodentia Muridae Mus musculus	
+Ratte	Rat	Rattus norvegicus	Animalia Chordata Mammalia Rodentia Muridae Rattus norvegicus	unsicher: auch Rattus rattus
+Hamster	Hamster	Mesocricetus auratus	Animalia Chordata Mammalia Rodentia Cricetidae Mesocricetus auratus	unsicher: Goldhamster
+Meerschweinchen	Guinea pig	Cavia porcellus	Animalia Chordata Mammalia Rodentia Caviidae Cavia porcellus	
+Biber	Beaver	Castor fiber	Animalia Chordata Mammalia Rodentia Castoridae Castor fiber	
+Murmeltier	Marmot	Marmota	Animalia Chordata Mammalia Rodentia Sciuridae Marmota	Gattung
+Capybara	Capybara	Hydrochoerus hydrochaeris	Animalia Chordata Mammalia Rodentia Caviidae Hydrochoerus hydrochaeris	
+Hase und Kaninchen	Hare and rabbit	Lagomorpha	Animalia Chordata Mammalia Lagomorpha	Hasen und Kaninchen
+Feldhase	Hare	Lepus europaeus	Animalia Chordata Mammalia Lagomorpha Leporidae Lepus europaeus	
+Kaninchen	Rabbit	Oryctolagus cuniculus	Animalia Chordata Mammalia Lagomorpha Leporidae Oryctolagus cuniculus	
+Marder	Mustelid	Mustelidae	Animalia Chordata Mammalia Carnivora Mustelidae	
+Fischotter	Otter	Lutra lutra	Animalia Chordata Mammalia Carnivora Mustelidae Lutra lutra	
+Dachs	Badger	Meles meles	Animalia Chordata Mammalia Carnivora Mustelidae Meles meles	
+Steinmarder	Marten	Martes foina	Animalia Chordata Mammalia Carnivora Mustelidae Martes foina	
+Frettchen	Ferret	Mustela furo	Animalia Chordata Mammalia Carnivora Mustelidae Mustela furo	
+Hermelin	Stoat	Mustela erminea	Animalia Chordata Mammalia Carnivora Mustelidae Mustela erminea	
+Meeressäuger	Marine mammal	Cetacea, Pinnipedia	Animalia Chordata Mammalia	unsicher: Meeressaeuger ist kein Taxon
+Delfin	Dolphin	Delphinidae	Animalia Chordata Mammalia Artiodactyla Delphinidae	Familie (Cetacea)
+Wal	Whale	Cetacea	Animalia Chordata Mammalia Artiodactyla Cetacea	Infraordnung
+Robbe	Seal	Phocidae	Animalia Chordata Mammalia Carnivora Phocidae	Robben (Pinnipedia)
+Seelöwe	Sea lion	Otariidae	Animalia Chordata Mammalia Carnivora Otariidae	
+Walross	Walrus	Odobenus rosmarus	Animalia Chordata Mammalia Carnivora Odobenidae Odobenus rosmarus	
+Seeotter	Sea otter	Enhydra lutris	Animalia Chordata Mammalia Carnivora Mustelidae Enhydra lutris	
+Beuteltier	Marsupial	Marsupialia	Animalia Chordata Mammalia Marsupialia	Beuteltiere (Metatheria)
+Känguru	Kangaroo	Macropus	Animalia Chordata Mammalia Diprotodontia Macropodidae Macropus	Gattung
+Koala	Koala	Phascolarctos cinereus	Animalia Chordata Mammalia Diprotodontia Phascolarctidae Phascolarctos cinereus	
+Wombat	Wombat	Vombatidae	Animalia Chordata Mammalia Diprotodontia Vombatidae	
+Igel	Hedgehog	Erinaceus europaeus	Animalia Chordata Mammalia Eulipotyphla Erinaceidae Erinaceus europaeus	
+Fledermaus	Bat	Chiroptera	Animalia Chordata Mammalia Chiroptera	
+Waschbär	Raccoon	Procyon lotor	Animalia Chordata Mammalia Carnivora Procyonidae Procyon lotor	
+Erdmännchen	Meerkat	Suricata suricatta	Animalia Chordata Mammalia Carnivora Herpestidae Suricata suricatta	
+Faultier	Sloth	Folivora	Animalia Chordata Mammalia Pilosa Folivora	Unterordnung
+Roter Panda	Red panda	Ailurus fulgens	Animalia Chordata Mammalia Carnivora Ailuridae Ailurus fulgens	
+Meise	Tit	Paridae	Animalia Chordata Aves Passeriformes Paridae	
+Kohlmeise	Great tit	Parus major	Animalia Chordata Aves Passeriformes Paridae Parus major	
+Blaumeise	Blue tit	Cyanistes caeruleus	Animalia Chordata Aves Passeriformes Paridae Cyanistes caeruleus	
+Tannenmeise	Coal tit	Periparus ater	Animalia Chordata Aves Passeriformes Paridae Periparus ater	
+Schwanzmeise	Long-tailed tit	Aegithalos caudatus	Animalia Chordata Aves Passeriformes Aegithalidae Aegithalos caudatus	
+Sumpfmeise	Marsh tit	Poecile palustris	Animalia Chordata Aves Passeriformes Paridae Poecile palustris	
+Fink	Finch	Fringillidae	Animalia Chordata Aves Passeriformes Fringillidae	
+Buchfink	Chaffinch	Fringilla coelebs	Animalia Chordata Aves Passeriformes Fringillidae Fringilla coelebs	
+Grünfink	Greenfinch	Chloris chloris	Animalia Chordata Aves Passeriformes Fringillidae Chloris chloris	
+Stieglitz	Goldfinch	Carduelis carduelis	Animalia Chordata Aves Passeriformes Fringillidae Carduelis carduelis	
+Gimpel	Bullfinch	Pyrrhula pyrrhula	Animalia Chordata Aves Passeriformes Fringillidae Pyrrhula pyrrhula	
+Kernbeißer	Hawfinch	Coccothraustes coccothraustes	Animalia Chordata Aves Passeriformes Fringillidae Coccothraustes coccothraustes	
+Drossel	Thrush	Turdidae	Animalia Chordata Aves Passeriformes Turdidae	
+Amsel	Blackbird	Turdus merula	Animalia Chordata Aves Passeriformes Turdidae Turdus merula	
+Singdrossel	Song thrush	Turdus philomelos	Animalia Chordata Aves Passeriformes Turdidae Turdus philomelos	
+Wacholderdrossel	Fieldfare	Turdus pilaris	Animalia Chordata Aves Passeriformes Turdidae Turdus pilaris	
+Sperling	Sparrow	Passeridae	Animalia Chordata Aves Passeriformes Passeridae	
+Haussperling	House sparrow	Passer domesticus	Animalia Chordata Aves Passeriformes Passeridae Passer domesticus	
+Feldsperling	Tree sparrow	Passer montanus	Animalia Chordata Aves Passeriformes Passeridae Passer montanus	
+Rabenvogel	Corvid	Corvidae	Animalia Chordata Aves Passeriformes Corvidae	
+Rabenkrähe	Carrion crow	Corvus corone	Animalia Chordata Aves Passeriformes Corvidae Corvus corone	
+Kolkrabe	Raven	Corvus corax	Animalia Chordata Aves Passeriformes Corvidae Corvus corax	
+Elster	Magpie	Pica pica	Animalia Chordata Aves Passeriformes Corvidae Pica pica	
+Eichelhäher	Jay	Garrulus glandarius	Animalia Chordata Aves Passeriformes Corvidae Garrulus glandarius	
+Dohle	Jackdaw	Coloeus monedula	Animalia Chordata Aves Passeriformes Corvidae Coloeus monedula	
+Greifvogel	Bird of prey	Accipitriformes	Animalia Chordata Aves Accipitriformes	unsicher: Falken (Falconiformes) sind separat
+Mäusebussard	Buzzard	Buteo buteo	Animalia Chordata Aves Accipitriformes Accipitridae Buteo buteo	
+Turmfalke	Kestrel	Falco tinnunculus	Animalia Chordata Aves Falconiformes Falconidae Falco tinnunculus	
+Wanderfalke	Peregrine falcon	Falco peregrinus	Animalia Chordata Aves Falconiformes Falconidae Falco peregrinus	
+Rotmilan	Red kite	Milvus milvus	Animalia Chordata Aves Accipitriformes Accipitridae Milvus milvus	
+Habicht	Goshawk	Astur gentilis	Animalia Chordata Aves Accipitriformes Accipitridae Astur gentilis	auch Accipiter gentilis
+Sperber	Sparrowhawk	Accipiter nisus	Animalia Chordata Aves Accipitriformes Accipitridae Accipiter nisus	
+Steinadler	Golden eagle	Aquila chrysaetos	Animalia Chordata Aves Accipitriformes Accipitridae Aquila chrysaetos	
+Seeadler	White-tailed eagle	Haliaeetus albicilla	Animalia Chordata Aves Accipitriformes Accipitridae Haliaeetus albicilla	
+Weißkopfseeadler	Bald eagle	Haliaeetus leucocephalus	Animalia Chordata Aves Accipitriformes Accipitridae Haliaeetus leucocephalus	
+Fischadler	Osprey	Pandion haliaetus	Animalia Chordata Aves Accipitriformes Pandionidae Pandion haliaetus	
+Geier	Vulture	Accipitridae	Animalia Chordata Aves Accipitriformes Accipitridae	unsicher: Geier (Altwelt, Accipitridae; Neuwelt Cathartidae)
+Eule	Owl	Strigiformes	Animalia Chordata Aves Strigiformes	
+Waldkauz	Tawny owl	Strix aluco	Animalia Chordata Aves Strigiformes Strigidae Strix aluco	
+Schleiereule	Barn owl	Tyto alba	Animalia Chordata Aves Strigiformes Tytonidae Tyto alba	
+Uhu	Eagle-owl	Bubo bubo	Animalia Chordata Aves Strigiformes Strigidae Bubo bubo	
+Waldohreule	Long-eared owl	Asio otus	Animalia Chordata Aves Strigiformes Strigidae Asio otus	
+Schneeeule	Snowy owl	Bubo scandiacus	Animalia Chordata Aves Strigiformes Strigidae Bubo scandiacus	
+Steinkauz	Little owl	Athene noctua	Animalia Chordata Aves Strigiformes Strigidae Athene noctua	
+Specht	Woodpecker	Picidae	Animalia Chordata Aves Piciformes Picidae	
+Buntspecht	Great spotted woodpecker	Dendrocopos major	Animalia Chordata Aves Piciformes Picidae Dendrocopos major	
+Grünspecht	Green woodpecker	Picus viridis	Animalia Chordata Aves Piciformes Picidae Picus viridis	
+Schwarzspecht	Black woodpecker	Dryocopus martius	Animalia Chordata Aves Piciformes Picidae Dryocopus martius	
+Entenvogel	Waterfowl	Anseriformes	Animalia Chordata Aves Anseriformes	
+Stockente	Mallard	Anas platyrhynchos	Animalia Chordata Aves Anseriformes Anatidae Anas platyrhynchos	
+Höckerschwan	Mute swan	Cygnus olor	Animalia Chordata Aves Anseriformes Anatidae Cygnus olor	
+Graugans	Greylag goose	Anser anser	Animalia Chordata Aves Anseriformes Anatidae Anser anser	
+Kanadagans	Canada goose	Branta canadensis	Animalia Chordata Aves Anseriformes Anatidae Branta canadensis	
+Nilgans	Egyptian goose	Alopochen aegyptiaca	Animalia Chordata Aves Anseriformes Anatidae Alopochen aegyptiaca	
+Reiherente	Tufted duck	Aythya fuligula	Animalia Chordata Aves Anseriformes Anatidae Aythya fuligula	
+Mandarinente	Mandarin duck	Aix galericulata	Animalia Chordata Aves Anseriformes Anatidae Aix galericulata	
+Hausgans	Domestic goose	Anser anser domesticus	Animalia Chordata Aves Anseriformes Anatidae Anser anser domesticus	Hausform der Graugans
+Möwe	Gull	Laridae	Animalia Chordata Aves Charadriiformes Laridae	
+Lachmöwe	Black-headed gull	Chroicocephalus ridibundus	Animalia Chordata Aves Charadriiformes Laridae Chroicocephalus ridibundus	
+Silbermöwe	Herring gull	Larus argentatus	Animalia Chordata Aves Charadriiformes Laridae Larus argentatus	
+Schreitvogel	Wading bird	Ciconiiformes, Pelecaniformes, Gruiformes	Animalia Chordata Aves	unsicher: Schreitvogel ist kein Taxon
+Graureiher	Grey heron	Ardea cinerea	Animalia Chordata Aves Pelecaniformes Ardeidae Ardea cinerea	
+Silberreiher	Great egret	Ardea alba	Animalia Chordata Aves Pelecaniformes Ardeidae Ardea alba	auch Casmerodius albus
+Weißstorch	White stork	Ciconia ciconia	Animalia Chordata Aves Ciconiiformes Ciconiidae Ciconia ciconia	
+Kranich	Crane	Grus grus	Animalia Chordata Aves Gruiformes Gruidae Grus grus	
+Flamingo	Flamingo	Phoenicopteridae	Animalia Chordata Aves Phoenicopteriformes Phoenicopteridae	Familie
+Taube	Pigeon	Columbidae	Animalia Chordata Aves Columbiformes Columbidae	
+Straßentaube	Feral pigeon	Columba livia	Animalia Chordata Aves Columbiformes Columbidae Columba livia	Haustaube (C. livia domestica)
+Ringeltaube	Wood pigeon	Columba palumbus	Animalia Chordata Aves Columbiformes Columbidae Columba palumbus	
+Türkentaube	Collared dove	Streptopelia decaocto	Animalia Chordata Aves Columbiformes Columbidae Streptopelia decaocto	
+Papagei	Parrot	Psittaciformes	Animalia Chordata Aves Psittaciformes	
+Wellensittich	Budgerigar	Melopsittacus undulatus	Animalia Chordata Aves Psittaciformes Psittaculidae Melopsittacus undulatus	
+Ara	Macaw	Ara	Animalia Chordata Aves Psittaciformes Psittacidae Ara	Gattung
+Kakadu	Cockatoo	Cacatuidae	Animalia Chordata Aves Psittaciformes Cacatuidae	Familie
+Graupapagei	Grey parrot	Psittacus erithacus	Animalia Chordata Aves Psittaciformes Psittacidae Psittacus erithacus	
+Halsbandsittich	Ring-necked parakeet	Psittacula krameri	Animalia Chordata Aves Psittaciformes Psittaculidae Psittacula krameri	
+Pinguin	Penguin	Spheniscidae	Animalia Chordata Aves Sphenisciformes Spheniscidae	
+Kaiserpinguin	Emperor penguin	Aptenodytes forsteri	Animalia Chordata Aves Sphenisciformes Spheniscidae Aptenodytes forsteri	
+Königspinguin	King penguin	Aptenodytes patagonicus	Animalia Chordata Aves Sphenisciformes Spheniscidae Aptenodytes patagonicus	
+Eselspinguin	Gentoo penguin	Pygoscelis papua	Animalia Chordata Aves Sphenisciformes Spheniscidae Pygoscelis papua	
+Humboldtpinguin	Humboldt penguin	Spheniscus humboldti	Animalia Chordata Aves Sphenisciformes Spheniscidae Spheniscus humboldti	
+Hühnervogel	Gamebird	Galliformes	Animalia Chordata Aves Galliformes	
+Haushuhn	Chicken	Gallus gallus	Animalia Chordata Aves Galliformes Phasianidae Gallus gallus	Haushuhn (G. g. domesticus)
+Fasan	Pheasant	Phasianus colchicus	Animalia Chordata Aves Galliformes Phasianidae Phasianus colchicus	
+Pfau	Peacock	Pavo cristatus	Animalia Chordata Aves Galliformes Phasianidae Pavo cristatus	
+Truthahn	Turkey	Meleagris gallopavo	Animalia Chordata Aves Galliformes Phasianidae Meleagris gallopavo	
+Rotkehlchen	Robin	Erithacus rubecula	Animalia Chordata Aves Passeriformes Muscicapidae Erithacus rubecula	
+Zaunkönig	Wren	Troglodytes troglodytes	Animalia Chordata Aves Passeriformes Troglodytidae Troglodytes troglodytes	
+Bachstelze	Wagtail	Motacilla alba	Animalia Chordata Aves Passeriformes Motacillidae Motacilla alba	
+Star	Starling	Sturnus vulgaris	Animalia Chordata Aves Passeriformes Sturnidae Sturnus vulgaris	
+Eisvogel	Kingfisher	Alcedo atthis	Animalia Chordata Aves Coraciiformes Alcedinidae Alcedo atthis	
+Schwalbe	Swallow	Hirundo rustica	Animalia Chordata Aves Passeriformes Hirundinidae Hirundo rustica	
+Kolibri	Hummingbird	Trochilidae	Animalia Chordata Aves Apodiformes Trochilidae	Familie
+Strauß	Ostrich	Struthio camelus	Animalia Chordata Aves Struthioniformes Struthionidae Struthio camelus	
+Pelikan	Pelican	Pelecanus	Animalia Chordata Aves Pelecaniformes Pelecanidae Pelecanus	Gattung
+Kormoran	Cormorant	Phalacrocoracidae	Animalia Chordata Aves Suliformes Phalacrocoracidae	Familie
+Tukan	Toucan	Ramphastidae	Animalia Chordata Aves Piciformes Ramphastidae	Familie
+Haubentaucher	Great crested grebe	Podiceps cristatus	Animalia Chordata Aves Podicipediformes Podicipedidae Podiceps cristatus	
+Blässhuhn	Coot	Fulica atra	Animalia Chordata Aves Gruiformes Rallidae Fulica atra	
+Wiedehopf	Hoopoe	Upupa epops	Animalia Chordata Aves Bucerotiformes Upupidae Upupa epops	
+Kuckuck	Cuckoo	Cuculus canorus	Animalia Chordata Aves Cuculiformes Cuculidae Cuculus canorus	
+Papageitaucher	Puffin	Fratercula arctica	Animalia Chordata Aves Charadriiformes Alcidae Fratercula arctica	
+Schildkröte	Turtle	Testudines	Animalia Chordata Reptilia Testudines	
+Landschildkröte	Tortoise	Testudinidae	Animalia Chordata Reptilia Testudines Testudinidae	Familie
+Meeresschildkröte	Sea turtle	Chelonioidea	Animalia Chordata Reptilia Testudines Chelonioidea	Ueberfamilie
+Wasserschildkröte	Pond turtle	Emys orbicularis	Animalia Chordata Reptilia Testudines Emydidae Emys orbicularis	unsicher: Wasserschildkroete nicht eindeutig
+Echse	Lizard	Lacertilia	Animalia Chordata Reptilia Squamata Lacertilia	unsicher: Echsen sind paraphyletisch (Squamata)
+Zauneidechse	Sand lizard	Lacerta agilis	Animalia Chordata Reptilia Squamata Lacertidae Lacerta agilis	
+Leguan	Iguana	Iguanidae	Animalia Chordata Reptilia Squamata Iguanidae	Familie
+Gecko	Gecko	Gekkota	Animalia Chordata Reptilia Squamata Gekkota	Teilordnung
+Chamäleon	Chameleon	Chamaeleonidae	Animalia Chordata Reptilia Squamata Chamaeleonidae	Familie
+Waran	Monitor lizard	Varanus	Animalia Chordata Reptilia Squamata Varanidae Varanus	Gattung
+Bartagame	Bearded dragon	Pogona vitticeps	Animalia Chordata Reptilia Squamata Agamidae Pogona vitticeps	unsicher: Gattung Pogona
+Schlange	Snake	Serpentes	Animalia Chordata Reptilia Squamata Serpentes	Unterordnung
+Ringelnatter	Grass snake	Natrix natrix	Animalia Chordata Reptilia Squamata Colubridae Natrix natrix	
+Kreuzotter	Adder	Vipera berus	Animalia Chordata Reptilia Squamata Viperidae Vipera berus	
+Python	Python	Pythonidae	Animalia Chordata Reptilia Squamata Pythonidae	Familie
+Kobra	Cobra	Naja	Animalia Chordata Reptilia Squamata Elapidae Naja	Gattung
+Klapperschlange	Rattlesnake	Crotalus	Animalia Chordata Reptilia Squamata Viperidae Crotalus	Gattung
+Panzerechse	Crocodilian	Crocodylia	Animalia Chordata Reptilia Crocodylia	
+Krokodil	Crocodile	Crocodylidae	Animalia Chordata Reptilia Crocodylia Crocodylidae	Familie
+Alligator	Alligator	Alligatoridae	Animalia Chordata Reptilia Crocodylia Alligatoridae	Familie
+Frosch	Frog	Anura	Animalia Chordata Amphibia Anura	
+Laubfrosch	Tree frog	Hyla arborea	Animalia Chordata Amphibia Anura Hylidae Hyla arborea	
+Grasfrosch	Common frog	Rana temporaria	Animalia Chordata Amphibia Anura Ranidae Rana temporaria	
+Pfeilgiftfrosch	Poison dart frog	Dendrobatidae	Animalia Chordata Amphibia Anura Dendrobatidae	Familie
+Kröte	Toad	Bufonidae	Animalia Chordata Amphibia Anura Bufonidae	Familie
+Salamander	Salamander	Salamandra salamandra	Animalia Chordata Amphibia Caudata Salamandridae Salamandra salamandra	
+Molch	Newt	Salamandridae	Animalia Chordata Amphibia Caudata Salamandridae	unsicher: Molche (Pleurodelinae)
+Hai	Shark	Selachimorpha	Animalia Chordata Chondrichthyes Selachimorpha	
+Rochen	Ray	Batoidea	Animalia Chordata Chondrichthyes Batoidea	
+Clownfisch	Clownfish	Amphiprion ocellaris	Animalia Chordata Actinopterygii Perciformes Pomacentridae Amphiprion ocellaris	
+Goldfisch	Goldfish	Carassius auratus	Animalia Chordata Actinopterygii Cypriniformes Cyprinidae Carassius auratus	
+Koi	Koi	Cyprinus rubrofuscus	Animalia Chordata Actinopterygii Cypriniformes Cyprinidae Cyprinus rubrofuscus	Koi, auch Cyprinus carpio
+Lachs	Salmon	Salmo salar	Animalia Chordata Actinopterygii Salmoniformes Salmonidae Salmo salar	
+Forelle	Trout	Salmo trutta	Animalia Chordata Actinopterygii Salmoniformes Salmonidae Salmo trutta	unsicher: auch Oncorhynchus mykiss
+Seepferdchen	Seahorse	Hippocampus	Animalia Chordata Actinopterygii Syngnathiformes Syngnathidae Hippocampus	Gattung
+Kugelfisch	Pufferfish	Tetraodontidae	Animalia Chordata Actinopterygii Tetraodontiformes Tetraodontidae	Familie
+Schmetterling	Butterfly	Lepidoptera	Animalia Arthropoda Insecta Lepidoptera	
+Tagpfauenauge	Peacock butterfly	Aglais io	Animalia Arthropoda Insecta Lepidoptera Nymphalidae Aglais io	
+Admiral	Red admiral	Vanessa atalanta	Animalia Arthropoda Insecta Lepidoptera Nymphalidae Vanessa atalanta	
+Zitronenfalter	Brimstone	Gonepteryx rhamni	Animalia Arthropoda Insecta Lepidoptera Pieridae Gonepteryx rhamni	
+Kleiner Fuchs	Small tortoiseshell	Aglais urticae	Animalia Arthropoda Insecta Lepidoptera Nymphalidae Aglais urticae	
+Schwalbenschwanz	Swallowtail	Papilio machaon	Animalia Arthropoda Insecta Lepidoptera Papilionidae Papilio machaon	
+Kohlweißling	Cabbage white	Pieris brassicae	Animalia Arthropoda Insecta Lepidoptera Pieridae Pieris brassicae	
+Monarchfalter	Monarch butterfly	Danaus plexippus	Animalia Arthropoda Insecta Lepidoptera Nymphalidae Danaus plexippus	
+Nachtfalter	Moth	Heterocera	Animalia Arthropoda Insecta Lepidoptera	unsicher: Nachtfalter informelle Gruppe
+Biene	Bee	Anthophila	Animalia Arthropoda Insecta Hymenoptera Anthophila	Bienen, Gruppe
+Honigbiene	Honey bee	Apis mellifera	Animalia Arthropoda Insecta Hymenoptera Apidae Apis mellifera	
+Hummel	Bumblebee	Bombus	Animalia Arthropoda Insecta Hymenoptera Apidae Bombus	Gattung
+Käfer	Beetle	Coleoptera	Animalia Arthropoda Insecta Coleoptera	
+Marienkäfer	Ladybird	Coccinella septempunctata	Animalia Arthropoda Insecta Coleoptera Coccinellidae Coccinella septempunctata	
+Hirschkäfer	Stag beetle	Lucanus cervus	Animalia Arthropoda Insecta Coleoptera Lucanidae Lucanus cervus	
+Maikäfer	Cockchafer	Melolontha melolontha	Animalia Arthropoda Insecta Coleoptera Scarabaeidae Melolontha melolontha	
+Rosenkäfer	Rose chafer	Cetonia aurata	Animalia Arthropoda Insecta Coleoptera Scarabaeidae Cetonia aurata	
+Libelle	Dragonfly	Anisoptera	Animalia Arthropoda Insecta Odonata Anisoptera	Grosslibellen; Odonata insgesamt
+Wespe	Wasp	Vespidae	Animalia Arthropoda Insecta Hymenoptera Vespidae	Familie
+Heuschrecke	Grasshopper	Caelifera	Animalia Arthropoda Insecta Orthoptera Caelifera	Kurzfuehlerschrecken
+Ameise	Ant	Formicidae	Animalia Arthropoda Insecta Hymenoptera Formicidae	Familie
+Fliege	Fly	Diptera	Animalia Arthropoda Insecta Diptera	unsicher: Fliege nicht eindeutig
+Gottesanbeterin	Praying mantis	Mantis religiosa	Animalia Arthropoda Insecta Mantodea Mantidae Mantis religiosa	
+Raupe	Caterpillar	Lepidoptera	Animalia Arthropoda Insecta Lepidoptera	unsicher: Raupe ist Larvenstadium
+Spinne	Spider	Araneae	Animalia Arthropoda Arachnida Araneae	
+Skorpion	Scorpion	Scorpiones	Animalia Arthropoda Arachnida Scorpiones	
+Qualle	Jellyfish	Medusozoa	Animalia Cnidaria Medusozoa	unsicher: Qualle nicht eindeutig
+Seestern	Starfish	Asteroidea	Animalia Echinodermata Asteroidea	
+Krabbe	Crab	Brachyura	Animalia Arthropoda Malacostraca Decapoda Brachyura	
+Hummer	Lobster	Nephropidae	Animalia Arthropoda Malacostraca Decapoda Nephropidae	Familie
+Krake	Octopus	Octopoda	Animalia Mollusca Cephalopoda Octopoda	
+Seeigel	Sea urchin	Echinoidea	Animalia Echinodermata Echinoidea	

@@ -9,10 +9,9 @@
 //! wahrscheinlichsten Untergruppe, solange sie sicher genug ist: lieber
 //! „Vogel“ als eine geratene Art. Jede erreichte Ebene wird ein Schlagwort.
 
-use crate::clip::{Clip, dot, mean_normalized};
+use crate::clip::{Clip, dot};
 use crate::error::Result;
 use crate::tagger::TagSuggestion;
-use crate::vocab::TEMPLATES;
 
 /// Name der Gruppe in den Vorschlägen
 const GROUP: &str = "Tier";
@@ -704,7 +703,10 @@ struct Node {
     /// Index des Elternknotens, `None` für die Tierklassen
     parent: Option<usize>,
     depth: usize,
+    /// CLIP-Text-Embedding der Beschreibung
     embedding: Vec<f32>,
+    /// BioCLIP-2-Text-Embedding (taxonomischer Pfad, vorab berechnet)
+    bioclip: Vec<f32>,
 }
 
 pub struct AnimalTagger {
@@ -722,77 +724,133 @@ fn walk(list: &'static [Taxon], out: &mut Vec<&'static Taxon>) {
     }
 }
 
-/// Wie [`walk`], mit Elternindex, Tiefe und der Tierklasse (für die
-/// Beschreibung „…, a type of bird“)
+/// Wie [`walk`], mit Elternindex und Tiefe
 fn walk_nodes(
     list: &'static [Taxon],
     parent: Option<usize>,
     depth: usize,
-    class: Option<&'static str>,
-    out: &mut Vec<(&'static Taxon, Option<usize>, usize, Option<&'static str>)>,
+    out: &mut Vec<(&'static Taxon, Option<usize>, usize)>,
 ) {
     for t in list {
         let i = out.len();
-        out.push((t, parent, depth, class));
-        let kind = class.or_else(|| {
-            CLASS_KIND
-                .iter()
-                .find(|(c, _)| *c == t.tag)
-                .map(|(_, k)| *k)
-        });
-        walk_nodes(t.children, Some(i), depth + 1, kind, out);
+        out.push((t, parent, depth));
+        walk_nodes(t.children, Some(i), depth + 1, out);
     }
 }
 
-/// Wofür eine Tierklasse in den Beschreibungen ihrer Arten steht
-const CLASS_KIND: &[(&str, &str)] = &[
-    ("Säugetier", "mammal"),
-    ("Vogel", "bird"),
-    ("Reptil", "reptile"),
-    ("Amphibie", "amphibian"),
-    ("Fisch", "fish"),
-    ("Insekt", "insect"),
-    ("Spinnentier", "arachnid"),
-    ("Meerestier", "sea animal"),
-];
+fn strip_article(p: &str) -> &str {
+    p.strip_prefix("a ")
+        .or_else(|| p.strip_prefix("an "))
+        .unwrap_or(p)
+}
+
+// --- BioCLIP 2 ------------------------------------------------------------------
+
+/// Bildteil von BioCLIP 2 im Ordner `tierarten` (optionaler Download)
+pub const BIOCLIP_FILE: &str = "bioclip2-vision-fp16.onnx";
+
+/// Text-Embeddings der Taxonomie für BioCLIP 2, erzeugt mit
+/// `tools/bioclip/text_embeddings.py` (Format dort beschrieben)
+static BIOCLIP_TEXT: &[u8] = include_bytes!("../assets/bioclip2-tiere.bin");
+
+/// Die mitgelieferten BioCLIP-Text-Embeddings: Schlagwort → Vektor
+fn bioclip_text() -> std::collections::HashMap<&'static str, Vec<f32>> {
+    let b = BIOCLIP_TEXT;
+    let u32_at = |i: usize| u32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]) as usize;
+    assert_eq!(&b[..4], b"LKTX", "BioCLIP-Texte: unbekanntes Format");
+    let (n, dim) = (u32_at(8), u32_at(12));
+    let mut out = std::collections::HashMap::with_capacity(n);
+    let mut i = 16;
+    for _ in 0..n {
+        let len = u16::from_le_bytes([b[i], b[i + 1]]) as usize;
+        let name = std::str::from_utf8(&b[i + 2..i + 2 + len]).expect("UTF-8");
+        i += 2 + len;
+        let v = b[i..i + 4 * dim]
+            .chunks_exact(4)
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect();
+        i += 4 * dim;
+        out.insert(name, v);
+    }
+    out
+}
+
+/// BioCLIP 2 (Bildteil): spezialisiert auf Tiere und Pflanzen, trifft Arten
+/// auch klein im Bild weit besser als CLIP.
+pub struct Bioclip {
+    session: crate::accel::Model,
+    input: String,
+    output: String,
+}
+
+impl Bioclip {
+    pub fn load(path: &std::path::Path) -> Result<Self> {
+        let mut session = crate::accel::open_model(path)?;
+        let s = session.inspect();
+        let input = s
+            .inputs()
+            .first()
+            .map(|i| i.name().to_string())
+            .unwrap_or_else(|| "pixel_values".into());
+        let output = s
+            .outputs()
+            .first()
+            .map(|o| o.name().to_string())
+            .unwrap_or_else(|| "embedding".into());
+        Ok(Self {
+            session,
+            input,
+            output,
+        })
+    }
+
+    /// L2-normierte Bild-Embeddings (Vorverarbeitung wie bei CLIP)
+    pub fn embed(&self, images: &[image::DynamicImage]) -> Result<Vec<Vec<f32>>> {
+        if images.is_empty() {
+            return Ok(vec![]);
+        }
+        let (shape, data) = crate::clip::pixel_values(images);
+        let input = ort::value::Tensor::from_array((shape, data))?;
+        let mut session = self.session.lock();
+        let outputs = session.run(vec![(self.input.as_str(), input.into_dyn())])?;
+        let (shape, values) = crate::accel::output_f32(&outputs, &self.output)?;
+        crate::clip::split_rows(shape, values, images.len())
+    }
+}
 
 impl AnimalTagger {
-    /// Text-Embeddings aller Beschreibungen berechnen (einmal, in Stapeln).
+    /// Text-Embeddings aller Beschreibungen berechnen (einmal, in Stapeln);
+    /// die BioCLIP-Texte kommen fertig mit.
     pub fn new(clip: &Clip) -> Result<Self> {
         let mut flat = Vec::new();
-        walk_nodes(TAXONOMY, None, 0, None, &mut flat);
-        // Unterhalb der Klasse mit Zusatz „…, a type of bird“: hilft CLIP, eine
-        // Art der richtigen Klasse zuzuordnen (Rotkehlchen ist ein Vogel)
-        let phrases: Vec<String> = NOT_ANIMAL
+        walk_nodes(TAXONOMY, None, 0, &mut flat);
+        // Eine schlichte Beschreibung je Knoten traf im Vergleich am besten
+        // (gemittelte Vorlagen und Zusätze wie „…, a type of bird“ schadeten)
+        let texts: Vec<String> = NOT_ANIMAL
             .iter()
             .chain(ANIMAL_HINTS)
-            .map(|p| p.to_string())
-            .chain(flat.iter().map(|(t, _, depth, kind)| match kind {
-                Some(k) if *depth > 0 => format!("{}, a type of {k}", t.phrase),
-                _ => t.phrase.to_string(),
-            }))
+            .copied()
+            .chain(flat.iter().map(|(t, _, _)| t.phrase))
+            .map(|p| format!("a photo of {}.", strip_article(p)))
             .collect();
-        let per = TEMPLATES.len();
-        let texts: Vec<String> = phrases
-            .iter()
-            .flat_map(|p| TEMPLATES.iter().map(move |t| t.replace("{}", p)))
-            .collect();
-        let mut rows = Vec::with_capacity(texts.len());
+        let mut emb = Vec::with_capacity(texts.len());
         for batch in texts.chunks(64) {
             let refs: Vec<&str> = batch.iter().map(String::as_str).collect();
-            rows.extend(clip.embed_texts(&refs)?);
+            emb.extend(clip.embed_texts(&refs)?);
         }
-        let mut emb = rows.chunks(per).map(mean_normalized);
+        let mut emb = emb.into_iter();
         let others = emb.by_ref().take(NOT_ANIMAL.len()).collect();
         let hints = emb.by_ref().take(ANIMAL_HINTS.len()).collect();
+        let mut bio = bioclip_text();
         let nodes = flat
             .into_iter()
             .zip(emb)
-            .map(|((taxon, parent, depth, _), embedding)| Node {
+            .map(|((taxon, parent, depth), embedding)| Node {
                 taxon,
                 parent,
                 depth,
                 embedding,
+                bioclip: bio.remove(taxon.tag).unwrap_or_default(),
             })
             .collect();
         Ok(Self {
@@ -803,9 +861,9 @@ impl AnimalTagger {
     }
 
     /// Anteil „Tier“: Klassen und allgemeine Tier-Beschreibungen gegen die
-    /// Nicht-Tier-Motive. Getrennt von der Artbestimmung – dort stünden
-    /// 300 Tierbeschreibungen gegen eine Handvoll anderer, und schon die Menge
-    /// gäbe jedem Foto ein Tier.
+    /// Nicht-Tier-Motive (CLIP). Getrennt von der Artbestimmung – dort
+    /// stünden 300 Tierbeschreibungen gegen eine Handvoll anderer, und schon
+    /// die Menge gäbe jedem Foto ein Tier.
     fn animal_share(&self, image: &[f32]) -> f32 {
         let logit = |e: &Vec<f32>| dot(e, image) * LOGIT_SCALE;
         let classes = self
@@ -819,16 +877,28 @@ impl AnimalTagger {
         softmax(&all)[..animal.len()].iter().sum()
     }
 
+    /// Ist (laut CLIP) ein Tier zu sehen? Nur dann lohnt BioCLIP.
+    pub fn has_animal(&self, clip_image: &[f32]) -> bool {
+        self.animal_share(clip_image) >= GATE_P
+    }
+
     /// Wahrscheinlichkeit je Knoten unter allen Tierknoten: eigene und mit
-    /// Unterarten aufsummierte (Kinder stehen hinter den Eltern)
-    fn probabilities(&self, image: &[f32]) -> (Vec<f32>, Vec<f32>) {
-        let own = softmax(
-            &self
+    /// Unterarten aufsummierte (Kinder stehen hinter den Eltern). Mit
+    /// BioCLIP-Embedding nach BioCLIP, sonst nach CLIP.
+    fn probabilities(&self, clip_image: &[f32], bioclip: Option<&[f32]>) -> (Vec<f32>, Vec<f32>) {
+        let logits: Vec<f32> = match bioclip {
+            Some(b) => self
                 .nodes
                 .iter()
-                .map(|n| dot(&n.embedding, image) * LOGIT_SCALE)
-                .collect::<Vec<_>>(),
-        );
+                .map(|n| dot(&n.bioclip, b) * LOGIT_SCALE)
+                .collect(),
+            None => self
+                .nodes
+                .iter()
+                .map(|n| dot(&n.embedding, clip_image) * LOGIT_SCALE)
+                .collect(),
+        };
+        let own = softmax(&logits);
         let mut agg = own.clone();
         for i in (0..self.nodes.len()).rev() {
             if let Some(parent) = self.nodes[i].parent {
@@ -838,13 +908,14 @@ impl AnimalTagger {
         (own, agg)
     }
 
-    /// Schlagworte für ein Bild-Embedding: die erreichten Ebenen, grob zuerst.
-    pub fn tag(&self, image: &[f32]) -> Vec<TagSuggestion> {
-        let animal = self.animal_share(image);
+    /// Schlagworte: die erreichten Ebenen, grob zuerst. `clip_image` für die
+    /// Vorprüfung (und die Arten, wenn BioCLIP fehlt), `bioclip` für die Arten.
+    pub fn tag(&self, clip_image: &[f32], bioclip: Option<&[f32]>) -> Vec<TagSuggestion> {
+        let animal = self.animal_share(clip_image);
         if animal < GATE_P {
             return Vec::new();
         }
-        let (own, agg) = self.probabilities(image);
+        let (own, agg) = self.probabilities(clip_image, bioclip);
         // Pfad zur wahrscheinlichsten Art (Klasse zuerst)
         let best = (0..self.nodes.len())
             .max_by(|a, b| own[*a].total_cmp(&own[*b]))
@@ -877,6 +948,14 @@ fn softmax(x: &[f32]) -> Vec<f32> {
     let e: Vec<f32> = x.iter().map(|v| (v - max).exp()).collect();
     let s: f32 = e.iter().sum();
     e.into_iter().map(|v| v / s).collect()
+}
+
+/// Alle Schlagworte der Taxonomie in beiden Sprachen (zum Ersetzen beim
+/// Nachbestimmen)
+pub fn all_names() -> Vec<&'static str> {
+    let mut all = Vec::new();
+    walk(TAXONOMY, &mut all);
+    all.iter().flat_map(|t| [t.tag, t.en]).collect()
 }
 
 /// Englische Beschreibung zu einem Tiernamen (ein Wort, klein geschrieben) –
@@ -922,6 +1001,27 @@ mod tests {
             .collect();
         assert!(dups.is_empty(), "{dups:?}");
         assert!(all.iter().all(|t| !t.phrase.is_empty() && !t.en.is_empty()));
+    }
+
+    /// Jeder Knoten hat ein BioCLIP-Text-Embedding (sonst `tools/bioclip`
+    /// neu erzeugen), alle gleich lang und normiert.
+    #[test]
+    fn bioclip_texts_cover_the_taxonomy() {
+        let texts = bioclip_text();
+        let mut all = Vec::new();
+        walk(TAXONOMY, &mut all);
+        let missing: Vec<_> = all
+            .iter()
+            .filter(|t| !texts.contains_key(t.tag))
+            .map(|t| t.tag)
+            .collect();
+        assert!(missing.is_empty(), "fehlen: {missing:?}");
+        assert_eq!(texts.len(), all.len());
+        for v in texts.values() {
+            assert_eq!(v.len(), 768);
+            let n: f32 = v.iter().map(|x| x * x).sum();
+            assert!((n - 1.0).abs() < 1e-3);
+        }
     }
 
     #[test]

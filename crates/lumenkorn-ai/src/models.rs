@@ -65,6 +65,8 @@ pub enum Component {
     Repair,
     /// GPU-Laufzeit über WebGPU (Vulkan / DirectX 12 / Metal)
     Webgpu,
+    /// Tierarten genauer bestimmen (BioCLIP 2, Bildteil)
+    Animals,
 }
 
 impl Component {
@@ -171,6 +173,21 @@ fn default_repair() -> Vec<FileSpec> {
     )]
 }
 
+pub fn animals_dir(data_dir: &Path) -> PathBuf {
+    ai_dir(data_dir).join("tierarten")
+}
+
+/// BioCLIP 2 (Imageomics, MIT), Bildteil als ONNX mit Gewichten in float16 –
+/// umgewandelt für Lumenkorn (`export_onnx.py` im Repository), fester Commit.
+fn default_animals() -> Vec<FileSpec> {
+    vec![FileSpec::pinned(
+        crate::animals::BIOCLIP_FILE,
+        "https://huggingface.co/DrayPrescot/bioclip2-onnx/resolve/6b0a7b8fcb948f6d599d42040ea0e0dbd9a9f301/bioclip2-vision-fp16.onnx".into(),
+        608_910_301,
+        "db55173badd124cdb8ffc48708d4c7db8f1130ad7365baa221bfcc6b66043527",
+    )]
+}
+
 pub fn faces_dir(data_dir: &Path) -> PathBuf {
     ai_dir(data_dir).join("gesichter")
 }
@@ -262,6 +279,8 @@ pub struct Manifest {
     pub faces: Vec<FileSpec>,
     #[serde(default = "default_repair")]
     pub repair: Vec<FileSpec>,
+    #[serde(default = "default_animals")]
+    pub animals: Vec<FileSpec>,
 }
 
 fn default_masks() -> Vec<FileSpec> {
@@ -338,6 +357,7 @@ fn component_files(m: &Manifest, c: Component) -> &[FileSpec] {
         Component::Denoise => &m.denoise,
         Component::Faces => &m.faces,
         Component::Repair => &m.repair,
+        Component::Animals => &m.animals,
         Component::Webgpu => &[],
     }
 }
@@ -349,6 +369,7 @@ fn component_dir(data_dir: &Path, c: Component) -> PathBuf {
         Component::Denoise => denoise_dir(data_dir),
         Component::Faces => faces_dir(data_dir),
         Component::Repair => repair_dir(data_dir),
+        Component::Animals => animals_dir(data_dir),
         Component::Webgpu => accel::runtime_dir(&ai_dir(data_dir), Backend::Webgpu),
     }
 }
@@ -443,6 +464,7 @@ pub fn default_manifest() -> Manifest {
         gpu_runtimes: default_gpu_runtimes(),
         faces: default_faces(),
         repair: default_repair(),
+        animals: default_animals(),
     }
 }
 
@@ -503,7 +525,9 @@ fn check_url(url: &str, needs_https: bool) -> std::result::Result<(), String> {
 /// Schutz vor einer manipulierten oder fehlerhaften `quellen.json`: Dateinamen
 /// dürfen den Modellordner nicht verlassen, Adressen müssen http(s) sein.
 fn validate_manifest(m: &Manifest) -> std::result::Result<(), String> {
-    let lists = [&m.model, &m.masks, &m.denoise, &m.faces, &m.repair];
+    let lists = [
+        &m.model, &m.masks, &m.denoise, &m.faces, &m.repair, &m.animals,
+    ];
     for f in lists.into_iter().flatten() {
         if !is_plain_name(&f.name) {
             return Err(format!("Dateiname {:?} ungültig", f.name));
@@ -556,6 +580,9 @@ pub struct Status {
     pub faces_ready: bool,
     /// Downloadgröße für die Personenerkennung (inkl. Laufzeit, falls sie fehlt)
     pub faces_download_size: u64,
+    /// Tierarten genauer (BioCLIP 2) installiert
+    pub animals_ready: bool,
+    pub animals_download_size: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -608,6 +635,7 @@ pub fn status(data_dir: &Path) -> Status {
         .all(|f| masks.join(&f.name).is_file());
     let (faces_ready, faces_download_size) = need(Component::Faces);
     let (repair_ready, repair_download_size) = need(Component::Repair);
+    let (animals_ready, animals_download_size) = need(Component::Animals);
     // Entrauschen: geladen wird die PyTorch-Datei, fertig ist es erst mit dem
     // daraus erzeugten ONNX-Modell – daher nicht über die Dateiliste.
     let denoise_ready = denoise_dir(data_dir).join(DENOISE_MODEL).is_file();
@@ -632,6 +660,8 @@ pub fn status(data_dir: &Path) -> Status {
     let order = accel::gpu_backends();
     gpu_runtimes.sort_by_key(|g| order.iter().position(|b| *b == g.backend));
     Status {
+        animals_ready,
+        animals_download_size,
         repair_ready,
         repair_download_size,
         faces_ready,

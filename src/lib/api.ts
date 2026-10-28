@@ -951,6 +951,9 @@ export interface AiStatus {
   partsReady: boolean;
   repairReady: boolean;
   repairDownloadSize: number;
+  /** Tierarten genauer (BioCLIP 2) installiert */
+  animalsReady: boolean;
+  animalsDownloadSize: number;
   masksDownloadSize: number;
   denoiseReady: boolean;
   denoiseDownloadSize: number;
@@ -966,7 +969,7 @@ export interface AiStatus {
   settings: AiSettings;
 }
 
-export type AiComponent = "clip" | "masks" | "denoise" | "faces" | "repair" | Backend;
+export type AiComponent = "clip" | "masks" | "denoise" | "faces" | "repair" | "animals" | Backend;
 
 export interface AiDownloadEvent {
   progress: { item: string; index: number; count: number; done: number; total: number | null } | null;

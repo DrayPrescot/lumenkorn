@@ -207,6 +207,38 @@ mod search_tests {
         assert_eq!(names, ["Amsel", "Urlaub", "Vogel", "Wiese"]);
         assert_eq!(hits(&cat, "Amsel"), vec![a]);
         assert!(cat.image_tags(b).unwrap().is_empty());
+
+        // Nachbestimmen: nur die genannten KI-Schlagworte werden ersetzt
+        cat.add_tag(a, "Amsel2", TagSource::Manual, None).unwrap();
+        let animals = ["Vogel", "Amsel", "Drossel", "Blaumeise", "Meise"];
+        cat.replace_ai_tags_named(
+            &[(
+                a,
+                vec![
+                    ("Vogel".into(), 0.9),
+                    ("Meise".into(), 0.8),
+                    ("Blaumeise".into(), 0.7),
+                ],
+            )],
+            &animals,
+        )
+        .unwrap();
+        let mut names: Vec<String> = cat
+            .image_tags(a)
+            .unwrap()
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            ["Amsel2", "Blaumeise", "Meise", "Urlaub", "Vogel", "Wiese"]
+        );
+        assert!(
+            hits(&cat, "Amsel").contains(&a),
+            "eigenes „Amsel2“ findet weiter"
+        );
+        assert_eq!(hits(&cat, "Blaumeise"), vec![a]);
     }
 
     #[test]

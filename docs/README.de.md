@@ -330,6 +330,7 @@ einmal, weitere Downloads während eines laufenden reihen sich ein.
 | Masken: Motiv, Objekt, Himmel, Person, Tier | IS-Net, Segment Anything, skyseg, OWLv2, MediaPipe | ca. 640 MB |
 | Rauschreduzierung | DRUNet | ca. 130 MB |
 | Reparatur | LaMa | ca. 93 MB |
+| Tierarten genauer (optional) | BioCLIP 2 | ca. 610 MB |
 | Personen | YuNet, SFace | ca. 39 MB |
 | Grafikkarte für die KI | ONNX Runtime WebGPU | ca. 25 MB |
 
@@ -341,12 +342,16 @@ neutralen Option, damit nicht jedes Foto irgendein „Wetter“ bekommt. KI-Schl
 umrandet und lassen sich entfernen; eigene Schlagworte werden nie überschrieben. Das Vokabular steht in
 `crates/lumenkorn-ai/src/vocab.rs`.
 
-Tiere bekommen Schlagworte von grob nach fein, etwa Säugetier → Affe → Gorilla oder Insekt → Käfer →
-Marienkäfer (rund 300 Tiere, `crates/lumenkorn-ai/src/animals.rs`). CLIP vergleicht das Foto mit allen
-Arten und Gruppen; eine Gruppe zählt mit ihren Arten zusammen, und vergeben wird nur, was sicher genug
-ist – eine Blaumeise bekommt deshalb mitunter nur „Vogel“. Schon analysierte Fotos bekommen die
-Tierarten einmalig im Hintergrund aus ihren gespeicherten Vektoren; andere Schlagworte bleiben dabei
-unberührt. Die Inhaltssuche versteht die Tiernamen ebenfalls („Blaumeise“).
+Tiere bekommen Schlagworte von grob nach fein, etwa Vogel → Meise → Blaumeise oder Insekt → Käfer →
+Marienkäfer (rund 300 Tiere, `crates/lumenkorn-ai/src/animals.rs`). Ob ein Tier zu sehen ist, entscheidet
+CLIP. Die Art bestimmt, wenn unter Einstellungen → KI geladen, BioCLIP 2: ein auf Tiere und Pflanzen
+trainiertes Modell (ca. 610 MB, MIT-Lizenz), das auch kleine Vögel oder Insekten weit im Bild erkennt.
+Ohne es bestimmt CLIP die Art und bleibt dabei öfter bei „Vogel“ stehen. Verglichen wird mit allen Arten
+und Gruppen; eine Gruppe zählt mit ihren Arten zusammen, und vergeben wird nur, was sicher genug ist. Die
+Texte für BioCLIP sind die taxonomischen Namen (*Animalia Chordata Aves Passeriformes Paridae Cyanistes
+caeruleus*), vorab berechnet (`tools/bioclip`). Schon analysierte Fotos bekommen die Tierarten im
+Hintergrund; ersetzt werden dabei nur Tier-Schlagworte, andere bleiben unberührt. Die Inhaltssuche
+versteht die Tiernamen ebenfalls („Blaumeise“).
 
 Für die Inhaltssuche den Schalter „KI“ im Suchfeld anklicken und z. B. „Hund am Strand“ eingeben.
 Deutsche Wörter aus dem Vokabular werden für CLIP ins Englische übertragen; englische Beschreibungen
@@ -764,6 +769,7 @@ Nominatim. Der Hinweis „© OpenStreetMap contributors“ steht auf der Karte.
 | OWLv2 (base, patch16) | [Google Research](https://github.com/google-research/scenic/tree/main/scenic/projects/owl_vit), ONNX-Fassung von [Xenova](https://huggingface.co/Xenova/owlv2-base-patch16) | Hugging Face | Apache-2.0 |
 | MediaPipe Selfie Multiclass | [Google](https://ai.google.dev/edge/mediapipe/solutions/vision/image_segmenter), ONNX-Umwandlung von [senty-au](https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX) | Hugging Face | Apache-2.0 |
 | MediaPipe Face Mesh V2 | [Google](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker), ONNX-Umwandlung für [QtMeshEditor](https://huggingface.co/fernandotonon/QtMeshEditor-facemesh-onnx) | Hugging Face | Apache-2.0 |
+| BioCLIP 2 | [Imageomics Institute](https://huggingface.co/imageomics/bioclip-2) (Gu u. a., NeurIPS 2025), ONNX-Umwandlung für Lumenkorn | [Hugging Face](https://huggingface.co/DrayPrescot/bioclip2-onnx) | MIT |
 | DRUNet | Kai Zhang u. a., [KAIR](https://github.com/cszn/KAIR) | Releases von KAIR | MIT |
 | LaMa | [Samsung AI](https://github.com/advimman/lama) | [OpenCV Model Zoo](https://github.com/opencv/opencv_zoo) | Apache-2.0 |
 | YuNet | Shiqi Yu u. a. | OpenCV Model Zoo | MIT |

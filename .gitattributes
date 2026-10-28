@@ -1,0 +1,2 @@
+# Binärdaten (z. B. vorab berechnete Text-Vektoren der Tierarten) nie umwandeln
+*.bin binary

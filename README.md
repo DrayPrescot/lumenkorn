@@ -427,7 +427,8 @@ the same time.
 
 | Feature | Model | What Lumenkorn does with it |
 |---|---|---|
-| Keywords, search by content | CLIP ViT-B/32 | Compares each photo with a vocabulary of German and English terms in five groups (place, subject, light, weather, style), and with about 300 animals from class to species (Mammal → Monkey → Gorilla); it goes only as deep as it is sure. Search turns your text into the same kind of vector. |
+| Keywords, search by content | CLIP ViT-B/32 | Compares each photo with a vocabulary of German and English terms in five groups (place, subject, light, weather, style), and decides whether an animal is in it. Search turns your text into the same kind of vector. |
+| Animal species (optional) | BioCLIP 2 (ViT-L/14, image encoder) | Names about 300 animals from class to species (Bird → Tit → Blue tit) on photos where CLIP sees an animal, and goes only as deep as it is sure. The text side is computed in advance from taxonomic names (`tools/bioclip`). Without it, CLIP names the species, less precisely. |
 | Subject mask | IS-Net (DIS) | Predicts the main subject. |
 | Object mask | Segment Anything ViT-B | Turns your clicks into a mask; the image embedding is computed once per photo. |
 | Sky mask | skyseg (U²-Net) | Predicts the sky. Uncertain edges, such as tree tops, are then decided by comparing each pixel with the colors of nearby sure sky and sure foreground. Without the model a color-based rule set is used. |
@@ -638,6 +639,7 @@ of Windows, and the GPU build of ONNX Runtime needs the Microsoft Visual C++ Red
 | OWLv2 (base, patch16) | [Google Research](https://github.com/google-research/scenic/tree/main/scenic/projects/owl_vit); ONNX conversion by [Xenova](https://huggingface.co/Xenova/owlv2-base-patch16) | Hugging Face | Apache-2.0 |
 | MediaPipe Selfie Multiclass | [Google](https://ai.google.dev/edge/mediapipe/solutions/vision/image_segmenter); ONNX conversion by [senty-au](https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX) | Hugging Face | Apache-2.0 |
 | MediaPipe Face Mesh V2 | [Google](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker); ONNX conversion for [QtMeshEditor](https://huggingface.co/fernandotonon/QtMeshEditor-facemesh-onnx) | Hugging Face | Apache-2.0 |
+| BioCLIP 2 | [Imageomics Institute](https://huggingface.co/imageomics/bioclip-2) (Gu et al., NeurIPS 2025); ONNX conversion for Lumenkorn | [Hugging Face](https://huggingface.co/DrayPrescot/bioclip2-onnx) | MIT |
 | DRUNet | Kai Zhang et al., [KAIR](https://github.com/cszn/KAIR) | KAIR releases | MIT |
 | LaMa | [Samsung AI](https://github.com/advimman/lama) | [OpenCV Model Zoo](https://github.com/opencv/opencv_zoo) | Apache-2.0 |
 | YuNet | Shiqi Yu et al. | OpenCV Model Zoo | MIT |

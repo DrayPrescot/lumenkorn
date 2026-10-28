@@ -50,6 +50,7 @@
     if (!s.denoiseReady) m.push("denoise");
     if (ps && !ps.ready) m.push("faces");
     if (!s.repairReady) m.push("repair");
+    if (!s.animalsReady) m.push("animals");
     return m;
   });
   const missingIdle = $derived(missing.filter((c) => !lib.aiPending(c)));
@@ -98,6 +99,7 @@
     "subject.onnx": t("Motiv"),
     "sam-encoder.onnx": t("Objekt per Klick"),
     "vision.onnx": t("Schlagworte"),
+    "bioclip2-vision-fp16.onnx": t("Tierarten"),
   };
   const placements = $derived(
     (s?.accel.active.placements ?? []).filter((p) => MODEL_LABELS[p.model]).map((p) => ({ ...p, label: MODEL_LABELS[p.model] })),
@@ -252,6 +254,22 @@
             <strong>{mb(s.denoiseDownloadSize)}</strong>{t(", MIT-Lizenz) von GitHub und bereitet das Modell lokal vor.")}
           </p>
           <button class="btn primary" disabled={lib.aiPending("denoise")} onclick={() => download("denoise")}>{dlLabel("denoise", t("Rauschreduzierung herunterladen"))}</button>
+        </div>
+      {/if}
+    {/if}
+
+    {#if s}
+      <div class="sep"></div>
+      <h4>{t("Tierarten genauer bestimmen")}</h4>
+      {#if s.animalsReady}
+        <p class="muted">{t("Installiert: Fotos mit Tieren bekommen die Art als Schlagwort (z. B. Vogel → Meise → Blaumeise). Schon analysierte Fotos werden im Hintergrund nachbestimmt.")}</p>
+      {:else}
+        <div class="box">
+          <p>
+            {t("Ohne Zusatz bestimmt die Verschlagwortung Tierarten mit dem allgemeinen Modell – bei kleinen Vögeln oder Insekten oft nur grob („Vogel“). BioCLIP 2 ist auf Tiere und Pflanzen spezialisiert und erkennt die Art auch, wenn das Tier klein im Bild ist. Lumenkorn lädt dafür etwa")}
+            <strong>{mb(s.animalsDownloadSize)}</strong>{t(" (MIT-Lizenz) von Hugging Face. Es rechnet nur bei Fotos, auf denen ein Tier zu sehen ist.")}
+          </p>
+          <button class="btn primary" disabled={lib.aiPending("animals")} onclick={() => download("animals")}>{dlLabel("animals", t("BioCLIP 2 herunterladen"))}</button>
         </div>
       {/if}
     {/if}
