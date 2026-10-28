@@ -414,7 +414,7 @@
         class="btn small"
         class:on={dev.lineMode}
         onclick={() => dev.startLine()}
-        title={t("Eine Linie entlang des Horizonts oder einer Kante ziehen, die dann gerade gestellt wird")}>{t("Linie")}</button
+        title={t("Hilfslinien entlang von Kanten ziehen: eine richtet das Bild gerade, zwei senkrechte richten stürzende Linien auf, zwei waagerechte die seitliche Perspektive")}>{t("Linien")}</button
       >
     </div>
     <div class="perspective">
@@ -424,6 +424,8 @@
         value={dev.params.perspectiveVertical ?? 0}
         min={-100}
         max={100}
+        step={0.1}
+        decimals={1}
         oninput={(v) => { dev.set("perspectiveVertical", v); dev.straightenFeedback(); }}
         oncommit={() => { if (!dev.cropMode) dev.commit(); }}
       />
@@ -432,6 +434,8 @@
         value={dev.params.perspectiveHorizontal ?? 0}
         min={-100}
         max={100}
+        step={0.1}
+        decimals={1}
         oninput={(v) => { dev.set("perspectiveHorizontal", v); dev.straightenFeedback(); }}
         oncommit={() => { if (!dev.cropMode) dev.commit(); }}
       />

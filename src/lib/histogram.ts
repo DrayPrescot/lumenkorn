@@ -38,62 +38,76 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-async function compute(src: string): Promise<Bins> {
+/** Pixel des Bildes in voller Größe (RGBA) */
+async function readPixels(src: string): Promise<{ w: number; h: number; px: Uint8ClampedArray }> {
   const el = await loadImage(src);
-  // In Zielgröße umrechnen (Breite höchstens 320, Seitenverhältnis bleibt)
-  const img = await createImageBitmap(el, {
-    resizeWidth: Math.min(320, el.naturalWidth),
-    resizeQuality: "medium",
-  });
-  const w = img.width;
-  const h = img.height;
-  try {
-    scratch ??= document.createElement("canvas");
-    scratch.width = w;
-    scratch.height = h;
-    const ctx = scratch.getContext("2d", { willReadFrequently: true })!;
-    ctx.drawImage(img, 0, 0, w, h);
-    const px = ctx.getImageData(0, 0, w, h).data;
-    const bins: Bins["bins"] = [new Uint32Array(256), new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)];
-    let lo = 0;
-    let hi = 0;
-    for (let i = 0; i < px.length; i += 4) {
-      const [r, g, b] = [px[i], px[i + 1], px[i + 2]];
-      bins[0][r]++;
-      bins[1][g]++;
-      bins[2][b]++;
-      bins[3][Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b))]++;
-      const m = Math.max(r, g, b);
-      if (m >= CLIP_HIGH) hi++;
-      if (m <= CLIP_LOW) lo++;
-    }
-    const n = px.length / 4;
-    return { bins, clipLow: lo / n, clipHigh: hi / n };
-  } finally {
-    img.close();
-  }
+  const w = el.naturalWidth;
+  const h = el.naturalHeight;
+  scratch ??= document.createElement("canvas");
+  scratch.width = w;
+  scratch.height = h;
+  const ctx = scratch.getContext("2d", { willReadFrequently: true })!;
+  ctx.drawImage(el, 0, 0);
+  return { w, h, px: ctx.getImageData(0, 0, w, h).data };
 }
 
 /** Schwellen für „abgeschnitten“ – Histogramm und Clipping-Warnung gleich */
 const CLIP_HIGH = 254;
 const CLIP_LOW = 1;
 
-/** Clipping-Warnung in voller Größe der Vorschau: ausgebrannte Lichter rot,
- *  reines Schwarz blau, alles andere durchsichtig. */
-export async function clipMask(src: string): Promise<ImageData> {
-  const el = await loadImage(src);
-  const c = document.createElement("canvas");
-  c.width = el.naturalWidth;
-  c.height = el.naturalHeight;
-  const ctx = c.getContext("2d", { willReadFrequently: true })!;
-  ctx.drawImage(el, 0, 0);
-  const img = ctx.getImageData(0, 0, c.width, c.height);
-  const px = img.data;
+/** Ganzes Vorschaubild: Auch kleine Spitzlichter zählen, die eine verkleinerte
+ *  Kopie wegmitteln würde. */
+async function compute(src: string): Promise<Bins> {
+  const { px } = await readPixels(src);
+  const bins: Bins["bins"] = [new Uint32Array(256), new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)];
+  let lo = 0;
+  let hi = 0;
   for (let i = 0; i < px.length; i += 4) {
-    const m = Math.max(px[i], px[i + 1], px[i + 2]);
-    if (m >= CLIP_HIGH) px.set([255, 40, 40, 255], i);
-    else if (m <= CLIP_LOW) px.set([40, 110, 255, 255], i);
-    else px[i + 3] = 0;
+    const r = px[i];
+    const g = px[i + 1];
+    const b = px[i + 2];
+    bins[0][r]++;
+    bins[1][g]++;
+    bins[2][b]++;
+    bins[3][Math.min(255, (0.2126 * r + 0.7152 * g + 0.0722 * b + 0.5) | 0)]++;
+    const m = r > g ? (r > b ? r : b) : g > b ? g : b;
+    if (m >= CLIP_HIGH) hi++;
+    else if (m <= CLIP_LOW) lo++;
+  }
+  const n = px.length / 4;
+  return { bins, clipLow: lo / n, clipHigh: hi / n };
+}
+
+/** Clipping-Warnung in höchstens `maxW` Pixeln Breite (Anzeigegröße):
+ *  ausgebrannte Lichter rot, reines Schwarz blau, sonst durchsichtig. Ein
+ *  Pixel der Maske ist markiert, sobald ein Bildpixel darunter es ist – so
+ *  bleiben auch einzelne Spitzlichter beim Verkleinern sichtbar. */
+export async function clipMask(src: string, maxW: number): Promise<ImageData> {
+  const { w, h, px } = await readPixels(src);
+  const ow = Math.max(1, Math.min(w, Math.ceil(maxW)));
+  const oh = Math.max(1, Math.round((h * ow) / w));
+  // 0 nichts, 1 Schwarz, 2 Lichter (Lichter haben Vorrang)
+  const flag = new Uint8Array(ow * oh);
+  for (let y = 0; y < h; y++) {
+    const row = ((y * oh) / h | 0) * ow;
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const r = px[i];
+      const g = px[i + 1];
+      const b = px[i + 2];
+      const m = r > g ? (r > b ? r : b) : g > b ? g : b;
+      const f = m >= CLIP_HIGH ? 2 : m <= CLIP_LOW ? 1 : 0;
+      if (f) {
+        const o = row + ((x * ow) / w | 0);
+        if (f > flag[o]) flag[o] = f;
+      }
+    }
+  }
+  const img = new ImageData(ow, oh);
+  const d = img.data;
+  for (let o = 0; o < flag.length; o++) {
+    if (flag[o] === 2) d.set([255, 40, 40, 255], o * 4);
+    else if (flag[o] === 1) d.set([40, 110, 255, 255], o * 4);
   }
   return img;
 }

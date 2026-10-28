@@ -486,7 +486,8 @@ export const mock = {
       case "app_set_settings": {
         const sub = a.settings?.exportSubfolder;
         if (typeof sub === "string") {
-          const s = sub.trim().replace(/\\/g, "/") || "Export";
+          let s = sub.trim().replace(/\\/g, "/") || "Export";
+          if (/^\/+$/.test(s)) s = ".";
           if (/^\/|:|[<>"|?*]/.test(s)) throw new Error(`„${s}“ ist kein gültiger relativer Ordner`);
           mockExportSubfolder = s;
         }

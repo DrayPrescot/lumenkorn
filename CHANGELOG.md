@@ -10,8 +10,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - Perspective correction in the crop tab: vertical and horizontal sliders straighten converging
   lines, for example buildings photographed from below. Lumenkorn zooms in just enough to avoid
   empty corners, as with straightening.
-- "Line" next to straighten: drag along the horizon or an edge, and it becomes level (or plumb
-  if the line is steeper than 45°).
+- Guide lines ("Lines" next to straighten): drag up to four lines along edges that should be
+  vertical or horizontal. One line straightens the photo; two vertical lines also set the
+  vertical perspective (converging verticals), two horizontal ones the horizontal perspective.
+  The lines stay on the photo while you adjust; right-click removes one.
 - Clipping warning: `J`, or a click on the percentages under the histogram, shows blown
   highlights in red and pure black in blue.
 - Edit metadata in the info panel: title, description, author, copyright, capture time (set or
@@ -25,7 +27,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
   keywords and the rating. Edited values win over those from the file. AI keywords and the
   location are not written.
 - The export subfolder next to the original can be set in Settings → Folders, for example
-  `Export/JPEG` or `../Exports` (default `Export`). It also applies to exports by AI agents.
+  `Export/JPEG` or `../Exports` (default `Export`), or exports can go into the original's own
+  folder. It also applies to exports by AI agents.
 - Batch rename (`F2` or right-click → "Umbenennen …"): a name pattern with date, time, number,
   camera, lens, folder and the old name, with a preview of every new name. Conflicts are shown
   before anything happens, existing files are never overwritten, XMP sidecars move along, and

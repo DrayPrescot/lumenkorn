@@ -226,9 +226,11 @@ Weitere Reiter:
 - **Reparatur:** Störendes mit KI entfernen.
 - **Zuschnitt:** Zuschneiden mit Drittel-Raster und festen Seitenverhältnissen (Original, 1:1, 4:5,
   3:2, 16:9, per ⇄ hoch oder quer), Geraderichten bis ±45° ohne leere Ecken, mit **Auto**: Lumenkorn
-  sucht Horizont und gerade Kanten und schlägt die Korrektur vor. Mit **Linie** zieht man eine Linie
-  entlang des Horizonts oder einer Kante, die dann waagerecht (bzw. ab 45° senkrecht) steht.
-  **Perspektive** senkrecht und waagerecht richtet stürzende Linien auf, etwa bei Gebäuden von unten.
+  sucht Horizont und gerade Kanten und schlägt die Korrektur vor. **Perspektive** senkrecht und
+  waagerecht richtet stürzende Linien auf, etwa bei Gebäuden von unten. Mit **Linien** zieht man bis
+  zu vier Hilfslinien entlang von Kanten, die senkrecht oder waagerecht stehen sollen: Eine Linie
+  richtet das Bild gerade, zwei senkrechte bestimmen zusätzlich die senkrechte Perspektive, zwei
+  waagerechte die waagerechte. Die Linien bleiben beim Nachregeln sichtbar; Rechtsklick entfernt eine.
   Drehen und Spiegeln. Taste R öffnet den Reiter, Enter übernimmt, Esc bricht ab.
 - **Clipping-Warnung:** Taste J oder ein Klick auf die Prozentangaben unter dem Histogramm zeigt
   ausgebrannte Lichter rot und reines Schwarz blau.
@@ -253,7 +255,8 @@ Außerdem:
   verkleinert, im Hintergrund. DNG wird wie in Lightroom leicht verlustbehaftet gespeichert
   (linear, JPEG-komprimiert) und enthält wahlweise das bearbeitete Foto oder die Bilddaten des
   Originals ohne Bearbeitung. Standardziel ist der Unterordner `Export` neben dem Original; unter Einstellungen → Ordner lässt
-  er sich ändern, etwa auf `Export/JPEG` oder `../Exporte` (auch für Exporte durch KI-Agenten).
+  er sich ändern, etwa auf `Export/JPEG` oder `../Exporte`, oder der Export landet im Ordner des
+  Originals selbst (auch für Exporte durch KI-Agenten).
   Von Lumenkorn angelegte Export-Ordner tragen eine versteckte Markierung (`.lumenkorn-export`) und
   erscheinen nicht in der Bibliothek. Gibt es eine Datei schon, fragt Lumenkorn: überschreiben,
   zusätzlich exportieren (`Name-2`) oder überspringen. Originale der Bibliothek werden nie

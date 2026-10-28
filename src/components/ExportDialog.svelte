@@ -129,15 +129,15 @@
       <span
         class="dir"
         class:chosen={dir}
-        title={dir ?? t("Im Ordner jedes Fotos wird bei Bedarf ein Unterordner „{name}“ angelegt.", { name: lib.exportSubfolder })}
+        title={dir ?? lib.exportSubfolderLabel}
       >
-        {dir ?? t("Unterordner „{name}“ neben dem Original", { name: lib.exportSubfolder })}
+        {dir ?? lib.exportSubfolderLabel}
       </span>
     </div>
     <div class="line">
       <button type="button" class="btn small" onclick={choose}>{t("Anderer Ordner …")}</button>
       {#if dir}
-        <button type="button" class="btn small quiet" onclick={() => (dir = null)}>{t("Zurück zu „{name}“", { name: lib.exportSubfolder })}</button>
+        <button type="button" class="btn small quiet" onclick={() => (dir = null)}>{t("Zurück zum Standard")}</button>
       {/if}
     </div>
 

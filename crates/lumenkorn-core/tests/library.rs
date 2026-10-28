@@ -718,6 +718,8 @@ fn export_subfolder_is_checked() {
     assert_eq!(check("  Export\\\\JPEG/ ").unwrap(), "Export/JPEG");
     assert_eq!(check("../Exporte").unwrap(), "../Exporte");
     assert_eq!(check("./").unwrap(), ".");
+    assert_eq!(check("/").unwrap(), ".");
+    assert_eq!(check("\\").unwrap(), ".");
     for bad in ["C:\\Export", "/abs", "a|b", "CON", "lpt1", "Ende.", "x?"] {
         assert!(check(bad).is_err(), "{bad}");
     }

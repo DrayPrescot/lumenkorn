@@ -153,28 +153,32 @@ export function warpZoom(p: Geo, full: [number, number]): number {
   return warpOf(p, fw, fh)?.zoom ?? 1;
 }
 
+/** Gedrehter Rahmen vor → nach Geraderichten und Perspektive (normiert) */
+export function warpForward(p: Geo, full: [number, number], x: number, y: number): [number, number] {
+  const [fw, fh] = frameSize(p, full);
+  const w = warpOf(p, fw, fh);
+  const o = w && apply(w.mInv, x * fw, y * fh);
+  return o ? [o[0] / fw, o[1] / fh] : [x, y];
+}
+
+/** Umkehrung von [`warpForward`] */
+export function warpBackward(p: Geo, full: [number, number], x: number, y: number): [number, number] {
+  const [fw, fh] = frameSize(p, full);
+  const w = warpOf(p, fw, fh);
+  const s = w && apply(w.m, x * fw, y * fh);
+  return s ? [s[0] / fw, s[1] / fh] : [x, y];
+}
+
 /** Original → gedrehter, gerade gerichteter Rahmen (ohne Zuschnitt) */
 export function sourceToFrame(p: Geo, full: [number, number], sx: number, sy: number): [number, number] {
   const q = ((p.rotate % 4) + 4) % 4;
   let [x, y] = q === 1 ? [1 - sy, sx] : q === 2 ? [1 - sx, 1 - sy] : q === 3 ? [sy, 1 - sx] : [sx, sy];
   if (p.flipHorizontal) x = 1 - x;
-  const [fw, fh] = frameSize(p, full);
-  const w = warpOf(p, fw, fh);
-  if (w) {
-    const o = apply(w.mInv, x * fw, y * fh);
-    if (o) [x, y] = [o[0] / fw, o[1] / fh];
-  }
-  return [x, y];
+  return warpForward(p, full, x, y);
 }
 
 export function frameToSource(p: Geo, full: [number, number], fx: number, fy: number): [number, number] {
-  let [x, y] = [fx, fy];
-  const [fw, fh] = frameSize(p, full);
-  const w = warpOf(p, fw, fh);
-  if (w) {
-    const s = apply(w.m, x * fw, y * fh);
-    if (s) [x, y] = [s[0] / fw, s[1] / fh];
-  }
+  let [x, y] = warpBackward(p, full, fx, fy);
   if (p.flipHorizontal) x = 1 - x;
   const q = ((p.rotate % 4) + 4) % 4;
   return q === 1 ? [y, 1 - x] : q === 2 ? [1 - x, 1 - y] : q === 3 ? [1 - y, x] : [x, y];

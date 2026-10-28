@@ -24,10 +24,13 @@
   const rect = $derived(view ?? containRect(stageW, stageH, imgW, imgH));
   let canvas: HTMLCanvasElement;
 
+  // In Anzeigegröße (Bildschirmpixel); beim Zoomen neu
+  const target = $derived(Math.ceil(rect.w * (window.devicePixelRatio || 1)));
+
   $effect(() => {
     if (!canvas) return;
     let cancelled = false;
-    clipMask(src)
+    clipMask(src, target)
       .then((mask) => {
         if (cancelled) return;
         canvas.width = mask.width;

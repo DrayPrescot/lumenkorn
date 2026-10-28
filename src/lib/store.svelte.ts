@@ -986,8 +986,16 @@ class Library {
   /** Karte und Ortsnamen über OpenStreetMap (Einstellungen → Allgemein) */
   mapEnabled = $state(true);
 
-  /** Exportziel ohne gewählten Ordner: relativ zum Ordner des Originals */
+  /** Exportziel ohne gewählten Ordner: relativ zum Ordner des Originals
+   *  („.“ = derselbe Ordner) */
   exportSubfolder = $state("Export");
+
+  /** Beschreibung dieses Ziels für Dialoge */
+  get exportSubfolderLabel(): string {
+    return this.exportSubfolder === "."
+      ? t("Ordner des jeweiligen Originals")
+      : t("Unterordner „{name}“ neben dem Original", { name: this.exportSubfolder });
+  }
 
   /** Liefert eine Fehlermeldung, wenn der Pfad nicht gültig ist */
   async setExportSubfolder(sub: string): Promise<string | null> {

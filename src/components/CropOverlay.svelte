@@ -4,7 +4,7 @@
   // hilft beim Bildaufbau, beim Geraderichten ein feines Raster beim Ausrichten.
   // Im Linienmodus zieht man eine Linie entlang von Horizont oder Kante.
   import { dev } from "../lib/develop.svelte";
-  import { containRect, frameSize } from "../lib/frame";
+  import { containRect, frameSize, warpForward } from "../lib/frame";
   import { t } from "../lib/i18n";
 
   let {
@@ -57,6 +57,20 @@
     svg.setPointerCapture(e.pointerId);
   }
 
+  /** Gespeicherte Hilfslinien, wie sie jetzt im Rahmen liegen (Bühnenpixel) */
+  const shownGuides = $derived.by(() => {
+    const full: [number, number] = [dev.fullSize[0] || 1, dev.fullSize[1] || 1];
+    const at = (q: [number, number]) => {
+      const [x, y] = warpForward(dev.params, full, q[0], q[1]);
+      return [rect.x + x * rect.w, rect.y + y * rect.h];
+    };
+    return dev.guides.map((g) => {
+      const [x1, y1] = at(g.a);
+      const [x2, y2] = at(g.b);
+      return { x1, y1, x2, y2, kind: g.kind };
+    });
+  });
+
   /** Gezogene Linie in Bühnenpixeln */
   let line = $state<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
 
@@ -66,6 +80,7 @@
   }
 
   function lineStart(e: PointerEvent) {
+    if (e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
     const [x, y] = stagePoint(e);
@@ -126,7 +141,8 @@
       const l = line;
       line = null;
       if (svg.hasPointerCapture(e.pointerId)) svg.releasePointerCapture(e.pointerId);
-      if (e.type === "pointerup") dev.straightenAlong(l.x2 - l.x1, l.y2 - l.y1);
+      if (e.type === "pointerup")
+        dev.addGuide((l.x1 - rect.x) / rect.w, (l.y1 - rect.y) / rect.h, (l.x2 - rect.x) / rect.w, (l.y2 - rect.y) / rect.h);
       return;
     }
     if (!drag) return;
@@ -210,11 +226,37 @@
   {#if dev.lineMode}
     <!-- Über allem: Ziehen zeichnet die Linie statt den Rahmen zu verändern -->
     <rect class="catch" x={rect.x} y={rect.y} width={rect.w} height={rect.h} onpointerdown={lineStart} role="presentation" />
+    {#each shownGuides as g, i (i)}
+      <line class="ruler-shadow" x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} />
+      <line class="ruler" x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} />
+      {#each [[g.x1, g.y1], [g.x2, g.y2]] as [cx, cy]}
+        <circle class="end" {cx} {cy} r="4" />
+      {/each}
+      <!-- Rechtsklick auf die Linie entfernt sie -->
+      <line
+        class="guide-hit"
+        x1={g.x1}
+        y1={g.y1}
+        x2={g.x2}
+        y2={g.y2}
+        role="presentation"
+        onpointerdown={lineStart}
+        oncontextmenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          dev.removeGuide(i);
+        }}
+      ><title>{t("Rechtsklick entfernt die Linie")}</title></line>
+    {/each}
     {#if line}
       <line class="ruler-shadow" x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />
       <line class="ruler" x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />
     {:else}
-      <text class="hint" x={rect.x + rect.w / 2} y={rect.y + 28}>{t("Linie entlang des Horizonts oder einer Kante ziehen")}</text>
+      <text class="hint" x={rect.x + rect.w / 2} y={rect.y + 28}
+        >{dev.guides.length
+          ? t("Weitere Linie ziehen – zwei senkrechte richten stürzende Linien auf, zwei waagerechte die seitliche Perspektive")
+          : t("Linie entlang einer Kante ziehen, die senkrecht oder waagerecht stehen soll")}</text
+      >
     {/if}
   {/if}
 </svg>
@@ -270,6 +312,16 @@
     stroke: #ffd24a;
     stroke-width: 2;
     pointer-events: none;
+  }
+  .end {
+    fill: #ffd24a;
+    stroke: rgb(0 0 0 / 0.6);
+    pointer-events: none;
+  }
+  .guide-hit {
+    stroke: transparent;
+    stroke-width: 12;
+    cursor: context-menu;
   }
   .ruler-shadow {
     stroke: rgb(0 0 0 / 0.6);

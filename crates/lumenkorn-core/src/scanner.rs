@@ -81,6 +81,10 @@ pub fn check_export_subfolder(rel: &str) -> std::result::Result<String, String> 
         return Ok(DEFAULT_EXPORT_SUBFOLDER.into());
     }
     let norm = rel.replace('\\', "/");
+    // Nur Trenner („/“): derselbe Ordner wie das Original
+    if norm.trim_matches('/').is_empty() {
+        return Ok(".".into());
+    }
     if norm.starts_with('/') || norm.contains(':') {
         return Err(tr!(
             "„{rel}“ ist kein relativer Pfad",

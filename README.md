@@ -94,9 +94,10 @@ the catalog before you let Lumenkorn loose on your whole collection.
 - Lens correction for RAW files (on by default): distortion, color fringes and vignetting,
   from the correction data the camera writes into the file (Sony ARW, DNG) or from a
   [Lensfun](https://lensfun.github.io/) profile for about 1,500 lenses.
-- Crop, rotate, flip, and straighten with automatic horizon detection, or by dragging a line
-  along the horizon or an edge. Perspective correction (vertical and horizontal) for converging
-  lines. `Enter` applies the crop.
+- Crop, rotate, flip, and straighten with automatic horizon detection. Perspective correction
+  (vertical and horizontal) for converging lines, by slider or with guide lines: draw lines along
+  edges that should be vertical or horizontal, and Lumenkorn sets straighten and perspective so
+  they are. `Enter` applies the crop.
 - Clipping warning (`J`, or click the percentages under the histogram): blown highlights red,
   pure black blue.
 - In Develop, `Enter` releases the focus from a slider, so the arrow keys move through the
@@ -110,7 +111,7 @@ the catalog before you let Lumenkorn loose on your whole collection.
   "reset to original" button that asks before discarding everything.
 - Export to JPEG, 16-bit TIFF, PNG or DNG, several formats at once if you like, by default into
   an `Export` folder next to each original (the subfolder can be changed in Settings → Folders,
-  e.g. `Export/JPEG` or `../Exports`). DNG is slightly lossy (linear, JPEG-compressed, as in
+  e.g. `Export/JPEG` or `../Exports`, or to the original's own folder). DNG is slightly lossy (linear, JPEG-compressed, as in
   Lightroom) and holds either the edited photo or the original image data without edits. If a
   file already exists, Lumenkorn asks whether to overwrite it, export as well (`name-2`) or skip
   it. Originals in the library are never overwritten. Every export carries the metadata

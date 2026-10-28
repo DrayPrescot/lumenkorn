@@ -28,6 +28,8 @@ import {
 import { lib } from "./store.svelte";
 import type { ImageSummary } from "./api";
 import { editAspect } from "./layout";
+import { MAX_PER_KIND, solveGuides, type Guide } from "./guides";
+import { frameSize, warpBackward } from "./frame";
 import { isCanceled, t } from "./i18n";
 import { keymap } from "./keymap.svelte";
 import type { HslMode } from "./hsl";
@@ -165,8 +167,10 @@ class Develop {
   cropMode = $state(false);
   /** Seitenverhältnis (Breite/Höhe in Pixeln) oder null = frei */
   cropAspect = $state<number | null>(null);
-  /** Im Zuschnitt: Linie entlang von Horizont oder Kante ziehen */
+  /** Im Zuschnitt: Hilfslinien entlang von Kanten ziehen */
   lineMode = $state(false);
+  /** Gezogene Hilfslinien (im Rahmen vor Geraderichten und Perspektive) */
+  guides = $state<Guide[]>([]);
   #cropBefore: DevelopParams["crop"] = null;
   #geoBefore = { straighten: 0, perspectiveVertical: 0, perspectiveHorizontal: 0 };
 
@@ -626,7 +630,7 @@ class Develop {
     // Voller Rahmen ist kein Zuschnitt
     if (c && c.x <= 1e-4 && c.y <= 1e-4 && c.w >= 0.9999 && c.h >= 0.9999) this.params.crop = null;
     this.cropMode = false;
-    this.lineMode = false;
+    this.endLines();
     this.schedule();
     this.commit();
   }
@@ -636,7 +640,7 @@ class Develop {
     this.params.crop = this.#cropBefore;
     Object.assign(this.params, this.#geoBefore);
     this.cropMode = false;
-    this.lineMode = false;
+    this.endLines();
     this.schedule();
   }
 
@@ -670,25 +674,48 @@ class Develop {
     this.schedule();
   }
 
-  /** „Linie ziehen“: im Zuschnitt einschalten (öffnet ihn bei Bedarf) */
+  /** „Linien“: Hilfslinien im Zuschnitt ein- bzw. ausschalten (öffnet ihn bei Bedarf) */
   startLine() {
+    if (this.lineMode) return this.endLines();
     if (!this.cropMode) this.enterCrop();
-    if (this.cropMode) this.lineMode = !this.lineMode;
+    if (this.cropMode) this.lineMode = true;
   }
 
-  /** Gezogene Linie (Anzeigepixel des gerade gerichteten Rahmens) waagerecht
-   *  bzw. – wenn sie steiler als 45° ist – senkrecht stellen. */
-  straightenAlong(dx: number, dy: number) {
+  endLines() {
     this.lineMode = false;
-    if (Math.hypot(dx, dy) < 8) return;
-    // Winkel der Linie, y nach unten: positiv = im Uhrzeigersinn geneigt
-    let a = (Math.atan2(dy, dx) * 180) / Math.PI;
-    if (a > 90) a -= 180;
-    else if (a <= -90) a += 180;
-    const tilt = Math.abs(a) <= 45 ? a : a - 90 * Math.sign(a);
-    const v = Math.min(45, Math.max(-45, this.params.straighten - tilt));
-    this.params.straighten = Math.round(v * 100) / 100;
+    this.guides = [];
+  }
+
+  #full(): [number, number] {
+    return [this.fullSize[0] || 1, this.fullSize[1] || 1];
+  }
+
+  /** Neue Hilfslinie, Endpunkte im angezeigten Rahmen (normiert). Steiler
+   *  als 45° soll sie senkrecht stehen, sonst waagerecht. Danach werden
+   *  Geraderichten und – ab zwei Linien einer Richtung – Perspektive so
+   *  bestimmt, dass alle Linien gerade stehen. */
+  addGuide(x1: number, y1: number, x2: number, y2: number) {
+    const full = this.#full();
+    const [fw, fh] = frameSize(this.params, full);
+    if (Math.hypot((x2 - x1) * fw, (y2 - y1) * fh) < Math.max(fw, fh) * 0.02) return;
+    const kind = Math.abs((x2 - x1) * fw) >= Math.abs((y2 - y1) * fh) ? "h" : "v";
+    const g: Guide = {
+      a: warpBackward(this.params, full, x1, y1),
+      b: warpBackward(this.params, full, x2, y2),
+      kind,
+    };
+    const same = this.guides.filter((o) => o.kind === kind);
+    // Höchstens zwei je Richtung: die älteste weicht
+    const drop = same.length >= MAX_PER_KIND ? same[0] : null;
+    this.guides = [...this.guides.filter((o) => o !== drop), g];
+    Object.assign(this.params, solveGuides($state.snapshot(this.guides) as Guide[], this.params, full));
     this.straightenFeedback();
+    this.schedule();
+  }
+
+  removeGuide(i: number) {
+    this.guides = this.guides.filter((_, j) => j !== i);
+    if (this.guides.length) Object.assign(this.params, solveGuides($state.snapshot(this.guides) as Guide[], this.params, this.#full()));
     this.schedule();
   }
 

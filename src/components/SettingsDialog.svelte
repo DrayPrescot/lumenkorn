@@ -81,12 +81,17 @@
     prefs.save();
   }
 
-  let subfolder = $state(lib.exportSubfolder);
+  // Unterordner oder derselbe Ordner wie das Original („.“)
+  let sameFolder = $state(lib.exportSubfolder === ".");
+  let subfolder = $state(lib.exportSubfolder === "." ? "Export" : lib.exportSubfolder);
   let subError = $state<string | null>(null);
   async function saveSubfolder() {
-    if (subfolder.trim() === lib.exportSubfolder) return;
-    subError = await lib.setExportSubfolder(subfolder);
-    if (!subError) subfolder = lib.exportSubfolder;
+    const want = sameFolder ? "." : subfolder;
+    if (want.trim() === lib.exportSubfolder) return;
+    subError = await lib.setExportSubfolder(want);
+    if (subError) return;
+    sameFolder = lib.exportSubfolder === ".";
+    if (!sameFolder) subfolder = lib.exportSubfolder;
   }
 </script>
 
@@ -157,20 +162,31 @@
           <div class="field">
             <span class="label">{t("Export: Zielordner")}</span>
             <div class="row">
-              <code class="path" class:default={!prefs.exportDir}
-                >{prefs.exportDir ?? t("Unterordner „{name}“ neben dem Original", { name: lib.exportSubfolder })}</code
-              >
+              <code class="path" class:default={!prefs.exportDir}>{prefs.exportDir ?? lib.exportSubfolderLabel}</code>
               <button class="btn" onclick={() => chooseDir("exportDir")}>{t("Ändern …")}</button>
               {#if prefs.exportDir}<button class="btn quiet" onclick={() => clearDir("exportDir")}>{t("Zurücksetzen")}</button>{/if}
             </div>
           </div>
           <div class="field">
-            <label class="label" for="export-sub">{t("Export: Unterordner neben dem Original")}</label>
-            <div class="row">
+            <span class="label">{t("Export ohne festen Zielordner")}</span>
+            <label class="row choice">
+              <input type="radio" name="export-where" checked={sameFolder} onchange={() => { sameFolder = true; saveSubfolder(); }} />
+              {t("Im selben Ordner wie das Original")}
+            </label>
+            <div class="row choice">
+              <input
+                type="radio"
+                name="export-where"
+                checked={!sameFolder}
+                aria-label={t("In einen Unterordner")}
+                onchange={() => { sameFolder = false; saveSubfolder(); }}
+              />
+              <label for="export-sub">{t("In einen Unterordner")}</label>
               <input
                 id="export-sub"
                 class="text"
                 class:err={!!subError}
+                disabled={sameFolder}
                 bind:value={subfolder}
                 placeholder="Export"
                 spellcheck="false"
@@ -182,7 +198,7 @@
             </div>
             {#if subError}<p class="small error">{subError}</p>{/if}
             <p class="muted small">
-              {t("Gilt, wenn kein fester Zielordner gewählt ist. Relativ zum Ordner des Fotos, z. B. „Export“, „Export/JPEG“ oder „../Exporte“; „.“ legt die Dateien direkt neben das Original. Neu angelegte Ordner erscheinen nicht in der Bibliothek.")}
+              {t("Der Unterordner ist relativ zum Ordner des Fotos, z. B. „Export“, „Export/JPEG“ oder „../Exporte“. Neu angelegte Ordner erscheinen nicht in der Bibliothek; Exporte in den Ordner des Originals schon.")}
             </p>
           </div>
           <div class="field">
@@ -312,6 +328,10 @@
     padding: 5px 9px;
     font: inherit;
     color: inherit;
+  }
+  .choice {
+    align-items: center;
+    gap: 8px;
   }
   .text.err {
     border-color: var(--reject);

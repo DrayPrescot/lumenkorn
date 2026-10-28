@@ -88,7 +88,7 @@
     else if (keymap.is(e, "maskOverlay") && dev.activeMask !== null) dev.toggleOverlay();
     else if (keymap.is(e, "bw")) dev.setMonochrome(!dev.params.monochrome);
     else if (keymap.is(e, "crop")) dev.cropMode ? dev.applyCrop() : dev.enterCrop();
-    else if (e.key === "Escape" && dev.lineMode) dev.lineMode = false;
+    else if (e.key === "Escape" && dev.lineMode) dev.endLines();
     else if (e.key === "Escape" && dev.cropMode) dev.cancelCrop();
     else if (e.key === "Escape" && (dev.tool || dev.activeMask !== null)) {
       if (dev.tool) dev.tool = null;
