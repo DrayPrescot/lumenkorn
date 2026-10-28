@@ -8,7 +8,6 @@
   import MaskOverlay from "./MaskOverlay.svelte";
   import HslPicker from "./HslPicker.svelte";
   import CropOverlay from "./CropOverlay.svelte";
-  import ClipOverlay from "./ClipOverlay.svelte";
   import ZoomView from "./ZoomView.svelte";
   import { ZoomState, zoomKey } from "../lib/zoom.svelte";
   import { t } from "../lib/i18n";
@@ -84,7 +83,6 @@
     if (e.key === "ArrowRight") lib.move(1);
     else if (e.key === "ArrowLeft") lib.move(-1);
     else if (keymap.is(e, "before")) dev.showBefore = !dev.showBefore;
-    else if (keymap.is(e, "clipping")) dev.showClipping = !dev.showClipping;
     else if (keymap.is(e, "maskOverlay") && dev.activeMask !== null) dev.toggleOverlay();
     else if (keymap.is(e, "bw")) dev.setMonochrome(!dev.params.monochrome);
     else if (keymap.is(e, "crop")) dev.cropMode ? dev.applyCrop() : dev.enterCrop();
@@ -124,9 +122,6 @@
         {#if shown}
           <!-- Maße der Vorschau für die Überlagerungen -->
           <img class="measure" src={shown} alt="" bind:naturalWidth={imgW} bind:naturalHeight={imgH} />
-        {/if}
-        {#if dev.showClipping && shown && !dev.loading}
-          <ClipOverlay src={shown} {stageW} {stageH} {imgW} {imgH} {view} />
         {/if}
         {#if dev.cropMode && !dev.loading}
           <CropOverlay {stageW} {stageH} {imgW} {imgH} {view} />

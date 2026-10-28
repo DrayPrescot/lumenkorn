@@ -244,5 +244,4 @@ export default {
   "Perspektive": "Perspective",
   "Senkrecht": "Vertical",
   "Waagerecht": "Horizontal",
-  "Abgeschnittene Bereiche im Bild zeigen (J)": "Show clipped areas in the photo (J)",
 } satisfies Record<string, string>;

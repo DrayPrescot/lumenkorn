@@ -54,7 +54,6 @@ export const ACTIONS: KeyAction[] = [
   { id: "bw", group: "develop", label: t("Schwarzweiß"), keys: ["V"] },
   { id: "crop", group: "develop", label: t("Zuschneiden"), keys: ["R"] },
   { id: "before", group: "develop", label: t("Vorher/Nachher"), keys: ["\\"] },
-  { id: "clipping", group: "develop", label: t("Clipping anzeigen"), keys: ["J"] },
   { id: "maskOverlay", group: "develop", label: t("Maske anzeigen"), keys: ["O"] },
   { id: "rotateLeft", group: "develop", label: t("Nach links drehen"), keys: ["["] },
   { id: "rotateRight", group: "develop", label: t("Nach rechts drehen"), keys: ["]"] },

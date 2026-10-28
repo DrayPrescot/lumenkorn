@@ -98,8 +98,6 @@ the catalog before you let Lumenkorn loose on your whole collection.
   (vertical and horizontal) for converging lines, by slider or with guide lines: draw lines along
   edges that should be vertical or horizontal, and Lumenkorn sets straighten and perspective so
   they are. `Enter` applies the crop.
-- Clipping warning (`J`, or click the percentages under the histogram): blown highlights red,
-  pure black blue.
 - In Develop, `Enter` releases the focus from a slider, so the arrow keys move through the
   filmstrip again.
 - Local adjustments: linear and radial gradients, brush, color range, and AI masks for
@@ -282,7 +280,6 @@ additional keys (a key already in use is reported); arrow keys, Enter, Space and
 | `C` | Compare selected photos |
 | `Z`, mouse wheel | Zoom (fit ↔ 100 %) |
 | `\` | Before / after |
-| `J` | Clipping warning on/off |
 | `R` | Crop |
 | `[` / `]` | Rotate left / right |
 | `O` | Show the selected mask in red |

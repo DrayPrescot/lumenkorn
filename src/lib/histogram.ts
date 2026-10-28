@@ -51,7 +51,7 @@ async function readPixels(src: string): Promise<{ w: number; h: number; px: Uint
   return { w, h, px: ctx.getImageData(0, 0, w, h).data };
 }
 
-/** Schwellen für „abgeschnitten“ – Histogramm und Clipping-Warnung gleich */
+/** Schwellen für „abgeschnitten“ (Prozentangaben unter dem Histogramm) */
 const CLIP_HIGH = 254;
 const CLIP_LOW = 1;
 
@@ -76,40 +76,6 @@ async function compute(src: string): Promise<Bins> {
   }
   const n = px.length / 4;
   return { bins, clipLow: lo / n, clipHigh: hi / n };
-}
-
-/** Clipping-Warnung in höchstens `maxW` Pixeln Breite (Anzeigegröße):
- *  ausgebrannte Lichter rot, reines Schwarz blau, sonst durchsichtig. Ein
- *  Pixel der Maske ist markiert, sobald ein Bildpixel darunter es ist – so
- *  bleiben auch einzelne Spitzlichter beim Verkleinern sichtbar. */
-export async function clipMask(src: string, maxW: number): Promise<ImageData> {
-  const { w, h, px } = await readPixels(src);
-  const ow = Math.max(1, Math.min(w, Math.ceil(maxW)));
-  const oh = Math.max(1, Math.round((h * ow) / w));
-  // 0 nichts, 1 Schwarz, 2 Lichter (Lichter haben Vorrang)
-  const flag = new Uint8Array(ow * oh);
-  for (let y = 0; y < h; y++) {
-    const row = ((y * oh) / h | 0) * ow;
-    for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4;
-      const r = px[i];
-      const g = px[i + 1];
-      const b = px[i + 2];
-      const m = r > g ? (r > b ? r : b) : g > b ? g : b;
-      const f = m >= CLIP_HIGH ? 2 : m <= CLIP_LOW ? 1 : 0;
-      if (f) {
-        const o = row + ((x * ow) / w | 0);
-        if (f > flag[o]) flag[o] = f;
-      }
-    }
-  }
-  const img = new ImageData(ow, oh);
-  const d = img.data;
-  for (let o = 0; o < flag.length; o++) {
-    if (flag[o] === 2) d.set([255, 40, 40, 255], o * 4);
-    else if (flag[o] === 1) d.set([40, 110, 255, 255], o * 4);
-  }
-  return img;
 }
 
 /** Höchster Wert ohne die Ränder (Ausgebranntes drückt die Skala sonst platt). */

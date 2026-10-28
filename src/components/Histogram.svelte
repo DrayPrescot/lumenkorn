@@ -4,17 +4,7 @@
   import { t, locale } from "../lib/i18n";
   import { loadBins, peakOf } from "../lib/histogram";
 
-  let {
-    src,
-    clipping = false,
-    onclipping,
-  }: {
-    src: string | null;
-    /** Clipping-Warnung im Bild an */
-    clipping?: boolean;
-    /** Klick auf die Prozentangaben schaltet die Clipping-Warnung */
-    onclipping?: () => void;
-  } = $props();
+  let { src }: { src: string | null } = $props();
 
   let canvas: HTMLCanvasElement;
   let clipLow = $state(0);
@@ -64,18 +54,8 @@
 <figure>
   <canvas bind:this={canvas} width={W} height={H} aria-label={t("Histogramm")}></canvas>
   <figcaption>
-    {#if onclipping}
-      {@const tip = t("Abgeschnittene Bereiche im Bild zeigen (J)")}
-      <button class="clip" class:on={clipping} class:warn={clipLow > 0.01} aria-pressed={clipping} title={tip} onclick={onclipping}
-        >{t("Schwarz {p} %", { p: pct(clipLow) })}</button
-      >
-      <button class="clip" class:on={clipping} class:warn={clipHigh > 0.01} aria-pressed={clipping} title={tip} onclick={onclipping}
-        >{t("Lichter {p} %", { p: pct(clipHigh) })}</button
-      >
-    {:else}
-      <span class:warn={clipLow > 0.01} title={t("Anteil reiner Schwarztöne")}>{t("Schwarz {p} %", { p: pct(clipLow) })}</span>
-      <span class:warn={clipHigh > 0.01} title={t("Anteil ausgebrannter Lichter")}>{t("Lichter {p} %", { p: pct(clipHigh) })}</span>
-    {/if}
+    <span class:warn={clipLow > 0.01} title={t("Anteil reiner Schwarztöne")}>{t("Schwarz {p} %", { p: pct(clipLow) })}</span>
+    <span class:warn={clipHigh > 0.01} title={t("Anteil ausgebrannter Lichter")}>{t("Lichter {p} %", { p: pct(clipHigh) })}</span>
   </figcaption>
 </figure>
 
@@ -99,24 +79,5 @@
   }
   .warn {
     color: var(--accent);
-  }
-  .clip {
-    padding: 0 4px;
-    margin: 0 -4px;
-    border: 1px solid transparent;
-    border-radius: 4px;
-    background: none;
-    font: inherit;
-    color: inherit;
-    cursor: pointer;
-  }
-  .clip.warn {
-    color: var(--accent);
-  }
-  .clip:hover {
-    border-color: var(--line);
-  }
-  .clip.on {
-    border-color: var(--accent);
   }
 </style>

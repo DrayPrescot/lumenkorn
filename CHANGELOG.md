@@ -14,8 +14,6 @@ and the project uses [Semantic Versioning](https://semver.org/).
   vertical or horizontal. One line straightens the photo; two vertical lines also set the
   vertical perspective (converging verticals), two horizontal ones the horizontal perspective.
   The lines stay on the photo while you adjust; right-click removes one.
-- Clipping warning: `J`, or a click on the percentages under the histogram, shows blown
-  highlights in red and pure black in blue.
 - Edit metadata in the info panel: title, description, author, copyright, capture time (set or
   shift), camera, lens, focal length, aperture, exposure time and ISO, for one or many photos.
   Changes are stored in the catalog and in an XMP sidecar next to the photo; existing sidecars
@@ -39,6 +37,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
   shader no longer fails to compile there. If a driver cannot compile the shaders, Lumenkorn now
   notices at startup and uses the CPU right away.
 - CI runs again: a mask limit test no longer allocates about 12 GB.
+- The clipping percentages under the histogram count the whole preview. A reduced copy averaged
+  small blown highlights away and showed 0 % where 0.2 % of the photo was clipped.
 
 ## [1.0.23] – 2026-10-27
 

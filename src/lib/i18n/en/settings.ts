@@ -57,7 +57,6 @@ export default {
   "Einpassen": "Fit",
   "Einpassen ↔ 100 %": "Fit ↔ 100 %",
   "Vorher/Nachher": "Before/after",
-  "Clipping anzeigen": "Show clipping",
   "Export ohne festen Zielordner": "Export without a fixed target folder",
   "Im selben Ordner wie das Original": "Into the same folder as the original",
   "In einen Unterordner": "Into a subfolder",

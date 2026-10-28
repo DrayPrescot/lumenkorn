@@ -209,7 +209,7 @@
 
 <aside class="scroll">
   <section class="hist">
-    <Histogram src={dev.showBefore ? dev.beforeUrl : dev.url} clipping={dev.showClipping} onclipping={() => (dev.showClipping = !dev.showClipping)} />
+    <Histogram src={dev.showBefore ? dev.beforeUrl : dev.url} />
     {#if dev.fullSize[0]}
       <p class="meta">
         {dev.fullSize[0]} × {dev.fullSize[1]} px{dev.raw ? ", RAW" : ""}

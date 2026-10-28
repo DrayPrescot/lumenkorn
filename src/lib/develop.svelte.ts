@@ -127,8 +127,6 @@ class Develop {
   url = $state<string | null>(null);
   beforeUrl = $state<string | null>(null);
   showBefore = $state(false);
-  /** Clipping-Warnung: ausgebrannte Lichter rot, reines Schwarz blau */
-  showClipping = $state(false);
   /** Vorher-Knopf gedrückt gehalten (kurzer Vergleich) */
   holdBefore = $state(false);
   loading = $state(false);

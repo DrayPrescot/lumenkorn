@@ -232,8 +232,6 @@ Weitere Reiter:
   richtet das Bild gerade, zwei senkrechte bestimmen zusätzlich die senkrechte Perspektive, zwei
   waagerechte die waagerechte. Die Linien bleiben beim Nachregeln sichtbar; Rechtsklick entfernt eine.
   Drehen und Spiegeln. Taste R öffnet den Reiter, Enter übernimmt, Esc bricht ab.
-- **Clipping-Warnung:** Taste J oder ein Klick auf die Prozentangaben unter dem Histogramm zeigt
-  ausgebrannte Lichter rot und reines Schwarz blau.
 
 Außerdem:
 
@@ -513,7 +511,6 @@ Das sind die Vorgaben; unter **Einstellungen → Tastenkürzel** lassen sie sich
 | Entf | Foto aus dem Vergleich nehmen |
 | I | Infobereich ein/aus |
 | \ | Vorher/Nachher |
-| J | Clipping-Warnung an/aus |
 | F11 | Vollbild |
 | [ / ] | Links / rechts drehen |
 | Strg+U | Auto-Tonwerte (Entwickeln) |
