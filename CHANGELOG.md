@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.24] – 2026-10-28
+
 ### Added
 - Perspective correction in the crop tab: vertical and horizontal sliders straighten converging
   lines, for example buildings photographed from below. Lumenkorn zooms in just enough to avoid
