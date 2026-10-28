@@ -778,7 +778,14 @@ export const mock = {
         return out(mockNc?.baseFolder ?? "Lumenkorn");
       case "nc_project_info": {
         const p = projects.find((x) => x.id === a.projectId);
-        return out({ files: 42, bytes: 42 * 3_400_000, folder: `${mockNc?.baseFolder ?? "Lumenkorn"}/${p?.name ?? "Projekt"}`, shareUrl: mockShares.get(a.projectId) ?? null });
+        const n = p ? query({ scope: { type: "project", id: p.id } }).filter((i) => i.flag !== -1).length : 0;
+        return out({
+          exports: { files: 42, bytes: 42 * 3_400_000 },
+          originals: { files: n, bytes: n * 24_000_000 },
+          source: "exports",
+          folder: `${mockNc?.baseFolder ?? "Lumenkorn"}/${p?.name ?? "Projekt"}`,
+          shareUrl: mockShares.get(a.projectId) ?? null,
+        });
       }
       case "nc_upload_project": {
         const total = 42;

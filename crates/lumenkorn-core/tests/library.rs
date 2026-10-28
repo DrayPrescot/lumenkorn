@@ -754,6 +754,7 @@ fn project_exports_combine_recorded_and_marked_folders() {
     let a = tmp.path().join("Fotos");
     write_jpeg(&a.join("Reise/eins.jpg"), 64, 64, 1);
     write_jpeg(&a.join("Anderes/zwei.jpg"), 64, 64, 2);
+    write_jpeg(&a.join("Reise/drei.jpg"), 64, 64, 6);
     let cat = Mutex::new(Catalog::open_in_memory().unwrap());
     let root = cat.lock().unwrap().add_root(&a).unwrap();
     scan_root(&cat, root.id, &no_progress).unwrap();
@@ -785,6 +786,16 @@ fn project_exports_combine_recorded_and_marked_folders() {
         .unwrap();
     cat.record_export(id("eins.jpg"), &fixed.join("weg.jpg"))
         .unwrap();
+
+    // Originale: nur die Fotos des Projekts, abgelehnte nicht
+    cat.set_flag(&[id("drei.jpg")], -1).unwrap();
+    let originals = cat.project_originals(p.id).unwrap();
+    assert_eq!(
+        originals,
+        vec![std::path::PathBuf::from(
+            lumenkorn_core::paths::normalize_dir(&a.join("Reise/eins.jpg"))
+        )]
+    );
 
     let mut got = cat.project_exports(p.id).unwrap();
     got.sort();

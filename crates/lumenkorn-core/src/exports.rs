@@ -71,6 +71,20 @@ impl Catalog {
         }
         Ok(out.into_iter().collect())
     }
+
+    /// Die Originale aller Fotos eines Projekts (ohne abgelehnte und ohne
+    /// fehlende Dateien), sortiert – zum Hochladen statt der Exporte.
+    pub fn project_originals(&self, project_id: i64) -> Result<Vec<PathBuf>> {
+        let out: BTreeSet<PathBuf> = self
+            .query_images(&ImageQuery::new(Scope::Project { id: project_id }))?
+            .into_iter()
+            .filter(|i| i.flag != -1)
+            .map(|i| PathBuf::from(i.path))
+            .filter(|p| p.is_file())
+            .map(|p| unique(&p))
+            .collect();
+        Ok(out.into_iter().collect())
+    }
 }
 
 #[cfg(test)]

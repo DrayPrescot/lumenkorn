@@ -1249,10 +1249,16 @@ export interface NcStatus {
   baseFolder: string;
 }
 
+/** Was hochgeladen wird: die Exporte oder die Originale aller Fotos */
+export type NcSource = "exports" | "originals";
+
 export interface NcProjectInfo {
   /** Gefundene Export-Dateien des Projekts */
-  files: number;
-  bytes: number;
+  exports: { files: number; bytes: number };
+  /** Originale der Fotos (ohne abgelehnte) */
+  originals: { files: number; bytes: number };
+  /** Zuletzt gewählt */
+  source: NcSource;
   /** Zielordner (zuletzt benutzt, sonst Basisordner/Projektname) */
   folder: string;
   shareUrl: string | null;
@@ -1260,6 +1266,7 @@ export interface NcProjectInfo {
 
 export interface NcUploadOptions {
   folder: string;
+  source: NcSource;
   /** Dateien im Ordner löschen, die es im Projekt nicht mehr gibt */
   removeMissing: boolean;
   /** Öffentlicher Link; null: einen vorhandenen entfernen */

@@ -105,7 +105,8 @@ vergibt sie in der neuen Sprache neu.
   anderer Programme werden ergänzt, nicht ersetzt. Das Foto selbst bleibt unverändert. Jedes Feld
   lässt sich auf den Wert aus der Datei zurücksetzen; Titel, Beschreibung und Autor sind durchsuchbar.
 - **Nextcloud:** Rechtsklick auf ein Projekt → „Zu Nextcloud hochladen …“ lädt seine exportierten
-  Bilder in einen Ordner deiner Nextcloud und teilt ihn als Link, auf Wunsch mit Passwort und
+  Bilder oder alle seine Fotos als Originale (ohne abgelehnte) in einen Ordner deiner Nextcloud
+  und teilt ihn als Link, auf Wunsch mit Passwort und
   Ablaufdatum. Ein erneutes Hochladen überträgt nur neue und geänderte Dateien, der Link bleibt
   derselbe; Dateien, die es im Projekt nicht mehr gibt, lassen sich entfernen. Verbinden unter
   Einstellungen → Nextcloud: Du meldest dich im Browser an, Lumenkorn bekommt ein eigenes

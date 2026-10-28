@@ -46,6 +46,31 @@ struct Config {
 struct ProjectLink {
     folder: String,
     share_url: Option<String>,
+    /// Zuletzt hochgeladen: Exporte oder Originale
+    #[serde(default)]
+    source: Source,
+}
+
+/// Was hochgeladen wird
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Source {
+    /// Die exportierten Dateien des Projekts
+    #[default]
+    Exports,
+    /// Die Originale aller Fotos (ohne abgelehnte)
+    Originals,
+}
+
+fn source_files(
+    cat: &lumenkorn_core::Catalog,
+    project_id: i64,
+    source: Source,
+) -> Result<Vec<PathBuf>, Error> {
+    match source {
+        Source::Exports => cat.project_exports(project_id),
+        Source::Originals => cat.project_originals(project_id),
+    }
 }
 
 impl Config {
@@ -822,11 +847,33 @@ pub fn nc_set_base_folder(state: State<AppState>, folder: String) -> Result<Stri
     Ok(c.base().to_string())
 }
 
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FileCount {
+    files: usize,
+    bytes: u64,
+}
+
+impl FileCount {
+    fn of(files: &[PathBuf]) -> Self {
+        Self {
+            files: files.len(),
+            bytes: files
+                .iter()
+                .filter_map(|p| std::fs::metadata(p).ok())
+                .map(|m| m.len())
+                .sum(),
+        }
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectInfo {
-    files: usize,
-    bytes: u64,
+    exports: FileCount,
+    originals: FileCount,
+    /// Zuletzt gewählt (sonst Exporte)
+    source: Source,
     /// Zielordner (zuletzt benutzt, sonst Basisordner/Projektname)
     folder: String,
     share_url: Option<String>,
@@ -835,22 +882,20 @@ pub struct ProjectInfo {
 #[tauri::command]
 pub async fn nc_project_info(app: AppHandle, project_id: i64) -> Result<ProjectInfo, Error> {
     crate::blocking(app, move |state| {
-        let (files, name) = {
+        let (exports, originals, name) = {
             let cat = state.catalog.locked();
             (
                 cat.project_exports(project_id)?,
+                cat.project_originals(project_id)?,
                 cat.project(project_id)?.name,
             )
         };
         let c = load(&state.data_dir);
         let link = c.projects.get(&project_id.to_string());
         Ok(ProjectInfo {
-            bytes: files
-                .iter()
-                .filter_map(|p| std::fs::metadata(p).ok())
-                .map(|m| m.len())
-                .sum(),
-            files: files.len(),
+            exports: FileCount::of(&exports),
+            originals: FileCount::of(&originals),
+            source: link.map_or_else(Source::default, |l| l.source),
             folder: link
                 .map(|l| l.folder.clone())
                 .unwrap_or_else(|| format!("{}/{}", c.base(), folder_name(&name))),
@@ -873,6 +918,9 @@ pub struct ShareOptions {
 #[serde(rename_all = "camelCase")]
 pub struct UploadOptions {
     folder: String,
+    /// Exporte oder Originale
+    #[serde(default)]
+    source: Source,
     /// Dateien im Ordner löschen, die es im Projekt nicht mehr gibt
     #[serde(default)]
     remove_missing: bool,
@@ -897,7 +945,8 @@ struct Progress {
 
 static UPLOADING: AtomicBool = AtomicBool::new(false);
 
-/// Lädt die Exporte des Projekts hoch (gleicht ab) und teilt den Ordner.
+/// Lädt die Exporte bzw. Originale des Projekts hoch (gleicht ab) und teilt
+/// den Ordner.
 /// Fortschritt und Ergebnis per `nextcloud-progress`.
 #[tauri::command]
 pub fn nc_upload_project(
@@ -946,7 +995,7 @@ fn upload(
     p: &mut Progress,
 ) -> Result<(), Error> {
     let state = app.state::<AppState>();
-    let files = state.catalog.locked().project_exports(project_id)?;
+    let files = source_files(&state.catalog.locked(), project_id, o.source)?;
     let c = load(&state.data_dir);
     let conn = Conn::new(&c)?;
     let names = unique_names(&files);
@@ -993,6 +1042,7 @@ fn upload(
         ProjectLink {
             folder: parts.join("/"),
             share_url: p.share_url.clone(),
+            source: o.source,
         },
     );
     save(&state.data_dir, &c)?;

@@ -6,6 +6,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Nextcloud upload: choose between the project's exports and all of its photos as originals
+  (RAWs included, rejected photos left out). The choice is remembered per project.
+
 ## [1.0.27] – 2026-10-28
 
 ### Added

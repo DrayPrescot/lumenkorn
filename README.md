@@ -67,8 +67,9 @@ the catalog before you let Lumenkorn loose on your whole collection.
   (set, or shift for many photos), camera, lens, focal length, aperture, exposure time and ISO.
   Stored in the catalog and in an XMP sidecar (`photo.xmp`, or the existing `photo.ext.xmp`);
   sidecars from other programs are updated, not replaced, and the photo file stays untouched.
-- **Nextcloud:** right-click a project → "Zu Nextcloud hochladen …" uploads its exported photos to
-  a folder in your Nextcloud and shares it as a link (optionally with password and expiry date).
+- **Nextcloud:** right-click a project → "Zu Nextcloud hochladen …" uploads its exported photos,
+  or all of its photos as originals (rejected ones left out), to a folder in your Nextcloud and
+  shares it as a link (optionally with password and expiry date).
   Uploading again only sends new and changed files and keeps the link. Connect under
   Settings → Nextcloud: you log in in the browser and Lumenkorn gets its own app password, kept in
   the system's credential store (Windows Credential Manager, on Linux the keyring via Secret

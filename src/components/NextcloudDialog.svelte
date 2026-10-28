@@ -1,8 +1,9 @@
 <script lang="ts">
-  // Projekt → „Zu Nextcloud hochladen …“: die Exporte des Projekts in einen
-  // Nextcloud-Ordner bringen (abgleichen) und den Ordner als Link teilen.
+  // Projekt → „Zu Nextcloud hochladen …“: die Exporte oder die Originale des
+  // Projekts in einen Nextcloud-Ordner bringen (abgleichen) und den Ordner als
+  // Link teilen.
   import { onDestroy, onMount } from "svelte";
-  import { api, listen, type NcProgress, type NcProjectInfo, type Project } from "../lib/api";
+  import { api, listen, type NcProgress, type NcProjectInfo, type NcSource, type Project } from "../lib/api";
   import { lib } from "../lib/store.svelte";
   import { num, t } from "../lib/i18n";
 
@@ -10,6 +11,7 @@
 
   let info = $state<NcProjectInfo | null>(null);
   let folder = $state("");
+  let source = $state<NcSource>("exports");
   let removeMissing = $state(false);
   let share = $state(true);
   let usePassword = $state(false);
@@ -38,6 +40,8 @@
     try {
       info = await api.ncProjectInfo(project.id);
       folder = info.folder;
+      // Zuletzt gewählt; ohne Exporte gleich die Originale
+      source = info.source === "exports" && !info.exports.files && info.originals.files ? "originals" : info.source;
       share = true;
     } catch (e) {
       error = String(e);
@@ -55,6 +59,7 @@
     try {
       await api.ncUploadProject(project.id, {
         folder,
+        source,
         removeMissing,
         share: share
           ? { password: usePassword && password ? password : null, expire: useExpire && expire ? expire : null }
@@ -82,7 +87,8 @@
   }
 
   const done = $derived(!!progress?.finished && !progress.error);
-  const canStart = $derived(!!info && info.files > 0 && !!folder.trim() && !running && !(share && usePassword && !password) && !(share && useExpire && !expire));
+  const chosen = $derived(info ? info[source] : null);
+  const canStart = $derived(!!chosen && chosen.files > 0 && !!folder.trim() && !running && !(share && usePassword && !password) && !(share && useExpire && !expire));
 </script>
 
 <svelte:window onkeydowncapture={onkeydown} />
@@ -93,13 +99,34 @@
     <h3>{t("„{name}“ zu Nextcloud hochladen", { name: project.name })}</h3>
 
     {#if !info && !error}
-      <p class="muted">{t("Exporte werden gesucht …")}</p>
-    {:else if info && info.files === 0}
-      <p>{t("Dieses Projekt hat noch keine Exporte. Exportiere zuerst die Fotos, die du teilen möchtest (Strg+Umschalt+E).")}</p>
+      <p class="muted">{t("Dateien werden gesucht …")}</p>
+    {:else if info && !info.exports.files && !info.originals.files}
+      <p>{t("Dieses Projekt enthält keine Fotos zum Hochladen.")}</p>
     {:else if info}
-      <p class="meta">
-        {t("{n} exportierte Dateien, {size}", { n: String(info.files), size: mb(info.bytes) })}
-      </p>
+      <fieldset class="source" disabled={running}>
+        <legend class="label">{t("Hochladen")}</legend>
+        <label class="check">
+          <input type="radio" name="nc-source" value="exports" bind:group={source} disabled={!info.exports.files} />
+          <span>
+            {t("Exporte")}
+            <span class="muted small">
+              {info.exports.files
+                ? t("{n} Dateien, {size}", { n: num(info.exports.files), size: mb(info.exports.bytes) })
+                : t("noch keine – zuerst exportieren (Strg+Umschalt+E)")}
+            </span>
+          </span>
+        </label>
+        <label class="check">
+          <input type="radio" name="nc-source" value="originals" bind:group={source} disabled={!info.originals.files} />
+          <span>
+            {t("Alle Fotos des Projekts (Originale)")}
+            <span class="muted small">{t("{n} Dateien, {size}", { n: num(info.originals.files), size: mb(info.originals.bytes) })}</span>
+          </span>
+        </label>
+        {#if source === "originals"}
+          <p class="small muted">{t("Die Originaldateien so, wie sie auf der Platte liegen (auch RAWs, ohne Bearbeitungen). Abgelehnte Fotos bleiben weg.")}</p>
+        {/if}
+      </fieldset>
 
       <label class="field">
         <span class="label">{t("Ordner in Nextcloud")}</span>
@@ -109,6 +136,13 @@
         <input type="checkbox" bind:checked={removeMissing} disabled={running} />
         {t("Dateien im Ordner entfernen, die es im Projekt nicht mehr gibt")}
       </label>
+      {#if removeMissing && source !== info.source && info.shareUrl}
+        <p class="small warn">
+          {source === "originals"
+            ? t("Die zuletzt hochgeladenen Exporte werden dabei aus dem Ordner entfernt.")
+            : t("Die zuletzt hochgeladenen Originale werden dabei aus dem Ordner entfernt.")}
+        </p>
+      {/if}
 
       <fieldset disabled={running}>
         <label class="check">
@@ -213,9 +247,6 @@
   p {
     margin: 0;
   }
-  .meta {
-    color: var(--muted);
-  }
   .field {
     display: grid;
     gap: 4px;
@@ -247,6 +278,22 @@
     margin: 0;
     display: grid;
     gap: 8px;
+  }
+  legend {
+    padding: 0;
+    margin-bottom: 4px;
+  }
+  .source .check {
+    align-items: baseline;
+  }
+  .source .check input {
+    accent-color: var(--accent);
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .warn {
+    color: var(--reject);
   }
   .sub {
     display: grid;
