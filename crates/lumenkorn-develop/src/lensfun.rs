@@ -229,24 +229,52 @@ fn lens<'a>(db: &'a Db, shot: &Shot, cam: Option<&Camera>) -> Option<(&'a Lens, 
             }
         }
     }
-    // Brennweite muss in den Bereich der Kalibrierung passen
     let (_, l, n) = best?;
-    if let Some(f) = shot.focal {
-        let fs: Vec<f64> = l
-            .dist
-            .iter()
-            .chain(&l.tca)
-            .filter_map(|e| e.first().and_then(|v| v.as_f64()))
-            .chain(l.vig.iter().map(|v| v[0]))
-            .collect();
-        let (lo, hi) = fs
-            .iter()
-            .fold((f64::MAX, f64::MIN), |(a, b), v| (a.min(*v), b.max(*v)));
-        if !fs.is_empty() && (f < lo * 0.8 || f > hi * 1.25) {
-            return None;
-        }
+    fits_focal(l, shot.focal).then_some((l, n))
+}
+
+/// Brennweite im Bereich der Kalibrierung (mit etwas Spielraum)?
+fn fits_focal(l: &Lens, focal: Option<f64>) -> bool {
+    let Some(f) = focal else {
+        return true;
+    };
+    let fs: Vec<f64> = l
+        .dist
+        .iter()
+        .chain(&l.tca)
+        .filter_map(|e| e.first().and_then(|v| v.as_f64()))
+        .chain(l.vig.iter().map(|v| v[0]))
+        .collect();
+    let (lo, hi) = fs
+        .iter()
+        .fold((f64::MAX, f64::MIN), |(a, b), v| (a.min(*v), b.max(*v)));
+    fs.is_empty() || (f >= lo * 0.8 && f <= hi * 1.25)
+}
+
+/// Kamera mit fest eingebautem Objektiv (Kompakt- und Bridgekameras wie die
+/// Panasonic FZ1000): Lensfun führt das Objektiv unter einem eigenen Bajonett
+/// der Kamera („FZ1000 & compatibles“), dessen Name nie im EXIF steht. Gibt es
+/// an diesem Bajonett genau ein Objektiv, ist es das der Kamera. Nie bei
+/// Systembajonetten (Micro Four Thirds …), dort entscheidet der Name.
+fn fixed_lens<'a>(
+    db: &'a Db,
+    cam: Option<&Camera>,
+    focal: Option<f64>,
+) -> Option<(&'a Lens, &'a str)> {
+    let cam = cam?;
+    let system = db
+        .mounts
+        .get("Generic")
+        .is_some_and(|m| m.contains(&cam.mount));
+    if system || cam.mount == "Generic" {
+        return None;
     }
-    Some((l, n))
+    let mut on_mount = db.lenses.iter().filter(|l| l.mount.contains(&cam.mount));
+    let l = on_mount.next()?;
+    if on_mount.next().is_some() {
+        return None;
+    }
+    (fits_focal(l, focal)).then(|| (l, l.model.first().map_or("", String::as_str)))
 }
 
 /// Linear zwischen den beiden Einträgen um `f` (sortiert nach Brennweite).
@@ -316,7 +344,7 @@ pub(crate) fn profile(shot: &Shot, w: usize, h: usize) -> Option<Profile> {
     const N: usize = 64;
     let db = db()?;
     let cam = camera(db, shot);
-    let (lens, name) = lens(db, shot, cam)?;
+    let (lens, name) = lens(db, shot, cam).or_else(|| fixed_lens(db, cam, shot.focal))?;
     let focal = shot.focal.filter(|f| *f > 0.0)?;
     // Sensorgrößen in mm
     let crop = cam.map_or(lens.crop, |c| c.crop);
@@ -503,6 +531,41 @@ mod tests {
         // Brennweite weit außerhalb der Kalibrierung
         let s = shot("SONY", "ILCA-68", "DT 35mm F1.8 SAM", 200.0, 4.0);
         assert!(lens(db, &s, None).is_none());
+    }
+
+    /// Bridgekameras: Das EXIF nennt kein (oder ein anderes) Objektiv, das
+    /// fest eingebaute kommt über das Bajonett der Kamera
+    #[test]
+    fn fixed_lens_cameras_use_their_own_lens() {
+        let db = db().expect("Datenbank lesbar");
+        for (model, lens_name, focal) in [
+            ("DMC-FZ1000", "", 9.1),
+            (
+                "DMC-FZ1000",
+                "LEICA DC VARIO-ELMARIT 9.1-146mm/F2.8-4.0",
+                30.0,
+            ),
+            ("DMC-FZ300", "", 4.5),
+            ("DMC-FZ2500", "", 20.0),
+            ("DMC-TZ70", "", 4.3),
+            ("DC-LX100M2", "", 10.9),
+        ] {
+            let mut s = shot("Panasonic", model, lens_name, focal, 4.0);
+            if lens_name.is_empty() {
+                s.lens_model = None;
+            }
+            let p = profile(&s, 5472, 3648).unwrap_or_else(|| panic!("kein Profil für {model}"));
+            assert!(p.name.contains("compatibles"), "{model}: {}", p.name);
+            assert!(p.factor.is_some(), "{model}: keine Verzeichnung");
+        }
+        // Systemkamera ohne Objektivnamen: nichts raten
+        let mut s = shot("Panasonic", "DC-G9", "", 25.0, 4.0);
+        s.lens_model = None;
+        assert!(profile(&s, 5184, 3888).is_none());
+        // Brennweite weit außerhalb der Kalibrierung
+        let mut s = shot("Panasonic", "DMC-FZ1000", "", 400.0, 4.0);
+        s.lens_model = None;
+        assert!(profile(&s, 5472, 3648).is_none());
     }
 
     #[test]

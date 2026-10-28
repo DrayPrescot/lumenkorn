@@ -37,6 +37,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
   shader no longer fails to compile there. If a driver cannot compile the shaders, Lumenkorn now
   notices at startup and uses the CPU right away.
 - CI runs again: a mask limit test no longer allocates about 12 GB.
+- Lens correction for cameras with a built-in lens (bridge and compact cameras such as the
+  Panasonic FZ1000, FZ2000/2500, FZ200/300/330, TZ/ZS and LX series): Lensfun lists their lens
+  under the camera's own mount, a name that never appears in the photo's metadata, so no profile
+  was found. Lumenkorn now uses the single lens of that camera.
 - The clipping percentages under the histogram count the whole preview. A reduced copy averaged
   small blown highlights away and showed 0 % where 0.2 % of the photo was clipped.
 
