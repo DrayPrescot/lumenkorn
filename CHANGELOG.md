@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.29] – 2026-10-28
+
 ### Added
 - AI keywords name animals from coarse to fine, e.g. Bird → Tit → Blue tit or Insect → Beetle →
   Ladybird (about 300 animals, German and English), and stop at the level they are sure about.
@@ -17,6 +19,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   understands the animal names too.
 - A book icon next to projects that have a photo album; clicking it opens the album.
 - People: each group shows at most 200 people per page, with page buttons beyond that.
+
+### Changed
+- Updated getrandom to 0.4 and rusqlite to 0.41 (bundled SQLite 3.54).
 
 ## [1.0.28] – 2026-10-28
 
