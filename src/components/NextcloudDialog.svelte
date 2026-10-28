@@ -191,9 +191,12 @@
     padding: 16px;
   }
   .dialog {
-    width: min(520px, 100%);
+    width: min(600px, 100%);
     max-height: calc(100vh - 32px);
-    overflow: auto;
+    overflow-y: auto;
+    /* Eine Spalte in Dialogbreite: lange Link-Adressen werden gekürzt statt
+       den Dialog zu verbreitern */
+    grid-template-columns: minmax(0, 1fr);
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: var(--radius-m);
@@ -271,6 +274,9 @@
     padding: 8px;
     background: var(--raised);
     border-radius: var(--radius-s);
+  }
+  .link button {
+    flex-shrink: 0;
   }
   .link code {
     flex: 1;
