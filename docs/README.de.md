@@ -208,8 +208,9 @@ Der Reiter **Basis** enthält von oben nach unten:
   sie wie in Lightroom auf jeden Kanal, mehr Kontrast macht dann auch die Farben kräftiger.
 - **Objektiv:** Die **Objektivkorrektur** ist für RAWs standardmäßig an und entfernt
   Verzeichnung, Farbsäume und Vignettierung. Die Daten kommen aus dem RAW selbst (Sony
-  schreibt sie in jedes ARW, DNG-Dateien enthalten sie oft) oder aus der
-  [Lensfun](https://lensfun.github.io/)-Datenbank mit rund 1 500 Objektiven. Verzeichnung und
+  schreibt sie in jedes ARW, Panasonic die Verzeichnung in jedes RW2, DNG-Dateien enthalten sie
+  oft) oder aus der [Lensfun](https://lensfun.github.io/)-Datenbank mit rund 1 500 Objektiven,
+  auch den fest eingebauten von Kompakt- und Bridgekameras. Verzeichnung und
   Farbsäume nimmt Lumenkorn bevorzugt aus der Kamera, weil sie genau für Brennweite und Fokus
   der Aufnahme gelten; die Vignettierung bevorzugt aus Lensfun, weil Sony sie mit seinen Daten
   nur teilweise ausgleicht. Unter dem Schalter steht, woher die Daten kommen. Damit keine
@@ -728,7 +729,7 @@ Nominatim. Der Hinweis „© OpenStreetMap contributors“ steht auf der Karte.
 WebView2, das zu Windows gehört. Die GPU-Fassung von ONNX Runtime braucht das Microsoft Visual C++
 Redistributable; fehlt es, weist Lumenkorn darauf hin. Beides liefert Lumenkorn nicht mit.
 
-**Veröffentlichte Verfahren, die Lumenkorn umsetzt:** die Objektivmodelle von Lensfun/Hugin, die DNG-Opcodes WarpRectilinear und FixVignetteRadial, die Bedeutung der Sony-Korrekturdaten nach den Vorarbeiten von [darktable](https://github.com/darktable-org/darktable) und [RawTherapee](https://github.com/Beep6581/RawTherapee) (dafür ohne deren Code), aus darktable nach Rust übersetzt: RCD-Demosaicing (Luis Sanz Rodríguez),
+**Veröffentlichte Verfahren, die Lumenkorn umsetzt:** die Objektivmodelle von Lensfun/Hugin, die DNG-Opcodes WarpRectilinear und FixVignetteRadial, die Bedeutung der Sony-Korrekturdaten nach den Vorarbeiten von [darktable](https://github.com/darktable-org/darktable) und [RawTherapee](https://github.com/Beep6581/RawTherapee) (dafür ohne deren Code), die Panasonic-Verzeichnungsdaten in RW2-Dateien nach den Notizen von Raphaël Rigo ([trou/panasonic-rw2](https://github.com/trou/panasonic-rw2)), aus darktable nach Rust übersetzt: RCD-Demosaicing (Luis Sanz Rodríguez),
 die Lichter-Rekonstruktion „inpaint opposed“ (garagecoder und Iain vom G'MIC-Team sowie Hanno Schwalm), Farbkalibrierung mit CAT16 und der Sigmoid-Tonwertzuordner,
 Markesteijn-Demosaicing für X-Trans (Frank Markesteijn, über rawler), Oklab/Oklch (Björn Ottosson), Dark Channel
 Prior (Kaiming He u. a.) als Grundlage für „Dunst entfernen“, Harris-Ecken, BRIEF, RANSAC und

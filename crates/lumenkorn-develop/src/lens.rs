@@ -7,6 +7,13 @@
 //!   (0x7032) – bis zu 16 Stützstellen über den Radius. Die Bedeutung der
 //!   Werte (Skalierungen 2⁻¹⁴, 2⁻²¹, 2⁻¹³) ist von darktable und RawTherapee
 //!   bekannt; hier unabhängig umgesetzt.
+//! - **Panasonic (RW2):** `DistortionInfo` (0x119) in IFD0, 16 Wörter. Die
+//!   Belegung ist nicht offiziell; nach den Notizen von Raphaël Rigo
+//!   (github.com/trou/panasonic-rw2): Wort 7 schaltet die Korrektur ein,
+//!   Wörter 8, 4, 11 sind a, b, c und Wort 5 die Skalierung (je /32768),
+//!   `Ru = Rd + s·(a·Rd³ + b·Rd⁵ + c·Rd⁷)` vom Roh- zum korrigierten
+//!   Radius. Die Normierung auf die halbe Diagonale und die Richtung sind
+//!   gegen die eingebetteten Kamera-JPEGs von FZ80/FZ82 geprüft.
 //! - **DNG:** die Opcodes `WarpRectilinear` (radialer Teil) und
 //!   `FixVignetteRadial` aus der DNG-Spezifikation (OpcodeList 1–3). Die
 //!   tangentialen Terme von `WarpRectilinear` sind bei Kameraobjektiven
@@ -36,6 +43,7 @@ use std::path::Path;
 #[serde(rename_all = "lowercase")]
 pub enum LensSource {
     Sony,
+    Panasonic,
     Dng,
     Lensfun,
 }
@@ -129,6 +137,57 @@ impl LensProfile {
             distortion: src(distortion),
             chromatic: src(chromatic),
             vignetting: src(vignetting),
+            lens_name: None,
+        })
+    }
+
+    /// Panasonic: die 16 Wörter von `DistortionInfo` (siehe Moduldoc). Nur
+    /// Verzeichnung; Farbsäume und Vignettierung stehen nicht darin.
+    pub fn from_panasonic(w: &[i16]) -> Option<Self> {
+        const N: usize = 64;
+        if w.len() < 16 || w[7] & 0xF != 1 {
+            return None;
+        }
+        let q = |i: usize| w[i] as f64 / 32768.0;
+        let s = 1.0 / (1.0 + q(5));
+        let (a, b, c) = (s * q(8), s * q(4), s * q(11));
+        if a == 0.0 && b == 0.0 && c == 0.0 {
+            return None;
+        }
+        let ru = |rd: f64| rd + a * rd.powi(3) + b * rd.powi(5) + c * rd.powi(7);
+        let dru =
+            |rd: f64| 1.0 + 3.0 * a * rd.powi(2) + 5.0 * b * rd.powi(4) + 7.0 * c * rd.powi(6);
+        let knots: Vec<f32> = (0..N).map(|i| i as f32 / (N - 1) as f32).collect();
+        // Umkehrung (Newton): Ausgaberadius r ← Rohradius rd mit ru(rd) = r
+        let mut f = Vec::with_capacity(N);
+        for r in &knots {
+            let r = *r as f64;
+            if r == 0.0 {
+                f.push((1.0 / dru(0.0)) as f32);
+                continue;
+            }
+            let mut x = r;
+            for _ in 0..30 {
+                let d = dru(x);
+                if d.abs() < 1e-6 {
+                    break;
+                }
+                x -= (ru(x) - r) / d;
+            }
+            if !x.is_finite() || x <= 0.0 {
+                return None;
+            }
+            f.push((x / r) as f32);
+        }
+        Some(Self {
+            center: (0.5, 0.5),
+            knots: knots.clone(),
+            factor: [f.clone(), f.clone(), f],
+            vig_knots: knots,
+            vig_gain: vec![1.0; N],
+            distortion: Some(LensSource::Panasonic),
+            chromatic: None,
+            vignetting: None,
             lens_name: None,
         })
     }
@@ -321,6 +380,19 @@ impl LensProfile {
                 if let Some(p) = Self::from_sony(&s(d), &s(c), &s(v)) {
                     return Some(p);
                 }
+            }
+        }
+        // Panasonic: DistortionInfo in IFD0
+        if let Some(ifd0) = ifds.first()
+            && let Some(bytes) = tiff.bytes(*ifd0, 0x119)
+            && bytes.len() >= 32
+        {
+            let w: Vec<i16> = bytes[..32]
+                .chunks(2)
+                .map(|c| i16::from_le_bytes([c[0], c[1]]))
+                .collect();
+            if let Some(p) = Self::from_panasonic(&w) {
+                return Some(p);
             }
         }
         // DNG: Opcodes aus allen Listen
@@ -583,7 +655,8 @@ struct Tiff<'a> {
 impl<'a> Tiff<'a> {
     fn new(b: &'a [u8]) -> Option<Self> {
         let le = match b.get(0..4)? {
-            [b'I', b'I', 42, 0] => true,
+            // Panasonic RW2 trägt 0x55 statt 42
+            [b'I', b'I', 42 | 0x55, 0] => true,
             [b'M', b'M', 0, 42] => false,
             _ => return None,
         };
@@ -852,6 +925,48 @@ mod tests {
             out.data[0][1] > out.data[100 * 300 + 150][1],
             "Ecke aufgehellt"
         );
+    }
+
+    /// Wörter aus einem echten RW2 (DC-FZ80, 9 mm)
+    const FZ80: [i16; 16] = [
+        -29481, 9426, 36, 0, -5111, 0, 411, 1, 2716, 277, 155, 2468, 3060, 777, -12839, -23076,
+    ];
+
+    #[test]
+    fn panasonic_distortion_inverts_the_camera_formula() {
+        let p = LensProfile::from_panasonic(&FZ80).expect("Profil");
+        assert_eq!(p.distortion, Some(LensSource::Panasonic));
+        assert_eq!(p.chromatic, None);
+        let (a, b, c) = (2716.0 / 32768.0, -5111.0 / 32768.0, 2468.0 / 32768.0);
+        for (i, r) in p.knots.iter().enumerate().skip(1) {
+            // Der Rohradius, aus dem gelesen wird, ergibt mit der Formel der
+            // Kamera wieder den Ausgaberadius
+            let rd = (*r * p.factor[1][i]) as f64;
+            let ru = rd + a * rd.powi(3) + b * rd.powi(5) + c * rd.powi(7);
+            assert!((ru - *r as f64).abs() < 1e-5, "r={r}: {ru}");
+        }
+        // Korrektur ausgeschaltet (Wort 7) oder zu kurz: keine Daten
+        let mut off = FZ80;
+        off[7] = 0;
+        assert!(LensProfile::from_panasonic(&off).is_none());
+        assert!(LensProfile::from_panasonic(&FZ80[..8]).is_none());
+    }
+
+    #[test]
+    fn rw2_header_and_tag_are_read() {
+        // Kleines RW2: Kopf „IIU“, IFD0 mit 0x119 (32 Byte, Typ UNDEFINED)
+        let mut b = b"IIU\0\x08\0\0\0".to_vec();
+        b.extend(1u16.to_le_bytes());
+        b.extend(0x119u16.to_le_bytes());
+        b.extend(7u16.to_le_bytes());
+        b.extend(32u32.to_le_bytes());
+        b.extend(26u32.to_le_bytes());
+        b.extend(0u32.to_le_bytes());
+        for w in FZ80 {
+            b.extend(w.to_le_bytes());
+        }
+        let p = LensProfile::read_embedded(&b, 1).expect("aus dem RW2");
+        assert_eq!(p.distortion, Some(LensSource::Panasonic));
     }
 
     #[test]

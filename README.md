@@ -92,8 +92,9 @@ the catalog before you let Lumenkorn loose on your whole collection.
   curve to brightness so hue and saturation stay; turned off it works on each channel, as in
   Lightroom, and more contrast also means stronger colors.
 - Lens correction for RAW files (on by default): distortion, color fringes and vignetting,
-  from the correction data the camera writes into the file (Sony ARW, DNG) or from a
-  [Lensfun](https://lensfun.github.io/) profile for about 1,500 lenses.
+  from the correction data the camera writes into the file (Sony ARW, Panasonic RW2 for
+  distortion, DNG) or from a [Lensfun](https://lensfun.github.io/) profile for about 1,500
+  lenses, including the built-in lenses of compact and bridge cameras.
 - Crop, rotate, flip, and straighten with automatic horizon detection. Perspective correction
   (vertical and horizontal) for converging lines, by slider or with guide lines: draw lines along
   edges that should be vertical or horizontal, and Lumenkorn sets straighten and perspective so
@@ -626,7 +627,9 @@ license only allows non-commercial use.
   the DNG opcodes WarpRectilinear and FixVignetteRadial (Adobe DNG specification), and the
   meaning of Sony's embedded correction tags as worked out by
   [darktable](https://github.com/darktable-org/darktable) and
-  [RawTherapee](https://github.com/Beep6581/RawTherapee). Lumenkorn implements these lens
+  [RawTherapee](https://github.com/Beep6581/RawTherapee), and of Panasonic's distortion data
+  in RW2 files following the notes of Raphaël Rigo
+  ([trou/panasonic-rw2](https://github.com/trou/panasonic-rw2)). Lumenkorn implements these lens
   corrections itself; no code from these projects is used for them.
 - Harris corners, BRIEF descriptors, RANSAC and Hartley normalization for alignment.
 - Laplacian pyramids (Burt and Adelson) for focus stacking.

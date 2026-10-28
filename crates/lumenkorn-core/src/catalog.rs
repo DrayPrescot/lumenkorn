@@ -299,6 +299,9 @@ const MIGRATIONS: &[&str] = &[
     "UPDATE images SET mtime = -1 WHERE lower(ext) IN ('rw2', 'orf');",
     // v24: Vom Nutzer bearbeitete Metadaten (siehe `IMAGE_META`)
     IMAGE_META,
+    // v25: RW2 bekommt die Verzeichnungskorrektur aus den Kameradaten (statt
+    // keiner bzw. Lensfun) – Vorschaubilder neu erzeugen
+    "UPDATE images SET thumb_state = 0 WHERE lower(ext) = 'rw2';",
 ];
 
 /// v24: Metadaten, die der Nutzer geändert hat (`imagemeta.rs`). Ein Eintrag

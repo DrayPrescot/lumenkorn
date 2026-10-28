@@ -41,6 +41,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
   Panasonic FZ1000, FZ2000/2500, FZ200/300/330, TZ/ZS and LX series): Lensfun lists their lens
   under the camera's own mount, a name that never appears in the photo's metadata, so no profile
   was found. Lumenkorn now uses the single lens of that camera.
+- Distortion correction for all Panasonic cameras from the data the camera writes into every
+  RW2 file, including models Lensfun does not know (FZ80/FZ82, TZ95 and newer). It also replaces
+  Lensfun's distortion profile on Lumix system cameras: checked against the camera's own JPEGs it
+  is clearly closer (on a strongly distorted G9 photo 0.4 px instead of 2 px off).
 - The clipping percentages under the histogram count the whole preview. A reduced copy averaged
   small blown highlights away and showed 0 % where 0.2 % of the photo was clipped.
 

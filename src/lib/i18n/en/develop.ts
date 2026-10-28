@@ -198,6 +198,7 @@ export default {
   "Objektivkorrektur": "Lens correction",
   "Für dieses RAW gibt es weder Korrekturdaten der Kamera noch ein Lensfun-Profil.": "There is neither correction data from the camera nor a Lensfun profile for this RAW.",
   "Kameradaten (Sony)": "camera data (Sony)",
+  "Kameradaten (Panasonic)": "camera data (Panasonic)",
   "Daten der DNG-Datei": "data in the DNG file",
   "Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz und Dynamik automatisch einstellen": "Set exposure, contrast, highlights, shadows, whites, blacks and vibrance automatically",
   "Wird berechnet …": "Calculating …",

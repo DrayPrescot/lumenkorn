@@ -781,7 +781,7 @@ export interface AutoTone {
 }
 
 /** Was die Korrekturdaten eines RAWs abdecken */
-export type LensSource = "sony" | "dng" | "lensfun";
+export type LensSource = "sony" | "panasonic" | "dng" | "lensfun";
 export interface LensSummary {
   distortion: LensSource | null;
   chromatic: LensSource | null;

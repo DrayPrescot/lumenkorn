@@ -131,10 +131,10 @@
   const lensLines = $derived.by(() => {
     const l = dev.lensInfo;
     if (!l) return [dev.raw ? t("Für dieses RAW gibt es weder Korrekturdaten der Kamera noch ein Lensfun-Profil.") : t("Nur für RAWs – JPEGs hat die Kamera schon selbst korrigiert.")];
-    const label = { sony: t("Kameradaten (Sony)"), dng: t("Daten der DNG-Datei"), lensfun: "Lensfun" } as const;
+    const label = { sony: t("Kameradaten (Sony)"), panasonic: t("Kameradaten (Panasonic)"), dng: t("Daten der DNG-Datei"), lensfun: "Lensfun" } as const;
     const parts: [string, LensSource | null][] = [[t("Verzeichnung"), l.distortion], [t("Farbsäume"), l.chromatic], [t("Vignettierung"), l.vignetting]];
     const lines: string[] = [];
-    for (const src of ["sony", "dng", "lensfun"] as const) {
+    for (const src of ["sony", "panasonic", "dng", "lensfun"] as const) {
       const what = parts.filter(([, s]) => s === src).map(([n]) => n);
       const line = `${what.join(", ")}: ${label[src]}`;
       if (what.length) lines.push(line.charAt(0).toUpperCase() + line.slice(1));
