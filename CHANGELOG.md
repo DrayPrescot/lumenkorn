@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Nextcloud: right-click a project → "Zu Nextcloud hochladen …" uploads the project's exported
+  photos to a folder in your Nextcloud and shares it as a public link, optionally with a password
+  and an expiry date. Uploading again syncs: new and changed files go up, unchanged ones are
+  skipped, the link stays the same, and files no longer in the project can be removed. You connect
+  under Settings → Nextcloud by logging in in the browser; Lumenkorn gets its own app password,
+  kept in the Windows Credential Manager. Exports are now remembered in the catalog, so files
+  exported to a fixed folder count too.
+
 ## [1.0.24] – 2026-10-28
 
 ### Added

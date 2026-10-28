@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type SettingsPage = "general" | "folders" | "develop" | "ai" | "gpu" | "keys" | "agents";
+  export type SettingsPage = "general" | "folders" | "develop" | "ai" | "gpu" | "keys" | "nextcloud" | "agents";
 </script>
 
 <script lang="ts">
@@ -15,6 +15,7 @@
   import Icon, { type IconName } from "./Icon.svelte";
   import KeysPanel from "./KeysPanel.svelte";
   import McpSection from "./McpSection.svelte";
+  import NextcloudSection from "./NextcloudSection.svelte";
   import StyleSection from "./StyleSection.svelte";
 
   let { page = "general", onclose }: { page?: SettingsPage; onclose: () => void } = $props();
@@ -32,6 +33,7 @@
     { id: "ai", icon: "sparkle", label: t("KI") },
     { id: "gpu", icon: "sliders", label: t("Grafikkarte") },
     { id: "keys", icon: "keyboard", label: t("Tastenkürzel") },
+    { id: "nextcloud", icon: "cloud", label: "Nextcloud" },
     { id: "agents", icon: "export", label: t("KI-Agenten (MCP)") },
   ];
 
@@ -217,6 +219,8 @@
           <AiPanel part="gpu" />
         {:else if current === "keys"}
           <KeysPanel />
+        {:else if current === "nextcloud"}
+          <NextcloudSection />
         {:else}
           <McpSection />
         {/if}

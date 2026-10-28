@@ -302,6 +302,14 @@ const MIGRATIONS: &[&str] = &[
     // v25: RW2 bekommt die Verzeichnungskorrektur aus den Kameradaten (statt
     // keiner bzw. Lensfun) – Vorschaubilder neu erzeugen
     "UPDATE images SET thumb_state = 0 WHERE lower(ext) = 'rw2';",
+    // v26: Exportierte Dateien (`exports.rs`), etwa zum Hochladen der
+    // Exporte eines Projekts
+    "CREATE TABLE exports (
+        path        TEXT PRIMARY KEY,
+        image_id    INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+        exported_at INTEGER NOT NULL
+    );
+    CREATE INDEX exports_image ON exports(image_id);",
 ];
 
 /// v24: Metadaten, die der Nutzer geändert hat (`imagemeta.rs`). Ein Eintrag
@@ -2667,6 +2675,9 @@ mod migration_tests {
     /// Stand vor v24 nachstellen: Tabelle und Trigger für bearbeitete
     /// Metadaten weg. Die Suchansicht bleibt als Platzhalter, damit `UNDO_V21`
     /// sie ersetzen kann.
+    /// Stand vor v26: keine Liste der Exporte
+    const UNDO_V26: &str = "DROP TABLE exports;";
+
     const UNDO_V24: &str = "DROP TRIGGER search_meta_ins; DROP TRIGGER search_meta_upd;
         DROP TRIGGER search_meta_del; DROP VIEW search_source; DROP TABLE image_meta;
         CREATE VIEW search_source(id, body) AS SELECT 0, '';";
@@ -2751,7 +2762,7 @@ mod migration_tests {
             cat.conn
                 .execute_batch(&format!(
                     // Stand vor v9 (und damit auch vor v10, v11) nachstellen
-                    "UPDATE images SET thumb_state = 1; {UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11}
+                    "UPDATE images SET thumb_state = 1; {UNDO_V26} {UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11}
                      DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
                      PRAGMA user_version = 8;"
                 ))
@@ -2898,7 +2909,7 @@ mod migration_tests {
             // Zustand vor v10 nachstellen: höchste ID bereits im Bestand
             cat.conn
                 .execute_batch(&format!(
-                    "{UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11} DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
+                    "{UNDO_V26} {UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11} DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
                      PRAGMA user_version = 9;"
                 ))
                 .unwrap();

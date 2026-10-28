@@ -1062,6 +1062,15 @@ export const api = {
   updateCheck: () => call<UpdateInfo | null>("update_check"),
   updateInstall: () => call<void>("update_install"),
   mcpStatus: () => call<McpStatus>("mcp_status"),
+  ncStatus: () => call<NcStatus | null>("nc_status"),
+  /** Öffnet die Anmeldeseite im Browser; Ergebnis per `nextcloud-login` */
+  ncLoginStart: (server: string) => call<void>("nc_login_start", { server }),
+  ncLoginCancel: () => call<void>("nc_login_cancel"),
+  ncLogout: () => call<void>("nc_logout"),
+  ncSetBaseFolder: (folder: string) => call<string>("nc_set_base_folder", { folder }),
+  ncProjectInfo: (projectId: number) => call<NcProjectInfo>("nc_project_info", { projectId }),
+  /** Läuft im Hintergrund; Fortschritt per `nextcloud-progress` */
+  ncUploadProject: (projectId: number, options: NcUploadOptions) => call<void>("nc_upload_project", { projectId, options }),
   mcpSetEnabled: (enabled: boolean) => call<McpStatus>("mcp_set_enabled", { enabled }),
   mcpNewToken: () => call<McpStatus>("mcp_new_token"),
   aiDismissNotice: () => call<void>("ai_dismiss_notice"),
@@ -1175,7 +1184,47 @@ export interface AlbumExportProgress {
   dir: string;
 }
 
+/** Nextcloud-Verbindung (nextcloud.rs) */
+export interface NcStatus {
+  server: string;
+  loginName: string;
+  /** Ordner, unter dem die Projektordner angelegt werden */
+  baseFolder: string;
+}
+
+export interface NcProjectInfo {
+  /** Gefundene Export-Dateien des Projekts */
+  files: number;
+  bytes: number;
+  /** Zielordner (zuletzt benutzt, sonst Basisordner/Projektname) */
+  folder: string;
+  shareUrl: string | null;
+}
+
+export interface NcUploadOptions {
+  folder: string;
+  /** Dateien im Ordner löschen, die es im Projekt nicht mehr gibt */
+  removeMissing: boolean;
+  /** Öffentlicher Link; null: einen vorhandenen entfernen */
+  share: { password: string | null; expire: string | null } | null;
+}
+
+export interface NcProgress {
+  done: number;
+  total: number;
+  current: string | null;
+  uploaded: number;
+  unchanged: number;
+  removed: number;
+  failed: string[];
+  finished: boolean;
+  error: string | null;
+  shareUrl: string | null;
+}
+
 export interface Events {
+  "nextcloud-login": { ok: boolean; error: string | null };
+  "nextcloud-progress": NcProgress;
   "scan-progress": ScanProgress;
   "library-changed": ScanReport;
   /** Wartung hat Katalogeinträge korrigiert – Liste neu laden */

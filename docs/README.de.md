@@ -97,6 +97,14 @@ vergibt sie in der neuen Sprache neu.
   in einer XMP-Datei neben dem Foto (`foto.xmp` bzw. eine vorhandene `foto.ext.xmp`); XMP-Dateien
   anderer Programme werden ergänzt, nicht ersetzt. Das Foto selbst bleibt unverändert. Jedes Feld
   lässt sich auf den Wert aus der Datei zurücksetzen; Titel, Beschreibung und Autor sind durchsuchbar.
+- **Nextcloud:** Rechtsklick auf ein Projekt → „Zu Nextcloud hochladen …“ lädt seine exportierten
+  Bilder in einen Ordner deiner Nextcloud und teilt ihn als Link, auf Wunsch mit Passwort und
+  Ablaufdatum. Ein erneutes Hochladen überträgt nur neue und geänderte Dateien, der Link bleibt
+  derselbe; Dateien, die es im Projekt nicht mehr gibt, lassen sich entfernen. Verbinden unter
+  Einstellungen → Nextcloud: Du meldest dich im Browser an, Lumenkorn bekommt ein eigenes
+  App-Passwort, das in der Windows-Anmeldeinformationsverwaltung liegt und sich in Nextcloud
+  jederzeit widerrufen lässt. Gezählt werden alle Exporte der Fotos des Projekts, auch solche in
+  einen festen Zielordner, und ältere Exporte in den Export-Ordnern seiner Ordner.
 - **Umbenennen:** Fotos auswählen, dann F2 oder Rechtsklick → „Umbenennen …“. Ein Muster wie
   `{yyyy}{mm}{dd}_{hh}{min}{ss}_{n}` mit Datum, Uhrzeit, Nummer, Kamera, Objektiv, Ordner und altem
   Namen; die Vorschau zeigt jeden neuen Namen und Konflikte. Nichts wird überschrieben,
@@ -628,6 +636,10 @@ zerlegt jedes Bild in eine Laplace-Pyramide und behält je Stufe das schärfste 
   ersten Start übernommen.
 - **Fotoordner** werden nur beschrieben, wenn du es auslöst: abgelehnte Fotos löschen,
   Zusammenfügen, Export.
+- **Nextcloud:** Verbindungen erst, wenn du unter Einstellungen → Nextcloud verbindest, und nur
+  zu dem Server, den du einträgst. Hochgeladen wird, wenn du es für ein Projekt startest; das
+  App-Passwort liegt im Anmeldespeicher des Systems (Windows-Anmeldeinformationsverwaltung), nicht
+  im Datenordner.
 - **Netzwerk** braucht Lumenkorn für die KI-Downloads und für die Karte. Downloads nutzen den
   Zertifikatsspeicher des Betriebssystems und funktionieren damit auch hinter Firmen-Proxys.
   `ki/quellen.json` im Datenordner kann die Download-Adressen überschreiben, z. B. für einen
@@ -690,6 +702,8 @@ die Kameradaten von [rawspeed](https://github.com/darktable-org/rawspeed) (LGPL-
 [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) (CC0-1.0/Apache-2.0),
 [trash](https://github.com/Byron/trash-rs) (MIT),
 [ureq](https://github.com/algesten/ureq) (MIT/Apache-2.0),
+[quick-xml](https://github.com/tafia/quick-xml) für XMP-Dateien und Nextcloud (MIT),
+[keyring](https://github.com/open-source-cooperative/keyring-rs) für das Nextcloud-App-Passwort (MIT/Apache-2.0),
 [tiny_http](https://github.com/tiny-http/tiny-http) für die Schnittstelle für KI-Agenten (MIT/Apache-2.0),
 [serde](https://github.com/serde-rs/serde) und [serde_json](https://github.com/serde-rs/json) (MIT/Apache-2.0),
 [sha2](https://github.com/RustCrypto/hashes) (MIT/Apache-2.0),

@@ -744,3 +744,51 @@ fn refuses_catalog_from_newer_version() {
         .unwrap();
     assert_eq!(after, v + 5);
 }
+
+/// Exporte eines Projekts: eingetragene (auch außerhalb seiner Ordner) und
+/// ältere in markierten Export-Ordnern; Fotos anderer Ordner nicht.
+#[test]
+fn project_exports_combine_recorded_and_marked_folders() {
+    use lumenkorn_core::scanner::export_dir_for;
+    let tmp = tempfile::tempdir().unwrap();
+    let a = tmp.path().join("Fotos");
+    write_jpeg(&a.join("Reise/eins.jpg"), 64, 64, 1);
+    write_jpeg(&a.join("Anderes/zwei.jpg"), 64, 64, 2);
+    let cat = Mutex::new(Catalog::open_in_memory().unwrap());
+    let root = cat.lock().unwrap().add_root(&a).unwrap();
+    scan_root(&cat, root.id, &no_progress).unwrap();
+    let cat = cat.into_inner().unwrap();
+    let p = cat.create_project("Reise", "").unwrap();
+    cat.add_project_folder(p.id, &a.join("Reise"), true)
+        .unwrap();
+    let id = |name: &str| {
+        cat.query_images(&ImageQuery::new(Scope::All))
+            .unwrap()
+            .into_iter()
+            .find(|i| i.file_name == name)
+            .unwrap()
+            .id
+    };
+
+    // Älterer Export im markierten Ordner neben den Fotos
+    let old = export_dir_for(&a.join("Reise/eins.jpg"), "Export").unwrap();
+    write_jpeg(&old.join("eins.jpg"), 32, 32, 3);
+    std::fs::write(old.join("notiz.txt"), "x").unwrap();
+    // Eingetragener Export in einem festen Ordner außerhalb
+    let fixed = tmp.path().join("Ausgabe");
+    write_jpeg(&fixed.join("eins-web.jpg"), 32, 32, 4);
+    cat.record_export(id("eins.jpg"), &fixed.join("eins-web.jpg"))
+        .unwrap();
+    // Export eines Fotos außerhalb des Projekts und eine gelöschte Datei
+    write_jpeg(&fixed.join("zwei.jpg"), 32, 32, 5);
+    cat.record_export(id("zwei.jpg"), &fixed.join("zwei.jpg"))
+        .unwrap();
+    cat.record_export(id("eins.jpg"), &fixed.join("weg.jpg"))
+        .unwrap();
+
+    let mut got = cat.project_exports(p.id).unwrap();
+    got.sort();
+    let mut want = vec![old.join("eins.jpg"), fixed.join("eins-web.jpg")];
+    want.sort();
+    assert_eq!(got, want);
+}

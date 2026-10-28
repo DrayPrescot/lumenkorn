@@ -1092,6 +1092,12 @@ pub fn export_images(
                                     Err(e) => Err(Error::Invalid(e.to_string())),
                                 }
                             };
+                            if res.is_ok()
+                                && let Err(e) = state.catalog.locked().record_export(*id, &target)
+                            {
+                                // Nur für späteres Hochladen; der Export selbst gelang
+                                log::warn!("Export nicht eingetragen: {e}");
+                            }
                             if let Err(e) = res {
                                 errors.push(if formats.len() > 1 {
                                     format!("{}: {e}", format.extension().to_uppercase())

@@ -8,6 +8,7 @@
 
 pub mod catalog;
 pub mod error;
+pub mod exports;
 pub mod formats;
 pub mod geo;
 pub mod geotime;

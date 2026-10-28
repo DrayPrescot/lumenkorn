@@ -166,6 +166,31 @@ fn is_export_dir(dir: &Path) -> bool {
     dir.join(EXPORT_MARKER).is_file()
 }
 
+/// Von Lumenkorn angelegte Export-Ordner unter `dir`: im ganzen Baum bzw.
+/// (`recursive = false`) nur direkt darunter, wo der Export sie neben den
+/// Fotos anlegt. Versteckte Ordner werden übersprungen.
+pub fn export_dirs_in(dir: &Path, recursive: bool) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut it = WalkDir::new(dir)
+        .follow_links(false)
+        .min_depth(1)
+        .max_depth(if recursive { usize::MAX } else { 1 })
+        .into_iter();
+    while let Some(entry) = it.next() {
+        let Ok(e) = entry else { continue };
+        if !e.file_type().is_dir() {
+            continue;
+        }
+        if e.file_name().to_string_lossy().starts_with('.') {
+            it.skip_current_dir();
+        } else if is_export_dir(e.path()) {
+            out.push(e.path().to_path_buf());
+            it.skip_current_dir();
+        }
+    }
+    out
+}
+
 fn is_skipped(e: &DirEntry) -> bool {
     if e.depth() == 0 {
         return false;

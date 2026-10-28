@@ -33,6 +33,9 @@ tiny_http = "0.12"
 dirs = "7"
 ureq = { version = "3", default-features = false }
 base64 = "0.23"
+# Nextcloud: PROPFIND-Antworten lesen, App-Passwort im Anmeldespeicher des Systems
+quick-xml = "0.42"
+keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
 getrandom = "0.3"
 
 # Papierkorb des Betriebssystems (Windows, macOS, Linux/freedesktop)

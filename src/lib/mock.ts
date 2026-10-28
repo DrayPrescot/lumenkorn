@@ -324,6 +324,13 @@ function withCount(p: Project): Project {
 
 let mockLearnStyle = true;
 let mockMapEnabled = true;
+/** Ereignisse der Attrappe (sonst sendet nur das Backend welche) */
+const mockListeners = new Map<string, Set<(p: unknown) => void>>();
+function mockEmit(event: string, payload: unknown) {
+  for (const cb of mockListeners.get(event) ?? []) cb(payload);
+}
+let mockNc: { server: string; loginName: string; baseFolder: string } | null = null;
+const mockShares = new Map<number, string>();
 let mockExportSubfolder = "Export";
 
 const delay = <T>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 30));
@@ -688,6 +695,46 @@ export const mock = {
         return out(["DSC01153.jpg", "DSC01154.jpg"]);
       case "export_images":
         throw t("Export ist nur in der App verfügbar.");
+      case "nc_status":
+        return out(mockNc);
+      case "nc_login_start":
+        setTimeout(() => {
+          mockNc = { server: String(a.server).replace(/\/+$/, ""), loginName: "anna", baseFolder: "Lumenkorn" };
+          mockEmit("nextcloud-login", { ok: true, error: null });
+        }, 1500);
+        return out(null);
+      case "nc_login_cancel":
+        return out(null);
+      case "nc_logout":
+        mockNc = null;
+        mockShares.clear();
+        return out(null);
+      case "nc_set_base_folder":
+        if (mockNc) mockNc.baseFolder = String(a.folder).trim() || "Lumenkorn";
+        return out(mockNc?.baseFolder ?? "Lumenkorn");
+      case "nc_project_info": {
+        const p = projects.find((x) => x.id === a.projectId);
+        return out({ files: 42, bytes: 42 * 3_400_000, folder: `${mockNc?.baseFolder ?? "Lumenkorn"}/${p?.name ?? "Projekt"}`, shareUrl: mockShares.get(a.projectId) ?? null });
+      }
+      case "nc_upload_project": {
+        const total = 42;
+        let done = 0;
+        const base = { uploaded: 0, unchanged: 0, removed: 0, failed: [] as string[], error: null, shareUrl: null };
+        const step = () => {
+          done += 3;
+          if (done < total) {
+            mockEmit("nextcloud-progress", { ...base, done, total, current: `P10${String(100 + done)}.jpg`, uploaded: done, finished: false });
+            setTimeout(step, 120);
+          } else {
+            const url = a.options.share ? "https://cloud.example.org/s/k7Qm2xPa9" : null;
+            if (url) mockShares.set(a.projectId, url);
+            else mockShares.delete(a.projectId);
+            mockEmit("nextcloud-progress", { ...base, done: total, total, current: null, uploaded: 38, unchanged: 4, finished: true, shareUrl: url });
+          }
+        };
+        setTimeout(step, 100);
+        return out(null);
+      }
       case "meta_get_many":
         return out(images.filter((i) => a.ids.includes(i.id)).map(metaFor));
       case "meta_set":
@@ -814,8 +861,11 @@ export const mock = {
     throw t("Unbekannter Befehl {cmd}", { cmd });
   },
 
-  listen(_event: string, _cb: (p: unknown) => void) {
-    return Promise.resolve(() => {});
+  listen(event: string, cb: (p: unknown) => void) {
+    const set = mockListeners.get(event) ?? new Set();
+    set.add(cb);
+    mockListeners.set(event, set);
+    return Promise.resolve(() => set.delete(cb));
   },
 
   /** Grobe Annäherung der Entwicklung über SVG-Filter – nur fürs UI-Design im Browser. */

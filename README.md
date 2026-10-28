@@ -63,6 +63,11 @@ the catalog before you let Lumenkorn loose on your whole collection.
   (set, or shift for many photos), camera, lens, focal length, aperture, exposure time and ISO.
   Stored in the catalog and in an XMP sidecar (`photo.xmp`, or the existing `photo.ext.xmp`);
   sidecars from other programs are updated, not replaced, and the photo file stays untouched.
+- **Nextcloud:** right-click a project → "Zu Nextcloud hochladen …" uploads its exported photos to
+  a folder in your Nextcloud and shares it as a link (optionally with password and expiry date).
+  Uploading again only sends new and changed files and keeps the link. Connect under
+  Settings → Nextcloud: you log in in the browser and Lumenkorn gets its own app password, kept in
+  the Windows Credential Manager and revocable in Nextcloud at any time.
 - **Batch rename** (`F2`): a pattern such as `{yyyy}{mm}{dd}_{hh}{min}{ss}_{n}` with date, time,
   number, camera, lens, folder and the old name. The preview lists every new name and conflicts;
   nothing is overwritten, XMP sidecars follow, RAW+JPEG pairs keep one name.
@@ -449,6 +454,9 @@ RANSAC.
   100 m and bundled: one request covers all photos inside the same town or village. Everything else
   stays local. **Settings → General → Map and place names** switches all of this off; then nothing
   is sent to OpenStreetMap (the map in the photo album still works, it is built in).
+- Nextcloud: only after you connect under Settings → Nextcloud, and only to the server you
+  enter. Uploads go there when you start them for a project; the app password is kept in the
+  system's credential store (Windows Credential Manager), not in the data folder.
 - A log file (`lumenkorn.log`) in the data folder records errors and what the AI did.
   Before risky native steps (loading a GPU runtime, opening a model) Lumenkorn leaves a marker
   file. If the app crashes there, the next start switches the cause off and explains why.
@@ -575,7 +583,9 @@ The same list is shown in the app: click ⓘ (**About Lumenkorn**) at the bottom
 | [walkdir](https://github.com/BurntSushi/walkdir) | folder scanning | MIT or Unlicense |
 | [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) | content hashes for moved files | CC0-1.0 or Apache-2.0 |
 | [trash](https://github.com/Byron/trash-rs) | moving files to the system trash | MIT |
-| [ureq](https://github.com/algesten/ureq) | model downloads | MIT or Apache-2.0 |
+| [ureq](https://github.com/algesten/ureq) | model downloads, map, Nextcloud | MIT or Apache-2.0 |
+| [quick-xml](https://github.com/tafia/quick-xml) | XMP sidecars, Nextcloud (WebDAV) | MIT |
+| [keyring](https://github.com/open-source-cooperative/keyring-rs) | Nextcloud app password in the system credential store | MIT or Apache-2.0 |
 | [tiny_http](https://github.com/tiny-http/tiny-http) | interface for AI agents (MCP) | MIT or Apache-2.0 |
 | [serde](https://github.com/serde-rs/serde), [serde_json](https://github.com/serde-rs/json) | settings, edits, IPC | MIT or Apache-2.0 |
 | [RustCrypto sha2](https://github.com/RustCrypto/hashes) | download checksums | MIT or Apache-2.0 |

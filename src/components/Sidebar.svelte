@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, faceUrl, isTauri, pickFolder, type FolderNode, type Person, type Root } from "../lib/api";
+  import { api, faceUrl, isTauri, pickFolder, type FolderNode, type Person, type Project, type Root } from "../lib/api";
   import { lib, topFolders } from "../lib/store.svelte";
   import { t, tc } from "../lib/i18n";
   import { withKey } from "../lib/keymap.svelte";
@@ -8,6 +8,7 @@
   import Icon from "./Icon.svelte";
   import PathDialog from "./PathDialog.svelte";
   import SettingsDialog, { type SettingsPage } from "./SettingsDialog.svelte";
+  import NextcloudDialog from "./NextcloudDialog.svelte";
   import AboutDialog from "./AboutDialog.svelte";
 
   let platform = $state("");
@@ -25,6 +26,19 @@
   let newProject = $state<string | null>(null);
   // `paths`: mehrere gewählte Ordner (Strg-/Umschalt-Klick), sonst nur `node`
   let menu = $state<{ x: number; y: number; node: FolderNode; root?: Root; paths: string[] } | null>(null);
+  /** Kontextmenü eines Projekts und offener Nextcloud-Dialog */
+  let projMenu = $state<{ x: number; y: number; project: Project } | null>(null);
+  let ncProject = $state<Project | null>(null);
+
+  async function uploadProject(p: Project) {
+    projMenu = null;
+    const st = await api.ncStatus().catch(() => null);
+    if (st) ncProject = p;
+    else {
+      lib.notify(t("Zuerst mit Nextcloud verbinden"));
+      settingsOpen = "nextcloud";
+    }
+  }
   let menuEl = $state<HTMLDivElement | undefined>();
   // Im Fenster halten: nach dem Öffnen ausmessen (die Höhe hängt von der
   // Zahl der Projekte ab), unten zu wenig Platz → nach oben schieben
@@ -195,7 +209,10 @@
 {/snippet}
 
 <svelte:window
-  onclick={() => (menu = null)}
+  onclick={() => {
+    menu = null;
+    projMenu = null;
+  }}
   onkeydown={(e) => {
     if (e.key !== "Escape") return;
     if (menu) menu = null;
@@ -275,6 +292,12 @@
             class:active={lib.isScope({ type: "project", id: p.id })}
             onclick={() => lib.setScope({ type: "project", id: p.id })}
             ondblclick={() => (renaming = p.id)}
+            oncontextmenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              menu = null;
+              projMenu = { x: e.clientX, y: e.clientY, project: p };
+            }}
             title={t("{n} Ordner. Doppelklick zum Umbenennen.", { n: String(p.folders.length) })}
           >
             <Icon name="stack" size={15} />
@@ -444,6 +467,23 @@
       <p class="menu-note">{t("Dateien auf der Platte bleiben erhalten.")}</p>
     {/if}
   </div>
+{/if}
+
+{#if projMenu}
+  {@const pm = projMenu}
+  <div class="menu" role="menu" tabindex="-1" style:left="{pm.x}px" style:top="{pm.y}px" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
+    <div class="menu-title">{pm.project.name}</div>
+    <button role="menuitem" onclick={() => uploadProject(pm.project)}>
+      <Icon name="cloud" size={14} /> {t("Zu Nextcloud hochladen …")}
+    </button>
+    <button role="menuitem" onclick={() => { projMenu = null; renaming = pm.project.id; }}>
+      <Icon name="stack" size={14} /> {t("Umbenennen")}
+    </button>
+  </div>
+{/if}
+
+{#if ncProject}
+  <NextcloudDialog project={ncProject} onclose={() => (ncProject = null)} />
 {/if}
 
 {#if settingsOpen}

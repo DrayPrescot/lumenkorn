@@ -14,6 +14,7 @@ mod mcp;
 mod memory;
 mod merge;
 mod meta;
+mod nextcloud;
 mod people;
 mod protocol;
 mod rename;
@@ -236,6 +237,13 @@ pub fn run() {
             style::style_status,
             settings::app_settings,
             settings::app_set_settings,
+            nextcloud::nc_status,
+            nextcloud::nc_login_start,
+            nextcloud::nc_login_cancel,
+            nextcloud::nc_logout,
+            nextcloud::nc_set_base_folder,
+            nextcloud::nc_project_info,
+            nextcloud::nc_upload_project,
             style::style_reset,
             commands::app_info,
             commands::open_url,
