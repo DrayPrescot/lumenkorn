@@ -30,6 +30,13 @@ updates:
       time: "05:00"
       timezone: Europe/Berlin
     open-pull-requests-limit: 10
+    ignore:
+      # TypeScript 7 (Neuentwicklung in Go) hat die bisherige Compiler-
+      # Schnittstelle nicht mehr, und svelte-check verlangt TypeScript 5 oder 6.
+      # Erst anheben, wenn svelte-check TypeScript 7 unterstützt (seine
+      # peerDependencies); Updates innerhalb von 6.x kommen weiter.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       npm-patch:
         update-types: [patch]
