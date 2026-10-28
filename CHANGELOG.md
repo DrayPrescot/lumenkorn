@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.27] – 2026-10-28
+
 ### Added
 - Culling assistant (right-click a folder or project → "Aussortieren …"): suggests photos to reject. That covers the
   weaker shots of a burst (the best 3 to 5 stay, depending on its size), blurry photos, closed
