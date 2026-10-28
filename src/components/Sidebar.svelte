@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { api, faceUrl, isTauri, pickFolder, type FolderNode, type Person, type Project, type Root } from "../lib/api";
   import { lib, topFolders } from "../lib/store.svelte";
+  import { album } from "../lib/album.svelte";
   import { t, tc } from "../lib/i18n";
   import { withKey } from "../lib/keymap.svelte";
   import FolderTree from "./FolderTree.svelte";
@@ -55,6 +56,13 @@
   /** Kontextmenü eines Projekts und offener Nextcloud-Dialog */
   let projMenu = $state<{ x: number; y: number; project: Project } | null>(null);
   let ncProject = $state<Project | null>(null);
+
+  /** Gespeichertes Album eines Projekts öffnen (Bereich wechselt mit) */
+  function openAlbum(p: Project) {
+    lib.mode = "library";
+    lib.setScope({ type: "project", id: p.id });
+    album.open({ type: "project", id: p.id }, p.name);
+  }
 
   async function uploadProject(p: Project) {
     projMenu = null;
@@ -317,8 +325,10 @@
             class="item"
             class:active={lib.isScope({ type: "project", id: p.id })}
             onclick={(e) => {
-              // Klick auf die Wolke: Nextcloud-Dialog mit dem Link
-              if ((e.target as Element).closest(".shared")) uploadProject(p);
+              // Klick auf die Wolke: Nextcloud-Dialog mit dem Link; aufs Buch: das Album
+              const target = e.target as Element;
+              if (target.closest(".shared")) uploadProject(p);
+              else if (target.closest(".album")) openAlbum(p);
               else lib.setScope({ type: "project", id: p.id });
             }}
             ondblclick={() => (renaming = p.id)}
@@ -332,6 +342,9 @@
           >
             <Icon name="stack" size={15} />
             <span>{p.name}</span>
+            {#if album.projects[p.id]}
+              <span class="album" title={t("Fotoalbum vorhanden – Klick öffnet es")}><Icon name="book" size={14} /></span>
+            {/if}
             {#if lib.ncShared[p.id]}
               <span class="shared" title={t("In Nextcloud geteilt: {url}", { url: lib.ncShared[p.id] })}><Icon name="cloud" size={14} /></span>
             {/if}
@@ -683,7 +696,8 @@
     width: 14px;
     text-align: center;
   }
-  .shared {
+  .shared,
+  .album {
     display: inline-flex;
     cursor: pointer;
   }

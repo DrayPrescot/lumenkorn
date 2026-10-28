@@ -15,6 +15,7 @@
 //! Bibliothek, funktioniert Lumenkorn weiter – nur ohne KI.
 
 pub mod accel;
+pub mod animals;
 pub mod clip;
 pub mod denoise;
 mod error;

@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- AI keywords name animals from coarse to fine, e.g. Mammal → Monkey → Gorilla or Insect →
+  Beetle → Ladybird (about 300 animals, German and English). The same CLIP model decides level by
+  level and stops where it is unsure, so a blue tit may only get "Bird". Photos analysed before
+  get the animal keywords once in the background from their stored vectors; other keywords are
+  not touched. Search by content understands the animal names too.
+- A book icon next to projects that have a photo album; clicking it opens the album.
+- People: each group shows at most 200 people per page, with page buttons beyond that.
+
 ## [1.0.28] – 2026-10-28
 
 ### Added

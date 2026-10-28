@@ -427,7 +427,7 @@ the same time.
 
 | Feature | Model | What Lumenkorn does with it |
 |---|---|---|
-| Keywords, search by content | CLIP ViT-B/32 | Compares each photo with a vocabulary of German and English terms in five groups (place, subject, light, weather, style). Search turns your text into the same kind of vector. |
+| Keywords, search by content | CLIP ViT-B/32 | Compares each photo with a vocabulary of German and English terms in five groups (place, subject, light, weather, style), and with about 300 animals from class to species (Mammal → Monkey → Gorilla); it goes only as deep as it is sure. Search turns your text into the same kind of vector. |
 | Subject mask | IS-Net (DIS) | Predicts the main subject. |
 | Object mask | Segment Anything ViT-B | Turns your clicks into a mask; the image embedding is computed once per photo. |
 | Sky mask | skyseg (U²-Net) | Predicts the sky. Uncertain edges, such as tree tops, are then decided by comparing each pixel with the colors of nearby sure sky and sure foreground. Without the model a color-based rule set is used. |

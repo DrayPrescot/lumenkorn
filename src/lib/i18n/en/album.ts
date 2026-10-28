@@ -132,6 +132,7 @@ export default {
   "Berge": "Mountains",
   "Flüsse und Seen": "Rivers and lakes",
   "Mitgeliefert": "Included",
+  "Fotoalbum vorhanden – Klick öffnet es": "Photo album available – click to open it",
   "{name} (nicht installiert)": "{name} (not installed)",
   "Schriften des Systems werden gesucht …": "Looking for system fonts…",
   "Schriften des Systems": "System fonts",

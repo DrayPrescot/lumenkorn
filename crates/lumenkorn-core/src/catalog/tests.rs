@@ -173,6 +173,42 @@ mod search_tests {
         ids
     }
 
+    /// Nachgetragene KI-Schlagworte (Tierarten) ergänzen nur: vorhandene
+    /// KI- und eigene Schlagworte bleiben, die Suche findet die neuen.
+    #[test]
+    fn added_ai_tags_keep_existing_ones() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let ids = tests_support::insert_dummy_images(&mut cat, 3);
+        let (a, b, c) = (ids[0], ids[1], ids[2]);
+        cat.save_ai_result(a, "m", &[1, 2, 3, 4], &[("Wiese".into(), 0.5)])
+            .unwrap();
+        cat.save_ai_result(c, "m", &[5, 6, 7, 8], &[]).unwrap();
+        cat.add_tag(a, "Urlaub", TagSource::Manual, None).unwrap();
+        // Seitenweise: nur Fotos mit Embedding, aufsteigend, ab `after`
+        let page: Vec<i64> = cat
+            .embeddings_after("m", 0, 10)
+            .unwrap()
+            .into_iter()
+            .map(|r| r.0)
+            .collect();
+        assert_eq!(page, vec![a, c]);
+        assert_eq!(cat.embeddings_after("m", a, 10).unwrap()[0].0, c);
+        assert!(cat.embeddings_after("m", c, 10).unwrap().is_empty());
+        assert!(cat.embeddings_after("anders", 0, 10).unwrap().is_empty());
+        cat.add_ai_tags(&[(a, vec![("Vogel".into(), 0.9), ("Amsel".into(), 0.4)])])
+            .unwrap();
+        let mut names: Vec<String> = cat
+            .image_tags(a)
+            .unwrap()
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        names.sort();
+        assert_eq!(names, ["Amsel", "Urlaub", "Vogel", "Wiese"]);
+        assert_eq!(hits(&cat, "Amsel"), vec![a]);
+        assert!(cat.image_tags(b).unwrap().is_empty());
+    }
+
     #[test]
     fn index_follows_every_change() {
         let mut cat = Catalog::open_in_memory().unwrap();
@@ -254,6 +290,9 @@ mod search_tests {
         cat.save_ai_result(b, "m", &[0, 1], &tags).unwrap();
         cat.save_ai_result(b, "m", &[0, 1], &tags[..1]).unwrap();
         exact(&cat, "save_ai_result");
+        cat.add_ai_tags(&[(c, vec![("vogel".to_string(), 0.9)])])
+            .unwrap();
+        exact(&cat, "add_ai_tags");
 
         // Personen
         let e = |k: usize| {

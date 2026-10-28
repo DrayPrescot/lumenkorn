@@ -5,6 +5,7 @@
   import { lib } from "../lib/store.svelte";
   import Icon from "./Icon.svelte";
   import PersonName from "./PersonName.svelte";
+  import Pager from "./Pager.svelte";
   import { isTyping } from "../lib/keys";
   import { onMount, untrack } from "svelte";
   import { t } from "../lib/i18n";
@@ -20,6 +21,20 @@
   /** Einzelne Gesichter (Gruppen aus nur einem Gesicht) zunächst ausblenden */
   let showSmall = $state(false);
   const otherGroups = $derived(showSmall ? groups : groups.filter((g) => g.faceCount >= 2));
+
+  // --- Seiten: je Abschnitt höchstens PAGE_SIZE Karten -------------------------
+  /** Karten pro Abschnitt und Seite (hält die Oberfläche bei großen Bibliotheken flott) */
+  const PAGE_SIZE = 200;
+  /** Aktuelle Seite (ab 0) je Abschnitt, Schlüssel wie bei `lib.collapsed` */
+  let pageOf = $state<Record<string, number>>({});
+  const pageCount = (n: number) => Math.max(1, Math.ceil(n / PAGE_SIZE));
+  /** Seite des Abschnitts, begrenzt auf die letzte (wenn der Abschnitt schrumpft) */
+  const curPage = (key: string, n: number) => Math.min(Math.max(0, pageOf[key] ?? 0), pageCount(n) - 1);
+  const pageItems = <T,>(list: T[], key: string) => {
+    if (list.length <= PAGE_SIZE) return list;
+    const start = curPage(key, list.length) * PAGE_SIZE;
+    return list.slice(start, start + PAGE_SIZE);
+  };
 
   // --- Personengruppen (Familie, Freunde …) ---------------------------------
   const ungrouped = $derived(named.filter((p) => p.groupId === null || !lib.personGroups.some((g) => g.id === p.groupId)));
@@ -307,6 +322,7 @@
     {#each lib.personGroups as g (g.id)}
       {@const members = named.filter((p) => p.groupId === g.id)}
       {@const open = !lib.collapsed[`pgroup:${g.id}`]}
+      {@const pkey = `pgroup:${g.id}`}
       <section
         class="pgroup"
         class:drop={dropTarget === g.id}
@@ -348,12 +364,13 @@
         </h3>
         {#if open}
           <div class="cards">
-            {#each members as p (p.id)}
+            {#each pageItems(members, pkey) as p (p.id)}
               {@render personCard(p)}
             {:else}
               <p class="muted hint">{t("Noch leer – Personen hierher ziehen oder an der Karte über das Ordnersymbol zuordnen.")}</p>
             {/each}
           </div>
+          {@render pager(pkey, members.length)}
         {/if}
       </section>
     {/each}
@@ -378,12 +395,13 @@
         </h3>
         {#if open}
           <div class="cards">
-            {#each ungrouped as p (p.id)}
+            {#each pageItems(ungrouped, "pgroup:other") as p (p.id)}
               {@render personCard(p)}
             {:else}
               <p class="muted hint">{t("Hierher ziehen, um eine Person aus ihrer Gruppe zu nehmen.")}</p>
             {/each}
           </div>
+          {@render pager("pgroup:other", ungrouped.length)}
         {/if}
       </section>
     {/if}
@@ -403,12 +421,13 @@
       </h3>
       {#if showOther}
         <div class="cards">
-          {#each otherGroups as p (p.id)}
+          {#each pageItems(otherGroups, "unnamed") as p (p.id)}
             {@render groupCard(p)}
           {:else}
             <p class="muted hint">{t("Nur einzelne Gesichter – Häkchen oben zeigt sie.")}</p>
           {/each}
         </div>
+        {@render pager("unnamed", otherGroups.length)}
       {/if}
     {/if}
     <datalist id="person-names">
@@ -416,6 +435,12 @@
     </datalist>
   {/if}
 </div>
+
+{#snippet pager(key: string, n: number)}
+  {#if n > PAGE_SIZE}
+    <Pager page={curPage(key, n)} pages={pageCount(n)} onpage={(i) => (pageOf[key] = i)} />
+  {/if}
+{/snippet}
 
 {#snippet personCard(p: Person)}
   <div class="card" role="group" aria-label={p.name} draggable="true" ondragstart={(e) => dragStart(e, p)} ondragend={() => ((dropTarget = undefined), (dragging = false))}>

@@ -341,6 +341,13 @@ neutralen Option, damit nicht jedes Foto irgendein „Wetter“ bekommt. KI-Schl
 umrandet und lassen sich entfernen; eigene Schlagworte werden nie überschrieben. Das Vokabular steht in
 `crates/lumenkorn-ai/src/vocab.rs`.
 
+Tiere bekommen Schlagworte von grob nach fein, etwa Säugetier → Affe → Gorilla oder Insekt → Käfer →
+Marienkäfer (rund 300 Tiere, `crates/lumenkorn-ai/src/animals.rs`). CLIP vergleicht das Foto mit allen
+Arten und Gruppen; eine Gruppe zählt mit ihren Arten zusammen, und vergeben wird nur, was sicher genug
+ist – eine Blaumeise bekommt deshalb mitunter nur „Vogel“. Schon analysierte Fotos bekommen die
+Tierarten einmalig im Hintergrund aus ihren gespeicherten Vektoren; andere Schlagworte bleiben dabei
+unberührt. Die Inhaltssuche versteht die Tiernamen ebenfalls („Blaumeise“).
+
 Für die Inhaltssuche den Schalter „KI“ im Suchfeld anklicken und z. B. „Hund am Strand“ eingeben.
 Deutsche Wörter aus dem Vokabular werden für CLIP ins Englische übertragen; englische Beschreibungen
 funktionieren am besten. Gesucht wird innerhalb des gewählten Ordners, Projekts oder der Person.

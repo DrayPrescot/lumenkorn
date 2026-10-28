@@ -36,6 +36,8 @@ export default {
   "Person löschen": "Delete person",
   "„{name}“ löschen? Die Gesichter werden wieder unbenannt.": "Delete “{name}”? The faces will become unnamed again.",
   "Einzelne Gesichter zeigen ({n})": "Show single faces ({n})",
+  "Weiter": "Next",
+  "Seite {n} von {total}": "Page {n} of {total}",
   "Sonstige": "Other",
   "„{name}“ zugeordnet": "Assigned to “{name}”",
   "Klicken, um einen Namen zu geben oder einer Person zuzuordnen": "Click to name this group or assign it to a person",

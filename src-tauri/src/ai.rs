@@ -6,11 +6,12 @@ use crate::memory::Slot;
 use crate::worker::Job;
 use crate::{AppState, blocking};
 use lumenkorn_ai::accel::{self, Backend, Preference};
+use lumenkorn_ai::animals::AnimalTagger;
 use lumenkorn_ai::index::{from_bytes, to_bytes};
 use lumenkorn_ai::models::{self, Component, Status};
 use lumenkorn_ai::parts;
 use lumenkorn_ai::segment::{self, Sam, SamEmbedding, SkyModel, SubjectModel};
-use lumenkorn_ai::{Clip, EmbeddingIndex, Tagger, runtime, vocab};
+use lumenkorn_ai::{Clip, EmbeddingIndex, TagSuggestion, Tagger, runtime, vocab};
 use lumenkorn_core::LockExt;
 use lumenkorn_core::maskstore::MaskFiles;
 use lumenkorn_core::thumbs::Variant;
@@ -28,6 +29,13 @@ use tauri::{AppHandle, Emitter, Manager, State};
 /// eine andere Kennung, damit nie Vektoren verschiedener Modelle gemischt werden.
 const MODEL_KEY: &str = models::MODEL_ID;
 const BATCH: usize = 16;
+/// Stand der Tierart-Schlagworte. Steigt er, bekommen schon analysierte Fotos
+/// die Tierarten einmal nachträglich aus ihren gespeicherten Embeddings.
+const ANIMAL_TAGS_VERSION: u32 = 1;
+/// Datei im KI-Ordner mit dem Stand, bis zu dem nachgetragen wurde
+const ANIMAL_TAGS_FILE: &str = "tierarten.json";
+/// Fotos je Durchgang beim Nachtragen (nur Rechnen auf gespeicherten Vektoren)
+const ANIMAL_BACKFILL_BATCH: usize = 500;
 /// Höchstens so viele Treffer der semantischen Suche, bevor relativ zum besten
 /// gefiltert wird: deckt auch große Ordner ab, hält das Sortieren aber billig.
 const SEARCH_MAX_HITS: usize = 2000;
@@ -43,6 +51,11 @@ pub struct AiState {
     /// Letzter Ladefehler, damit nicht jeder Stapel es erneut versucht.
     load_error: Mutex<Option<String>>,
     index: RwLock<Option<EmbeddingIndex>>,
+    /// Tierarten (Text-Embeddings der Taxonomie), beim ersten Verschlagworten
+    /// berechnet – nicht schon beim Laden von CLIP, das die Suche ausbremst
+    animals: Mutex<Option<Arc<AnimalTagger>>>,
+    /// Nachtragen der Tierarten: zuletzt bearbeitete Bild-ID
+    animal_backfill: Mutex<i64>,
     /// Letzte Benutzung des Suchindex; der Hausmeister gibt ihn danach frei
     index_used: Mutex<std::time::Instant>,
     pub(crate) downloading: AtomicBool,
@@ -269,6 +282,8 @@ impl AiState {
             loading: Mutex::new(()),
             load_error: Mutex::new(None),
             index: RwLock::new(None),
+            animals: Mutex::new(None),
+            animal_backfill: Mutex::new(0),
             index_used: Mutex::new(std::time::Instant::now()),
             downloading: AtomicBool::new(false),
             downloads: Mutex::new(Downloads::default()),
@@ -553,6 +568,77 @@ struct AiProgress {
 }
 
 /// Analysiert einen Stapel Bilder. `Ok(true)`, wenn noch weitere ausstehen.
+/// Schlagworte zusammenführen: gleiche Namen (z. B. „Vogel“ als Motiv und als
+/// Tierklasse) einmal, mit der höheren Sicherheit.
+fn merge_tags(found: Vec<TagSuggestion>) -> Vec<(String, f64)> {
+    let mut out: Vec<(String, f64)> = Vec::with_capacity(found.len());
+    for t in found {
+        let c = t.confidence as f64;
+        match out.iter_mut().find(|(n, _)| *n == t.tag) {
+            Some(e) => e.1 = e.1.max(c),
+            None => out.push((t.tag, c)),
+        }
+    }
+    out
+}
+
+/// Tierarten-Erkennung (Text-Embeddings der Taxonomie), einmal berechnet.
+/// `None`, wenn das nicht gelingt – dann gibt es eben keine Tierarten.
+fn animal_tagger(state: &AppState, loaded: &Loaded) -> Option<Arc<AnimalTagger>> {
+    let mut slot = state.ai.animals.locked();
+    if slot.is_none() {
+        let t = std::time::Instant::now();
+        match AnimalTagger::new(&loaded.clip) {
+            Ok(a) => {
+                log::info!("Tierarten vorbereitet in {:.2?}", t.elapsed());
+                *slot = Some(Arc::new(a));
+            }
+            Err(e) => log::warn!("Tierarten nicht verfügbar: {e}"),
+        }
+    }
+    slot.clone()
+}
+
+/// Tierarten für Fotos nachtragen, die vor ihrer Einführung analysiert
+/// wurden – aus den gespeicherten Embeddings, ohne die Fotos neu zu laden.
+/// Ergänzt nur Schlagworte, ersetzt keine. `true`: es gibt noch mehr.
+fn animal_backfill(state: &AppState) -> Result<bool, Error> {
+    let path = models::ai_dir(&state.data_dir).join(ANIMAL_TAGS_FILE);
+    let done: u32 = lumenkorn_develop::fsutil::load_json_or_default(&path);
+    if done >= ANIMAL_TAGS_VERSION {
+        return Ok(false);
+    }
+    let after = *state.ai.animal_backfill.locked();
+    let rows = state
+        .catalog
+        .locked()
+        .embeddings_after(MODEL_KEY, after, ANIMAL_BACKFILL_BATCH)?;
+    let Some(&(last, _)) = rows.last() else {
+        // Fertig: Stand merken
+        if let Err(e) = lumenkorn_develop::fsutil::save_json(&path, &ANIMAL_TAGS_VERSION) {
+            log::warn!("{ANIMAL_TAGS_FILE} nicht gespeichert: {e}");
+        }
+        log::info!("Tierarten für bereits analysierte Fotos nachgetragen");
+        return Ok(false);
+    };
+    let loaded = ensure_loaded(state)?;
+    let Some(animals) = animal_tagger(state, &loaded) else {
+        return Ok(false);
+    };
+    let items: Vec<(i64, Vec<(String, f64)>)> = rows
+        .iter()
+        .filter_map(|(id, bytes)| {
+            let tags = merge_tags(animals.tag(&from_bytes(bytes)));
+            (!tags.is_empty()).then_some((*id, tags))
+        })
+        .collect();
+    if !items.is_empty() {
+        state.catalog.locked().add_ai_tags(&items)?;
+    }
+    *state.ai.animal_backfill.locked() = last;
+    Ok(true)
+}
+
 pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
     let state = app.state::<AppState>();
     if !state.ai.settings.locked().auto_tag || state.ai.downloading.load(Ordering::Relaxed) {
@@ -563,9 +649,11 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
     }
     let ids = state.catalog.locked().pending_ai(BATCH)?;
     if ids.is_empty() {
-        return Ok(false);
+        // Alles analysiert: ggf. Tierarten für ältere Analysen nachtragen
+        return animal_backfill(&state);
     }
     let loaded = ensure_loaded(&state)?;
+    let animals = animal_tagger(&state, &loaded);
 
     // Thumbnails (512 px) reichen für CLIP (224 px) völlig.
     let mut images = Vec::new();
@@ -608,12 +696,11 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
         loaded.clip.embed_images(&images).map_err(err)?
     };
     for (id, emb) in ok_ids.iter().zip(&embeddings) {
-        let tags: Vec<(String, f64)> = loaded
-            .tagger
-            .tag(emb)
-            .into_iter()
-            .map(|t| (t.tag, t.confidence as f64))
-            .collect();
+        let mut found = loaded.tagger.tag(emb);
+        if let Some(a) = &animals {
+            found.extend(a.tag(emb));
+        }
+        let tags = merge_tags(found);
         state
             .catalog
             .locked()

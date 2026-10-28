@@ -49,11 +49,38 @@ function store(key: string, value: unknown) {
   }
 }
 
+/** Projekte mit gespeichertem Album (aus den Schlüsseln im Speicher) */
+function savedAlbumProjects(): Record<number, true> {
+  const out: Record<number, true> = {};
+  try {
+    const prefix = albumKey({ type: "project", id: 0 }).replace(/0\}$/, "");
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      const id = k?.startsWith(prefix) ? Number(k.slice(prefix.length, -1)) : NaN;
+      if (Number.isInteger(id)) out[id] = true;
+    }
+  } catch {
+    // ohne Speicher keine Symbole
+  }
+  return out;
+}
+
 /** Gewählt: ein Foto (`id`), ein Text (`text`) oder nur die Seite */
 export type AlbumSelection = { page: number; id: number | null; text?: string };
 
 class AlbumStore {
   state = $state<AlbumState | null>(null);
+  /** Projekte, für die ein Album gespeichert ist (Symbol in der Seitenleiste) */
+  projects = $state<Record<number, true>>(savedAlbumProjects());
+
+  /** Symbol des Projekts nachführen, wenn sein Album gespeichert bzw. verworfen wird */
+  #markProject(scope: Scope, has: boolean) {
+    if (scope.type !== "project" || !!this.projects[scope.id] === has) return;
+    const next = { ...this.projects };
+    if (has) next[scope.id] = true;
+    else delete next[scope.id];
+    this.projects = next;
+  }
   /** Einstellungsdialog offen (mit dem Bereich, für den erstellt wird) */
   dialog = $state<{ scope: Scope; title: string } | null>(null);
   /** Fortschritt beim Auswählen (Vorschauen messen) */
@@ -170,7 +197,10 @@ class AlbumStore {
   /** Album verwerfen (gespeicherte Fassung löschen) */
   discard() {
     clearTimeout(this.#saveTimer);
-    if (this.state) store(albumKey(this.state.scope), null);
+    if (this.state) {
+      store(albumKey(this.state.scope), null);
+      this.#markProject(this.state.scope, false);
+    }
     this.state = null;
     this.close();
   }
@@ -185,7 +215,10 @@ class AlbumStore {
   #saveNow() {
     clearTimeout(this.#saveTimer);
     this.#saveTimer = undefined;
-    if (this.state) store(albumKey(this.state.scope), $state.snapshot(this.state));
+    if (this.state) {
+      store(albumKey(this.state.scope), $state.snapshot(this.state));
+      this.#markProject(this.state.scope, true);
+    }
   }
 
   #edit(f: (a: AlbumState) => void) {

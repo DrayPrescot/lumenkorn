@@ -16,6 +16,47 @@ impl Catalog {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
+    /// Embeddings nach `after` (Bild-ID), aufsteigend, höchstens `limit` –
+    /// zum seitenweisen Durchgehen aller analysierten Fotos.
+    pub fn embeddings_after(
+        &self,
+        model: &str,
+        after: i64,
+        limit: usize,
+    ) -> Result<Vec<(i64, Vec<u8>)>> {
+        let mut st = self.conn.prepare_cached(
+            "SELECT e.image_id, e.vector FROM embeddings e JOIN images i ON i.id = e.image_id
+             WHERE e.model = ?1 AND e.image_id > ?2 AND i.missing = 0
+             ORDER BY e.image_id LIMIT ?3",
+        )?;
+        let rows = st.query_map(params![model, after, limit as i64], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// KI-Schlagworte ergänzen, ohne die vorhandenen zu ersetzen (z. B. neu
+    /// hinzugekommene Tierarten für schon analysierte Fotos).
+    pub fn add_ai_tags(&mut self, items: &[(i64, Vec<(String, f64)>)]) -> Result<()> {
+        self.with_tx(|tx| {
+            for (image_id, tags) in items {
+                for (name, confidence) in tags {
+                    tx.execute(
+                        "INSERT INTO tags (name) VALUES (?1) ON CONFLICT (name) DO NOTHING",
+                        [name],
+                    )?;
+                    tx.execute(
+                        "INSERT INTO image_tags (image_id, tag_id, source, confidence)
+                         SELECT ?1, id, 'ai', ?3 FROM tags WHERE name = ?2
+                         ON CONFLICT (image_id, tag_id) DO NOTHING",
+                        params![image_id, name, confidence],
+                    )?;
+                }
+            }
+            Ok(())
+        })
+    }
+
     /// (analysiert, gesamt) – für die Fortschrittsanzeige.
     pub fn ai_counts(&self) -> Result<(i64, i64)> {
         Ok(self.conn.query_row(
