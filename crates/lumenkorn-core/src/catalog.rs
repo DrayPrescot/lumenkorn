@@ -317,6 +317,10 @@ const MIGRATIONS: &[&str] = &[
         path        TEXT PRIMARY KEY,
         subfolders  INTEGER NOT NULL
     );",
+    // v28: `has_image_path` (Export überschreibt nie ein Foto) vergleicht
+    // ohne Groß-/Kleinschreibung; der Index auf `path` ist binär und hilft
+    // dabei nicht – ohne diesen lief je Zieldatei ein Durchgang über alle Fotos
+    "CREATE INDEX images_path_nocase ON images(path COLLATE NOCASE);",
 ];
 
 /// v24: Metadaten, die der Nutzer geändert hat (`imagemeta.rs`). Ein Eintrag
@@ -1480,8 +1484,9 @@ impl Catalog {
                     }
                 }
             }
+            let mut del = tx.prepare_cached("DELETE FROM images WHERE id = ?1")?;
             for id in ids {
-                tx.execute("DELETE FROM images WHERE id = ?1", [id])?;
+                del.execute([id])?;
             }
             Ok((faces, persons))
         })?;
@@ -2705,6 +2710,8 @@ mod migration_tests {
     const UNDO_V26: &str = "DROP TABLE exports;";
     /// Stand vor v27: keine Einstellungen je Ordner
     const UNDO_V27: &str = "DROP TABLE folder_options;";
+    /// Stand vor v28: kein Pfad-Index ohne Groß-/Kleinschreibung
+    const UNDO_V28: &str = "DROP INDEX images_path_nocase;";
 
     const UNDO_V24: &str = "DROP TRIGGER search_meta_ins; DROP TRIGGER search_meta_upd;
         DROP TRIGGER search_meta_del; DROP VIEW search_source; DROP TABLE image_meta;
@@ -2790,7 +2797,7 @@ mod migration_tests {
             cat.conn
                 .execute_batch(&format!(
                     // Stand vor v9 (und damit auch vor v10, v11) nachstellen
-                    "UPDATE images SET thumb_state = 1; {UNDO_V27} {UNDO_V26} {UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11}
+                    "UPDATE images SET thumb_state = 1; {UNDO_V28} {UNDO_V27} {UNDO_V26} {UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11}
                      DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
                      PRAGMA user_version = 8;"
                 ))
@@ -2915,6 +2922,26 @@ mod migration_tests {
         assert!(plan.contains("images_hash"), "{plan}");
     }
 
+    /// Die Prüfung beim Export, ob das Ziel ein Foto der Bibliothek ist, nutzt
+    /// einen Index (sonst ein Durchgang über alle Fotos je Zieldatei).
+    #[test]
+    fn path_lookup_ignoring_case_uses_index() {
+        let cat = Catalog::open_in_memory().unwrap();
+        // Die Unterabfrage steht in einer eigenen Zeile des Plans
+        let plans: Vec<String> = cat
+            .conn
+            .prepare("EXPLAIN QUERY PLAN SELECT EXISTS (SELECT 1 FROM images WHERE path = ?1 COLLATE NOCASE)")
+            .unwrap()
+            .query_map(["C:/a.jpg"], |r| r.get(3))
+            .unwrap()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap();
+        assert!(
+            plans.iter().any(|p| p.contains("images_path_nocase")),
+            "{plans:?}"
+        );
+    }
+
     /// v10: Gesichts-IDs werden nach dem Löschen der neuesten Gesichter nicht
     /// erneut vergeben – auch nicht für einen Katalog, der vor v10 entstand.
     #[test]
@@ -2937,7 +2964,7 @@ mod migration_tests {
             // Zustand vor v10 nachstellen: höchste ID bereits im Bestand
             cat.conn
                 .execute_batch(&format!(
-                    "{UNDO_V27} {UNDO_V26} {UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11} DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
+                    "{UNDO_V28} {UNDO_V27} {UNDO_V26} {UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11} DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
                      PRAGMA user_version = 9;"
                 ))
                 .unwrap();

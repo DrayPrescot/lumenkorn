@@ -111,7 +111,12 @@ impl ThumbCache {
     }
 
     pub fn read(&self, variant: Variant, id: i64) -> Option<Vec<u8>> {
-        std::fs::read(self.path_for(variant, id)).ok()
+        let p = self.path_for(variant, id);
+        let bytes = std::fs::read(&p).ok()?;
+        if variant == Variant::Preview {
+            mark_viewed(&p);
+        }
+        Some(bytes)
     }
 
     pub fn write(&self, variant: Variant, id: i64, jpeg: &[u8]) -> Result<()> {
@@ -119,14 +124,9 @@ impl ThumbCache {
         if let Some(dir) = p.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        // Erst temporär schreiben, dann umbenennen: nie halbe Dateien im Cache.
-        // Eindeutiger Name: Worker und Bildprotokoll können dasselbe Bild
-        // gleichzeitig schreiben (unter Windows schlägt sonst das Umbenennen fehl)
-        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let tmp = p.with_extension(format!("{}.{n}.tmp", std::process::id()));
-        std::fs::write(&tmp, jpeg)?;
-        std::fs::rename(tmp, p)?;
+        // Atomar mit eindeutigem Temp-Namen: Worker und Bildprotokoll können
+        // dasselbe Bild gleichzeitig schreiben, im Cache liegen nie halbe Dateien
+        lumenkorn_develop::fsutil::write_atomic(&p, jpeg)?;
         Ok(())
     }
 
@@ -489,6 +489,18 @@ pub fn decode_for_analysis(job: &ThumbJob, max: u32) -> Result<DynamicImage> {
             Ok(image::load_from_memory(&bytes)?)
         }
         Err(e) => Err(e),
+    }
+}
+
+/// Änderungszeit einer Großvorschau aufs Ansehen setzen (höchstens einmal am
+/// Tag): Beim Begrenzen des Caches gehen die am längsten nicht angesehenen.
+fn mark_viewed(p: &Path) {
+    const DAY: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
+    let old = std::fs::metadata(p)
+        .and_then(|m| m.modified())
+        .is_ok_and(|t| t.elapsed().is_ok_and(|e| e > DAY));
+    if old && let Ok(f) = std::fs::File::options().write(true).open(p) {
+        let _ = f.set_modified(std::time::SystemTime::now());
     }
 }
 

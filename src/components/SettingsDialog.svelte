@@ -7,7 +7,7 @@
   // im KI-Dialog und in der Fußzeile lag, dazu Ordner und Tastenkürzel.
   import { onMount } from "svelte";
   import { api, isTauri, pickFolder, type AppInfo } from "../lib/api";
-  import { lang, setLang, t } from "../lib/i18n";
+  import { lang, num, setLang, t } from "../lib/i18n";
   import { keymap } from "../lib/keymap.svelte";
   import { prefs } from "../lib/prefs.svelte";
   import { lib } from "../lib/store.svelte";
@@ -26,6 +26,9 @@
   let dialog = $state<HTMLDivElement>();
   let info = $state<AppInfo | null>(null);
   let importTarget = $state<string | null>(null);
+  /** Belegter Platz der Großvorschauen (Bytes) */
+  let cacheUsage = $state<number | null>(null);
+  const gb = (b: number) => `${num(b / 2 ** 30, { maximumFractionDigits: 1 })} GB`;
 
   const PAGES: { id: SettingsPage; icon: IconName; label: string }[] = [
     { id: "general", icon: "settings", label: t("Allgemein") },
@@ -43,6 +46,7 @@
     void lib.refreshAi();
     void lib.refreshPeople();
     api.appInfo().then((i) => (info = i)).catch(() => {});
+    api.previewCacheUsage().then((b) => (cacheUsage = b)).catch(() => {});
     api
       .importDefaults()
       .then((d) => (importTarget = d.settings.target ?? null))
@@ -144,6 +148,28 @@
             <p class="muted small">
               {t("Eingeschaltet lädt Lumenkorn Kartenbilder von OpenStreetMap, sucht dort Orte und ermittelt Ortsnamen zu den Aufnahmeorten (Koordinaten auf etwa 100 m gerundet). Ausgeschaltet geht nichts an OpenStreetMap: Die Karte ist ausgeblendet, GPS-Daten aus den Fotos und schon bekannte Ortsnamen bleiben, die Karte im Fotoalbum funktioniert weiter (sie ist im Programm enthalten).")}
             </p>
+          </div>
+          <div class="field">
+            <span class="label">{t("Vorschau-Cache")}</span>
+            <div class="row">
+              <label class="row">
+                {t("höchstens")}
+                <input
+                  class="gb"
+                  type="number"
+                  min="1"
+                  max="1000"
+                  step="1"
+                  value={lib.previewCacheGb}
+                  onchange={(e) => lib.setPreviewCacheGb(e.currentTarget.valueAsNumber)}
+                />
+                GB
+              </label>
+              {#if cacheUsage !== null}
+                <span class="muted small">{t("belegt: {size}", { size: gb(cacheUsage) })}</span>
+              {/if}
+            </div>
+            <p class="muted small">{t("Große Vorschauen für Einzelansicht und Entwickeln. Darüber hinaus löscht Lumenkorn die am längsten nicht angesehenen; sie entstehen bei Bedarf neu.")}</p>
           </div>
           {#if info}
             <div class="field">
@@ -376,6 +402,9 @@
   .seg .on {
     border-color: var(--accent);
     color: var(--accent);
+  }
+  .gb {
+    width: 72px;
   }
   .path {
     font-size: var(--step--1);

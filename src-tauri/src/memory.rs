@@ -25,10 +25,16 @@ const INTERACTIVE_IDLE: Duration = Duration::from_secs(3 * 60);
 const BACKGROUND_IDLE: Duration = Duration::from_secs(5 * 60);
 /// Vollbilder im Speicher (`protocol::release_full`) – Zoom/Vergleich vorbei
 const FULL_IDLE: Duration = Duration::from_secs(3 * 60);
+/// Der Suchindex der semantischen Suche (bis ~200 MB bei 100 000 Fotos) wird
+/// nach so langer Ruhe freigegeben und bei der nächsten Suche neu aufgebaut.
+const INDEX_IDLE: Duration = Duration::from_secs(10 * 60);
 const TICK: Duration = Duration::from_secs(30);
 /// Erstes Aufräumen des Datenordners nach dem Start, danach täglich
 const SWEEP_FIRST: Duration = Duration::from_secs(90);
 const SWEEP_EVERY: Duration = Duration::from_secs(24 * 3600);
+/// Vorschau-Cache zusätzlich stündlich begrenzen (beim Durchblättern vieler
+/// Fotos wächst er schnell)
+const TRIM_PREVIEWS_EVERY: Duration = Duration::from_secs(3600);
 
 #[derive(Clone, Copy)]
 pub enum Slot {
@@ -92,6 +98,7 @@ pub fn start_janitor(app: AppHandle) {
         .name("hausmeister".into())
         .spawn(move || {
             let mut next_sweep = Instant::now() + SWEEP_FIRST;
+            let mut next_trim = Instant::now() + TRIM_PREVIEWS_EVERY;
             loop {
                 std::thread::sleep(TICK);
                 // Ein Panic in einem Durchlauf darf den Hausmeister nicht beenden
@@ -107,6 +114,9 @@ pub fn start_janitor(app: AppHandle) {
                             Ok(_) => {}
                             Err(e) => log::warn!("Aufräumen des Datenordners: {e}"),
                         }
+                    } else if Instant::now() >= next_trim {
+                        next_trim = Instant::now() + TRIM_PREVIEWS_EVERY;
+                        crate::settings::trim_previews(&state);
                     }
                     let mut freed = Vec::new();
                     if state.usage.idle(Slot::Interactive) >= INTERACTIVE_IDLE {
@@ -120,6 +130,9 @@ pub fn start_janitor(app: AppHandle) {
                         if crate::people::release_models(&state) {
                             freed.push("Gesichter");
                         }
+                    }
+                    if crate::ai::release_index(&state, INDEX_IDLE) {
+                        freed.push("Suchindex");
                     }
                     let full = crate::protocol::release_full(FULL_IDLE);
                     if full {
@@ -172,6 +185,7 @@ pub fn sweep_data(state: &AppState) -> Result<(Swept, bool), lumenkorn_core::Err
         stem.parse::<i64>().is_ok_and(|id| live.faces.contains(&id))
     });
     swept += housekeeping::sweep_image_cache(state.cache.base(), &live.images, DERIVED);
+    crate::settings::trim_previews(state);
     state.catalog.locked().optimize()?;
     if swept.files > 0 {
         log::info!(

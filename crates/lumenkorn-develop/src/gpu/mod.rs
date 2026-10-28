@@ -321,7 +321,9 @@ struct Bufs {
     tmp: Buffer,
     y: Buffer,
     packed: Buffer,
-    staging: Buffer,
+    /// Rücklesepuffer, erst bei Bedarf in der nötigen Größe angelegt (8-Bit-
+    /// Vorschau 4 Byte je Pixel, Float-Export 16) und nur zum Vergrößern neu erstellt.
+    staging: Mutex<Option<(Buffer, u64)>>,
     used: u64,
 }
 
@@ -784,12 +786,7 @@ impl State {
             tmp: storage(device, "tmp", v4),
             y: storage(device, "helligkeit", f),
             packed: storage(device, "rgba8", f),
-            staging: device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("rücklesen"),
-                size: v4,
-                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }),
+            staging: Mutex::new(None),
             used: tick,
         });
         self.sets.len() - 1
@@ -1485,9 +1482,25 @@ impl Gpu {
                 b.outa = Some(result);
             }
             cx.run(P::Geom, u, b, img2d(out_w, out_h));
+            // Rücklesepuffer anlegen bzw. nur bei größerem Bedarf neu erstellen
+            let staging = {
+                let mut g = set.staging.lock().unwrap_or_else(|e| e.into_inner());
+                if g.as_ref().is_none_or(|(_, size)| *size < out_bytes) {
+                    *g = Some((
+                        self.device.create_buffer(&wgpu::BufferDescriptor {
+                            label: Some("rücklesen"),
+                            size: out_bytes,
+                            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                            mapped_at_creation: false,
+                        }),
+                        out_bytes,
+                    ));
+                }
+                g.as_ref().map(|(b, _)| b.clone()).expect("angelegt")
+            };
             cx.ops.push(Op::Copy {
                 from: result,
-                to: &set.staging,
+                to: &staging,
                 size: out_bytes,
             });
 
@@ -1498,7 +1511,7 @@ impl Gpu {
                 .filter(|o| matches!(o, Op::Run { .. }))
                 .count() as u64;
             debug_assert!(runs * self.uniform_stride <= *usize_);
-            self.submit(cx, ubuf, set, out_w, out_h, pack, oom, val)
+            self.submit(cx, ubuf, out_w, out_h, pack, oom, val)
         };
 
         if result.is_err() {
@@ -1523,7 +1536,6 @@ impl Gpu {
         &self,
         cx: Ctx<'_>,
         ubuf: &Buffer,
-        set: &Bufs,
         out_w: usize,
         out_h: usize,
         pack: bool,
@@ -1547,11 +1559,13 @@ impl Gpu {
         let mut i = 0;
         let mut slot = 0u32;
         let mut copy_size = 0;
+        let mut staging: Option<&Buffer> = None;
         while i < cx.ops.len() {
             match &cx.ops[i] {
                 Op::Copy { from, to, size } => {
                     enc.copy_buffer_to_buffer(from, 0, to, 0, *size);
                     copy_size = *size;
+                    staging = Some(to);
                     i += 1;
                 }
                 Op::Run { .. } => {
@@ -1599,7 +1613,8 @@ impl Gpu {
             return Err(fail(crate::i18n::tr_s("Grafikspeicher", "GPU memory"), e));
         }
 
-        let slice = set.staging.slice(0..copy_size);
+        let staging = staging.ok_or(crate::i18n::tr_s("Puffergröße", "buffer size"))?;
+        let slice = staging.slice(0..copy_size);
         let (tx, rx) = std::sync::mpsc::channel();
         slice.map_async(wgpu::MapMode::Read, move |r| {
             let _ = tx.send(r);
@@ -1643,7 +1658,7 @@ impl Gpu {
                 })
             }
         };
-        set.staging.unmap();
+        staging.unmap();
         Ok(out)
     }
 }

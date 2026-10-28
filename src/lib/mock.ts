@@ -334,6 +334,7 @@ let mockNc: { server: string; loginName: string; baseFolder: string } | null = n
 const mockShares = new Map<number, string>();
 let mockExportSubfolder = "Export";
 let mockIncludeSubfolders = true;
+let mockPreviewCacheGb = 5;
 const mockFolderOptions = new Map<string, boolean>();
 
 const delay = <T>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 30));
@@ -492,7 +493,9 @@ export const mock = {
           },
         });
       case "app_settings":
-        return out({ mapEnabled: mockMapEnabled, exportSubfolder: mockExportSubfolder, includeSubfolders: mockIncludeSubfolders });
+        return out({ mapEnabled: mockMapEnabled, exportSubfolder: mockExportSubfolder, includeSubfolders: mockIncludeSubfolders, previewCacheGb: mockPreviewCacheGb });
+      case "preview_cache_usage":
+        return out(1_840_000_000);
       case "folder_options":
         return out([...mockFolderOptions]);
       case "folder_set_subfolders":
@@ -508,7 +511,8 @@ export const mock = {
         }
         mockMapEnabled = a.settings?.mapEnabled ?? mockMapEnabled;
         mockIncludeSubfolders = a.settings?.includeSubfolders ?? mockIncludeSubfolders;
-        return out({ mapEnabled: mockMapEnabled, exportSubfolder: mockExportSubfolder, includeSubfolders: mockIncludeSubfolders });
+        mockPreviewCacheGb = a.settings?.previewCacheGb ?? mockPreviewCacheGb;
+        return out({ mapEnabled: mockMapEnabled, exportSubfolder: mockExportSubfolder, includeSubfolders: mockIncludeSubfolders, previewCacheGb: mockPreviewCacheGb });
       }
       case "style_reset":
         return out(null);
@@ -742,6 +746,7 @@ export const mock = {
         await new Promise((r) => setTimeout(r, 300));
         return out(a.camera === "SONY ILCE-7M4" ? { offsetS: 7 * 3600 + 4 * 60, matched: 31, photos: 34 } : null);
       case "import_cancel":
+      case "import_close":
         return out(null);
       case "ai_set_settings":
         mockLearnStyle = a.settings?.learnStyle ?? mockLearnStyle;

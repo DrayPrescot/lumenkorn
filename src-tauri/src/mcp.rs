@@ -65,16 +65,11 @@ fn config_path(data_dir: &Path) -> PathBuf {
 }
 
 fn load(data_dir: &Path) -> McpConfig {
-    std::fs::read_to_string(config_path(data_dir))
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    lumenkorn_develop::fsutil::load_json_or_default(&config_path(data_dir))
 }
 
 fn save(data_dir: &Path, c: &McpConfig) {
-    if let Ok(s) = serde_json::to_string_pretty(c)
-        && let Err(e) = std::fs::write(config_path(data_dir), s)
-    {
+    if let Err(e) = lumenkorn_develop::fsutil::save_json(&config_path(data_dir), c) {
         log::warn!("MCP-Einstellungen nicht gespeichert: {e}");
     }
 }

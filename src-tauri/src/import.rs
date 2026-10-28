@@ -420,3 +420,13 @@ pub fn import_cancel(app: AppHandle) {
         .cancel
         .store(true, Ordering::SeqCst);
 }
+
+/// Schließt den Import-Dialog: verwirft die eingelesene Quelle samt
+/// Vorschaubildern (außer während ein Import läuft, der braucht sie noch)
+#[tauri::command]
+pub fn import_close(app: AppHandle) {
+    let state = app.state::<AppState>();
+    if !state.import.running.load(Ordering::SeqCst) {
+        *state.import.session.locked() = None;
+    }
+}

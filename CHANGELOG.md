@@ -9,6 +9,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ### Added
 - Nextcloud upload: choose between the project's exports and all of its photos as originals
   (RAWs included, rejected photos left out). The choice is remembered per project.
+- Settings → General: a limit for the preview cache on disk (5 GB by default). Previews not
+  viewed for the longest time are deleted and rendered again when needed.
+
+### Changed
+- Long sessions use less memory: the search index for "search by content" is released after
+  10 minutes without use, import previews are freed when the dialog closes, and the GPU only
+  reserves as much readback memory as a render needs.
+- Dragging the noise reduction amount with lens correction or repairs active no longer
+  re-corrects the whole photo on every step; the corrected photo and its denoised version are
+  kept and only mixed.
+- Re-exporting over existing files no longer scans the whole catalog for every file (new index).
+- Settings files are written atomically everywhere; a damaged file is logged and kept as `.bad`
+  instead of silently falling back to defaults.
 
 ## [1.0.27] – 2026-10-28
 

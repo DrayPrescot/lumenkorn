@@ -694,10 +694,7 @@ pub fn tile(state: &AppState, z: u32, x: u32, y: u32) -> Option<Vec<u8>> {
                 let _ = std::fs::create_dir_all(dir);
                 // Erst in eine eigene Datei, dann umbenennen: Eine halbe Kachel
                 // darf nie unter dem echten Namen liegen
-                let tmp = path.with_extension(format!("tmp{}", std::process::id()));
-                if std::fs::write(&tmp, &bytes).is_ok() && std::fs::rename(&tmp, &path).is_err() {
-                    let _ = std::fs::remove_file(&tmp);
-                }
+                let _ = lumenkorn_develop::fsutil::write_atomic(&path, &bytes);
             }
             Some(bytes)
         }

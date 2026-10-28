@@ -3,7 +3,7 @@
   // Projekts in einen Nextcloud-Ordner bringen (abgleichen) und den Ordner als
   // Link teilen.
   import { onDestroy, onMount } from "svelte";
-  import { api, listen, type NcProgress, type NcProjectInfo, type NcSource, type Project } from "../lib/api";
+  import { api, listenWhileMounted, type NcProgress, type NcProjectInfo, type NcSource, type Project } from "../lib/api";
   import { lib } from "../lib/store.svelte";
   import { num, t } from "../lib/i18n";
 
@@ -28,7 +28,7 @@
 
   let unlisten: (() => void) | null = null;
   onMount(async () => {
-    unlisten = await listen("nextcloud-progress", (p) => {
+    unlisten = listenWhileMounted("nextcloud-progress", (p) => {
       progress = p;
       if (p.finished) {
         running = false;

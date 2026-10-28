@@ -879,6 +879,8 @@ export interface AppSettings {
   exportSubfolder: string;
   /** Unterordner in die Bibliothek aufnehmen (Standard; je Ordner änderbar) */
   includeSubfolders: boolean;
+  /** Höchstens so viele GB Großvorschauen auf der Platte */
+  previewCacheGb: number;
 }
 
 /** Stand von „Auto nach deinem Stil“ */
@@ -1018,6 +1020,7 @@ export const api = {
     call<void>("import_start", { ids, target, event, deleteAfter, shifts }),
   importEstimateShift: (camera: string | null) => call<ShiftEstimate | null>("import_estimate_shift", { camera }),
   importCancel: () => call<void>("import_cancel"),
+  importClose: () => call<void>("import_close"),
   addRoot: (path: string) => call<Root>("add_root", { path }),
   removeRoot: (id: number) => call<void>("remove_root", { id }),
   rescanRoot: (id: number) => call<void>("rescan_root", { id }),
@@ -1178,6 +1181,8 @@ export const api = {
   cullReset: () => call<void>("cull_reset"),
   styleStatus: () => call<StyleStatus>("style_status"),
   appSettings: () => call<AppSettings>("app_settings"),
+  /** Belegter Platz der Großvorschauen in Bytes */
+  previewCacheUsage: () => call<number>("preview_cache_usage"),
   /** Nur die genannten Einstellungen ändern; liefert den neuen Stand */
   appSetSettings: (settings: Partial<AppSettings>) => call<AppSettings>("app_set_settings", { settings }),
   importSetTarget: (target: string | null) => call<void>("import_set_target", { target }),
@@ -1328,6 +1333,21 @@ export interface Events {
 export async function listen<K extends keyof Events>(event: K, cb: (payload: Events[K]) => void) {
   if (!isTauri) return mock.listen(event, cb as (p: unknown) => void);
   return tauriListen<Events[K]>(event, (e) => cb(e.payload));
+}
+
+/** Ereignis für die Lebensdauer einer Komponente abonnieren: liefert die
+ *  Abmeldung, auch wenn die Komponente schon vor der Anmeldung zerstört wird. */
+export function listenWhileMounted<K extends keyof Events>(event: K, cb: (payload: Events[K]) => void): () => void {
+  let stopped = false;
+  let unlisten: (() => void) | undefined;
+  listen(event, cb)
+    .then((u) => (stopped ? u() : (unlisten = u)))
+    .catch(() => {});
+  return () => {
+    stopped = true;
+    unlisten?.();
+    unlisten = undefined;
+  };
 }
 
 // --- Bilder -------------------------------------------------------------------

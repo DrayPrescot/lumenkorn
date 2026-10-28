@@ -204,6 +204,32 @@ fn prepare_source(
     }
 }
 
+/// Entrauschte Fassung, die eingemischt wird (Rauschreduzierung an und die
+/// Fassung passt zum Bild).
+fn denoised_for<'a>(
+    src: &Source,
+    p: &DevelopParams,
+    opts: &RenderOptions<'a>,
+) -> Option<&'a ImageF32> {
+    p.denoise.as_ref()?;
+    opts.denoised
+        .filter(|d| d.width == src.image.width && d.height == src.image.height)
+}
+
+/// `a` und `b` mischen: `a + (b − a)·t`, wie in [`prepare_source`]
+fn blend(a: &ImageF32, b: &ImageF32, t: f32) -> ImageF32 {
+    let mut out = a.clone();
+    out.data
+        .par_iter_mut()
+        .zip(b.data.par_iter())
+        .for_each(|(o, n)| {
+            for k in 0..3 {
+                o[k] += (n[k] - o[k]) * t;
+            }
+        });
+    out
+}
+
 /// Reparaturen einsetzen. `corrected`: nur die vor (`false`) bzw. nach
 /// (`true`) der Objektivkorrektur berechneten.
 fn apply_repairs(img: &mut ImageF32, p: &DevelopParams, opts: &RenderOptions, corrected: bool) {
@@ -236,23 +262,24 @@ fn needs_prepared(src: &Source, p: &DevelopParams) -> bool {
     lens_of(src, p).is_some() || has_repairs(p, false)
 }
 
-/// Schlüssel einer vorbereiteten Quelle: Quelle und entrauschte Fassung wie
-/// für die GPU (Adresse, Größe und Stichproben – eine freigegebene Quelle kann
-/// an derselben Adresse durch ein anderes Bild ersetzt werden) plus Stärke und
-/// Flicken.
-type RepairedKey = (crate::gpu::ImageKey, Option<crate::gpu::ImageKey>, String);
-/// Für GPU und CPU: Quellbild mit bereits eingesetzten Reparaturen (und
-/// eingemischter Rauschreduzierung), zwischengespeichert – beim Ziehen eines
-/// Reglers ändert sich daran nichts. Zwei Einträge: Vorschau (Proxy) und
-/// Zoomansicht (volle Auflösung) wechseln sich ab – mit nur einem würde jeder
-/// Wechsel alles neu einsetzen. Die Zahl ist die Kennung der Fassung für den
-/// GPU-Puffer-Cache.
+/// Schlüssel einer vorbereiteten Fassung: das Bild wie für die GPU (Adresse,
+/// Größe und Stichproben – eine freigegebene Quelle kann an derselben Adresse
+/// durch ein anderes Bild ersetzt werden) plus Flicken und Objektivkorrektur.
+/// Die Stärke der Rauschreduzierung gehört nicht dazu: Quelle und entrauschte
+/// Fassung werden getrennt vorbereitet und erst danach gemischt.
+type RepairedKey = (crate::gpu::ImageKey, String);
+/// Für GPU und CPU: Quellbild bzw. entrauschte Fassung mit eingesetzten
+/// Reparaturen und Objektivkorrektur, zwischengespeichert – beim Ziehen eines
+/// Reglers (auch der Stärke der Rauschreduzierung) ändert sich daran nichts.
+/// Vier Einträge: Quelle und entrauschte Fassung, jeweils für Vorschau (Proxy)
+/// und Zoomansicht (volle Auflösung), die sich abwechseln. Die Zahl ist die
+/// Kennung der Fassung für den GPU-Puffer-Cache.
 static REPAIRED: Mutex<Vec<(RepairedKey, Arc<Source>, u64)>> = Mutex::new(Vec::new());
 /// Fortlaufende Kennung reparierter Fassungen. Eine neue Fassung kann an der
 /// Adresse einer verworfenen liegen und sich nur im Flicken unterscheiden –
 /// die GPU erkennt sie daran sicher als neu (siehe `gpu::ImageKey`).
 static REPAIRED_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-const REPAIRED_ENTRIES: usize = 2;
+const REPAIRED_ENTRIES: usize = 4;
 
 /// Verwirft die zwischengespeicherten reparierten Quellbilder.
 pub(crate) fn release_cache() {
@@ -268,7 +295,14 @@ pub(crate) fn release_large() {
 }
 
 /// Liefert die reparierte Fassung und ihre Kennung (nie 0).
-fn repaired_source(src: &Source, p: &DevelopParams, opts: &RenderOptions) -> (Arc<Source>, u64) {
+/// Vorbereitete Fassung von `image` (die Quelle oder ihre entrauschte
+/// Fassung): Reparaturen und Objektivkorrektur von `src`, ohne Entrauschen.
+fn prepared_image(
+    src: &Source,
+    image: &ImageF32,
+    p: &DevelopParams,
+    opts: &RenderOptions,
+) -> (Arc<Source>, u64) {
     type Key = RepairedKey;
     let ids: Vec<&str> = p
         .repairs
@@ -277,14 +311,8 @@ fn repaired_source(src: &Source, p: &DevelopParams, opts: &RenderOptions) -> (Ar
         .filter_map(|r| r.result.as_deref())
         .collect();
     let key: Key = (
-        crate::gpu::image_key(&src.image, 0),
-        opts.denoised.map(|d| crate::gpu::image_key(d, 0)),
-        format!(
-            "{:?}|{}|{}",
-            p.denoise.as_ref().map(|d| d.amount),
-            ids.join(","),
-            lens_of(src, p).is_some()
-        ),
+        crate::gpu::image_key(image, 0),
+        format!("{}|{}", ids.join(","), lens_of(src, p).is_some()),
     );
     {
         let mut c = REPAIRED.lock().unwrap_or_else(|e| e.into_inner());
@@ -298,23 +326,27 @@ fn repaired_source(src: &Source, p: &DevelopParams, opts: &RenderOptions) -> (Ar
     // Ohne Sperre rechnen: `prepare_source` arbeitet parallel (rayon), und
     // parallele Arbeit unter einer Sperre kann sich verklemmen.
     let lens = lens_of(src, p);
-    let blend = p.denoise.is_some() && opts.denoised.is_some();
     let before_lens = p
         .repairs
         .iter()
         .any(|r| r.enabled && !r.lens && r.result.is_some());
+    // Ohne Entrauschen vorbereiten (gemischt wird danach)
+    let plain = RenderOptions {
+        denoised: None,
+        ..*opts
+    };
     let image = match lens {
         // Nur Objektivkorrektur (und Reparaturen danach): Sie liefert ohnehin
         // ein neues Bild – die Kopie der Quelle vorher wäre umsonst (bei 60 MP
         // 720 MB und ein voller Kopiervorgang je Export)
-        Some(l) if !blend && !before_lens => {
-            let mut img = l.apply(&src.image);
-            apply_repairs(&mut img, p, opts, true);
+        Some(l) if !before_lens => {
+            let mut img = l.apply(image);
+            apply_repairs(&mut img, p, &plain, true);
             img
         }
         _ => {
-            let mut img = src.image.clone();
-            prepare_source(&mut img, p, opts, lens);
+            let mut img = image.clone();
+            prepare_source(&mut img, p, &plain, lens);
             img
         }
     };
@@ -363,17 +395,24 @@ fn try_gpu(
     let original = &src.image;
     let mut prepared_src = None;
     let result = if needs_prepared(src, p) {
-        let (prepared, ident) = repaired_source(src, p, opts);
+        let (prepared, ident) = prepared_image(src, &src.image, p, opts);
+        // Die entrauschte Fassung ebenso vorbereitet; gemischt wird auf der
+        // GPU (lineare Schritte: Mischen vorher oder nachher ist dasselbe)
+        let dn = denoised_for(src, p, opts).map(|d| prepared_image(src, d, p, opts).0);
         let local = RenderOptions {
-            denoised: None,
+            denoised: dn.as_ref().map(|d| &d.image),
             repairs: &NoRepairs,
             ..*opts
         };
         let mut gp = p.clone();
-        gp.denoise = None;
+        if dn.is_none() {
+            gp.denoise = None;
+        }
         gp.repairs.clear();
         let r = g.render_sanitized(&prepared, &gp, &local, rgb8, original, ident);
-        prepared_src = Some(prepared);
+        // Nach einem Fehler nur die ungemischte Quelle weitergeben, wenn sie
+        // schon das Ergebnis ist (sonst rechnet die CPU selbst)
+        prepared_src = dn.is_none().then_some(prepared);
         r
     } else {
         g.render_sanitized(src, p, opts, rgb8, original, 0)
@@ -470,8 +509,25 @@ fn render_sanitized(
     // Mit Reparaturen oder Objektivkorrektur aus demselben Zwischenspeicher wie
     // die GPU: Entzerren und Flicken einsetzen kostet sonst bei jedem Rendern
     // (Reglerzug) erneut, obwohl sich an der vorbereiteten Quelle nichts ändert.
-    let repaired =
-        prepared.or_else(|| needs_prepared(src, p).then(|| repaired_source(src, p, opts).0));
+    let repaired = prepared.or_else(|| {
+        needs_prepared(src, p).then(|| {
+            let base = prepared_image(src, &src.image, p, opts).0;
+            match (denoised_for(src, p, opts), &p.denoise) {
+                (Some(d), Some(dn)) => {
+                    let d = prepared_image(src, d, p, opts).0;
+                    Arc::new(Source {
+                        kind: base.kind,
+                        image: blend(&base.image, &d.image, dn.amount / 100.0),
+                        full_width: base.full_width,
+                        full_height: base.full_height,
+                        lens: base.lens.clone(),
+                        as_shot_kelvin: base.as_shot_kelvin,
+                    })
+                }
+                _ => base,
+            }
+        })
+    });
     let (mut img, repaired) = match repaired {
         // Nicht zwischengespeichert (Export) und ohne Dunst, der sie noch
         // braucht: die vorbereitete Fassung übernehmen statt kopieren

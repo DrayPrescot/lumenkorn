@@ -11,6 +11,7 @@ use crate::AppState;
 use lumenkorn_core::formats::ImageKind;
 use lumenkorn_core::{Error, LockExt};
 use lumenkorn_develop::auto::{AutoTone, auto_tone_with_features};
+use lumenkorn_develop::fsutil::unix_now;
 use lumenkorn_develop::style::{Query, Sample, StyleModel, Summary};
 use lumenkorn_develop::{DevelopParams, Source};
 use serde::{Deserialize, Serialize};
@@ -65,10 +66,7 @@ pub struct StyleState {
 impl StyleState {
     pub fn new(data_dir: &Path) -> Self {
         let path = data_dir.join(FILE);
-        let file = std::fs::read(&path)
-            .ok()
-            .and_then(|b| serde_json::from_slice::<StyleFile>(&b).ok())
-            .unwrap_or_default();
+        let file: StyleFile = lumenkorn_develop::fsutil::load_json_or_default(&path);
         Self {
             path,
             file: Mutex::new(file),
@@ -79,25 +77,18 @@ impl StyleState {
     }
 
     fn save(&self, f: &StyleFile) {
-        let tmp = self.path.with_extension("json.tmp");
-        let res = serde_json::to_vec(&StyleFileRef {
-            version: VERSION,
-            reset_at: f.reset_at,
-            samples: &f.samples,
-        })
-        .map_err(std::io::Error::other)
-        .and_then(|b| std::fs::write(&tmp, b))
-        .and_then(|()| std::fs::rename(&tmp, &self.path));
+        let res = lumenkorn_develop::fsutil::save_json(
+            &self.path,
+            &StyleFileRef {
+                version: VERSION,
+                reset_at: f.reset_at,
+                samples: &f.samples,
+            },
+        );
         if let Err(e) = res {
             log::warn!("Stil speichern: {e}");
         }
     }
-}
-
-fn unix_now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs() as i64)
 }
 
 fn enabled(state: &AppState) -> bool {

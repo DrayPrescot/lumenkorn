@@ -71,9 +71,11 @@ impl MaskFiles {
             ))
         })?;
         std::fs::create_dir_all(&self.dir)?;
-        let tmp = path.with_extension("tmp.png");
-        mask.save(&tmp)?;
-        std::fs::rename(&tmp, &path)?;
+        // Das Format steht fest (PNG), der Temp-Name hat keine passende Endung
+        lumenkorn_develop::fsutil::write_atomic_with(&path, |tmp| {
+            mask.save_with_format(tmp, image::ImageFormat::Png)
+                .map_err(std::io::Error::other)
+        })?;
         let mut c = self.cache.locked();
         c.retain(|(k, _)| k != id);
         c.insert(0, (id.to_string(), Arc::new(GrayMask::from_image(mask))));

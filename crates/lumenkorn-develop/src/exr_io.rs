@@ -48,26 +48,15 @@ pub fn write(img: &ImageF32, path: &Path, scene_linear: bool) -> Result<()> {
             (h(p[0]), h(p[1]), h(p[2]))
         }),
     );
-    // Eindeutiger Name: zwei gleichzeitige Schreibvorgänge zur selben Datei
-    // (Doppelklick, zwei Fenster) dürfen sich nicht gegenseitig überschreiben.
-    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let tmp = path.with_extension(format!(
-        "exr.{}.{}.tmp",
-        std::process::id(),
-        COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-    ));
-    let written = Image::from_layer(layer)
-        .write()
-        .to_file(&tmp)
-        .map_err(|e| Error::Params(crate::tr!("EXR schreiben: {e}", "Writing EXR: {e}")));
-    if let Err(e) = written {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(e);
-    }
-    if let Err(e) = std::fs::rename(&tmp, path) {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(e.into());
-    }
+    // Atomar (eindeutiger Temp-Name): zwei gleichzeitige Schreibvorgänge zur
+    // selben Datei (Doppelklick, zwei Fenster) dürfen sich nicht überschreiben.
+    crate::fsutil::write_atomic_with(path, |tmp| {
+        Image::from_layer(layer)
+            .write()
+            .to_file(tmp)
+            .map_err(|e| std::io::Error::other(e.to_string()))
+    })
+    .map_err(|e| Error::Params(crate::tr!("EXR schreiben: {e}", "Writing EXR: {e}")))?;
     Ok(())
 }
 

@@ -191,6 +191,7 @@ class Library {
         this.mapEnabled = s.mapEnabled;
         this.exportSubfolder = s.exportSubfolder;
         this.includeSubfolders = s.includeSubfolders;
+        this.previewCacheGb = s.previewCacheGb;
       })
       .catch(() => {});
     void this.refreshNcShared();
@@ -315,11 +316,14 @@ class Library {
     // (sonst kann die Suche nach „so“ die nach „sonne“ überholen).
     const token = ++this.#loadToken;
     this.loading = true;
+    let counted = false;
     try {
       // Erst laufende Bewertungen schreiben lassen – sonst liefert der Katalog
       // noch den alten Stand und überschreibt die gerade gesetzte Bewertung
       await this.#writes;
       const startSeq = this.#patchSeq;
+      this.#loadsInFlight++;
+      counted = true;
       const query = this.currentQuery();
       let images =
         this.semantic && query.search
@@ -360,8 +364,13 @@ class Library {
       if (token === this.#loadToken) this.notify(String(e), "error");
     } finally {
       if (token === this.#loadToken) this.loading = false;
+      // Ohne laufende Abfrage braucht niemand das Änderungsprotokoll
+      if (counted && --this.#loadsInFlight === 0) this.#patchLog = [];
     }
   }
+
+  /** Anzahl laufender Listenabfragen (nur dann wird `#patchLog` geführt) */
+  #loadsInFlight = 0;
 
   #refreshTimer: ReturnType<typeof setTimeout> | undefined;
   /** Gebündeltes Nachladen mit erhaltenem Fokus (Meldungen aus dem
@@ -695,8 +704,11 @@ class Library {
   /** `change` gilt für alle `ids`, oder je Foto eigene Werte (Map, `ids` = deren Schlüssel). */
   #patch(ids: number[], change: Partial<ImageSummary> | Map<number, Partial<ImageSummary>>) {
     const set = new Set(ids);
-    this.#patchLog.push({ seq: ++this.#patchSeq, ids: set, change });
-    if (this.#patchLog.length > 500) this.#patchLog.splice(0, this.#patchLog.length - 500);
+    ++this.#patchSeq;
+    if (this.#loadsInFlight > 0) {
+      this.#patchLog.push({ seq: this.#patchSeq, ids: set, change });
+      if (this.#patchLog.length > 500) this.#patchLog.splice(0, this.#patchLog.length - 500);
+    }
     let delta = 0; // Abgelehnt-Zähler im selben Durchlauf nachführen
     this.images = this.images.map((i) => {
       if (!set.has(i.id)) return i;
@@ -1058,6 +1070,19 @@ class Library {
       return null;
     } catch (e) {
       return e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  /** Grenze für die Großvorschauen auf der Platte (GB) */
+  previewCacheGb = $state(5);
+
+  async setPreviewCacheGb(gb: number) {
+    if (!Number.isFinite(gb)) return;
+    try {
+      const s = await api.appSetSettings({ previewCacheGb: Math.round(gb) });
+      this.previewCacheGb = s.previewCacheGb;
+    } catch (e) {
+      this.notify(String(e), "error");
     }
   }
 

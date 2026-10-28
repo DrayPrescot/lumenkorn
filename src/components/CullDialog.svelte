@@ -4,7 +4,7 @@
   // markiert, gelöscht wird hier nichts. Jede Entscheidung geht ans Backend
   // zurück, damit der Assistent lernt.
   import { onMount } from "svelte";
-  import { api, imageUrl, listen, type CullItem, type CullResult, type Scope } from "../lib/api";
+  import { api, imageUrl, listenWhileMounted, type CullItem, type CullResult, type Scope } from "../lib/api";
   import { judge, reasonLabel, REASONS, type Strictness, type Verdict } from "../lib/cull";
   import { lib } from "../lib/store.svelte";
   import { isCanceled, num, t } from "../lib/i18n";
@@ -94,7 +94,7 @@
 
   onMount(() => {
     let alive = true;
-    const off = listen("cull-progress", (p) => {
+    const off = listenWhileMounted("cull-progress", (p) => {
       if (alive) progress = p;
     });
     api
@@ -108,7 +108,7 @@
       .finally(() => (running = false));
     return () => {
       alive = false;
-      off.then((f) => f());
+      off();
     };
   });
 

@@ -115,11 +115,26 @@ pub struct AlbumSuggestion {
     pub unanalyzed: usize,
 }
 
+/// Fortschrittsmeldung (fertig / gesamt) für die Oberfläche
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct Progress {
-    done: usize,
-    total: usize,
+pub(crate) struct Progress {
+    pub done: usize,
+    pub total: usize,
+}
+
+/// Kleiner Thread-Pool für die Bildanalyse (RAW-Vorschauen brauchen viel
+/// Speicher, deshalb höchstens 6 Threads)
+pub(crate) fn analysis_pool() -> Result<rayon::ThreadPool, Error> {
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(
+            std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(4)
+                .clamp(2, 6),
+        )
+        .build()
+        .map_err(|e| Error::Invalid(e.to_string()))
 }
 
 /// Themen mit englischen Beschreibungen für CLIP. Personenthemen gewichten
@@ -782,15 +797,7 @@ fn suggest(state: &AppState, app: &AppHandle, req: AlbumRequest) -> Result<Album
     let _ = app.emit("album-progress", Progress { done: 0, total });
     // Vorschauen messen (fehlende werden dabei erzeugt). Eigener kleiner Pool:
     // RAW-Vorschauen brauchen viel Speicher.
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(
-            std::thread::available_parallelism()
-                .map(|n| n.get())
-                .unwrap_or(4)
-                .clamp(2, 6),
-        )
-        .build()
-        .map_err(|e| Error::Invalid(e.to_string()))?;
+    let pool = analysis_pool()?;
     let measured: Vec<Option<Features>> = pool.install(|| {
         images
             .par_iter()

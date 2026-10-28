@@ -43,6 +43,8 @@ pub struct AiState {
     /// Letzter Ladefehler, damit nicht jeder Stapel es erneut versucht.
     load_error: Mutex<Option<String>>,
     index: RwLock<Option<EmbeddingIndex>>,
+    /// Letzte Benutzung des Suchindex; der Hausmeister gibt ihn danach frei
+    index_used: Mutex<std::time::Instant>,
     pub(crate) downloading: AtomicBool,
     /// Gewünschte Downloads: Sie laufen nacheinander, ein weiterer Klick
     /// während eines Downloads reiht sich ein
@@ -233,10 +235,8 @@ impl AiState {
     pub fn new(data_dir: &Path) -> Self {
         let ai_dir = models::ai_dir(data_dir);
         let settings_path = ai_dir.join("einstellungen.json");
-        let mut settings: AiSettings = std::fs::read_to_string(&settings_path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
+        let mut settings: AiSettings =
+            lumenkorn_develop::fsutil::load_json_or_default(&settings_path);
         // DirectML-Laufzeit zurückgezogen (stürzte ab) – Reste entfernen
         let dml = accel::runtime_dir(&ai_dir, Backend::Directml);
         let mut changed = false;
@@ -252,11 +252,10 @@ impl AiState {
             changed = true;
         }
         let crash_notice = handle_previous_crashes(&ai_dir, &mut settings);
-        if crash_notice.is_some() || changed {
-            let _ = std::fs::create_dir_all(&ai_dir);
-            if let Ok(json) = serde_json::to_string_pretty(&settings) {
-                let _ = std::fs::write(&settings_path, json);
-            }
+        if (crash_notice.is_some() || changed)
+            && let Err(e) = lumenkorn_develop::fsutil::save_json(&settings_path, &settings)
+        {
+            log::warn!("KI-Einstellungen nicht gespeichert: {e}");
         }
         // Grafikkarte im Hintergrund suchen – bis dahin rechnet die CPU.
         lumenkorn_develop::gpu::set_enabled(settings.develop_gpu);
@@ -270,6 +269,7 @@ impl AiState {
             loading: Mutex::new(()),
             load_error: Mutex::new(None),
             index: RwLock::new(None),
+            index_used: Mutex::new(std::time::Instant::now()),
             downloading: AtomicBool::new(false),
             downloads: Mutex::new(Downloads::default()),
             cancel: AtomicBool::new(false),
@@ -495,6 +495,7 @@ fn ensure_loaded(state: &AppState) -> Result<Loaded, Error> {
 /// Dekodieren der ~100 MB Vektoren läuft ohne sie. Reihenfolge der Sperren:
 /// Index → Katalog; umgekehrt hält niemand den Katalog, während er den Index sperrt.
 fn with_index<T>(state: &AppState, f: impl FnOnce(&EmbeddingIndex) -> T) -> Result<T, Error> {
+    *state.ai.index_used.locked() = std::time::Instant::now();
     {
         let guard = state
             .ai
@@ -502,7 +503,9 @@ fn with_index<T>(state: &AppState, f: impl FnOnce(&EmbeddingIndex) -> T) -> Resu
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(idx) = guard.as_ref() {
-            return Ok(f(idx));
+            let r = f(idx);
+            *state.ai.index_used.locked() = std::time::Instant::now();
+            return Ok(r);
         }
     }
     let mut guard = state
@@ -522,7 +525,23 @@ fn with_index<T>(state: &AppState, f: impl FnOnce(&EmbeddingIndex) -> T) -> Resu
             idx
         }
     };
-    Ok(f(guard.insert(idx)))
+    let r = f(guard.insert(idx));
+    *state.ai.index_used.locked() = std::time::Instant::now();
+    Ok(r)
+}
+
+/// Gibt den Suchindex frei, wenn er seit `idle` nicht benutzt wurde (er wird
+/// bei der nächsten Suche aus dem Katalog neu aufgebaut). Wartet nicht auf
+/// eine laufende Suche oder einen laufenden Aufbau. Liefert, ob er frei wurde.
+pub(crate) fn release_index(state: &AppState, idle: std::time::Duration) -> bool {
+    if state.ai.index_used.locked().elapsed() < idle {
+        return false;
+    }
+    match state.ai.index.try_write() {
+        Ok(mut g) => g.take().is_some(),
+        Err(std::sync::TryLockError::Poisoned(e)) => e.into_inner().take().is_some(),
+        Err(std::sync::TryLockError::WouldBlock) => false,
+    }
 }
 
 #[derive(Serialize, Clone)]
@@ -572,7 +591,9 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
                 ok_ids.push(*id);
             }
             None => {
-                let _ = state.catalog.locked().set_ai_failed(*id);
+                if let Err(e) = state.catalog.locked().set_ai_failed(*id) {
+                    log::warn!("Foto {id}: KI-Fehlschlag nicht vermerkt: {e}");
+                }
             }
         }
     }

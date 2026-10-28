@@ -275,7 +275,6 @@ fn write_as(
         Some(m) if m > 0 && m < img.long_edge() => std::borrow::Cow::Owned(img.downscale_to(m)),
         _ => std::borrow::Cow::Borrowed(img),
     };
-    let tmp = path.with_extension(format!("{}.tmp", opts.format.extension()));
     // PNG/TIFF direkt in die Datei kodieren statt erst in den Speicher
     // (bei einem 150-MP-Panorama als 16-Bit-TIFF ~900 MB weniger)
     let file = |p: &Path| -> Result<std::io::BufWriter<std::fs::File>> {
@@ -284,39 +283,49 @@ fn write_as(
             std::fs::File::create(p)?,
         ))
     };
-    let res = (|| -> Result<()> {
-        match opts.format {
-            ExportFormat::Jpeg => std::fs::write(
-                &tmp,
-                encode_jpeg_rgb8_meta(&to_rgb8(&img), opts.quality.clamp(1, 100), meta)?,
-            )?,
-            ExportFormat::Png => {
-                let mut f = file(&tmp)?;
-                write_png(&img, &mut f, meta)?;
-                std::io::Write::flush(&mut f)?;
+    // Fehler der Kodierung unverändert zurückgeben (io::Error trägt sie nicht)
+    let mut enc_err: Option<crate::error::Error> = None;
+    let res = crate::fsutil::write_atomic_with(path, |tmp| {
+        (|| -> Result<()> {
+            match opts.format {
+                ExportFormat::Jpeg => std::fs::write(
+                    tmp,
+                    encode_jpeg_rgb8_meta(&to_rgb8(&img), opts.quality.clamp(1, 100), meta)?,
+                )?,
+                ExportFormat::Png => {
+                    let mut f = file(tmp)?;
+                    write_png(&img, &mut f, meta)?;
+                    std::io::Write::flush(&mut f)?;
+                }
+                ExportFormat::Tiff16 => {
+                    let mut f = file(tmp)?;
+                    write_tiff16(&img, &mut f, meta)?;
+                    std::io::Write::flush(&mut f)?;
+                }
+                ExportFormat::Dng => {
+                    let content = if scene {
+                        crate::dng::DngContent::Scene(&img)
+                    } else {
+                        crate::dng::DngContent::Developed(&img)
+                    };
+                    std::fs::write(tmp, crate::dng::encode_lossy(content, meta)?)?
+                }
             }
-            ExportFormat::Tiff16 => {
-                let mut f = file(&tmp)?;
-                write_tiff16(&img, &mut f, meta)?;
-                std::io::Write::flush(&mut f)?;
+            Ok(())
+        })()
+        .map_err(|e| match e {
+            crate::error::Error::Io(io) => io,
+            e => {
+                let msg = e.to_string();
+                enc_err = Some(e);
+                std::io::Error::other(msg)
             }
-            ExportFormat::Dng => {
-                let content = if scene {
-                    crate::dng::DngContent::Scene(&img)
-                } else {
-                    crate::dng::DngContent::Developed(&img)
-                };
-                std::fs::write(&tmp, crate::dng::encode_lossy(content, meta)?)?
-            }
-        }
-        Ok(())
-    })();
-    if let Err(e) = res {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(e);
+        })
+    });
+    match res {
+        Ok(()) => Ok(()),
+        Err(io) => Err(enc_err.take().unwrap_or(io.into())),
     }
-    std::fs::rename(&tmp, path)?;
-    Ok(())
 }
 
 #[cfg(test)]

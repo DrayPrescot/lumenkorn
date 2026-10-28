@@ -84,17 +84,14 @@ impl Config {
 }
 
 fn load(data_dir: &Path) -> Config {
-    std::fs::read(data_dir.join(FILE))
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default()
+    lumenkorn_develop::fsutil::load_json_or_default(&data_dir.join(FILE))
 }
 
 fn save(data_dir: &Path, c: &Config) -> Result<(), Error> {
-    let tmp = data_dir.join(format!("{FILE}.tmp"));
-    std::fs::write(&tmp, serde_json::to_string_pretty(c)?)?;
-    std::fs::rename(tmp, data_dir.join(FILE))?;
-    Ok(())
+    Ok(lumenkorn_develop::fsutil::save_json(
+        &data_dir.join(FILE),
+        c,
+    )?)
 }
 
 fn keyring_entry(c: &Config) -> Result<keyring::Entry, Error> {

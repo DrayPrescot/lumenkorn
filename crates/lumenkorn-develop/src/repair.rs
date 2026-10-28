@@ -69,9 +69,8 @@ impl RepairSource for NoRepairs {
 
 impl Patch {
     pub fn write(&self, path: &Path) -> Result<()> {
-        let tmp = path.with_extension("tmp");
-        {
-            let mut f = BufWriter::with_capacity(1 << 20, std::fs::File::create(&tmp)?);
+        crate::fsutil::write_atomic_with(path, |tmp| {
+            let mut f = BufWriter::with_capacity(1 << 20, std::fs::File::create(tmp)?);
             f.write_all(MAGIC)?;
             for v in [1, self.width, self.height, self.parts.len()] {
                 f.write_all(&(v as u32).to_le_bytes())?;
@@ -83,9 +82,8 @@ impl Patch {
                 crate::denoised::write_f16(&mut f, &p.rgb)?;
                 f.write_all(&p.alpha)?;
             }
-            f.flush()?;
-        }
-        std::fs::rename(tmp, path)?;
+            f.flush()
+        })?;
         Ok(())
     }
 

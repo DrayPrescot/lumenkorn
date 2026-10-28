@@ -70,10 +70,12 @@ pub fn open_url(url: String) -> CmdResult<()> {
 pub fn set_language(state: State<AppState>, lang: String) {
     let en = lang == "en";
     lumenkorn_develop::i18n::set_english(en);
-    let _ = std::fs::write(
+    if let Err(e) = std::fs::write(
         crate::language_file(&state.data_dir),
         if en { "en" } else { "de" },
-    );
+    ) {
+        log::warn!("Sprache nicht gespeichert: {e}");
+    }
 }
 
 // --- Quellordner -----------------------------------------------------------

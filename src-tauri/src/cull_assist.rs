@@ -20,6 +20,7 @@ use crate::album::select::{
 };
 use lumenkorn_core::thumbs::Variant;
 use lumenkorn_core::{Error, ImageQuery, LockExt, Scope, SortOrder};
+use lumenkorn_develop::fsutil::unix_now;
 use lumenkorn_develop::i18n::tr_s;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -137,12 +138,7 @@ pub struct CullResult {
     pub clip_used: bool,
 }
 
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct Progress {
-    done: usize,
-    total: usize,
-}
+use crate::album::select::Progress;
 
 // --- Bewertung (ohne Ein-/Ausgabe) --------------------------------------------
 
@@ -402,27 +398,12 @@ struct LearnFile {
     applied: Vec<i64>,
 }
 
-fn unix_now() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs() as i64)
-}
-
 fn load(state: &AppState) -> LearnFile {
-    std::fs::read_to_string(state.data_dir.join(FILE))
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    lumenkorn_develop::fsutil::load_json_or_default(&state.data_dir.join(FILE))
 }
 
 fn save(state: &AppState, f: &LearnFile) {
-    let path = state.data_dir.join(FILE);
-    let tmp = path.with_extension("json.tmp");
-    let r = serde_json::to_string(f)
-        .map_err(std::io::Error::other)
-        .and_then(|s| std::fs::write(&tmp, s))
-        .and_then(|_| std::fs::rename(&tmp, &path));
-    if let Err(e) = r {
+    if let Err(e) = lumenkorn_develop::fsutil::save_json(&state.data_dir.join(FILE), f) {
         log::warn!("{FILE} nicht gespeichert: {e}");
     }
 }
@@ -527,15 +508,7 @@ fn suggest(state: &AppState, app: &AppHandle, scope: Scope) -> Result<CullResult
     let total = images.len();
     let done = AtomicUsize::new(0);
     let _ = app.emit("cull-progress", Progress { done: 0, total });
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(
-            std::thread::available_parallelism()
-                .map(|n| n.get())
-                .unwrap_or(4)
-                .clamp(2, 6),
-        )
-        .build()
-        .map_err(|e| Error::Invalid(e.to_string()))?;
+    let pool = crate::album::select::analysis_pool()?;
 
     // Gesichter, die für die Augen groß genug sind (nur bei unbearbeiteten
     // Fotos: Die Lage bezieht sich aufs unbearbeitete Bild, und bearbeitete

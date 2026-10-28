@@ -4,7 +4,7 @@
   // gefundenes Update (offline, Entwicklungsstand) bleibt der Weg über die
   // Release-Seite.
   import { onMount } from "svelte";
-  import { api, listen, type UpdateInfo } from "../lib/api";
+  import { api, listenWhileMounted, type UpdateInfo } from "../lib/api";
   import { REPO_URL } from "../lib/credits";
   import { num, t } from "../lib/i18n";
   import Icon from "./Icon.svelte";
@@ -30,13 +30,11 @@
 
   onMount(() => {
     void check();
-    let off: (() => void) | undefined;
-    listen("update-progress", (p) => {
+    return listenWhileMounted("update-progress", (p) => {
       done = p.done;
       total = p.total;
       if (p.installing) phase = "install";
-    }).then((u) => (off = u));
-    return () => off?.();
+    });
   });
 
   async function install() {

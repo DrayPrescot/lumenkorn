@@ -652,7 +652,9 @@ zerlegt jedes Bild in eine Laplace-Pyramide und behält je Stufe das schärfste 
 
 - **Datenordner:** Katalog, Bearbeitungen, KI-Modelle und KI-Ergebnisse. Windows
   `%APPDATA%\io.github.drayprescot.lumenkorn\`, Linux `~/.local/share/io.github.drayprescot.lumenkorn/`.
-  Thumbnails liegen im Cache-Ordner des Systems. Daten der früheren Fassung „Lichtwerk“ werden beim
+  Thumbnails liegen im Cache-Ordner des Systems; die großen Vorschauen dort sind auf 5 GB begrenzt
+  (Einstellungen → Allgemein), darüber gehen die am längsten nicht angesehenen. Daten der früheren
+  Fassung „Lichtwerk“ werden beim
   ersten Start übernommen.
 - **Fotoordner** werden nur beschrieben, wenn du es auslöst: abgelehnte Fotos löschen,
   Zusammenfügen, Export.

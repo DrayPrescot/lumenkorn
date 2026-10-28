@@ -2,7 +2,7 @@
   // Update von GitHub: einmal kurz nach dem Start prüfen und fragen. „Später“
   // schließt nur – beim nächsten Start kommt die Frage wieder.
   import { onMount } from "svelte";
-  import { api, listen, type UpdateInfo } from "../lib/api";
+  import { api, listenWhileMounted, type UpdateInfo } from "../lib/api";
   import { dev } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
   import { num, t } from "../lib/i18n";
@@ -22,15 +22,14 @@
         info = null;
       }
     }, 4000);
-    let off: (() => void) | undefined;
-    listen("update-progress", (p) => {
+    const off = listenWhileMounted("update-progress", (p) => {
       done = p.done;
       total = p.total;
       if (p.installing) phase = "install";
-    }).then((u) => (off = u));
+    });
     return () => {
       clearTimeout(timer);
-      off?.();
+      off();
     };
   });
 

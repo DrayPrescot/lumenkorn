@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
-  import { api, isTauri, listen, pickFolder, type ImportItem } from "../lib/api";
+  import { api, isTauri, listenWhileMounted, pickFolder, type ImportItem } from "../lib/api";
   import { lib } from "../lib/store.svelte";
   import { lang, num, t } from "../lib/i18n";
   import PathDialog from "./PathDialog.svelte";
@@ -100,12 +100,8 @@
   }
 
   let unlisten: (() => void) | undefined;
-  let destroyed = false;
   onMount(async () => {
-    // Wurde der Dialog schon geschlossen, bevor `listen` fertig ist: gleich abmelden
-    const u = await listen("import-scan-progress", (p) => (found = p.found));
-    if (destroyed) u();
-    else unlisten = u;
+    unlisten = listenWhileMounted("import-scan-progress", (p) => (found = p.found));
     try {
       const d = await api.importDefaults();
       cards = d.cards;
@@ -187,10 +183,11 @@
   }
 
   onDestroy(() => {
-    destroyed = true;
     unlisten?.();
     observer?.disconnect();
     resetPreviews();
+    // Zwischengespeicherte Vorschauen freigeben; läuft der Import noch, räumt ihn das Backend selbst auf
+    if (!lib.importRunning) api.importClose().catch(() => {});
   });
 
   // --- Tage und Auswahl ----------------------------------------------------------

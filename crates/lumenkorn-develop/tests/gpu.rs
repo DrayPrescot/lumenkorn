@@ -632,6 +632,80 @@ fn repairs_match_on_gpu() {
     gpu::set_enabled(false);
 }
 
+/// Rauschreduzierung mit Objektivkorrektur: Quelle und entrauschte Fassung
+/// werden getrennt korrigiert und erst danach gemischt (so ändert ein Zug am
+/// Stärke-Regler nichts an den zwischengespeicherten Fassungen). Das Ergebnis
+/// ist dasselbe wie Mischen vor der Korrektur, auf CPU und GPU.
+#[test]
+fn denoise_with_lens_correction_blends_after_the_correction() {
+    use lumenkorn_develop::{LensProfile, render_auto};
+    let dist = [
+        11, 4, 0, -13, -29, -53, -81, -117, -156, -204, -254, -312, 0, 0, 0, 0, 0,
+    ];
+    let vig = [
+        11, 0, 5, 32, 70, 119, 178, 244, 300, 390, 545, 800, 0, 0, 0, 0, 0,
+    ];
+    let ca = [
+        22, 640, 640, 640, 512, 512, 512, 384, 384, 384, 384, 256, 0, -128, -128, -128, 0, 0, 128,
+        256, 256, 128, -256, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    let mut src = source(SourceKind::Raw, 301, 203);
+    src.lens = Some(Arc::new(LensProfile::from_sony(&dist, &ca, &vig).unwrap()));
+    let dn = ImageF32 {
+        data: src
+            .image
+            .data
+            .iter()
+            .enumerate()
+            .map(|(i, p)| p.map(|v| v * 0.8 + (i % 7) as f32 * 0.01))
+            .collect(),
+        ..src.image.clone()
+    };
+    let opts = RenderOptions {
+        denoised: Some(&dn),
+        ..Default::default()
+    };
+    let with = |amount: f32| DevelopParams {
+        contrast: 20.0,
+        denoise: Some(DenoiseRef {
+            id: "x".into(),
+            amount,
+        }),
+        ..Default::default()
+    };
+    // Erwartet: vor der Korrektur gemischt, dann ohne Rauschreduzierung entwickelt
+    let mixed = |amount: f32| {
+        let mut s = src.clone();
+        for (o, n) in s.image.data.iter_mut().zip(&dn.data) {
+            for k in 0..3 {
+                o[k] += (n[k] - o[k]) * amount / 100.0;
+            }
+        }
+        render_with(&s, &with(0.0), &RenderOptions::default())
+    };
+    let diff = |a: &ImageF32, b: &ImageF32| {
+        a.data
+            .iter()
+            .zip(&b.data)
+            .flat_map(|(a, b)| (0..3).map(move |k| (a[k] - b[k]).abs()))
+            .fold(0f32, f32::max)
+    };
+    for amount in [30.0, 70.0] {
+        let cpu = render_with(&src, &with(amount), &opts);
+        let d = diff(&cpu, &mixed(amount));
+        assert!(d < 1e-4, "Mischen nach der Korrektur weicht ab: {d}");
+    }
+    let Some(_) = gpu_or_skip() else { return };
+    gpu::set_enabled(true);
+    for amount in [30.0, 70.0] {
+        let g = render_auto(&src, &with(amount), &opts);
+        let cpu = render_with(&src, &with(amount), &opts);
+        let d = diff(&cpu, &g);
+        assert!(d < 1e-3, "GPU weicht ab ({amount}): {d}");
+    }
+    gpu::set_enabled(false);
+}
+
 /// Objektivkorrektur: GPU (vorbereitete Quelle) und CPU liefern dasselbe,
 /// ausgeschaltet wirkt sie nicht.
 #[test]

@@ -95,12 +95,6 @@ pub fn edit_metadata(state: &AppState, ids: &[i64], change: Change) -> CmdResult
     })
 }
 
-/// Metadaten eines Fotos: Wert aus der Datei und Überschreibung je Feld
-#[tauri::command(async)]
-pub fn meta_get(state: State<AppState>, id: i64) -> CmdResult<ImageMeta> {
-    state.catalog.locked().image_meta(id)
-}
-
 /// Metadaten mehrerer Fotos (für das Bearbeiten einer Auswahl)
 #[tauri::command(async)]
 pub fn meta_get_many(state: State<AppState>, ids: Vec<i64>) -> CmdResult<Vec<ImageMeta>> {

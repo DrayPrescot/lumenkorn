@@ -787,9 +787,7 @@ pub fn download_missing(
                 return Err(e);
             }
         };
-        let tmp = dir.join(format!("{DENOISE_MODEL}.part"));
-        std::fs::write(&tmp, onnx)?;
-        std::fs::rename(&tmp, dir.join(DENOISE_MODEL))?;
+        lumenkorn_develop::fsutil::write_atomic(&dir.join(DENOISE_MODEL), &onnx)?;
         let _ = std::fs::remove_file(pth);
     }
     Ok(())
@@ -909,8 +907,8 @@ fn install_gpu_runtime(
             return Err(e.into());
         }
         if let Err(e) = std::fs::rename(&staging, &target) {
-            if had_old {
-                let _ = std::fs::rename(&old, &target);
+            if had_old && let Err(e2) = std::fs::rename(&old, &target) {
+                log::error!("Laufzeit {} nicht zurückgelegt: {e2}", target.display());
             }
             let _ = std::fs::remove_dir_all(&staging);
             return Err(e.into());

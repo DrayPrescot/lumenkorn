@@ -2,7 +2,7 @@
   // Einstellungen → Nextcloud: verbinden (Anmeldung im Browser, Login Flow
   // v2), trennen und den Ordner wählen, unter dem Projekte landen.
   import { onDestroy, onMount } from "svelte";
-  import { api, listen, type NcStatus } from "../lib/api";
+  import { api, listenWhileMounted, type NcStatus } from "../lib/api";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
 
@@ -15,7 +15,7 @@
 
   let unlisten: (() => void) | null = null;
   onMount(async () => {
-    unlisten = await listen("nextcloud-login", async (e) => {
+    unlisten = listenWhileMounted("nextcloud-login", async (e) => {
       waiting = false;
       if (e.ok) {
         await refresh();

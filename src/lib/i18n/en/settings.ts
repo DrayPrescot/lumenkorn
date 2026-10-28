@@ -83,4 +83,8 @@ export default {
   "Karte und Ortsnamen": "Map and place names",
   "Karte und Ortsnamen über OpenStreetMap verwenden": "Use the map and place names from OpenStreetMap",
   "Eingeschaltet lädt Lumenkorn Kartenbilder von OpenStreetMap, sucht dort Orte und ermittelt Ortsnamen zu den Aufnahmeorten (Koordinaten auf etwa 100 m gerundet). Ausgeschaltet geht nichts an OpenStreetMap: Die Karte ist ausgeblendet, GPS-Daten aus den Fotos und schon bekannte Ortsnamen bleiben, die Karte im Fotoalbum funktioniert weiter (sie ist im Programm enthalten).": "When on, Lumenkorn loads map images from OpenStreetMap, searches places there and looks up place names for where photos were taken (coordinates rounded to about 100 m). When off, nothing is sent to OpenStreetMap: the map is hidden, GPS data from the photos and place names already known stay, and the map in the photo album keeps working (it is built into the app).",
+  "Vorschau-Cache": "Preview cache",
+  "höchstens": "at most",
+  "belegt: {size}": "in use: {size}",
+  "Große Vorschauen für Einzelansicht und Entwickeln. Darüber hinaus löscht Lumenkorn die am längsten nicht angesehenen; sie entstehen bei Bedarf neu.": "Large previews for the single view and Develop. Beyond this, Lumenkorn deletes the ones not viewed for the longest time; they are recreated when needed.",
 } satisfies Record<string, string>;

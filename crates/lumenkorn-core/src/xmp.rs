@@ -180,17 +180,7 @@ pub fn update_sidecar(photo: &Path, changes: &[XmpChange]) -> Result<Option<Path
 }
 
 fn write_atomic(path: &Path, data: &[u8]) -> Result<()> {
-    let dir = path.parent().unwrap_or(Path::new("."));
-    let name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("sidecar.xmp");
-    let tmp = dir.join(format!(".{name}.lumenkorn-tmp"));
-    let res = std::fs::write(&tmp, data).and_then(|()| std::fs::rename(&tmp, path));
-    if res.is_err() {
-        let _ = std::fs::remove_file(&tmp);
-    }
-    Ok(res?)
+    Ok(lumenkorn_develop::fsutil::write_atomic(path, data)?)
 }
 
 // ----------------------------------------------------------------------

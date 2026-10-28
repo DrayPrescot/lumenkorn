@@ -300,6 +300,59 @@ pub fn sweep_dir(dir: &Path, min_age: Duration, keep: impl Fn(&str) -> bool) -> 
 }
 
 /// Vorschauen (`<cache>/thumbs/2a/42.jpg`) von Bildern, die es nicht mehr gibt.
+/// Großvorschauen (`previews/`) mit Größe und Änderungszeit. Die Zeit ist
+/// das letzte Ansehen (siehe `ThumbCache::read`).
+fn preview_files(base: &Path) -> Vec<(std::time::SystemTime, u64, std::path::PathBuf)> {
+    let mut out = Vec::new();
+    let Ok(rd) = std::fs::read_dir(base.join("previews")) else {
+        return out;
+    };
+    for bucket in rd.flatten() {
+        let Ok(files) = std::fs::read_dir(bucket.path()) else {
+            continue;
+        };
+        for f in files.flatten() {
+            if let Ok(m) = f.metadata()
+                && m.is_file()
+            {
+                let t = m.modified().unwrap_or(std::time::UNIX_EPOCH);
+                out.push((t, m.len(), f.path()));
+            }
+        }
+    }
+    out
+}
+
+/// Platz, den die Großvorschauen belegen (Bytes).
+pub fn previews_size(base: &Path) -> u64 {
+    preview_files(base).iter().map(|f| f.1).sum()
+}
+
+/// Großvorschauen auf `max_bytes` begrenzen: Liegen mehr, gehen die am
+/// längsten nicht angesehenen, bis 90 % der Grenze erreicht sind (damit nicht
+/// jedes neue Foto gleich das nächste verdrängt). Sie entstehen bei Bedarf neu.
+pub fn trim_previews(base: &Path, max_bytes: u64) -> Swept {
+    let mut files = preview_files(base);
+    let mut total: u64 = files.iter().map(|f| f.1).sum();
+    let mut out = Swept::default();
+    if total <= max_bytes {
+        return out;
+    }
+    let target = max_bytes / 10 * 9;
+    files.sort_by_key(|f| f.0);
+    for (_, len, path) in files {
+        if total <= target {
+            break;
+        }
+        if std::fs::remove_file(&path).is_ok() {
+            total -= len;
+            out.files += 1;
+            out.bytes += len;
+        }
+    }
+    out
+}
+
 pub fn sweep_image_cache(base: &Path, images: &HashSet<i64>, min_age: Duration) -> Swept {
     let mut out = Swept::default();
     for variant in ["thumbs", "previews"] {
@@ -345,6 +398,30 @@ mod tests {
         assert_eq!(sweep_image_cache(&dir, &live, Duration::ZERO).files, 1);
         assert!(dir.join("thumbs/2a/42.jpg").exists());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn previews_are_trimmed_oldest_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        let now = std::time::SystemTime::now();
+        // Fünf Vorschauen à 1000 Bytes, Foto 1 am längsten nicht angesehen
+        for id in 1..=5i64 {
+            let p = base.join(format!("previews/{:02x}/{id}.jpg", id));
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, vec![0u8; 1000]).unwrap();
+            let f = std::fs::File::options().write(true).open(&p).unwrap();
+            f.set_modified(now - Duration::from_secs(3600 * (10 - id as u64)))
+                .unwrap();
+        }
+        assert_eq!(previews_size(base), 5000);
+        assert_eq!(trim_previews(base, 6000).files, 0);
+        // Grenze 4000: bis 3600 (90 %) räumen – die zwei ältesten gehen
+        let s = trim_previews(base, 4000);
+        assert_eq!((s.files, s.bytes), (2, 2000));
+        assert!(!base.join("previews/01/1.jpg").exists());
+        assert!(!base.join("previews/02/2.jpg").exists());
+        assert!(base.join("previews/03/3.jpg").exists());
     }
 
     #[test]

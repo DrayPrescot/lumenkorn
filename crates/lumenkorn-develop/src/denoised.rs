@@ -24,17 +24,15 @@ pub fn path(dir: &Path, id: &str) -> Option<std::path::PathBuf> {
 }
 
 pub fn write(path: &Path, w: usize, h: usize, data: &[[f32; 3]]) -> Result<()> {
-    let tmp = path.with_extension("tmp");
-    {
-        let mut f = BufWriter::with_capacity(1 << 20, std::fs::File::create(&tmp)?);
+    crate::fsutil::write_atomic_with(path, |tmp| {
+        let mut f = BufWriter::with_capacity(1 << 20, std::fs::File::create(tmp)?);
         f.write_all(MAGIC)?;
         for v in [1u32, w as u32, h as u32] {
             f.write_all(&v.to_le_bytes())?;
         }
         write_f16(&mut f, data)?;
-        f.flush()?;
-    }
-    std::fs::rename(tmp, path)?;
+        f.flush()
+    })?;
     Ok(())
 }
 

@@ -27,6 +27,17 @@ fn unique(p: &Path) -> PathBuf {
 }
 
 impl Catalog {
+    /// Spalte 0 von `select` (mit Alias `i` für `images`) für die Fotos von
+    /// `q`, `extra` wird an die Bedingung angehängt.
+    fn paths_where(&self, select: &str, extra: &str, q: &ImageQuery) -> Result<Vec<String>> {
+        let (where_sql, args) = self.where_clause(q)?;
+        let mut st = self
+            .conn
+            .prepare(&format!("{select} WHERE {where_sql}{extra}"))?;
+        let rows = st.query_map(rusqlite::params_from_iter(args), |r| r.get(0))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
     /// Exportierte Datei von Foto `image_id` merken (ein erneuter Export an
     /// dieselbe Stelle ersetzt den Eintrag).
     pub fn record_export(&self, image_id: i64, path: &Path) -> Result<()> {
@@ -42,19 +53,17 @@ impl Catalog {
     /// eingetragenen Exporte seiner Fotos und die Dateien in markierten
     /// Export-Ordnern innerhalb seiner Ordner.
     pub fn project_exports(&self, project_id: i64) -> Result<Vec<PathBuf>> {
-        let ids = self.query_image_ids(&ImageQuery::new(Scope::Project { id: project_id }))?;
         let mut out = BTreeSet::new();
-        {
-            let mut st = self
-                .conn
-                .prepare_cached("SELECT path FROM exports WHERE image_id = ?1")?;
-            for id in &ids {
-                for p in st.query_map([id], |r| r.get::<_, String>(0))? {
-                    let p = PathBuf::from(p?);
-                    if p.is_file() {
-                        out.insert(unique(&p));
-                    }
-                }
+        // Eine Abfrage für alle Fotos des Projekts statt einer je Foto
+        let scope = ImageQuery::new(Scope::Project { id: project_id });
+        for p in self.paths_where(
+            "SELECT e.path FROM exports e JOIN images i ON i.id = e.image_id",
+            "",
+            &scope,
+        )? {
+            let p = PathBuf::from(p);
+            if p.is_file() {
+                out.insert(unique(&p));
             }
         }
         for f in self.project(project_id)?.folders {
@@ -75,11 +84,12 @@ impl Catalog {
     /// Die Originale aller Fotos eines Projekts (ohne abgelehnte und ohne
     /// fehlende Dateien), sortiert – zum Hochladen statt der Exporte.
     pub fn project_originals(&self, project_id: i64) -> Result<Vec<PathBuf>> {
+        // Nur Pfad und Markierung lesen, nicht die ganze Fotoliste
+        let scope = ImageQuery::new(Scope::Project { id: project_id });
         let out: BTreeSet<PathBuf> = self
-            .query_images(&ImageQuery::new(Scope::Project { id: project_id }))?
+            .paths_where("SELECT i.path FROM images i", " AND i.flag != -1", &scope)?
             .into_iter()
-            .filter(|i| i.flag != -1)
-            .map(|i| PathBuf::from(i.path))
+            .map(PathBuf::from)
             .filter(|p| p.is_file())
             .map(|p| unique(&p))
             .collect();

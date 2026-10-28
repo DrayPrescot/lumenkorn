@@ -351,7 +351,9 @@ Search uses an SQLite FTS5 index with trigrams, so partial words match ("sonnen"
 
 Thumbnails (512 px) and previews (2048 px) are JPEGs in the system cache folder. For unedited
 RAW files Lumenkorn uses the JPEG the camera embedded, which is much faster than developing.
-Once a photo is edited, its thumbnail is rendered by the develop pipeline.
+Once a photo is edited, its thumbnail is rendered by the develop pipeline. Previews are limited
+to 5 GB by default (Settings → General); beyond that the ones not viewed for the longest time are
+deleted and rendered again when needed.
 
 ### The develop pipeline
 An edit is a small JSON document with all slider values, masks and geometry. Nothing else is
