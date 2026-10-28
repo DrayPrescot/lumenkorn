@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.25] – 2026-10-28
+
 ### Added
 - Nextcloud: right-click a project → "Zu Nextcloud hochladen …" uploads the project's exported
   photos to a folder in your Nextcloud and shares it as a public link, optionally with a password
