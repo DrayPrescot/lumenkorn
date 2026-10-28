@@ -21,6 +21,7 @@
   import CatalogTooNew from "./components/CatalogTooNew.svelte";
   import PresetDialog from "./components/PresetDialog.svelte";
   import AlbumDialog from "./components/AlbumDialog.svelte";
+  import CullDialog from "./components/CullDialog.svelte";
   import AlbumView from "./components/AlbumView.svelte";
   import StatsView from "./components/StatsView.svelte";
   import { album } from "./lib/album.svelte";
@@ -213,6 +214,10 @@
 
 {#if album.dialog}
   <AlbumDialog scope={album.dialog.scope} title={album.dialog.title} onclose={() => (album.dialog = null)} />
+{/if}
+
+{#if lib.cull}
+  <CullDialog scope={lib.cull.scope} title={lib.cull.title} onclose={() => (lib.cull = null)} />
 {/if}
 
 {#if lib.merge}

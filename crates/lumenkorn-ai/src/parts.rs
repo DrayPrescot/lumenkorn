@@ -718,6 +718,37 @@ impl Face {
         let (a, b) = (self.pts[33], self.pts[263]);
         2.0 * ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt()
     }
+    /// Lidöffnung: Höhe der Lidspalte durch ihre Breite („Eye Aspect
+    /// Ratio“), vom offeneren Auge – ein zugekniffenes Auge ist kein
+    /// geschlossenes Foto, und im Profil ist ein Auge verdeckt.
+    fn eye_openness(&self) -> f32 {
+        let d = |a: usize, b: usize| {
+            let (p, q) = (self.pts[a], self.pts[b]);
+            ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2)).sqrt()
+        };
+        // Außenwinkel, zwei Punkte oben, Innenwinkel, zwei Punkte unten
+        let ear = |[p1, p2, p3, p4, p5, p6]: [usize; 6]| {
+            (d(p2, p6) + d(p3, p5)) / (2.0 * d(p1, p4)).max(1e-3)
+        };
+        ear([33, 160, 158, 133, 153, 144]).max(ear([263, 387, 385, 362, 380, 373]))
+    }
+}
+
+/// Lidöffnung je Gesicht (siehe [`Face::eye_openness`]): offen etwa
+/// 0,25–0,35, geschlossen unter 0,1. `None`, wo Face Mesh kein Gesicht sieht.
+/// `boxes`: x0, y0, x1, y1 in Pixeln von `img`.
+pub fn eye_openness(
+    img: &RgbImage,
+    boxes: &[[f32; 4]],
+    mesh: &FaceMesh,
+) -> Result<Vec<Option<f32>>> {
+    boxes
+        .iter()
+        .map(|b| {
+            let faces = find_faces(img, std::slice::from_ref(b), mesh)?;
+            Ok(faces.first().map(Face::eye_openness))
+        })
+        .collect()
 }
 
 /// Maske für einen Teil aller Personen im Foto (Größe: längste Kante

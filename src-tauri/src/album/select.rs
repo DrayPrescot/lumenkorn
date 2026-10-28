@@ -467,17 +467,17 @@ pub(crate) fn score(f: &[Features], people: bool) -> (Vec<f32>, Vec<f32>) {
 
 /// Gleiche Ausrichtung (beide quer, beide hoch oder ähnlich): Ein Hoch- und
 /// ein Querformat sind nie dasselbe Bild, auch wenn die Farben passen.
-fn same_shape(a: &Features, b: &Features) -> bool {
+pub(crate) fn same_shape(a: &Features, b: &Features) -> bool {
     let r = a.aspect.max(0.01) / b.aspect.max(0.01);
     (1.0 / 1.25..=1.25).contains(&r)
 }
 
 /// Korrelation der Helligkeit (−1…1).
-fn luma_corr(a: &Features, b: &Features) -> f32 {
+pub(crate) fn luma_corr(a: &Features, b: &Features) -> f32 {
     a.luma.iter().zip(&b.luma).map(|(x, y)| x * y).sum()
 }
 
-fn color_diff(a: &Features, b: &Features) -> f32 {
+pub(crate) fn color_diff(a: &Features, b: &Features) -> f32 {
     let n = a.color.len().min(b.color.len()).max(1) as f32;
     a.color
         .iter()
@@ -491,7 +491,7 @@ fn color_diff(a: &Features, b: &Features) -> f32 {
 /// erkannte Personen. Nur wenn auf beiden Fotos Gesichter gefunden wurden –
 /// fehlen sie auf einem, ist es oft nur noch nicht analysiert (oder das
 /// Gesicht abgewandt).
-fn different_people(a: &Features, b: &Features) -> bool {
+pub(crate) fn different_people(a: &Features, b: &Features) -> bool {
     a.faces > 0
         && b.faces > 0
         && (a.faces != b.faces
@@ -538,7 +538,7 @@ pub(crate) fn is_duplicate(a: &Features, b: &Features) -> bool {
     clip || pixel || scene
 }
 
-fn find(parent: &mut [usize], i: usize) -> usize {
+pub(crate) fn find(parent: &mut [usize], i: usize) -> usize {
     let mut r = i;
     while parent[r] != r {
         r = parent[r];

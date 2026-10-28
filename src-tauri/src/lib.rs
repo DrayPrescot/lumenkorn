@@ -5,6 +5,7 @@ mod album;
 mod busy;
 mod commands;
 mod cull;
+mod cull_assist;
 mod develop;
 mod geo;
 mod guard;
@@ -267,6 +268,11 @@ pub fn run() {
             commands::add_root,
             commands::remove_root,
             cull::rejected_summary,
+            cull_assist::cull_suggest,
+            cull_assist::cull_suggest_cancel,
+            cull_assist::cull_learn,
+            cull_assist::cull_status,
+            cull_assist::cull_reset,
             merge::merge_start,
             import::import_defaults,
             import::import_set_target,

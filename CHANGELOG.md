@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Culling assistant ("Aussortieren" in the toolbar): suggests photos to reject. That covers the
+  weaker shots of a burst (the best 3 to 5 stay, depending on its size), blurry photos, closed
+  eyes, badly exposed photos and photos taken by accident. You go through the suggestions and
+  borderline cases; only what you tick is flagged as rejected, nothing is deleted. Photos with
+  stars, a pick flag or edits are never suggested. A strictness switch (cautious, normal, strict)
+  takes effect right away. The assistant learns from your decisions, including rejections you
+  take back later, and can be reset under Settings → AI.
+
 ### Fixed
 - Linux: the Nextcloud app password is now kept in the keyring (Secret Service: GNOME Keyring,
   KWallet, KeePassXC) and survives logging out and restarting. Before, it was only held in the

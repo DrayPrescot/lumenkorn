@@ -10,6 +10,8 @@ catalog and never changes the original files. Interface in English and German.
 
 ## Main features
 
+- Culling assistant: suggests weaker burst shots, blurry photos, closed eyes, bad exposure and
+  accidental shots for rejection; the user reviews them, and it learns from the decisions.
 - Library: folders read in place, projects across drives, stars, flags, keywords, search,
   file type filter (e.g. only RAW), import from memory cards with byte-by-byte verification,
   compare up to 12 photos.

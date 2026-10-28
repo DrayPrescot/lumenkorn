@@ -757,6 +757,16 @@ class Library {
    * Im Vergleich weiter zum nächsten verglichenen Bild, im Raster mit
    * Mehrfachauswahl hinter das letzte ausgewählte Bild.
    */
+  /** Fotos `ids` als abgelehnt markieren (Aussortier-Assistent) */
+  async rejectIds(ids: number[]) {
+    if (!ids.length) return;
+    this.#patch(ids, { flag: -1 });
+    await this.#write(() => api.setFlag(ids, -1)).catch((e) => this.#writeFailed(e));
+  }
+
+  /** Offener Aussortier-Assistent */
+  cull = $state<{ scope: Scope; title: string } | null>(null);
+
   async rejectAndAdvance() {
     const ids = this.#rateTargets();
     if (!ids.length) return;

@@ -17,6 +17,7 @@
   import McpSection from "./McpSection.svelte";
   import NextcloudSection from "./NextcloudSection.svelte";
   import StyleSection from "./StyleSection.svelte";
+  import CullSection from "./CullSection.svelte";
 
   let { page = "general", onclose }: { page?: SettingsPage; onclose: () => void } = $props();
 
@@ -224,6 +225,7 @@
           <StyleSection />
         {:else if current === "ai"}
           <AiPanel part="ai" />
+          <CullSection />
         {:else if current === "gpu"}
           <AiPanel part="gpu" />
         {:else if current === "keys"}

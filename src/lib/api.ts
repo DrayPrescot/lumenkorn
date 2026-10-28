@@ -287,6 +287,51 @@ export interface PlaceHit {
   bbox: [number, number, number, number] | null;
 }
 
+/** Aussortier-Assistent: Gründe für einen Vorschlag */
+export type CullReason = "series" | "blur" | "eyes" | "exposure" | "accident";
+
+export interface CullFinding {
+  reason: CullReason;
+  /** 0…1; vorgeschlagen ab der Schwelle des Grundes */
+  severity: number;
+}
+
+export interface CullItem {
+  id: number;
+  capturedAt: string | null;
+  /** Serie (ab zwei Fotos) und Platz darin (0 = bestes) */
+  series?: number;
+  rank: number;
+  /** Bleibt in der Serie */
+  keep: boolean;
+  /** Sterne, Pick oder bearbeitet – nie vorgeschlagen */
+  protected: boolean;
+  /** Schwerster zuerst */
+  findings: CullFinding[];
+}
+
+export interface CullResult {
+  items: CullItem[];
+  /** Gelernte Schwelle je Grund bei Strenge „normal“ */
+  thresholds: Record<CullReason, number>;
+  analyzed: number;
+  eyesChecked: boolean;
+  clipUsed: boolean;
+}
+
+export interface CullDecision {
+  id: number;
+  reason: CullReason;
+  severity: number;
+  reject: boolean;
+}
+
+export interface CullStatus {
+  samples: number;
+  base: number;
+  reasons: { reason: CullReason; samples: number; rejected: number; threshold: number }[];
+}
+
 export type Scope =
   | { type: "all" }
   | { type: "folder"; path: string; recursive: boolean }
@@ -1126,6 +1171,11 @@ export const api = {
   albumSuggest: (request: { scope: Scope; theme: string; customTheme: string | null; count: number; skipUneditedRaw: boolean }) =>
     call<AlbumSuggestion>("album_suggest", { request }),
   albumSuggestCancel: () => call<void>("album_suggest_cancel"),
+  cullSuggest: (scope: Scope) => call<CullResult>("cull_suggest", { scope }),
+  cullSuggestCancel: () => call<void>("cull_suggest_cancel"),
+  cullLearn: (decisions: CullDecision[]) => call<void>("cull_learn", { decisions }),
+  cullStatus: () => call<CullStatus>("cull_status"),
+  cullReset: () => call<void>("cull_reset"),
   styleStatus: () => call<StyleStatus>("style_status"),
   appSettings: () => call<AppSettings>("app_settings"),
   /** Nur die genannten Einstellungen ändern; liefert den neuen Stand */
@@ -1256,6 +1306,7 @@ export interface Events {
   "mcp-show": { id: number; develop: boolean };
   "tags-changed": { ids: number[] };
   "album-progress": { done: number; total: number };
+  "cull-progress": { done: number; total: number };
   "album-export-progress": AlbumExportProgress;
   "denoise-progress": {
     imageId: number;

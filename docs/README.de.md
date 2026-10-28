@@ -139,6 +139,17 @@ vergibt sie in der neuen Sprache neu.
   XMP-Begleitdateien, Katalogeintrag, Bearbeitungen, Masken, Entrauschungen, Reparaturen,
   Vorschauen und Gesichter. Dateien, die sich nicht löschen lassen, bleiben im Katalog und werden
   gemeldet.
+- **Aussortier-Assistent** („Aussortieren“ in der Werkzeugleiste): schlägt vor, was weg kann – aus
+  Serien die schwächeren Fotos (je nach Größe bleiben die schärfsten 3 bis 5), unscharfe Fotos,
+  geschlossene Augen, stark falsch belichtete und versehentlich ausgelöste Fotos. Die Schärfe wird
+  innerhalb der Serie verglichen, ein Porträt mit unscharfem Hintergrund gilt also nicht als
+  unscharf; ein einzelnes Foto nur, wenn es deutlich daneben liegt. Die Augen prüft Face Mesh
+  (braucht die Gesichtserkennung und die KI-Masken für Personen), versehentliche Fotos erkennt
+  CLIP. Du gehst Vorschläge und Grenzfälle durch und stellst die Strenge ein (vorsichtig, normal,
+  streng); als abgelehnt markiert wird nur, was angehakt ist. Fotos mit Sternen, Pick-Markierung
+  oder Bearbeitung schlägt er nie vor. Der Assistent lernt aus deinen Entscheidungen und aus
+  Ablehnungen, die du später wieder aufhebst – je Grund und erst, wenn genug zusammenkommen
+  (`aussortieren.json` im Datenordner, zurücksetzen unter Einstellungen → KI).
 
 ## Karte
 

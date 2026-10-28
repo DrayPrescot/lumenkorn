@@ -323,6 +323,7 @@ function withCount(p: Project): Project {
 }
 
 let mockLearnStyle = true;
+let mockCullSamples = 34;
 let mockMapEnabled = true;
 /** Ereignisse der Attrappe (sonst sendet nur das Backend welche) */
 const mockListeners = new Map<string, Set<(p: unknown) => void>>();
@@ -650,6 +651,59 @@ export const mock = {
       }
       case "album_places":
         return out(Object.fromEntries(images.filter((i) => a.ids.includes(i.id) && i.location?.place).map((i) => [i.id, i.location!.place])));
+      case "cull_suggest": {
+        // Beispiel: die ersten sieben Fotos als Serie, einzelne Befunde verteilt
+        const list = query({ scope: a.scope, sort: "capturedAsc" }).filter((i) => i.flag !== -1);
+        const total = list.length;
+        for (let done = 0; done < total; done += Math.max(1, Math.ceil(total / 6))) {
+          mockEmit("cull-progress", { done, total });
+          await new Promise((r) => setTimeout(r, 120));
+        }
+        mockEmit("cull-progress", { done: total, total });
+        const prot = (i: { rating: number; flag: number; edited: boolean }) => i.rating > 0 || i.flag === 1 || i.edited;
+        const items: unknown[] = [];
+        list.slice(0, 7).forEach((i, k) => {
+          const keep = k < 3 || prot(i);
+          const findings = keep
+            ? k > 0 && !prot(i)
+              ? [{ reason: "blur", severity: 0.2 }]
+              : []
+            : [{ reason: "series", severity: 0.5 + k * 0.04 }, ...(k === 5 ? [{ reason: "blur", severity: 0.85 }] : [])].sort((x, y) => y.severity - x.severity);
+          items.push({ id: i.id, capturedAt: i.capturedAt, series: 0, rank: k, keep, protected: prot(i), findings });
+        });
+        const SAMPLE: Record<number, { reason: string; severity: number }> = {
+          0: { reason: "blur", severity: 0.78 },
+          1: { reason: "eyes", severity: 0.64 },
+          2: { reason: "exposure", severity: 0.41 },
+          3: { reason: "accident", severity: 0.92 },
+          4: { reason: "blur", severity: 0.43 },
+        };
+        for (const i of list.slice(7)) {
+          const f = SAMPLE[(i.id * 37) % 11];
+          if (f && !prot(i)) items.push({ id: i.id, capturedAt: i.capturedAt, rank: 0, keep: true, protected: false, findings: [f] });
+        }
+        const th = { series: 0.5, blur: 0.5, eyes: 0.5, exposure: 0.5, accident: 0.5 };
+        return out({ items, thresholds: th, analyzed: total, eyesChecked: true, clipUsed: true });
+      }
+      case "cull_status":
+        return out({
+          samples: mockCullSamples,
+          base: 0.5,
+          reasons: [
+            { reason: "series", samples: mockCullSamples ? 21 : 0, rejected: mockCullSamples ? 17 : 0, threshold: 0.5 },
+            { reason: "blur", samples: mockCullSamples ? 11 : 0, rejected: mockCullSamples ? 4 : 0, threshold: mockCullSamples ? 0.61 : 0.5 },
+            { reason: "eyes", samples: mockCullSamples ? 2 : 0, rejected: mockCullSamples ? 2 : 0, threshold: 0.5 },
+            { reason: "exposure", samples: 0, rejected: 0, threshold: 0.5 },
+            { reason: "accident", samples: 0, rejected: 0, threshold: 0.5 },
+          ],
+        });
+      case "cull_learn":
+        mockCullSamples += a.decisions.length;
+        return out(null);
+      case "cull_reset":
+        mockCullSamples = 0;
+        return out(null);
+      case "cull_suggest_cancel":
       case "album_suggest_cancel":
       case "album_export_cancel":
         return out(null);

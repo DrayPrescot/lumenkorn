@@ -78,6 +78,16 @@ the catalog before you let Lumenkorn loose on your whole collection.
   nothing is overwritten, XMP sidecars follow, RAW+JPEG pairs keep one name.
 - Culling: `Shift+X` rejects and moves on. Rejected photos can be sent to the system trash in
   one step, together with their sidecar files and Lumenkorn's own data for them.
+- **Culling assistant** ("Aussortieren" in the toolbar) suggests what to reject: the weaker
+  shots of a burst (the sharpest 3 to 5 stay, depending on its size), blurry photos, closed eyes,
+  badly exposed photos and photos taken by accident. Sharpness is compared within a burst, so a
+  portrait with a soft background is not called blurry; on its own a photo is only flagged when
+  it is clearly out of focus. Eyes are checked with Face Mesh (needs face recognition and the AI
+  masks for people), accidental shots with CLIP. You review the suggestions and borderline cases
+  and switch between cautious, normal and strict; only what you tick is flagged as rejected.
+  Photos with stars, a pick flag or edits are never suggested. The assistant learns from your
+  decisions and from rejections you take back later, per reason and only once there are enough
+  of them (`aussortieren.json` in the data folder; reset under Settings → AI).
 - Compare up to 12 photos side by side with linked zoom, with a filmstrip below to swap photos
   in and out. Any photo can be viewed at 100 % from the full-resolution file.
 - Supported formats: JPEG, PNG, TIFF (8, 16 and 32 bit), WebP, OpenEXR and RAW files from Canon,
