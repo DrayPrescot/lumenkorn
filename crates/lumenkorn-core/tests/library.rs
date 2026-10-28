@@ -792,3 +792,83 @@ fn project_exports_combine_recorded_and_marked_folders() {
     want.sort();
     assert_eq!(got, want);
 }
+
+/// „Unterordner einbeziehen“ aus: Die Unterordner verschwinden aus der
+/// Bibliothek (Fotos fehlen), die eigenen Fotos bleiben. Wieder an: dieselben
+/// Fotos mit Bewertung sind zurück.
+#[test]
+fn excluded_subfolders_leave_and_return_with_their_ratings() {
+    use lumenkorn_core::scanner::set_subfolder_rules;
+    let tmp = tempfile::tempdir().unwrap();
+    let a = tmp.path().join("Fotos");
+    write_jpeg(&a.join("Reise/eins.jpg"), 64, 64, 1);
+    write_jpeg(&a.join("Reise/Tag2/zwei.jpg"), 64, 64, 2);
+    write_jpeg(&a.join("Reise/Tag2/Handy/drei.jpg"), 64, 64, 3);
+    let cat = Mutex::new(Catalog::open_in_memory().unwrap());
+    let root = cat.lock().unwrap().add_root(&a).unwrap();
+    scan_root(&cat, root.id, &no_progress).unwrap();
+    let visible = |cat: &Mutex<Catalog>| {
+        let mut n = names(&cat.lock().unwrap(), Scope::All);
+        n.sort();
+        n
+    };
+    assert_eq!(visible(&cat), vec!["drei.jpg", "eins.jpg", "zwei.jpg"]);
+    let zwei = cat
+        .lock()
+        .unwrap()
+        .query_images(&ImageQuery::new(Scope::All))
+        .unwrap()
+        .into_iter()
+        .find(|i| i.file_name == "zwei.jpg")
+        .unwrap()
+        .id;
+    cat.lock().unwrap().set_rating(&[zwei], 4).unwrap();
+
+    // „Reise“ ohne Unterordner: Tag2 und alles darunter fällt weg
+    let reise = a.join("Reise");
+    cat.lock()
+        .unwrap()
+        .set_folder_subfolders(&reise, false)
+        .unwrap();
+    let rules = cat.lock().unwrap().folder_options().unwrap();
+    set_subfolder_rules(true, &rules);
+    scan_root(&cat, root.id, &no_progress).unwrap();
+    assert_eq!(visible(&cat), vec!["eins.jpg"]);
+    let tree = cat.lock().unwrap().folder_tree(root.id).unwrap();
+    let text = format!("{tree:?}");
+    assert!(!text.contains("Tag2"), "{text}");
+    // Auch die Dateiüberwachung nimmt dort nichts auf
+    write_jpeg(&a.join("Reise/Tag2/vier.jpg"), 64, 64, 4);
+    let rep = lumenkorn_core::scanner::scan_paths(
+        &cat,
+        root.id,
+        &[a.join("Reise/Tag2/vier.jpg")],
+        &no_progress,
+    )
+    .unwrap();
+    assert_eq!(rep.added, 0);
+    assert_eq!(visible(&cat), vec!["eins.jpg"]);
+
+    // Wieder einbeziehen: zurück, mit Bewertung
+    cat.lock()
+        .unwrap()
+        .set_folder_subfolders(&reise, true)
+        .unwrap();
+    let rules = cat.lock().unwrap().folder_options().unwrap();
+    set_subfolder_rules(true, &rules);
+    scan_root(&cat, root.id, &no_progress).unwrap();
+    assert_eq!(
+        visible(&cat),
+        vec!["drei.jpg", "eins.jpg", "vier.jpg", "zwei.jpg"]
+    );
+    let back = cat
+        .lock()
+        .unwrap()
+        .query_images(&ImageQuery::new(Scope::All))
+        .unwrap()
+        .into_iter()
+        .find(|i| i.file_name == "zwei.jpg")
+        .unwrap();
+    assert_eq!((back.id, back.rating), (zwei, 4));
+    set_subfolder_rules(true, &[]);
+}

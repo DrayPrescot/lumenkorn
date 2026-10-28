@@ -115,6 +115,34 @@ pub fn rescan_root(state: State<AppState>, id: i64) {
     state.worker.submit(Job::Rescan(id));
 }
 
+/// Ordner mit eigener Einstellung „Unterordner einbeziehen“ (Pfad, an/aus)
+#[tauri::command(async)]
+pub fn folder_options(state: State<AppState>) -> CmdResult<Vec<(String, bool)>> {
+    state.catalog.locked().folder_options()
+}
+
+/// „Unterordner einbeziehen“ für einen Ordner setzen und seinen Quellordner
+/// neu abgleichen: Ausgeschlossene Fotos verschwinden aus der Bibliothek
+/// (Bewertungen und Bearbeitungen bleiben im Katalog), einbezogene kommen
+/// zurück.
+#[tauri::command(async)]
+pub fn folder_set_subfolders(state: State<AppState>, path: String, include: bool) -> CmdResult<()> {
+    let root = {
+        let cat = state.catalog.locked();
+        cat.set_folder_subfolders(std::path::Path::new(&path), include)?;
+        crate::settings::apply_folder_rules(&state.data_dir, &cat);
+        let norm = lumenkorn_core::paths::normalize_dir(std::path::Path::new(&path));
+        cat.roots()?
+            .into_iter()
+            .filter(|r| lumenkorn_core::paths::is_within(&norm, &r.path))
+            .max_by_key(|r| r.path.len())
+    };
+    if let Some(r) = root {
+        state.worker.submit(Job::Rescan(r.id));
+    }
+    Ok(())
+}
+
 #[tauri::command(async)]
 pub fn folder_tree(state: State<AppState>, root_id: i64) -> CmdResult<FolderNode> {
     state.catalog.locked().folder_tree(root_id)

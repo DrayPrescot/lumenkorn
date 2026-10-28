@@ -190,9 +190,11 @@ class Library {
       .then((s) => {
         this.mapEnabled = s.mapEnabled;
         this.exportSubfolder = s.exportSubfolder;
+        this.includeSubfolders = s.includeSubfolders;
       })
       .catch(() => {});
     void this.refreshNcShared();
+    void this.refreshFolderOptions();
     let peopleTimer: ReturnType<typeof setTimeout> | undefined;
     listen("faces-progress", ({ done, total, faces, ids }) => {
       if (this.peopleStatus) this.peopleStatus = { ...this.peopleStatus, analyzed: done, total, faces };
@@ -987,6 +989,39 @@ class Library {
   /** Karte und Ortsnamen über OpenStreetMap (Einstellungen → Allgemein) */
   mapEnabled = $state(true);
 
+  /** Unterordner in die Bibliothek aufnehmen: Standard und je Ordner */
+  includeSubfolders = $state(true);
+  folderOptions = $state<Record<string, boolean>>({});
+
+  async refreshFolderOptions() {
+    const list = await api.folderOptions().catch(() => [] as [string, boolean][]);
+    this.folderOptions = Object.fromEntries(list.map(([p, v]) => [folderKey(p), v]));
+  }
+
+  /** Nimmt der Ordner seine Unterordner auf (eigene Einstellung oder Standard)? */
+  subfoldersIncluded(path: string): boolean {
+    return this.folderOptions[folderKey(path)] ?? this.includeSubfolders;
+  }
+
+  async setFolderSubfolders(path: string, include: boolean) {
+    try {
+      await api.folderSetSubfolders(path, include);
+      this.folderOptions = { ...this.folderOptions, [folderKey(path)]: include };
+      this.notify(include ? t("Unterordner werden eingelesen …") : t("Unterordner werden aus der Bibliothek genommen …"));
+    } catch (e) {
+      this.notify(String(e), "error");
+    }
+  }
+
+  async setIncludeSubfolders(on: boolean) {
+    try {
+      const s = await api.appSetSettings({ includeSubfolders: on });
+      this.includeSubfolders = s.includeSubfolders;
+    } catch (e) {
+      this.notify(String(e), "error");
+    }
+  }
+
   /** In Nextcloud geteilte Projekte: Projekt-ID → Link */
   ncShared = $state<Record<number, string>>({});
 
@@ -1156,6 +1191,9 @@ function loadCollapsed(): Record<string, boolean> {
     return {};
   }
 }
+
+/** Vergleichbarer Ordnerpfad (ohne Trenner am Ende, ohne Groß-/Kleinschreibung) */
+const folderKey = (p: string) => p.replace(/[\\/]+$/, "").toLowerCase();
 
 const isRejected = (i: ImageSummary) => i.flag === -1 && !i.missing;
 function countRejected(images: ImageSummary[]): number {

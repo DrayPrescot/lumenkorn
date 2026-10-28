@@ -162,6 +162,15 @@
             <p class="muted small">{t("Vorschlag beim Import von der Speicherkarte; im Import-Dialog lässt er sich jedes Mal ändern.")}</p>
           </div>
           <div class="field">
+            <label class="row choice">
+              <input type="checkbox" checked={lib.includeSubfolders} onchange={(e) => lib.setIncludeSubfolders(e.currentTarget.checked)} />
+              <span class="label">{t("Unterordner in die Bibliothek aufnehmen")}</span>
+            </label>
+            <p class="muted small">
+              {t("Standard für alle Ordner. Für einzelne Ordner per Rechtsklick im Ordnerbaum → „Unterordner einbeziehen“ änderbar. Ausgeschlossene Fotos verschwinden aus der Bibliothek; Bewertungen und Bearbeitungen bleiben erhalten und sind wieder da, sobald du die Unterordner wieder einbeziehst.")}
+            </p>
+          </div>
+          <div class="field">
             <span class="label">{t("Export: Zielordner")}</span>
             <div class="row">
               <code class="path" class:default={!prefs.exportDir}>{prefs.exportDir ?? lib.exportSubfolderLabel}</code>

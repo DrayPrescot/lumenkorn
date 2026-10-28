@@ -182,6 +182,8 @@ pub fn run() {
             let worker = Worker::start(app.handle().clone(), catalog.clone(), cache.clone());
             let watcher = start_watcher(catalog.clone(), worker.clone(), data_dir.clone());
 
+            // „Unterordner einbeziehen“ vor dem ersten Scan
+            settings::apply_folder_rules(&data_dir, &catalog.locked());
             // Alle Quellordner beim Start abgleichen – Änderungen, während die App
             // geschlossen war, werden so erkannt.
             let roots = catalog.locked().roots()?;
@@ -237,6 +239,8 @@ pub fn run() {
             style::style_status,
             settings::app_settings,
             settings::app_set_settings,
+            commands::folder_options,
+            commands::folder_set_subfolders,
             nextcloud::nc_status,
             nextcloud::nc_login_start,
             nextcloud::nc_login_cancel,

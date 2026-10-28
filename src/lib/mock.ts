@@ -332,6 +332,8 @@ function mockEmit(event: string, payload: unknown) {
 let mockNc: { server: string; loginName: string; baseFolder: string } | null = null;
 const mockShares = new Map<number, string>();
 let mockExportSubfolder = "Export";
+let mockIncludeSubfolders = true;
+const mockFolderOptions = new Map<string, boolean>();
 
 const delay = <T>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 30));
 
@@ -489,7 +491,12 @@ export const mock = {
           },
         });
       case "app_settings":
-        return out({ mapEnabled: mockMapEnabled, exportSubfolder: mockExportSubfolder });
+        return out({ mapEnabled: mockMapEnabled, exportSubfolder: mockExportSubfolder, includeSubfolders: mockIncludeSubfolders });
+      case "folder_options":
+        return out([...mockFolderOptions]);
+      case "folder_set_subfolders":
+        mockFolderOptions.set(a.path, a.include);
+        return out(null);
       case "app_set_settings": {
         const sub = a.settings?.exportSubfolder;
         if (typeof sub === "string") {
@@ -499,7 +506,8 @@ export const mock = {
           mockExportSubfolder = s;
         }
         mockMapEnabled = a.settings?.mapEnabled ?? mockMapEnabled;
-        return out({ mapEnabled: mockMapEnabled, exportSubfolder: mockExportSubfolder });
+        mockIncludeSubfolders = a.settings?.includeSubfolders ?? mockIncludeSubfolders;
+        return out({ mapEnabled: mockMapEnabled, exportSubfolder: mockExportSubfolder, includeSubfolders: mockIncludeSubfolders });
       }
       case "style_reset":
         return out(null);

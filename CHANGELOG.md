@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Leave subfolders out of the library, per folder: right-click a folder → "Unterordner
+  einbeziehen". The default (include subfolders) can be changed under Settings → Folders. Photos
+  in excluded folders disappear from the library, but their ratings and edits are kept and come
+  back when the subfolders are included again.
+- Projects shared in Nextcloud show a cloud icon in the sidebar; its tooltip shows the link and a
+  click opens the Nextcloud dialog.
+
 ## [1.0.25] – 2026-10-28
 
 ### Added

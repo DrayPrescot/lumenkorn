@@ -54,6 +54,63 @@ pub fn set_excluded_dirs(dirs: Vec<PathBuf>) {
     *EXCLUDED.write().unwrap_or_else(|e| e.into_inner()) = dirs;
 }
 
+/// Unterordner in die Bibliothek aufnehmen? Ein Standard (Einstellungen) und
+/// Abweichungen je Ordner (Rechtsklick im Ordnerbaum). Die Einstellung eines
+/// Ordners gilt für seine Unterordner, nicht für seine eigenen Fotos: Ein
+/// Ordner gehört dazu, wenn alle Ordner über ihm bis zum Quellordner ihre
+/// Unterordner einbeziehen.
+struct SubfolderRules {
+    default: bool,
+    /// Ordnerpfad (Schlüssel aus [`rule_key`]) → einbeziehen
+    folders: HashMap<String, bool>,
+}
+
+static SUBFOLDERS: std::sync::LazyLock<std::sync::RwLock<SubfolderRules>> =
+    std::sync::LazyLock::new(|| {
+        std::sync::RwLock::new(SubfolderRules {
+            default: true,
+            folders: HashMap::new(),
+        })
+    });
+
+/// Vergleichbarer Schlüssel eines Ordnerpfads (ohne abschließenden Trenner,
+/// unter Windows ohne Groß-/Kleinschreibung)
+fn rule_key(p: &str) -> String {
+    let s = p.trim_end_matches(['/', '\\']);
+    if cfg!(windows) {
+        s.replace('/', "\\").to_lowercase()
+    } else {
+        s.to_string()
+    }
+}
+
+/// Regeln setzen: `default` für Ordner ohne eigene Einstellung, `folders`
+/// je Ordner (Pfad, einbeziehen).
+pub fn set_subfolder_rules(default: bool, folders: &[(String, bool)]) {
+    *SUBFOLDERS.write().unwrap_or_else(|e| e.into_inner()) = SubfolderRules {
+        default,
+        folders: folders.iter().map(|(p, v)| (rule_key(p), *v)).collect(),
+    };
+}
+
+/// Nimmt `dir` seine Unterordner in die Bibliothek auf?
+pub fn includes_subfolders(dir: &Path) -> bool {
+    let r = SUBFOLDERS.read().unwrap_or_else(|e| e.into_inner());
+    r.folders
+        .get(&rule_key(&dir.to_string_lossy()))
+        .copied()
+        .unwrap_or(r.default)
+}
+
+/// Liegt der Ordner `dir` (unter `root`) außerhalb der Bibliothek, weil ein
+/// Ordner über ihm seine Unterordner nicht einbezieht?
+fn hidden_by_rules(root: &Path, dir: &Path) -> bool {
+    dir.ancestors()
+        .skip(1)
+        .take_while(|a| a.starts_with(root))
+        .any(|a| !includes_subfolders(a))
+}
+
 pub fn is_excluded(p: &Path) -> bool {
     EXCLUDED
         .read()
@@ -200,7 +257,10 @@ fn is_skipped(e: &DirEntry) -> bool {
         || (e.file_type().is_dir()
             && (SKIP_DIRS.contains(&name.as_ref())
                 || is_excluded(e.path())
-                || is_export_dir(e.path())))
+                || is_export_dir(e.path())
+                // Der Ordner darüber bezieht seine Unterordner nicht ein (die
+                // Ebenen darüber hat der Durchlauf schon geprüft)
+                || e.path().parent().is_some_and(|p| !includes_subfolders(p))))
 }
 
 /// Quellordner nicht erreichbar (Laufwerk abgesteckt, NAS schläft)? Dann
@@ -408,9 +468,17 @@ fn within_root(root: &Path, p: &Path) -> Option<PathBuf> {
     }
 }
 
-/// Liegt `p` in einem Ordner, den der Scan überspringt (versteckt, System)?
+/// Liegt `p` in einem Ordner, den der Scan überspringt (versteckt, System,
+/// durch „Unterordner einbeziehen“ ausgeschlossen)?
 fn in_skipped_dir(root: &Path, p: &Path) -> bool {
+    // Datei: entscheidend ist ihr Ordner; Ordner: er selbst
+    let dir = if p.is_file() || formats::classify(p).is_some() {
+        p.parent().unwrap_or(p)
+    } else {
+        p
+    };
     is_excluded(p)
+        || hidden_by_rules(root, dir)
         || p.strip_prefix(root).is_ok_and(|rel| {
             rel.components().any(|c| {
                 let n = c.as_os_str().to_string_lossy();

@@ -26,6 +26,17 @@
   let newProject = $state<string | null>(null);
   // `paths`: mehrere gewählte Ordner (Strg-/Umschalt-Klick), sonst nur `node`
   let menu = $state<{ x: number; y: number; node: FolderNode; root?: Root; paths: string[] } | null>(null);
+  /** Ordner im Kontextmenü: bezieht er seine Unterordner ein? */
+  const menuSubfolders = $derived(menu && menu.paths.length <= 1 ? lib.subfoldersIncluded(menu.node.path) : true);
+
+  function toggleSubfolders() {
+    if (!menu) return;
+    const path = menu.node.path;
+    const on = menuSubfolders;
+    menu = null;
+    lib.setFolderSubfolders(path, !on);
+  }
+
   /** Kontextmenü eines Projekts und offener Nextcloud-Dialog */
   let projMenu = $state<{ x: number; y: number; project: Project } | null>(null);
   let ncProject = $state<Project | null>(null);
@@ -462,7 +473,13 @@
     </button>
     {#if many}
       <p class="menu-note">{t("Strg-/Umschalt-Klick ändert die Auswahl, Esc hebt sie auf.")}</p>
-    {:else if m.root}
+    {:else}
+      <hr />
+      <button role="menuitemcheckbox" aria-checked={menuSubfolders} onclick={toggleSubfolders}>
+        <span class="check-mark">{menuSubfolders ? "✓" : ""}</span> {t("Unterordner einbeziehen")}
+      </button>
+    {/if}
+    {#if !many && m.root}
       {@const root = m.root}
       <hr />
       <button role="menuitem" onclick={() => { menu = null; api.rescanRoot(root.id); }}>
@@ -639,6 +656,11 @@
   .count {
     color: var(--faint);
     font-size: var(--step--1);
+  }
+  .check-mark {
+    display: inline-block;
+    width: 14px;
+    text-align: center;
   }
   .shared {
     display: inline-flex;

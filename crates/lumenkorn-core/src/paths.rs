@@ -46,7 +46,7 @@ pub(crate) fn child_prefix(dir: &str) -> String {
 }
 
 /// Liegt `path` in `dir` (oder ist es `dir` selbst)?
-pub(crate) fn is_within(path: &str, dir: &str) -> bool {
+pub fn is_within(path: &str, dir: &str) -> bool {
     path == dir || path.starts_with(&child_prefix(dir))
 }
 

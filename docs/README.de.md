@@ -91,6 +91,11 @@ vergibt sie in der neuen Sprache neu.
   danach, und die Statistik rechnet für diese Fotos neu.
 - **Seitenleiste:** „Projekte“, „Personen“ und „Ordner“ lassen sich per Klick auf die Überschrift
   einklappen.
+- **Unterordner:** Rechtsklick auf einen Ordner → „Unterordner einbeziehen“ nimmt seine Unterordner
+  aus der Bibliothek oder wieder auf. Ob Unterordner standardmäßig dazugehören, steht unter
+  Einstellungen → Ordner. Fotos ausgeschlossener Ordner verschwinden aus Raster, Ordnerbaum, Suche
+  und Statistik; Bewertungen und Bearbeitungen bleiben im Katalog und sind wieder da, sobald die
+  Unterordner wieder dazugehören.
 - **Metadaten:** Im Info-Bereich unter „Metadaten“ → „Bearbeiten“: Titel, Beschreibung, Autor,
   Urheberrecht, Aufnahmezeit (festlegen oder bei mehreren Fotos verschieben), Kamera, Objektiv,
   Brennweite, Blende, Belichtungszeit und ISO, für ein oder viele Fotos. Gespeichert im Katalog und

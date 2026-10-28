@@ -310,6 +310,13 @@ const MIGRATIONS: &[&str] = &[
         exported_at INTEGER NOT NULL
     );
     CREATE INDEX exports_image ON exports(image_id);",
+    // v27: Je Ordner, ob seine Unterordner zur Bibliothek gehören
+    // (`scanner::set_subfolder_rules`); ohne Eintrag gilt der Standard aus
+    // den Einstellungen
+    "CREATE TABLE folder_options (
+        path        TEXT PRIMARY KEY,
+        subfolders  INTEGER NOT NULL
+    );",
 ];
 
 /// v24: Metadaten, die der Nutzer geändert hat (`imagemeta.rs`). Ein Eintrag
@@ -824,6 +831,25 @@ impl Catalog {
         }
         // Rest (z. B. während des Löschens neu gescannt) und der Ordner selbst
         catalog.locked().remove_root(id)
+    }
+
+    /// Ordner mit eigener Einstellung „Unterordner einbeziehen“
+    pub fn folder_options(&self) -> Result<Vec<(String, bool)>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT path, subfolders FROM folder_options")?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// „Unterordner einbeziehen“ für einen Ordner setzen
+    pub fn set_folder_subfolders(&self, path: &Path, include: bool) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO folder_options (path, subfolders) VALUES (?1, ?2)
+             ON CONFLICT(path) DO UPDATE SET subfolders = ?2",
+            params![paths::normalize_dir(path), include],
+        )?;
+        Ok(())
     }
 
     pub fn roots(&self) -> Result<Vec<Root>> {
@@ -2677,6 +2703,8 @@ mod migration_tests {
     /// sie ersetzen kann.
     /// Stand vor v26: keine Liste der Exporte
     const UNDO_V26: &str = "DROP TABLE exports;";
+    /// Stand vor v27: keine Einstellungen je Ordner
+    const UNDO_V27: &str = "DROP TABLE folder_options;";
 
     const UNDO_V24: &str = "DROP TRIGGER search_meta_ins; DROP TRIGGER search_meta_upd;
         DROP TRIGGER search_meta_del; DROP VIEW search_source; DROP TABLE image_meta;
@@ -2762,7 +2790,7 @@ mod migration_tests {
             cat.conn
                 .execute_batch(&format!(
                     // Stand vor v9 (und damit auch vor v10, v11) nachstellen
-                    "UPDATE images SET thumb_state = 1; {UNDO_V26} {UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11}
+                    "UPDATE images SET thumb_state = 1; {UNDO_V27} {UNDO_V26} {UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11}
                      DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
                      PRAGMA user_version = 8;"
                 ))
@@ -2909,7 +2937,7 @@ mod migration_tests {
             // Zustand vor v10 nachstellen: höchste ID bereits im Bestand
             cat.conn
                 .execute_batch(&format!(
-                    "{UNDO_V26} {UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11} DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
+                    "{UNDO_V27} {UNDO_V26} {UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11} DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
                      PRAGMA user_version = 9;"
                 ))
                 .unwrap();

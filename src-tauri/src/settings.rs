@@ -4,7 +4,7 @@
 //! Standard-Unterordner für den Export.
 
 use crate::AppState;
-use lumenkorn_core::Error;
+use lumenkorn_core::{Error, LockExt};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, State};
@@ -20,6 +20,9 @@ pub struct AppSettings {
     /// Exportziel ohne gewählten Ordner: relativ zum Ordner des Originals
     /// (`Export`, `Export/JPEG`, `../Exporte`, `.`)
     pub export_subfolder: String,
+    /// Unterordner in die Bibliothek aufnehmen – Standard für Ordner ohne
+    /// eigene Einstellung (Rechtsklick im Ordnerbaum)
+    pub include_subfolders: bool,
 }
 
 impl Default for AppSettings {
@@ -27,6 +30,7 @@ impl Default for AppSettings {
         Self {
             map_enabled: true,
             export_subfolder: lumenkorn_core::scanner::DEFAULT_EXPORT_SUBFOLDER.into(),
+            include_subfolders: true,
         }
     }
 }
@@ -44,6 +48,16 @@ pub fn read(data_dir: &Path) -> AppSettings {
     s.export_subfolder = lumenkorn_core::scanner::check_export_subfolder(&s.export_subfolder)
         .unwrap_or_else(|_| lumenkorn_core::scanner::DEFAULT_EXPORT_SUBFOLDER.into());
     s
+}
+
+/// „Unterordner einbeziehen“ an den Scanner geben: Standard aus den
+/// Einstellungen, Abweichungen je Ordner aus dem Katalog.
+pub fn apply_folder_rules(data_dir: &Path, catalog: &lumenkorn_core::Catalog) {
+    let folders = catalog.folder_options().unwrap_or_else(|e| {
+        log::warn!("Ordner-Einstellungen nicht lesbar: {e}");
+        Vec::new()
+    });
+    lumenkorn_core::scanner::set_subfolder_rules(read(data_dir).include_subfolders, &folders);
 }
 
 /// Beim Start: Einstellungen lesen und wirksam machen.
@@ -72,6 +86,7 @@ pub fn app_set_settings(
             c.insert(k.clone(), v.clone());
         }
     }
+    let before = read(&state.data_dir).include_subfolders;
     let mut settings: AppSettings = serde_json::from_value(cur)?;
     settings.export_subfolder =
         lumenkorn_core::scanner::check_export_subfolder(&settings.export_subfolder)
@@ -81,6 +96,14 @@ pub fn app_set_settings(
         serde_json::to_string_pretty(&settings)?,
     )?;
     crate::geo::set_enabled(settings.map_enabled);
+    if settings.include_subfolders != before {
+        // Neuer Standard: alle Quellordner danach neu abgleichen
+        let cat = state.catalog.locked();
+        apply_folder_rules(&state.data_dir, &cat);
+        for r in cat.roots()? {
+            state.worker.submit(crate::worker::Job::Rescan(r.id));
+        }
+    }
     if settings.map_enabled {
         // Ausstehende Ortsnamen jetzt nachholen
         crate::geo::kick(&app);

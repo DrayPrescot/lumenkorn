@@ -52,6 +52,9 @@ the catalog before you let Lumenkorn loose on your whole collection.
 - A file watcher picks up new, changed, renamed and moved files. Moved files are recognized by
   a content hash, so ratings, keywords and edits stay with the photo.
 - Projects collect any number of folders, also across drives.
+- Subfolders can be left out of the library per folder (right-click → "Unterordner einbeziehen");
+  whether subfolders are included by default is set under Settings → Folders. Ratings and edits of
+  excluded photos are kept and return when the folder is included again.
 - Ratings (`0`–`5`), pick and reject flags (`P` / `X`), keywords, and a search over file name,
   folder, camera, lens, keywords, people and place names.
 - **Filter** in the toolbar shows only edited or only unedited photos, and filters by format (ARW,

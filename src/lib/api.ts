@@ -832,6 +832,8 @@ export interface AppSettings {
   mapEnabled: boolean;
   /** Exportziel ohne gewählten Ordner, relativ zum Ordner des Originals */
   exportSubfolder: string;
+  /** Unterordner in die Bibliothek aufnehmen (Standard; je Ordner änderbar) */
+  includeSubfolders: boolean;
 }
 
 /** Stand von „Auto nach deinem Stil“ */
@@ -1062,6 +1064,9 @@ export const api = {
   updateCheck: () => call<UpdateInfo | null>("update_check"),
   updateInstall: () => call<void>("update_install"),
   mcpStatus: () => call<McpStatus>("mcp_status"),
+  /** Ordner mit eigener Einstellung „Unterordner einbeziehen“: [Pfad, an] */
+  folderOptions: () => call<[string, boolean][]>("folder_options"),
+  folderSetSubfolders: (path: string, include: boolean) => call<void>("folder_set_subfolders", { path, include }),
   ncStatus: () => call<NcStatus | null>("nc_status"),
   /** Öffnet die Anmeldeseite im Browser; Ergebnis per `nextcloud-login` */
   ncLoginStart: (server: string) => call<void>("nc_login_start", { server }),
