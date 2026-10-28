@@ -21,6 +21,8 @@ jpeg-encoder = { version = "0.7", features = ["simd"] }
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "tiff", "webp", "rayon"] }
 # 16-Bit-TIFF mit Metadaten (EXIF, XMP) – dieselbe Version wie in image
 tiff = "0.11"
+# PNG mit Metadaten (eXIf, XMP als iTXt) – dieselbe Version wie in image
+png = "0.18"
 log = "0.4.34"
 pollster = "1.0.1"
 rawler = "0.8.0"

@@ -256,7 +256,7 @@ Außerdem:
   Von Lumenkorn angelegte Export-Ordner tragen eine versteckte Markierung (`.lumenkorn-export`) und
   erscheinen nicht in der Bibliothek. Gibt es eine Datei schon, fragt Lumenkorn: überschreiben,
   zusätzlich exportieren (`Name-2`) oder überspringen. Originale der Bibliothek werden nie
-  überschrieben. JPEG und TIFF enthalten die Metadaten des Fotos als EXIF und XMP: Kamera,
+  überschrieben. Alle Formate enthalten die Metadaten des Fotos als EXIF und XMP: Kamera,
   Objektiv, Belichtung, Blende, ISO, Brennweite, Aufnahmezeit, Titel, Beschreibung, Autor,
   Urheberrecht, eigene Schlagworte und die Bewertung, bearbeitete Werte eingeschlossen.
   KI-Schlagworte und der Ort bleiben draußen.

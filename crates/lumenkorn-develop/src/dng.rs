@@ -47,8 +47,11 @@ pub enum DngContent<'a> {
     Scene(&'a ImageF32),
 }
 
-/// Schreibt das DNG in den Speicher.
-pub fn encode_lossy(content: DngContent) -> Result<Vec<u8>> {
+/// Schreibt das DNG in den Speicher, mit EXIF und XMP aus `meta`.
+pub fn encode_lossy(
+    content: DngContent,
+    meta: Option<&crate::output::ExportMeta>,
+) -> Result<Vec<u8>> {
     let developed = matches!(content, DngContent::Developed(_));
     let (img, codes, peak) = match content {
         DngContent::Developed(img) => (img, to_rgb8(img).into_raw(), 1.0),
@@ -194,8 +197,13 @@ pub fn encode_lossy(content: DngContent) -> Result<Vec<u8>> {
     ifd0.short(258, &[8, 8, 8]);
     ifd0.short(259, &[1]);
     ifd0.short(262, &[2]);
-    ifd0.ascii(271, "Lumenkorn");
-    ifd0.ascii(272, "Lumenkorn");
+    // Mit bekannter Kamera steht sie in Model (der Text enthält die Marke);
+    // UniqueCameraModel bleibt „Lumenkorn“, das Profil stammt von hier
+    let camera = meta.is_some_and(|m| m.camera.as_deref().is_some_and(|c| !c.trim().is_empty()));
+    if !camera {
+        ifd0.ascii(271, "Lumenkorn");
+        ifd0.ascii(272, "Lumenkorn");
+    }
     ifd0.long(273, &[thumb_off]);
     ifd0.short(274, &[1]);
     ifd0.short(277, &[3]);
@@ -225,6 +233,9 @@ pub fn encode_lossy(content: DngContent) -> Result<Vec<u8>> {
         ifd0.float(50940, &[0.0, 0.0, 1.0, 1.0]);
     }
     ifd0.long(51110, &[1]); // DefaultBlackRender: None
+    if let Some(m) = meta {
+        crate::embed::add_to_dng(m, &mut ifd0, &mut out);
+    }
     let ifd0_off = ifd0.write(&mut out);
     out[4..8].copy_from_slice(&ifd0_off.to_le_bytes());
     Ok(out)
@@ -245,7 +256,7 @@ impl Ifd {
     pub(crate) fn add(&mut self, tag: u16, typ: u16, count: usize, data: Vec<u8>) {
         self.entries.push((tag, typ, count as u32, data));
     }
-    fn bytes(&mut self, tag: u16, v: &[u8]) {
+    pub(crate) fn bytes(&mut self, tag: u16, v: &[u8]) {
         self.add(tag, 1, v.len(), v.to_vec());
     }
     pub(crate) fn ascii(&mut self, tag: u16, s: &str) {
@@ -338,7 +349,7 @@ mod tests {
     #[test]
     fn developed_dng_round_trips() {
         let img = gradient();
-        let data = encode_lossy(DngContent::Developed(&img)).unwrap();
+        let data = encode_lossy(DngContent::Developed(&img), None).unwrap();
         let raw = rawler::decode(
             &rawler::rawsource::RawSource::new_from_slice(&data),
             &Default::default(),
@@ -384,7 +395,11 @@ mod tests {
             c[(x / 128) % 4].map(|v: f32| v * (0.6 + 0.4 * y as f32 / 256.0))
         });
         let path = std::env::temp_dir().join(format!("lw-dng-colors-{}.dng", std::process::id()));
-        std::fs::write(&path, encode_lossy(DngContent::Developed(&img)).unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            encode_lossy(DngContent::Developed(&img), None).unwrap(),
+        )
+        .unwrap();
         let back = crate::Source::load(&path, true, None, None).unwrap();
         let _ = std::fs::remove_file(&path);
         assert_eq!((back.image.width, back.image.height), (512, 256));
@@ -406,7 +421,7 @@ mod tests {
     fn scene_dng_keeps_highlights() {
         // Werte bis 4 (zwei Blenden über Weiß)
         let img = ImageF32::from_fn(300, 200, |x, _| [x as f32 / 75.0, 0.5, 0.2]);
-        let data = encode_lossy(DngContent::Scene(&img)).unwrap();
+        let data = encode_lossy(DngContent::Scene(&img), None).unwrap();
         let raw = rawler::decode(
             &rawler::rawsource::RawSource::new_from_slice(&data),
             &Default::default(),

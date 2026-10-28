@@ -1062,7 +1062,12 @@ pub fn export_images(
                                     options.long_edge.filter(|m| *m > 0),
                                 )
                                 .and_then(|src| {
-                                    output::write_original_dng(&src.image, &target, &options)
+                                    output::write_original_dng(
+                                        &src.image,
+                                        &target,
+                                        &options,
+                                        meta.as_ref(),
+                                    )
                                 })
                                 .map_err(Error::from)
                             } else {

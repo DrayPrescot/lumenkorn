@@ -166,8 +166,8 @@ impl ExportOptions {
 }
 
 /// Schreibt das entwickelte Bild. Schreibt zuerst in eine temporäre Datei, damit
-/// nie eine halbe Datei am Ziel liegt. `meta` landet in JPEG und TIFF (EXIF
-/// und XMP).
+/// nie eine halbe Datei am Ziel liegt. `meta` landet als EXIF und XMP in der
+/// Datei (alle Formate).
 pub fn write(
     img: &ImageF32,
     path: &Path,
@@ -179,12 +179,38 @@ pub fn write(
 
 /// DNG aus dem unbearbeiteten Original (`scene`: lineares Rec.709 aus
 /// [`crate::Source`]).
-pub fn write_original_dng(scene: &ImageF32, path: &Path, opts: &ExportOptions) -> Result<()> {
+pub fn write_original_dng(
+    scene: &ImageF32,
+    path: &Path,
+    opts: &ExportOptions,
+    meta: Option<&ExportMeta>,
+) -> Result<()> {
     let opts = ExportOptions {
         format: ExportFormat::Dng,
         ..opts.clone()
     };
-    write_as(scene, path, &opts, true, None)
+    write_as(scene, path, &opts, true, meta)
+}
+
+/// 8-Bit-PNG; EXIF als `eXIf`-Chunk, XMP als `iTXt` (`XML:com.adobe.xmp`)
+fn write_png<W: std::io::Write>(img: &ImageF32, w: W, meta: Option<&ExportMeta>) -> Result<()> {
+    let err = |e: png::EncodingError| Error::Params(format!("PNG: {e}"));
+    let rgb = to_rgb8(img);
+    let mut enc = png::Encoder::new(w, rgb.width(), rgb.height());
+    enc.set_color(png::ColorType::Rgb);
+    enc.set_depth(png::BitDepth::Eight);
+    enc.set_compression(png::Compression::Balanced);
+    if let Some(x) = meta.and_then(|m| m.xmp.clone()) {
+        enc.add_itxt_chunk("XML:com.adobe.xmp".into(), x)
+            .map_err(err)?;
+    }
+    let mut wr = enc.write_header().map_err(err)?;
+    if let Some(m) = meta {
+        wr.write_chunk(png::chunk::eXIf, &crate::embed::exif_tiff(m))
+            .map_err(err)?;
+    }
+    wr.write_image_data(rgb.as_raw()).map_err(err)?;
+    wr.finish().map_err(err)
 }
 
 /// 16-Bit-TIFF, mit Metadaten im ersten Verzeichnis und einem EXIF-Verzeichnis
@@ -266,7 +292,7 @@ fn write_as(
             )?,
             ExportFormat::Png => {
                 let mut f = file(&tmp)?;
-                to_rgb8(&img).write_to(&mut f, image::ImageFormat::Png)?;
+                write_png(&img, &mut f, meta)?;
                 std::io::Write::flush(&mut f)?;
             }
             ExportFormat::Tiff16 => {
@@ -280,7 +306,7 @@ fn write_as(
                 } else {
                     crate::dng::DngContent::Developed(&img)
                 };
-                std::fs::write(&tmp, crate::dng::encode_lossy(content)?)?
+                std::fs::write(&tmp, crate::dng::encode_lossy(content, meta)?)?
             }
         }
         Ok(())
@@ -334,7 +360,7 @@ mod tests {
                 dng_edited: false,
                 on_conflict: OnConflict::Rename,
             };
-            write_original_dng(&src.image, &target, &opts).unwrap();
+            write_original_dng(&src.image, &target, &opts, None).unwrap();
             let back = crate::Source::load(&target, true, None, None).unwrap();
             assert_eq!(
                 (back.image.width, back.image.height),
@@ -369,6 +395,7 @@ mod tests {
             (ExportFormat::Jpeg, "a.jpg"),
             (ExportFormat::Tiff16, "a.tif"),
             (ExportFormat::Png, "a.png"),
+            (ExportFormat::Dng, "a.dng"),
         ] {
             let p = d.join(name);
             write(
@@ -385,13 +412,15 @@ mod tests {
                 Some(&meta),
             )
             .unwrap();
-            let back = image::open(&p).unwrap();
-            assert_eq!((back.width(), back.height()), (150, 100), "{name}");
-            if format == ExportFormat::Tiff16 {
-                assert_eq!(back.color(), image::ColorType::Rgb16);
+            if format != ExportFormat::Dng {
+                let back = image::open(&p).unwrap();
+                assert_eq!((back.width(), back.height()), (150, 100), "{name}");
+                if format == ExportFormat::Tiff16 {
+                    assert_eq!(back.color(), image::ColorType::Rgb16);
+                }
             }
-            // Metadaten in JPEG und TIFF, für einen unabhängigen Leser lesbar
-            if format != ExportFormat::Png {
+            // Metadaten in allen Formaten, für einen unabhängigen Leser lesbar
+            {
                 let f = std::fs::File::open(&p).unwrap();
                 let exif = exif::Reader::new()
                     .read_from_container(&mut std::io::BufReader::new(f))
@@ -421,7 +450,7 @@ mod tests {
             }
         }
         // keine temporären Reste
-        assert_eq!(std::fs::read_dir(&d).unwrap().count(), 3);
+        assert_eq!(std::fs::read_dir(&d).unwrap().count(), 4);
         std::fs::remove_dir_all(&d).unwrap();
     }
 }

@@ -3121,6 +3121,7 @@ dependencies = [
  "jpeg-encoder",
  "kamadak-exif",
  "log",
+ "png 0.18.1",
  "pollster",
  "rawler",
  "rayon",

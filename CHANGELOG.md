@@ -20,7 +20,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
   from Lightroom or darktable are updated, not replaced. The photo file itself is not changed.
   Each field can be reset to the value from the file. Title, description and author are
   searchable.
-- Exported JPEG and TIFF files carry the photo's metadata: EXIF (camera, lens, exposure, aperture,
+- Exported files (JPEG, TIFF, PNG and DNG) carry the photo's metadata: EXIF (camera, lens, exposure, aperture,
   ISO, focal length, capture time, author, copyright, description) and XMP with title, your own
   keywords and the rating. Edited values win over those from the file. AI keywords and the
   location are not written.

@@ -1,5 +1,6 @@
 //! Metadaten in exportierte Dateien schreiben: EXIF (IFD0 und EXIF-IFD) und
-//! ein XMP-Paket, als APP1-Segmente im JPEG bzw. als Tags im TIFF.
+//! ein XMP-Paket – als APP1-Segmente im JPEG, als Tags im TIFF und DNG, als
+//! `eXIf`- und `iTXt`-Chunk im PNG.
 
 use crate::dng::Ifd;
 
@@ -115,6 +116,12 @@ pub(crate) fn tags(m: &ExportMeta) -> Tags {
 
 fn to_ifd(tags: Vec<(u16, Val)>) -> Ifd {
     let mut ifd = Ifd::default();
+    push(&mut ifd, tags);
+    ifd
+}
+
+/// Tags an ein vorhandenes Verzeichnis anhängen
+fn push(ifd: &mut Ifd, tags: Vec<(u16, Val)>) {
     for (tag, v) in tags {
         match v {
             Val::Ascii(s) => ifd.ascii(tag, &s),
@@ -123,7 +130,25 @@ fn to_ifd(tags: Vec<(u16, Val)>) -> Ifd {
             Val::Undefined(b) => ifd.add(tag, 7, b.len(), b),
         }
     }
-    ifd
+}
+
+/// Metadaten ins DNG: EXIF-Verzeichnis an `out` anhängen, dazu Beschreibung,
+/// Autor, Urheberrecht, Kamera (Model) und XMP in IFD0. Tags, die der DNG-
+/// Writer selbst setzt (Ausrichtung, Software), bleiben bei ihm.
+pub(crate) fn add_to_dng(m: &ExportMeta, ifd0: &mut Ifd, out: &mut Vec<u8>) {
+    let (tags0, exif) = tags(m);
+    let exif_off = to_ifd(exif).write(out);
+    ifd0.long(34665, &[exif_off]);
+    push(
+        ifd0,
+        tags0
+            .into_iter()
+            .filter(|(t, _)| !matches!(t, 274 | 305))
+            .collect(),
+    );
+    if let Some(x) = &m.xmp {
+        ifd0.bytes(700, x.as_bytes());
+    }
 }
 
 /// EXIF als TIFF-Block (little endian), wie ihn das JPEG-APP1-Segment nach

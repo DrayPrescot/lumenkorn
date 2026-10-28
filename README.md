@@ -112,7 +112,7 @@ the catalog before you let Lumenkorn loose on your whole collection.
   an `Export` folder next to each original. DNG is slightly lossy (linear, JPEG-compressed, as in
   Lightroom) and holds either the edited photo or the original image data without edits. If a
   file already exists, Lumenkorn asks whether to overwrite it, export as well (`name-2`) or skip
-  it. Originals in the library are never overwritten. JPEG and TIFF exports carry the metadata
+  it. Originals in the library are never overwritten. Every export carries the metadata
   (EXIF and XMP: camera and exposure data, capture time, title, description, author, copyright,
   your own keywords and the rating; edited values included). AI keywords and the location are left
   out.
