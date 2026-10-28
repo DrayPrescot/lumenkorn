@@ -537,7 +537,6 @@ mod tests {
     /// fest eingebaute kommt über das Bajonett der Kamera
     #[test]
     fn fixed_lens_cameras_use_their_own_lens() {
-        let db = db().expect("Datenbank lesbar");
         for (model, lens_name, focal) in [
             ("DMC-FZ1000", "", 9.1),
             (
