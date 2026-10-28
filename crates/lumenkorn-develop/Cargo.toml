@@ -36,3 +36,4 @@ wgpu = { version = "30", default-features = false, features = ["std", "parking_l
 [dev-dependencies]
 # Prüft in Tests, dass exportiertes EXIF lesbar ist
 kamadak-exif = "0.6.1"
+tempfile = "3.27.0"

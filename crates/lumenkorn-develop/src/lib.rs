@@ -32,6 +32,7 @@ pub(crate) mod dt;
 mod embed;
 mod error;
 pub mod exr_io;
+pub mod fsutil;
 pub mod geometry;
 pub mod gpu;
 pub mod i18n;
