@@ -982,6 +982,8 @@ pub fn export_images(
         .spawn(move || {
             let _running = running;
             let state = app.state::<AppState>();
+            // Ohne gewählten Ordner: Unterordner aus den Einstellungen
+            let sub = crate::settings::read(&state.data_dir).export_subfolder;
             let formats = options.all_formats();
             let total = ids.len();
             let mut failed = Vec::new();
@@ -1022,13 +1024,17 @@ pub fn export_images(
                                 dir: shown(&used),
                             },
                         );
-                        let target_dir = match &dir {
-                            Some(d) => d.clone(),
-                            None => lumenkorn_core::scanner::export_dir_for(Path::new(&job.path))
+                        let target_dir =
+                            match &dir {
+                                Some(d) => d.clone(),
+                                None => lumenkorn_core::scanner::export_dir_for(
+                                    Path::new(&job.path),
+                                    &sub,
+                                )
                                 .map_err(|e| {
-                                Error::Invalid(tr!("Export-Ordner: {e}", "Export folder: {e}"))
-                            })?,
-                        };
+                                    Error::Invalid(tr!("Export-Ordner: {e}", "Export folder: {e}"))
+                                })?,
+                            };
                         used.insert(target_dir.clone());
                         let orientation = job.orientation.map(|o| o as u16);
                         // Entwickelt wird einmal für alle Formate (außer dem Original-DNG)
@@ -1163,10 +1169,10 @@ fn export_target(
 }
 
 /// Wo der Export ein Foto ablegen würde, ohne Ordner anzulegen
-fn planned_export_dir(dir: Option<&Path>, photo: &Path) -> Option<PathBuf> {
+fn planned_export_dir(dir: Option<&Path>, sub: &str, photo: &Path) -> Option<PathBuf> {
     match dir {
         Some(d) => Some(d.to_path_buf()),
-        None => photo.parent().map(|p| p.join("Export")),
+        None => lumenkorn_core::scanner::export_dir_path(photo, sub),
     }
 }
 
@@ -1181,6 +1187,7 @@ pub fn export_conflicts(
     options: ExportOptions,
 ) -> Result<Vec<String>, Error> {
     let dir = dir.map(PathBuf::from);
+    let sub = crate::settings::read(&state.data_dir).export_subfolder;
     let formats = options.all_formats();
     let paths: Vec<String> = {
         let cat = state.catalog.locked();
@@ -1191,8 +1198,10 @@ pub fn export_conflicts(
     let mut out = Vec::new();
     for p in &paths {
         let photo = Path::new(p);
-        let (Some(d), Some(stem)) = (planned_export_dir(dir.as_deref(), photo), photo.file_stem())
-        else {
+        let (Some(d), Some(stem)) = (
+            planned_export_dir(dir.as_deref(), &sub, photo),
+            photo.file_stem(),
+        ) else {
             continue;
         };
         for f in &formats {

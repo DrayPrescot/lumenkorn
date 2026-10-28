@@ -18,7 +18,7 @@ function read(): Stored {
 }
 
 class Prefs {
-  /** Exportziel; null: Unterordner „Export“ neben dem jeweiligen Original */
+  /** Exportziel; null: Unterordner aus den Einstellungen (`lib.exportSubfolder`) */
   exportDir = $state<string | null>(read().exportDir ?? null);
   /** Speicherort für Fotoalben; null: wie der Speichern-Dialog zuletzt */
   albumDir = $state<string | null>(read().albumDir ?? null);

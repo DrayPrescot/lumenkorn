@@ -830,6 +830,8 @@ export interface AiSettings {
 export interface AppSettings {
   /** Karte, Ortssuche und Ortsnamen über OpenStreetMap */
   mapEnabled: boolean;
+  /** Exportziel ohne gewählten Ordner, relativ zum Ordner des Originals */
+  exportSubfolder: string;
 }
 
 /** Stand von „Auto nach deinem Stil“ */
@@ -1046,7 +1048,7 @@ export const api = {
   developRestore: (editId: number) => call<DevelopParams>("develop_restore", { editId }),
   developDeleteSnapshot: (id: number, editId: number) =>
     call<Edit[]>("develop_delete_snapshot", { id, editId }),
-  /** `dir` null: Unterordner „Export“ neben dem jeweiligen Original. */
+  /** `dir` null: Unterordner aus den Einstellungen neben dem jeweiligen Original. */
   exportImages: (ids: number[], dir: string | null, options: ExportOptions) =>
     call<void>("export_images", { ids, dir, options }),
   /** Dateinamen, die es im Ziel schon gibt */
@@ -1110,7 +1112,8 @@ export const api = {
   albumSuggestCancel: () => call<void>("album_suggest_cancel"),
   styleStatus: () => call<StyleStatus>("style_status"),
   appSettings: () => call<AppSettings>("app_settings"),
-  appSetSettings: (settings: AppSettings) => call<void>("app_set_settings", { settings }),
+  /** Nur die genannten Einstellungen ändern; liefert den neuen Stand */
+  appSetSettings: (settings: Partial<AppSettings>) => call<AppSettings>("app_set_settings", { settings }),
   importSetTarget: (target: string | null) => call<void>("import_set_target", { target }),
   styleReset: () => call<void>("style_reset"),
   albumPlaces: (ids: number[]) => call<Record<string, string>>("album_places", { ids }),

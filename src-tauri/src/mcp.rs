@@ -627,7 +627,7 @@ fn tools() -> Vec<Value> {
         tool(
             "export_photos",
             "Export photos",
-            "Export developed photos in the background. Without `folder`, each goes into an \"Export\" subfolder next to its original. `folder` must be an existing absolute path inside one of the library folders (or the user's Pictures folder); at most 500 photos per call. format jpeg (quality 1–100), png, tiff or dng (slightly lossy linear DNG with all edits; with dng_original the unedited data for developing elsewhere); several formats at once with `formats`, e.g. [\"dng\", \"jpeg\"]; long_edge limits the size in pixels. on_conflict decides what happens when a file with the same name exists: rename (default, adds -2), overwrite or skip; originals in the library are never overwritten.",
+            "Export developed photos in the background. Without `folder`, each goes into the export subfolder set in the app's settings (default \"Export\") next to its original. `folder` must be an existing absolute path inside one of the library folders (or the user's Pictures folder); at most 500 photos per call. format jpeg (quality 1–100), png, tiff or dng (slightly lossy linear DNG with all edits; with dng_original the unedited data for developing elsewhere); several formats at once with `formats`, e.g. [\"dng\", \"jpeg\"]; long_edge limits the size in pixels. on_conflict decides what happens when a file with the same name exists: rename (default, adds -2), overwrite or skip; originals in the library are never overwritten.",
             json!({ "type": "object", "properties": {
                 "ids": ids_schema(),
                 "folder": { "type": "string" },
@@ -1017,7 +1017,7 @@ async fn call(app: &AppHandle, name: &str, a: &Value) -> ToolResult {
                 .map_err(e)?;
             text(json!({
                 "exporting": ids.len(),
-                "to": dir.unwrap_or_else(|| "\"Export\" subfolder next to each original".into()),
+                "to": dir.unwrap_or_else(|| "the export subfolder from the settings, next to each original".into()),
                 "note": "Runs in the background; progress is shown in the app.",
             }))
         }

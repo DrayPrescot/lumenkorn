@@ -1,6 +1,7 @@
 //! Allgemeine Einstellungen der App (`einstellungen.json` im Datenordner).
 //! KI, Import und MCP haben eigene Dateien; hier steht, was keinem Bereich
-//! allein gehört – derzeit, ob Karte und Ortsnamen OpenStreetMap nutzen.
+//! allein gehört: ob Karte und Ortsnamen OpenStreetMap nutzen, und der
+//! Standard-Unterordner für den Export.
 
 use crate::AppState;
 use lumenkorn_core::Error;
@@ -16,11 +17,17 @@ pub struct AppSettings {
     /// Karte, Ortssuche und Ortsnamen über OpenStreetMap. Aus: Es geht nichts
     /// an OpenStreetMap; GPS aus den Fotos und vorhandene Ortsnamen bleiben.
     pub map_enabled: bool,
+    /// Exportziel ohne gewählten Ordner: relativ zum Ordner des Originals
+    /// (`Export`, `Export/JPEG`, `../Exporte`, `.`)
+    pub export_subfolder: String,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
-        Self { map_enabled: true }
+        Self {
+            map_enabled: true,
+            export_subfolder: lumenkorn_core::scanner::DEFAULT_EXPORT_SUBFOLDER.into(),
+        }
     }
 }
 
@@ -28,27 +35,47 @@ fn path(data_dir: &Path) -> PathBuf {
     data_dir.join(FILE)
 }
 
-/// Beim Start: Einstellungen lesen und wirksam machen.
-pub fn load(data_dir: &Path) -> AppSettings {
-    let s: AppSettings = std::fs::read(path(data_dir))
+/// Einstellungen lesen (ungültiger Export-Unterordner: Standard)
+pub fn read(data_dir: &Path) -> AppSettings {
+    let mut s: AppSettings = std::fs::read(path(data_dir))
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
+    s.export_subfolder = lumenkorn_core::scanner::check_export_subfolder(&s.export_subfolder)
+        .unwrap_or_else(|_| lumenkorn_core::scanner::DEFAULT_EXPORT_SUBFOLDER.into());
+    s
+}
+
+/// Beim Start: Einstellungen lesen und wirksam machen.
+pub fn load(data_dir: &Path) -> AppSettings {
+    let s = read(data_dir);
     crate::geo::set_enabled(s.map_enabled);
     s
 }
 
 #[tauri::command]
 pub fn app_settings(state: State<AppState>) -> AppSettings {
-    load(&state.data_dir)
+    read(&state.data_dir)
 }
 
+/// Ändert die übergebenen Einstellungen; nicht genannte bleiben, wie sie sind.
+/// Liefert den neuen Stand (Export-Unterordner bereinigt).
 #[tauri::command]
 pub fn app_set_settings(
     app: AppHandle,
     state: State<AppState>,
-    settings: AppSettings,
-) -> Result<(), Error> {
+    settings: serde_json::Value,
+) -> Result<AppSettings, Error> {
+    let mut cur = serde_json::to_value(read(&state.data_dir))?;
+    if let (Some(c), Some(p)) = (cur.as_object_mut(), settings.as_object()) {
+        for (k, v) in p {
+            c.insert(k.clone(), v.clone());
+        }
+    }
+    let mut settings: AppSettings = serde_json::from_value(cur)?;
+    settings.export_subfolder =
+        lumenkorn_core::scanner::check_export_subfolder(&settings.export_subfolder)
+            .map_err(Error::Invalid)?;
     std::fs::write(
         path(&state.data_dir),
         serde_json::to_string_pretty(&settings)?,
@@ -58,5 +85,5 @@ pub fn app_set_settings(
         // Ausstehende Ortsnamen jetzt nachholen
         crate::geo::kick(&app);
     }
-    Ok(())
+    Ok(settings)
 }

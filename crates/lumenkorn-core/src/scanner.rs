@@ -68,14 +68,79 @@ pub fn is_excluded(p: &Path) -> bool {
 /// Katalog).
 pub const EXPORT_MARKER: &str = ".lumenkorn-export";
 
-/// Standard-Exportziel: Unterordner „Export“ neben dem Foto. Legt ihn an, falls
-/// nötig, und markiert ihn dann als Export-Ordner. Ein schon vorhandener
-/// Ordner dieses Namens bleibt unmarkiert (er kann eigene Fotos enthalten).
-pub fn export_dir_for(photo: &Path) -> std::io::Result<PathBuf> {
-    let dir = photo
-        .parent()
-        .ok_or_else(|| std::io::Error::other(tr_s("Foto ohne Ordner", "Photo without folder")))?
-        .join("Export");
+/// Standard-Unterordner für den Export, relativ zum Ordner des Fotos
+pub const DEFAULT_EXPORT_SUBFOLDER: &str = "Export";
+
+/// Prüft den relativen Export-Unterordner aus den Einstellungen und liefert
+/// ihn bereinigt (`/` als Trenner). Erlaubt sind mehrere Ebenen
+/// (`Export/JPEG`), `..` (`../Exporte`) und `.` (neben dem Original); leer
+/// heißt Standard. Absolute Pfade und unter Windows ungültige Namen nicht.
+pub fn check_export_subfolder(rel: &str) -> std::result::Result<String, String> {
+    let rel = rel.trim();
+    if rel.is_empty() {
+        return Ok(DEFAULT_EXPORT_SUBFOLDER.into());
+    }
+    let norm = rel.replace('\\', "/");
+    if norm.starts_with('/') || norm.contains(':') {
+        return Err(tr!(
+            "„{rel}“ ist kein relativer Pfad",
+            "“{rel}” is not a relative path"
+        ));
+    }
+    let parts: Vec<&str> = norm.split('/').filter(|p| !p.is_empty()).collect();
+    for p in &parts {
+        if matches!(*p, "." | "..") {
+            continue;
+        }
+        let stem = p.split('.').next().unwrap_or("").to_ascii_uppercase();
+        let reserved = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+            || (stem.len() == 4
+                && (stem.starts_with("COM") || stem.starts_with("LPT"))
+                && stem.as_bytes()[3].is_ascii_digit());
+        let bad = p.chars().any(|c| c.is_control() || "<>:\"|?*".contains(c))
+            || p.ends_with('.')
+            || p.ends_with(' ')
+            || reserved;
+        if bad {
+            return Err(tr!(
+                "„{p}“ ist als Ordnername nicht erlaubt",
+                "“{p}” is not allowed as a folder name"
+            ));
+        }
+    }
+    Ok(if parts.is_empty() {
+        ".".into()
+    } else {
+        parts.join("/")
+    })
+}
+
+/// Exportordner für ein Foto, ohne ihn anzulegen: `rel` (siehe
+/// [`check_export_subfolder`]) relativ zum Ordner des Fotos, `..` aufgelöst.
+pub fn export_dir_path(photo: &Path, rel: &str) -> Option<PathBuf> {
+    let mut dir = photo.parent()?.to_path_buf();
+    for p in rel.split('/').filter(|p| !p.is_empty()) {
+        match p {
+            "." => {}
+            ".." => {
+                // Nicht über die Wurzel des Laufwerks hinaus
+                if dir.parent().is_some() {
+                    dir.pop();
+                }
+            }
+            p => dir.push(p),
+        }
+    }
+    Some(dir)
+}
+
+/// Standard-Exportziel: Unterordner `rel` neben dem Foto (Einstellungen,
+/// sonst „Export“). Legt ihn an, falls nötig, und markiert ihn dann als
+/// Export-Ordner. Ein schon vorhandener Ordner bleibt unmarkiert (er kann
+/// eigene Fotos enthalten).
+pub fn export_dir_for(photo: &Path, rel: &str) -> std::io::Result<PathBuf> {
+    let dir = export_dir_path(photo, rel)
+        .ok_or_else(|| std::io::Error::other(tr_s("Foto ohne Ordner", "Photo without folder")))?;
     if !dir.is_dir() {
         std::fs::create_dir_all(&dir)?;
         let mut opts = std::fs::OpenOptions::new();

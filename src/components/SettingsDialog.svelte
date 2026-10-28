@@ -80,6 +80,14 @@
     prefs[which] = null;
     prefs.save();
   }
+
+  let subfolder = $state(lib.exportSubfolder);
+  let subError = $state<string | null>(null);
+  async function saveSubfolder() {
+    if (subfolder.trim() === lib.exportSubfolder) return;
+    subError = await lib.setExportSubfolder(subfolder);
+    if (!subError) subfolder = lib.exportSubfolder;
+  }
 </script>
 
 <svelte:window onkeydowncapture={onkeydown} />
@@ -149,10 +157,33 @@
           <div class="field">
             <span class="label">{t("Export: Zielordner")}</span>
             <div class="row">
-              <code class="path" class:default={!prefs.exportDir}>{prefs.exportDir ?? t("Unterordner „Export“ neben dem Original")}</code>
+              <code class="path" class:default={!prefs.exportDir}
+                >{prefs.exportDir ?? t("Unterordner „{name}“ neben dem Original", { name: lib.exportSubfolder })}</code
+              >
               <button class="btn" onclick={() => chooseDir("exportDir")}>{t("Ändern …")}</button>
               {#if prefs.exportDir}<button class="btn quiet" onclick={() => clearDir("exportDir")}>{t("Zurücksetzen")}</button>{/if}
             </div>
+          </div>
+          <div class="field">
+            <label class="label" for="export-sub">{t("Export: Unterordner neben dem Original")}</label>
+            <div class="row">
+              <input
+                id="export-sub"
+                class="text"
+                class:err={!!subError}
+                bind:value={subfolder}
+                placeholder="Export"
+                spellcheck="false"
+                onchange={saveSubfolder}
+                onkeydown={(e) => {
+                  if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+                }}
+              />
+            </div>
+            {#if subError}<p class="small error">{subError}</p>{/if}
+            <p class="muted small">
+              {t("Gilt, wenn kein fester Zielordner gewählt ist. Relativ zum Ordner des Fotos, z. B. „Export“, „Export/JPEG“ oder „../Exporte“; „.“ legt die Dateien direkt neben das Original. Neu angelegte Ordner erscheinen nicht in der Bibliothek.")}
+            </p>
           </div>
           <div class="field">
             <span class="label">{t("Fotoalbum: Speicherort")}</span>
@@ -271,6 +302,23 @@
   }
   .label {
     font-weight: 600;
+  }
+  .text {
+    flex: 1;
+    min-width: 0;
+    background: var(--raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-s);
+    padding: 5px 9px;
+    font: inherit;
+    color: inherit;
+  }
+  .text.err {
+    border-color: var(--reject);
+  }
+  .error {
+    margin: 0;
+    color: var(--reject);
   }
   .row {
     display: flex;

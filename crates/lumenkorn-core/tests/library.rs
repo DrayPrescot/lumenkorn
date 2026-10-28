@@ -678,7 +678,7 @@ fn export_folders_stay_out_of_the_library() {
     let root = cat.lock().unwrap().add_root(&a).unwrap();
     scan_root(&cat, root.id, &no_progress).unwrap();
 
-    let out = export_dir_for(&a.join("Reise/eins.jpg")).unwrap();
+    let out = export_dir_for(&a.join("Reise/eins.jpg"), "Export").unwrap();
     assert_eq!(out, a.join("Reise/Export"));
     write_jpeg(&out.join("eins.jpg"), 64, 64, 3);
     // Über die Dateiüberwachung gemeldet und beim vollständigen Abgleich
@@ -696,12 +696,31 @@ fn export_folders_stay_out_of_the_library() {
     assert_eq!(n, vec!["eigen.jpg", "eins.jpg"]);
 
     // Vorhandener Ordner wird nicht markiert
-    let existing = export_dir_for(&a.join("Alt/x.jpg")).unwrap();
+    let existing = export_dir_for(&a.join("Alt/x.jpg"), "Export").unwrap();
     assert!(
         !existing
             .join(lumenkorn_core::scanner::EXPORT_MARKER)
             .exists()
     );
+
+    // Eigener Unterordner aus den Einstellungen, auch eine Ebene höher
+    let deep = export_dir_for(&a.join("Reise/eins.jpg"), "Bearbeitet/JPEG").unwrap();
+    assert_eq!(deep, a.join("Reise").join("Bearbeitet").join("JPEG"));
+    assert!(deep.join(lumenkorn_core::scanner::EXPORT_MARKER).is_file());
+    let up = export_dir_for(&a.join("Reise/eins.jpg"), "../Exporte").unwrap();
+    assert_eq!(up, a.join("Exporte"));
+}
+
+#[test]
+fn export_subfolder_is_checked() {
+    use lumenkorn_core::scanner::check_export_subfolder as check;
+    assert_eq!(check("").unwrap(), "Export");
+    assert_eq!(check("  Export\\\\JPEG/ ").unwrap(), "Export/JPEG");
+    assert_eq!(check("../Exporte").unwrap(), "../Exporte");
+    assert_eq!(check("./").unwrap(), ".");
+    for bad in ["C:\\Export", "/abs", "a|b", "CON", "lpt1", "Ende.", "x?"] {
+        assert!(check(bad).is_err(), "{bad}");
+    }
 }
 
 /// Ein Katalog einer neueren Version wird nicht geöffnet (und nicht verändert).

@@ -324,6 +324,7 @@ function withCount(p: Project): Project {
 
 let mockLearnStyle = true;
 let mockMapEnabled = true;
+let mockExportSubfolder = "Export";
 
 const delay = <T>(v: T) => new Promise<T>((r) => setTimeout(() => r(structuredClone(v)), 30));
 
@@ -481,10 +482,17 @@ export const mock = {
           },
         });
       case "app_settings":
-        return out({ mapEnabled: mockMapEnabled });
-      case "app_set_settings":
+        return out({ mapEnabled: mockMapEnabled, exportSubfolder: mockExportSubfolder });
+      case "app_set_settings": {
+        const sub = a.settings?.exportSubfolder;
+        if (typeof sub === "string") {
+          const s = sub.trim().replace(/\\/g, "/") || "Export";
+          if (/^\/|:|[<>"|?*]/.test(s)) throw new Error(`„${s}“ ist kein gültiger relativer Ordner`);
+          mockExportSubfolder = s;
+        }
         mockMapEnabled = a.settings?.mapEnabled ?? mockMapEnabled;
-        return out(null);
+        return out({ mapEnabled: mockMapEnabled, exportSubfolder: mockExportSubfolder });
+      }
       case "style_reset":
         return out(null);
       case "people_status":

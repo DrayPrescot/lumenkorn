@@ -187,7 +187,10 @@ class Library {
     this.refreshPeople();
     api
       .appSettings()
-      .then((s) => (this.mapEnabled = s.mapEnabled))
+      .then((s) => {
+        this.mapEnabled = s.mapEnabled;
+        this.exportSubfolder = s.exportSubfolder;
+      })
       .catch(() => {});
     let peopleTimer: ReturnType<typeof setTimeout> | undefined;
     listen("faces-progress", ({ done, total, faces, ids }) => {
@@ -982,6 +985,20 @@ class Library {
 
   /** Karte und Ortsnamen über OpenStreetMap (Einstellungen → Allgemein) */
   mapEnabled = $state(true);
+
+  /** Exportziel ohne gewählten Ordner: relativ zum Ordner des Originals */
+  exportSubfolder = $state("Export");
+
+  /** Liefert eine Fehlermeldung, wenn der Pfad nicht gültig ist */
+  async setExportSubfolder(sub: string): Promise<string | null> {
+    try {
+      const s = await api.appSetSettings({ exportSubfolder: sub });
+      this.exportSubfolder = s.exportSubfolder;
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+  }
 
   async setMapEnabled(on: boolean) {
     await api.appSetSettings({ mapEnabled: on });

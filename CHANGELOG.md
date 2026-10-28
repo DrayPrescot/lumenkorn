@@ -24,6 +24,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
   ISO, focal length, capture time, author, copyright, description) and XMP with title, your own
   keywords and the rating. Edited values win over those from the file. AI keywords and the
   location are not written.
+- The export subfolder next to the original can be set in Settings → Folders, for example
+  `Export/JPEG` or `../Exports` (default `Export`). It also applies to exports by AI agents.
 - Batch rename (`F2` or right-click → "Umbenennen …"): a name pattern with date, time, number,
   camera, lens, folder and the old name, with a preview of every new name. Conflicts are shown
   before anything happens, existing files are never overwritten, XMP sidecars move along, and

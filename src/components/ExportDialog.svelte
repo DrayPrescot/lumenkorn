@@ -25,7 +25,7 @@
   let quality = $state(90);
   let resize = $state(false);
   let longEdge = $state(2560);
-  // null: Unterordner „Export“ neben dem jeweiligen Original; Vorgabe aus den
+  // null: Unterordner aus den Einstellungen neben dem jeweiligen Original; Vorgabe aus den
   // Einstellungen
   let dir = $state<string | null>(prefs.exportDir);
   let pathDialog = $state(false);
@@ -126,20 +126,24 @@
 
     <div class="line">
       <span class="label">{t("Ziel")}</span>
-      <span class="dir" class:chosen={dir} title={dir ?? t("Im Ordner jedes Fotos wird bei Bedarf ein Unterordner „Export“ angelegt.")}>
-        {dir ?? t("Unterordner „Export“ neben dem Original")}
+      <span
+        class="dir"
+        class:chosen={dir}
+        title={dir ?? t("Im Ordner jedes Fotos wird bei Bedarf ein Unterordner „{name}“ angelegt.", { name: lib.exportSubfolder })}
+      >
+        {dir ?? t("Unterordner „{name}“ neben dem Original", { name: lib.exportSubfolder })}
       </span>
     </div>
     <div class="line">
       <button type="button" class="btn small" onclick={choose}>{t("Anderer Ordner …")}</button>
       {#if dir}
-        <button type="button" class="btn small quiet" onclick={() => (dir = null)}>{t("Zurück zu „Export“")}</button>
+        <button type="button" class="btn small quiet" onclick={() => (dir = null)}>{t("Zurück zu „{name}“", { name: lib.exportSubfolder })}</button>
       {/if}
     </div>
 
     <p class="hint">
       {t("Exportiert in voller Auflösung mit allen Bearbeitungen. Gibt es eine Datei schon, fragt Lumenkorn nach.")}
-      {#if !dir}{t("Von Lumenkorn angelegte „Export“-Ordner erscheinen nicht in der Bibliothek.")}{/if}
+      {#if !dir}{t("Von Lumenkorn angelegte Export-Ordner erscheinen nicht in der Bibliothek.")}{/if}
     </p>
 
     {#if conflicts}

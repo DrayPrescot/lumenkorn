@@ -58,6 +58,8 @@ export default {
   "Einpassen ↔ 100 %": "Fit ↔ 100 %",
   "Vorher/Nachher": "Before/after",
   "Clipping anzeigen": "Show clipping",
+  "Export: Unterordner neben dem Original": "Export: subfolder next to the original",
+  "Gilt, wenn kein fester Zielordner gewählt ist. Relativ zum Ordner des Fotos, z. B. „Export“, „Export/JPEG“ oder „../Exporte“; „.“ legt die Dateien direkt neben das Original. Neu angelegte Ordner erscheinen nicht in der Bibliothek.": "Used when no fixed target folder is set. Relative to the photo's folder, e.g. “Export”, “Export/JPEG” or “../Exports”; “.” puts the files right next to the original. Newly created folders don't appear in the library.",
   "Maske anzeigen": "Show mask",
   "Nach links drehen": "Rotate left",
   "Nach rechts drehen": "Rotate right",

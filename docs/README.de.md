@@ -252,7 +252,8 @@ Außerdem:
 - **Export** als JPEG, 16-Bit-TIFF, PNG oder DNG, auch mehrere Formate auf einmal, optional
   verkleinert, im Hintergrund. DNG wird wie in Lightroom leicht verlustbehaftet gespeichert
   (linear, JPEG-komprimiert) und enthält wahlweise das bearbeitete Foto oder die Bilddaten des
-  Originals ohne Bearbeitung. Standardziel ist der Unterordner `Export` neben dem Original.
+  Originals ohne Bearbeitung. Standardziel ist der Unterordner `Export` neben dem Original; unter Einstellungen → Ordner lässt
+  er sich ändern, etwa auf `Export/JPEG` oder `../Exporte` (auch für Exporte durch KI-Agenten).
   Von Lumenkorn angelegte Export-Ordner tragen eine versteckte Markierung (`.lumenkorn-export`) und
   erscheinen nicht in der Bibliothek. Gibt es eine Datei schon, fragt Lumenkorn: überschreiben,
   zusätzlich exportieren (`Name-2`) oder überspringen. Originale der Bibliothek werden nie
