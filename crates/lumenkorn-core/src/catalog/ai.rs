@@ -1,0 +1,84 @@
+//! KI: Embeddings und automatische Schlagworte.
+
+use super::*;
+
+impl Catalog {
+    // ------------------------------------------------------------------
+    // KI: Embeddings und automatische Schlagworte
+    // ------------------------------------------------------------------
+
+    /// Bilder, die noch analysiert werden müssen (Thumbnail muss bereitstehen).
+    pub fn pending_ai(&self, limit: usize) -> Result<Vec<i64>> {
+        let mut st = self.conn.prepare(
+            "SELECT id FROM images WHERE ai_state = 0 AND thumb_state = 1 AND missing = 0 ORDER BY id LIMIT ?1",
+        )?;
+        let rows = st.query_map([limit as i64], |r| r.get(0))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// (analysiert, gesamt) – für die Fortschrittsanzeige.
+    pub fn ai_counts(&self) -> Result<(i64, i64)> {
+        Ok(self.conn.query_row(
+            "SELECT COALESCE(SUM(ai_state != 0), 0), COUNT(*) FROM images WHERE missing = 0",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?)
+    }
+
+    /// Speichert das Ergebnis der Analyse. Bisherige KI-Schlagworte des Bildes
+    /// werden ersetzt; manuelle bleiben unangetastet.
+    pub fn save_ai_result(
+        &mut self,
+        image_id: i64,
+        model: &str,
+        embedding: &[u8],
+        tags: &[(String, f64)],
+    ) -> Result<()> {
+        self.with_tx(|tx| {
+            tx.execute(
+                "INSERT INTO embeddings (image_id, model, vector) VALUES (?1, ?2, ?3)
+                 ON CONFLICT (image_id, model) DO UPDATE SET vector = excluded.vector",
+                params![image_id, model, embedding],
+            )?;
+            tx.execute(
+                "DELETE FROM image_tags WHERE image_id = ?1 AND source = 'ai'",
+                [image_id],
+            )?;
+            for (name, confidence) in tags {
+                tx.execute(
+                    "INSERT INTO tags (name) VALUES (?1) ON CONFLICT (name) DO NOTHING",
+                    [name],
+                )?;
+                tx.execute(
+                    "INSERT INTO image_tags (image_id, tag_id, source, confidence)
+                     SELECT ?1, id, 'ai', ?3 FROM tags WHERE name = ?2
+                     ON CONFLICT (image_id, tag_id) DO NOTHING",
+                    params![image_id, name, confidence],
+                )?;
+            }
+            tx.execute("UPDATE images SET ai_state = 1 WHERE id = ?1", [image_id])?;
+            Ok(())
+        })
+    }
+
+    pub fn set_ai_failed(&self, image_id: i64) -> Result<()> {
+        self.conn
+            .execute("UPDATE images SET ai_state = 2 WHERE id = ?1", [image_id])?;
+        Ok(())
+    }
+
+    /// Alle Bilder erneut analysieren (z. B. nach einem Modellwechsel).
+    pub fn reset_ai(&self) -> Result<()> {
+        self.conn.execute("UPDATE images SET ai_state = 0", [])?;
+        Ok(())
+    }
+
+    pub fn embeddings(&self, model: &str) -> Result<Vec<(i64, Vec<u8>)>> {
+        let mut st = self.conn.prepare(
+            "SELECT e.image_id, e.vector FROM embeddings e JOIN images i ON i.id = e.image_id
+             WHERE e.model = ?1 AND i.missing = 0",
+        )?;
+        let rows = st.query_map([model], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+}

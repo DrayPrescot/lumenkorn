@@ -65,7 +65,7 @@ npm run build
 
 ## Aufbau
 
-- `crates/lumenkorn-core`: Katalog (SQLite, Migrationen in `catalog.rs`,
+- `crates/lumenkorn-core`: Katalog (SQLite, Migrationen in `catalog/migrations.rs`,
   `MIGRATIONS` – nur anhängen, nie ändern), Scanner, Vorschaubilder, Personen.
 - `crates/lumenkorn-develop`: Entwicklungspipeline auf CPU (`pipeline.rs`) und
   GPU (`gpu/mod.rs`, `gpu/pipeline.wgsl`; Konstanten kommen aus `pipeline.rs`

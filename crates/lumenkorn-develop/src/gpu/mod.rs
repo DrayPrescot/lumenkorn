@@ -1102,6 +1102,48 @@ impl<'a> Ctx<'a> {
     }
 }
 
+/// Maskenebene für die GPU: Index, aktiv, Überlagerung gewünscht, Alpha.
+type Layer = (usize, bool, bool, Arc<Vec<f32>>);
+
+/// Ausgabegröße und Fenster nach Drehen, Zuschneiden und Ausschnitt.
+struct OutGeometry {
+    rot: u32,
+    ow: usize,
+    oh: usize,
+    crop_x: usize,
+    crop_y: usize,
+    out_w: usize,
+    out_h: usize,
+}
+
+impl OutGeometry {
+    fn new(w: usize, h: usize, p: &DevelopParams, opts: &RenderOptions) -> Self {
+        let rot = (p.rotate % 4) as u32;
+        let (ow, oh) = if rot % 2 == 1 { (h, w) } else { (w, h) };
+        let (mut crop_x, mut crop_y, mut out_w, mut out_h) = match p.crop {
+            Some(c) => geometry::crop_rect(ow, oh, c),
+            None => (0, 0, ow, oh),
+        };
+        // Ausschnitt des fertigen Bildes: nur das Ausgabefenster verschieben
+        if let Some(r) = opts.region.and_then(crate::pipeline::sanitize_region) {
+            let (rx, ry, rw, rh) = geometry::crop_rect(out_w, out_h, r);
+            crop_x += rx;
+            crop_y += ry;
+            out_w = rw;
+            out_h = rh;
+        }
+        Self {
+            rot,
+            ow,
+            oh,
+            crop_x,
+            crop_y,
+            out_w,
+            out_h,
+        }
+    }
+}
+
 impl Gpu {
     /// Entwickelt ein Bild. `pack`: Ergebnis als 8-Bit-RGB (Vorschau,
     /// Thumbnails), sonst als Float (Export).
@@ -1157,21 +1199,7 @@ impl Gpu {
             ));
         }
 
-        // Ausgabegröße nach Drehen und Zuschneiden
-        let rot = (p.rotate % 4) as u32;
-        let (ow, oh) = if rot % 2 == 1 { (h, w) } else { (w, h) };
-        let (mut crop_x, mut crop_y, mut out_w, mut out_h) = match p.crop {
-            Some(c) => geometry::crop_rect(ow, oh, c),
-            None => (0, 0, ow, oh),
-        };
-        // Ausschnitt des fertigen Bildes: nur das Ausgabefenster verschieben
-        if let Some(r) = opts.region.and_then(crate::pipeline::sanitize_region) {
-            let (rx, ry, rw, rh) = geometry::crop_rect(out_w, out_h, r);
-            crop_x += rx;
-            crop_y += ry;
-            out_w = rw;
-            out_h = rh;
-        }
+        let geo = OutGeometry::new(w, h, p, opts);
 
         // Maskenebenen auf der CPU (zwischengespeichert)
         let mut layers = Vec::new();
@@ -1187,12 +1215,71 @@ impl Gpu {
             (Some(d), Some(dn)) if dn.width == w && dn.height == h => Some((d.amount / 100.0, dn)),
             _ => None,
         };
-
-        let key = image_key(&src.image, ident);
+        let curve = crate::curve::curve_setup(&p.tone_curve);
 
         let oom = self.device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);
         let val = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let mut st = self.lock_state();
+        let (si, alpha_idx) = self.prepare_buffers(
+            &mut st,
+            src,
+            ident,
+            denoised,
+            &layers,
+            curve.as_ref().map(|c| &c.data),
+        );
+
+        let result = {
+            let st = &*st;
+            let set = &st.sets[si];
+            let mut cx = Ctx {
+                ops: Vec::new(),
+                w,
+                h,
+                y: &set.y,
+                maps: &st.maps,
+            };
+            let lut = st.curve.as_ref().map(|(_, b)| b);
+            Self::encode_global(&mut cx, src, p, raw, denoised, curve.as_ref(), lut, set);
+            let overlay = Self::encode_local(&mut cx, p, set, &layers, &alpha_idx, &st.alphas);
+            let cur = Self::encode_finish(&mut cx, p, set, overlay);
+            let (result, out_bytes) = Self::encode_output(&mut cx, p, set, cur, &geo, pack);
+            let staging = self.staging_buffer(set, out_bytes);
+            cx.ops.push(Op::Copy {
+                from: result,
+                to: &staging,
+                size: out_bytes,
+            });
+
+            let (ubuf, usize_) = st.uniform.as_ref().expect("angelegt");
+            let runs = cx
+                .ops
+                .iter()
+                .filter(|o| matches!(o, Op::Run { .. }))
+                .count() as u64;
+            debug_assert!(runs * self.uniform_stride <= *usize_);
+            self.submit(cx, ubuf, geo.out_w, geo.out_h, pack, oom, val)
+        };
+
+        Self::cleanup_sets(&mut st, si, result.is_err());
+        drop(st);
+        result
+    }
+
+    /// Wählt den Puffersatz und lädt Quelle, entrauschte Fassung, Masken,
+    /// Parameterpuffer und Gradationskurve hoch, soweit nicht schon da.
+    /// Gibt Satznummer und je Maskenebene den Index in `st.alphas` zurück.
+    fn prepare_buffers(
+        &self,
+        st: &mut State,
+        src: &Source,
+        ident: u64,
+        denoised: Option<(f32, &ImageF32)>,
+        layers: &[Layer],
+        curve: Option<&Vec<f32>>,
+    ) -> (usize, Vec<usize>) {
+        let n = src.image.width * src.image.height;
+        let key = image_key(&src.image, ident);
         let si = st.set_for(&self.device, n, self.max_binding);
 
         // Quelle und entrauschte Fassung hochladen, falls nicht schon da
@@ -1218,7 +1305,7 @@ impl Gpu {
         }
         // Masken hochladen (je Ebene ein Puffer, nach Inhalt zwischengespeichert).
         // Reihenfolge = Nutzung: Benutzte rücken ans Ende, verdrängt wird vorn.
-        for (_, _, _, a) in &layers {
+        for (_, _, _, a) in layers {
             match st.alphas.iter().position(|(k, _)| Arc::ptr_eq(k, a)) {
                 Some(pos) => touch(&mut st.alphas, pos),
                 None => {
@@ -1259,262 +1346,288 @@ impl Gpu {
         }
 
         // Gradationskurve: Tabelle hochladen, wenn sie sich geändert hat
-        let curve = crate::curve::curve_setup(&p.tone_curve);
-        if let Some(c) = &curve
-            && st.curve.as_ref().is_none_or(|(k, _)| *k != c.data)
+        if let Some(data) = curve
+            && st.curve.as_ref().is_none_or(|(k, _)| k != data)
         {
-            let buf = storage(&self.device, "kurve", (c.data.len() * 4) as u64);
-            self.queue
-                .write_buffer(&buf, 0, bytemuck::cast_slice(&c.data));
-            st.curve = Some((c.data.clone(), buf));
+            let buf = storage(&self.device, "kurve", (data.len() * 4) as u64);
+            self.queue.write_buffer(&buf, 0, bytemuck::cast_slice(data));
+            st.curve = Some((data.clone(), buf));
+        }
+        (si, alpha_idx)
+    }
+
+    /// Szenenbezogene Stufen: Weißabgleich und Belichtung, Dunst, Tonwerte,
+    /// Farbe, HSL, Color Grading und Gradationskurve.
+    #[allow(clippy::too_many_arguments)]
+    fn encode_global<'a>(
+        cx: &mut Ctx<'a>,
+        src: &Source,
+        p: &DevelopParams,
+        raw: bool,
+        denoised: Option<(f32, &ImageF32)>,
+        curve: Option<&crate::curve::CurveLut>,
+        lut: Option<&'a Buffer>,
+        set: &'a Bufs,
+    ) {
+        let (w, h) = (cx.w, cx.h);
+        let wb = crate::pipeline::global_white_balance(p, src.as_shot_kelvin);
+        let mut u = U {
+            wb_r: wb[0],
+            wb_g: wb[1],
+            wb_b: wb[2],
+            gain: 2f32.powf(p.exposure),
+            ..cx.base_u()
+        };
+        if raw {
+            u.flags |= F_RAW;
+        }
+        let mut b = Binds {
+            ina: Some(&set.src.buf),
+            outa: Some(&set.img),
+            ..Default::default()
+        };
+        if let (Some((amount, _)), Some(dn)) = (denoised, &set.dn) {
+            u.flags |= F_DENOISE;
+            u.denoise = amount;
+            b.inb = Some(&dn.buf);
+        }
+        cx.run(P::Prep, u, b, img2d(w, h));
+
+        // --- Dunst (Dunsthelligkeit wie auf der CPU aus der Quelle)
+        if p.dehaze != 0.0 {
+            let amount = p.dehaze / 100.0;
+            let haze = crate::pipeline::haze_level(&src.image, p, wb, raw, amount);
+            cx.dehaze(&set.img, amount, haze);
         }
 
-        let result = {
-            let st = &*st;
-            let set = &st.sets[si];
-            let mut cx = Ctx {
-                ops: Vec::new(),
-                w,
-                h,
-                y: &set.y,
-                maps: &st.maps,
-            };
+        // --- Tonwerte und Farbe
+        let (contrast, saturation, vibrance) = base_look(p, raw);
+        cx.tone(
+            &set.img,
+            &Tone {
+                contrast,
+                highlights: p.highlights / 100.0,
+                shadows: p.shadows / 100.0,
+                whites: p.whites / 100.0,
+                blacks: p.blacks / 100.0,
+                clarity: p.clarity / 100.0,
+            },
+        );
+        cx.color(&set.img, saturation, vibrance);
+        cx.hsl(&set.img, &p.hsl);
+        // Bei Schwarzweiß kommt das Color Grading erst nach der Umwandlung
+        if !p.monochrome {
+            cx.grade(&set.img, &p.color_grade);
+        }
+        if let (Some(c), Some(lut)) = (curve, lut) {
+            cx.curve(&set.img, lut, c.mode);
+        }
+    }
 
-            // --- Szenenbezogene Stufen und Kodierung
-            let wb = crate::pipeline::global_white_balance(p, src.as_shot_kelvin);
-            let mut u = U {
-                wb_r: wb[0],
-                wb_g: wb[1],
-                wb_b: wb[2],
-                gain: 2f32.powf(p.exposure),
-                ..cx.base_u()
-            };
-            if raw {
-                u.flags |= F_RAW;
-            }
-            let mut b = Binds {
-                ina: Some(&set.src.buf),
-                outa: Some(&set.img),
-                ..Default::default()
-            };
-            if let (Some((amount, _)), Some(dn)) = (denoised, &set.dn) {
-                u.flags |= F_DENOISE;
-                u.denoise = amount;
-                b.inb = Some(&dn.buf);
-            }
-            cx.run(P::Prep, u, b, img2d(w, h));
-
-            // --- Dunst (Dunsthelligkeit wie auf der CPU aus der Quelle)
-            if p.dehaze != 0.0 {
-                let amount = p.dehaze / 100.0;
-                let haze = crate::pipeline::haze_level(&src.image, p, wb, raw, amount);
-                cx.dehaze(&set.img, amount, haze);
-            }
-
-            // --- Tonwerte und Farbe
-            let (contrast, saturation, vibrance) = base_look(p, raw);
-            cx.tone(
-                &set.img,
-                &Tone {
-                    contrast,
-                    highlights: p.highlights / 100.0,
-                    shadows: p.shadows / 100.0,
-                    whites: p.whites / 100.0,
-                    blacks: p.blacks / 100.0,
-                    clarity: p.clarity / 100.0,
-                },
-            );
-            cx.color(&set.img, saturation, vibrance);
-            cx.hsl(&set.img, &p.hsl);
-            // Bei Schwarzweiß kommt das Color Grading erst nach der Umwandlung
-            if !p.monochrome {
-                cx.grade(&set.img, &p.color_grade);
-            }
-            if let (Some(c), Some((_, lut))) = (&curve, &st.curve) {
-                cx.curve(&set.img, lut, c.mode);
-            }
-
-            // --- Lokale Anpassungen
-            let mut overlay = None;
-            for ((i, active, want_overlay, _), ai) in layers.iter().zip(&alpha_idx) {
-                let alpha = &st.alphas[*ai].1;
-                if *active {
-                    let a = &p.masks[*i].adjust;
-                    cx.ops.push(Op::Copy {
-                        from: &set.img,
-                        to: &set.loc,
-                        size: (n * 16) as u64,
-                    });
-                    if a.exposure != 0.0 || a.temperature != 0.0 || a.tint != 0.0 {
-                        let wb = white_balance(a.temperature / 100.0, a.tint / 100.0);
-                        let u = U {
-                            wb_r: wb[0],
-                            wb_g: wb[1],
-                            wb_b: wb[2],
-                            gain: 2f32.powf(a.exposure),
-                            ..cx.base_u()
-                        };
-                        cx.run(
-                            P::LocalWb,
-                            u,
-                            Binds {
-                                outa: Some(&set.loc),
-                                ..Default::default()
-                            },
-                            img2d(w, h),
-                        );
-                    }
-                    cx.tone(
-                        &set.loc,
-                        &Tone {
-                            contrast: a.contrast / 100.0,
-                            highlights: a.highlights / 100.0,
-                            shadows: a.shadows / 100.0,
-                            whites: 0.0,
-                            blacks: 0.0,
-                            clarity: a.clarity / 100.0,
-                        },
-                    );
-                    cx.color(&set.loc, a.saturation / 100.0, 0.0);
-                    let u = cx.base_u();
+    /// Lokale Anpassungen (Masken). Gibt die Maske für die Überlagerung zurück.
+    fn encode_local<'a>(
+        cx: &mut Ctx<'a>,
+        p: &DevelopParams,
+        set: &'a Bufs,
+        layers: &[Layer],
+        alpha_idx: &[usize],
+        alphas: &'a [(Arc<Vec<f32>>, Buffer)],
+    ) -> Option<&'a Buffer> {
+        let (w, h) = (cx.w, cx.h);
+        let n = w * h;
+        let mut overlay = None;
+        for ((i, active, want_overlay, _), ai) in layers.iter().zip(alpha_idx) {
+            let alpha = &alphas[*ai].1;
+            if *active {
+                let a = &p.masks[*i].adjust;
+                cx.ops.push(Op::Copy {
+                    from: &set.img,
+                    to: &set.loc,
+                    size: (n * 16) as u64,
+                });
+                if a.exposure != 0.0 || a.temperature != 0.0 || a.tint != 0.0 {
+                    let wb = white_balance(a.temperature / 100.0, a.tint / 100.0);
+                    let u = U {
+                        wb_r: wb[0],
+                        wb_g: wb[1],
+                        wb_b: wb[2],
+                        gain: 2f32.powf(a.exposure),
+                        ..cx.base_u()
+                    };
                     cx.run(
-                        P::Blend,
+                        P::LocalWb,
                         u,
                         Binds {
-                            outa: Some(&set.img),
-                            ina: Some(&set.loc),
-                            fa: Some(alpha),
+                            outa: Some(&set.loc),
                             ..Default::default()
                         },
                         img2d(w, h),
                     );
                 }
-                if *want_overlay {
-                    overlay = Some(alpha);
-                }
-            }
-
-            // --- Schwarzweiß (wie pipeline.rs: nach den lokalen Anpassungen)
-            if p.monochrome {
+                cx.tone(
+                    &set.loc,
+                    &Tone {
+                        contrast: a.contrast / 100.0,
+                        highlights: a.highlights / 100.0,
+                        shadows: a.shadows / 100.0,
+                        whites: 0.0,
+                        blacks: 0.0,
+                        clarity: a.clarity / 100.0,
+                    },
+                );
+                cx.color(&set.loc, a.saturation / 100.0, 0.0);
                 let u = cx.base_u();
                 cx.run(
-                    P::Mono,
+                    P::Blend,
                     u,
                     Binds {
                         outa: Some(&set.img),
-                        ..Default::default()
-                    },
-                    img2d(w, h),
-                );
-                cx.grade(&set.img, &p.color_grade);
-            }
-
-            // --- Schärfen
-            let mut cur = &set.img;
-            if p.sharpen > 0.0 {
-                cx.luma(&set.img);
-                let u = U {
-                    amount: p.sharpen / 100.0,
-                    ..cx.base_u()
-                };
-                cx.run(
-                    P::Sharpen,
-                    u,
-                    Binds {
-                        ina: Some(&set.img),
-                        fa: Some(&set.y),
-                        outa: Some(&set.tmp),
-                        ..Default::default()
-                    },
-                    img2d(w, h),
-                );
-                cur = &set.tmp;
-            }
-            if let Some(alpha) = overlay {
-                let u = cx.base_u();
-                cx.run(
-                    P::Overlay,
-                    u,
-                    Binds {
-                        outa: Some(cur),
+                        ina: Some(&set.loc),
                         fa: Some(alpha),
                         ..Default::default()
                     },
                     img2d(w, h),
                 );
             }
+            if *want_overlay {
+                overlay = Some(alpha);
+            }
+        }
+        overlay
+    }
 
-            // --- Geometrie und Ausgabe
-            let mut u = U {
-                out_w: out_w as u32,
-                out_h: out_h as u32,
-                rot,
-                flip: p.flip_horizontal as u32,
-                ow: ow as u32,
-                oh: oh as u32,
-                crop_x: crop_x as u32,
-                crop_y: crop_y as u32,
+    /// Schwarzweiß (wie pipeline.rs: nach den lokalen Anpassungen), Schärfen
+    /// und Maskenüberlagerung. Gibt den Puffer mit dem Zwischenergebnis zurück.
+    fn encode_finish<'a>(
+        cx: &mut Ctx<'a>,
+        p: &DevelopParams,
+        set: &'a Bufs,
+        overlay: Option<&'a Buffer>,
+    ) -> &'a Buffer {
+        let (w, h) = (cx.w, cx.h);
+        // --- Schwarzweiß
+        if p.monochrome {
+            let u = cx.base_u();
+            cx.run(
+                P::Mono,
+                u,
+                Binds {
+                    outa: Some(&set.img),
+                    ..Default::default()
+                },
+                img2d(w, h),
+            );
+            cx.grade(&set.img, &p.color_grade);
+        }
+
+        // --- Schärfen
+        let mut cur = &set.img;
+        if p.sharpen > 0.0 {
+            cx.luma(&set.img);
+            let u = U {
+                amount: p.sharpen / 100.0,
                 ..cx.base_u()
             };
-            if let Some(w) = geometry::Warp::new(ow, oh, p) {
-                u.flags |= F_WARP;
-                u.warp = std::array::from_fn(|r| [w.m[r * 3], w.m[r * 3 + 1], w.m[r * 3 + 2], 0.0]);
-            }
-            let out_px = out_w * out_h;
-            let (result, out_bytes) = if pack {
-                u.flags |= F_PACK;
-                (&set.packed, (out_px * 4) as u64)
-            } else {
-                let dst = if std::ptr::eq(cur, &set.tmp) {
-                    &set.loc
-                } else {
-                    &set.tmp
-                };
-                (dst, (out_px * 16) as u64)
-            };
-            let mut b = Binds {
-                ina: Some(cur),
-                ..Default::default()
-            };
-            if pack {
-                b.packed = Some(result);
-            } else {
-                b.outa = Some(result);
-            }
-            cx.run(P::Geom, u, b, img2d(out_w, out_h));
-            // Rücklesepuffer anlegen bzw. nur bei größerem Bedarf neu erstellen
-            let staging = {
-                let mut g = set.staging.lock().unwrap_or_else(|e| e.into_inner());
-                if g.as_ref().is_none_or(|(_, size)| *size < out_bytes) {
-                    *g = Some((
-                        self.device.create_buffer(&wgpu::BufferDescriptor {
-                            label: Some("rücklesen"),
-                            size: out_bytes,
-                            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-                            mapped_at_creation: false,
-                        }),
-                        out_bytes,
-                    ));
-                }
-                g.as_ref().map(|(b, _)| b.clone()).expect("angelegt")
-            };
-            cx.ops.push(Op::Copy {
-                from: result,
-                to: &staging,
-                size: out_bytes,
-            });
+            cx.run(
+                P::Sharpen,
+                u,
+                Binds {
+                    ina: Some(&set.img),
+                    fa: Some(&set.y),
+                    outa: Some(&set.tmp),
+                    ..Default::default()
+                },
+                img2d(w, h),
+            );
+            cur = &set.tmp;
+        }
+        if let Some(alpha) = overlay {
+            let u = cx.base_u();
+            cx.run(
+                P::Overlay,
+                u,
+                Binds {
+                    outa: Some(cur),
+                    fa: Some(alpha),
+                    ..Default::default()
+                },
+                img2d(w, h),
+            );
+        }
+        cur
+    }
 
-            let (ubuf, usize_) = st.uniform.as_ref().expect("angelegt");
-            let runs = cx
-                .ops
-                .iter()
-                .filter(|o| matches!(o, Op::Run { .. }))
-                .count() as u64;
-            debug_assert!(runs * self.uniform_stride <= *usize_);
-            self.submit(cx, ubuf, out_w, out_h, pack, oom, val)
+    /// Geometrie und Ausgabe. Gibt den Ergebnispuffer und seine Größe in
+    /// Bytes zurück.
+    fn encode_output<'a>(
+        cx: &mut Ctx<'a>,
+        p: &DevelopParams,
+        set: &'a Bufs,
+        cur: &'a Buffer,
+        geo: &OutGeometry,
+        pack: bool,
+    ) -> (&'a Buffer, u64) {
+        let mut u = U {
+            out_w: geo.out_w as u32,
+            out_h: geo.out_h as u32,
+            rot: geo.rot,
+            flip: p.flip_horizontal as u32,
+            ow: geo.ow as u32,
+            oh: geo.oh as u32,
+            crop_x: geo.crop_x as u32,
+            crop_y: geo.crop_y as u32,
+            ..cx.base_u()
         };
+        if let Some(w) = geometry::Warp::new(geo.ow, geo.oh, p) {
+            u.flags |= F_WARP;
+            u.warp = std::array::from_fn(|r| [w.m[r * 3], w.m[r * 3 + 1], w.m[r * 3 + 2], 0.0]);
+        }
+        let out_px = geo.out_w * geo.out_h;
+        let (result, out_bytes) = if pack {
+            u.flags |= F_PACK;
+            (&set.packed, (out_px * 4) as u64)
+        } else {
+            let dst = if std::ptr::eq(cur, &set.tmp) {
+                &set.loc
+            } else {
+                &set.tmp
+            };
+            (dst, (out_px * 16) as u64)
+        };
+        let mut b = Binds {
+            ina: Some(cur),
+            ..Default::default()
+        };
+        if pack {
+            b.packed = Some(result);
+        } else {
+            b.outa = Some(result);
+        }
+        cx.run(P::Geom, u, b, img2d(geo.out_w, geo.out_h));
+        (result, out_bytes)
+    }
 
-        if result.is_err() {
+    /// Rücklesepuffer anlegen bzw. nur bei größerem Bedarf neu erstellen.
+    fn staging_buffer(&self, set: &Bufs, out_bytes: u64) -> Buffer {
+        let mut g = set.staging.lock().unwrap_or_else(|e| e.into_inner());
+        if g.as_ref().is_none_or(|(_, size)| *size < out_bytes) {
+            *g = Some((
+                self.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("rücklesen"),
+                    size: out_bytes,
+                    usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                }),
+                out_bytes,
+            ));
+        }
+        g.as_ref().map(|(b, _)| b.clone()).expect("angelegt")
+    }
+
+    /// Aufräumen nach dem Rendern: bei Fehler Puffer verwerfen, sehr große
+    /// Sätze nicht behalten, Masken begrenzen.
+    fn cleanup_sets(st: &mut State, si: usize, failed: bool) {
+        if failed {
             // Womöglich unvollständig angelegte Puffer (z. B. Speicher voll)
             // nicht wiederverwenden – sonst schlüge jedes weitere Rendern fehl.
             st.sets.remove(si);
@@ -1527,8 +1640,6 @@ impl Gpu {
         // Masken in voller Auflösung nicht unbegrenzt sammeln (Export-Stapel);
         // die zuletzt benutzten (am Ende) bleiben.
         evict_oldest(&mut st.alphas, |(a, _)| a.len() * 4, 512 << 20);
-        drop(st);
-        result
     }
 
     #[allow(clippy::too_many_arguments)]

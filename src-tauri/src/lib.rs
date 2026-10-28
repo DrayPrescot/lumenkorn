@@ -88,6 +88,134 @@ pub fn run_mcp_stdio() {
     mcp::run_stdio();
 }
 
+/// Datenordner bestimmen, ggf. den alten „Lichtwerk“-Ordner übernehmen, Sprache laden
+fn prepare_data_dir(
+    app: &tauri::App,
+) -> Result<(std::path::PathBuf, Option<std::path::PathBuf>), Box<dyn std::error::Error>> {
+    let custom = data_dir_override();
+    let data_dir = match &custom {
+        Some(d) => d.clone(),
+        None => app.path().app_data_dir()?,
+    };
+    // Bis Version 0.1 hieß das Projekt „Lichtwerk“ (Kennung de.lichtwerk.app):
+    // Katalog, Masken und Vorschaubilder von dort übernehmen.
+    if custom.is_none() {
+        adopt_previous_dir(&data_dir);
+        if let Ok(c) = app.path().app_cache_dir() {
+            adopt_previous_dir(&c);
+        }
+    }
+    std::fs::create_dir_all(&data_dir)?;
+    logfile::open(&data_dir);
+    // Zuletzt gewählte Sprache, bis die Oberfläche sie meldet
+    if let Ok(l) = std::fs::read_to_string(language_file(&data_dir)) {
+        lumenkorn_develop::i18n::set_english(l.trim() == "en");
+    }
+    Ok((data_dir, custom))
+}
+
+/// Start der App: Katalog, Zustand und Hintergrunddienste einrichten
+fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    app.manage(updater::UpdaterState::default());
+    let (data_dir, custom) = prepare_data_dir(app)?;
+    let catalog_path = data_dir.join("katalog.db");
+    let catalog = match Catalog::open(&catalog_path) {
+        Ok(c) => Arc::new(Mutex::new(c)),
+        // Neuere Version: nicht beenden, sondern das Update anbieten
+        Err(e @ lumenkorn_core::Error::CatalogTooNew { .. }) => {
+            log::warn!("{e}");
+            app.manage(CatalogTooNew(e.to_string()));
+            return Ok(());
+        }
+        Err(e) => {
+            // Sonst endete die App ohne sichtbaren Grund
+            use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+            app.dialog()
+                .message(e.to_string())
+                .title("Lumenkorn")
+                .kind(MessageDialogKind::Error)
+                .blocking_show();
+            return Err(e.into());
+        }
+    };
+    let masks = Arc::new(MaskFiles::new(data_dir.join(dirs::MASKS)));
+    let repairs = Arc::new(lumenkorn_develop::repair::RepairFiles::new(
+        data_dir.join(dirs::REPAIRS),
+    ));
+    let denoised_dir = data_dir.join(dirs::DENOISED);
+    let cache = ThumbCache::new(match &custom {
+        Some(d) => d.join("cache"),
+        None => app
+            .path()
+            .app_cache_dir()
+            .unwrap_or_else(|_| data_dir.join("cache")),
+    })
+    .with_masks(masks.clone())
+    .with_repairs(repairs.clone())
+    .with_denoise_dir(denoised_dir.clone());
+    log::info!("Katalog: {}", catalog_path.display());
+
+    // Eigene Ordner nie als Fotos aufnehmen (siehe scanner::set_excluded_dirs)
+    lumenkorn_core::scanner::set_excluded_dirs(vec![data_dir.clone(), cache.base().to_path_buf()]);
+    match catalog.locked().retry_failed_thumbs() {
+        Ok(n) if n > 0 => {
+            log::info!("{n} fehlgeschlagene Thumbnails werden erneut versucht")
+        }
+        Ok(_) => {}
+        Err(e) => log::warn!("Thumbnails zurücksetzen: {e}"),
+    }
+    let worker = Worker::start(app.handle().clone(), catalog.clone(), cache.clone());
+    let watcher = start_watcher(catalog.clone(), worker.clone(), data_dir.clone());
+
+    // „Unterordner einbeziehen“ vor dem ersten Scan
+    settings::apply_folder_rules(&data_dir, &catalog.locked());
+    // Alle Quellordner beim Start abgleichen – Änderungen, während die App
+    // geschlossen war, werden so erkannt.
+    let roots = catalog.locked().roots()?;
+    let watcher = watcher.map(|mut w| {
+        for r in &roots {
+            if let Err(e) = w.watch(std::path::Path::new(&r.path)) {
+                log::warn!("Kann {} nicht überwachen: {e}", r.path);
+            }
+        }
+        w
+    });
+    for r in &roots {
+        worker.submit(Job::Scan(r.id));
+    }
+    worker.submit(Job::Thumbs);
+
+    let ai_state = ai::AiState::new(&data_dir);
+    let style_state = style::StyleState::new(&data_dir);
+    // Allgemeine Einstellungen wirksam machen (Karte an/aus)
+    settings::load(&data_dir);
+    app.manage(AppState {
+        catalog,
+        cache,
+        worker,
+        watcher: Mutex::new(watcher),
+        data_dir,
+        develop: develop::DevelopCache::default(),
+        ai: ai_state,
+        people: people::PeopleState::default(),
+        repair: repair::RepairState::default(),
+        repairs,
+        masks,
+        denoised_dir,
+        usage: memory::Usage::default(),
+        merge: merge::MergeState::default(),
+        import: import::ImportState::default(),
+        mcp: mcp::McpState::default(),
+        style: style_state,
+    });
+    style::start(app.handle());
+    mcp::start_if_enabled(app.handle());
+    memory::start_janitor(app.handle().clone());
+    // GPS aus EXIF nachtragen, fehlende Ortsnamen ermitteln
+    geo::kick(app.handle());
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     logfile::init();
@@ -110,127 +238,7 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     builder
         .register_asynchronous_uri_scheme_protocol("lw", protocol::handle)
-        .setup(|app| {
-            app.manage(updater::UpdaterState::default());
-            let custom = data_dir_override();
-            let data_dir = match &custom {
-                Some(d) => d.clone(),
-                None => app.path().app_data_dir()?,
-            };
-            // Bis Version 0.1 hieß das Projekt „Lichtwerk“ (Kennung de.lichtwerk.app):
-            // Katalog, Masken und Vorschaubilder von dort übernehmen.
-            if custom.is_none() {
-                adopt_previous_dir(&data_dir);
-                if let Ok(c) = app.path().app_cache_dir() {
-                    adopt_previous_dir(&c);
-                }
-            }
-            std::fs::create_dir_all(&data_dir)?;
-            logfile::open(&data_dir);
-            // Zuletzt gewählte Sprache, bis die Oberfläche sie meldet
-            if let Ok(l) = std::fs::read_to_string(language_file(&data_dir)) {
-                lumenkorn_develop::i18n::set_english(l.trim() == "en");
-            }
-            let catalog_path = data_dir.join("katalog.db");
-            let catalog = match Catalog::open(&catalog_path) {
-                Ok(c) => Arc::new(Mutex::new(c)),
-                // Neuere Version: nicht beenden, sondern das Update anbieten
-                Err(e @ lumenkorn_core::Error::CatalogTooNew { .. }) => {
-                    log::warn!("{e}");
-                    app.manage(CatalogTooNew(e.to_string()));
-                    return Ok(());
-                }
-                Err(e) => {
-                    // Sonst endete die App ohne sichtbaren Grund
-                    use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
-                    app.dialog()
-                        .message(e.to_string())
-                        .title("Lumenkorn")
-                        .kind(MessageDialogKind::Error)
-                        .blocking_show();
-                    return Err(e.into());
-                }
-            };
-            let masks = Arc::new(MaskFiles::new(data_dir.join(dirs::MASKS)));
-            let repairs = Arc::new(lumenkorn_develop::repair::RepairFiles::new(
-                data_dir.join(dirs::REPAIRS),
-            ));
-            let denoised_dir = data_dir.join(dirs::DENOISED);
-            let cache = ThumbCache::new(match &custom {
-                Some(d) => d.join("cache"),
-                None => app
-                    .path()
-                    .app_cache_dir()
-                    .unwrap_or_else(|_| data_dir.join("cache")),
-            })
-            .with_masks(masks.clone())
-            .with_repairs(repairs.clone())
-            .with_denoise_dir(denoised_dir.clone());
-            log::info!("Katalog: {}", catalog_path.display());
-
-            // Eigene Ordner nie als Fotos aufnehmen (siehe scanner::set_excluded_dirs)
-            lumenkorn_core::scanner::set_excluded_dirs(vec![
-                data_dir.clone(),
-                cache.base().to_path_buf(),
-            ]);
-            match catalog.locked().retry_failed_thumbs() {
-                Ok(n) if n > 0 => {
-                    log::info!("{n} fehlgeschlagene Thumbnails werden erneut versucht")
-                }
-                Ok(_) => {}
-                Err(e) => log::warn!("Thumbnails zurücksetzen: {e}"),
-            }
-            let worker = Worker::start(app.handle().clone(), catalog.clone(), cache.clone());
-            let watcher = start_watcher(catalog.clone(), worker.clone(), data_dir.clone());
-
-            // „Unterordner einbeziehen“ vor dem ersten Scan
-            settings::apply_folder_rules(&data_dir, &catalog.locked());
-            // Alle Quellordner beim Start abgleichen – Änderungen, während die App
-            // geschlossen war, werden so erkannt.
-            let roots = catalog.locked().roots()?;
-            let watcher = watcher.map(|mut w| {
-                for r in &roots {
-                    if let Err(e) = w.watch(std::path::Path::new(&r.path)) {
-                        log::warn!("Kann {} nicht überwachen: {e}", r.path);
-                    }
-                }
-                w
-            });
-            for r in &roots {
-                worker.submit(Job::Scan(r.id));
-            }
-            worker.submit(Job::Thumbs);
-
-            let ai_state = ai::AiState::new(&data_dir);
-            let style_state = style::StyleState::new(&data_dir);
-            // Allgemeine Einstellungen wirksam machen (Karte an/aus)
-            settings::load(&data_dir);
-            app.manage(AppState {
-                catalog,
-                cache,
-                worker,
-                watcher: Mutex::new(watcher),
-                data_dir,
-                develop: develop::DevelopCache::default(),
-                ai: ai_state,
-                people: people::PeopleState::default(),
-                repair: repair::RepairState::default(),
-                repairs,
-                masks,
-                denoised_dir,
-                usage: memory::Usage::default(),
-                merge: merge::MergeState::default(),
-                import: import::ImportState::default(),
-                mcp: mcp::McpState::default(),
-                style: style_state,
-            });
-            style::start(app.handle());
-            mcp::start_if_enabled(app.handle());
-            memory::start_janitor(app.handle().clone());
-            // GPS aus EXIF nachtragen, fehlende Ortsnamen ermitteln
-            geo::kick(app.handle());
-            Ok(())
-        })
+        .setup(setup)
         .invoke_handler(tauri::generate_handler![
             album::export::album_export,
             album::export::album_export_cancel,
