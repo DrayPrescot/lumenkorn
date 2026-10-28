@@ -19,6 +19,13 @@ fn is_export_file(p: &Path) -> bool {
         .is_some_and(|e| EXPORT_EXTS.contains(&e.to_ascii_lowercase().as_str()))
 }
 
+/// Eindeutige Schreibweise eines Pfads, damit dieselbe Datei nicht doppelt
+/// zählt (unter Windows etwa kurze 8.3-Namen wie `RUNNER~1` gegenüber dem
+/// langen Namen)
+fn unique(p: &Path) -> PathBuf {
+    PathBuf::from(crate::paths::normalize_dir(p))
+}
+
 impl Catalog {
     /// Exportierte Datei von Foto `image_id` merken (ein erneuter Export an
     /// dieselbe Stelle ersetzt den Eintrag).
@@ -45,7 +52,7 @@ impl Catalog {
                 for p in st.query_map([id], |r| r.get::<_, String>(0))? {
                     let p = PathBuf::from(p?);
                     if p.is_file() {
-                        out.insert(p);
+                        out.insert(unique(&p));
                     }
                 }
             }
@@ -56,7 +63,8 @@ impl Catalog {
                     out.extend(
                         rd.flatten()
                             .map(|e| e.path())
-                            .filter(|p| p.is_file() && is_export_file(p)),
+                            .filter(|p| p.is_file() && is_export_file(p))
+                            .map(|p| unique(&p)),
                     );
                 }
             }

@@ -788,7 +788,10 @@ fn project_exports_combine_recorded_and_marked_folders() {
 
     let mut got = cat.project_exports(p.id).unwrap();
     got.sort();
-    let mut want = vec![old.join("eins.jpg"), fixed.join("eins-web.jpg")];
+    // Erwartet in eindeutiger Schreibweise (der Runner liefert kurze 8.3-Namen)
+    let norm =
+        |p: std::path::PathBuf| std::path::PathBuf::from(lumenkorn_core::paths::normalize_dir(&p));
+    let mut want = vec![norm(old.join("eins.jpg")), norm(fixed.join("eins-web.jpg"))];
     want.sort();
     assert_eq!(got, want);
 }
