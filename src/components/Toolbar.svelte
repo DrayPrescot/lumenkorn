@@ -116,9 +116,6 @@
   {/if}
 
   {#if lib.mode === "library" && lib.view === "grid" && lib.images.length}
-    <button class="btn" onclick={() => (lib.cull = { scope: $state.snapshot(lib.scope) as Scope, title: lib.scopeTitle })} title={t("Unscharfe Fotos, geschlossene Augen und schwächere Fotos aus Serien zum Ablehnen vorschlagen")}>
-      <Icon name="reject" size={14} /> {t("Aussortieren")}
-    </button>
     <button class="btn" onclick={() => (lib.view = "stats")} title={t("Auswertung der angezeigten Fotos: Kameras, Objektive, Brennweiten, Blenden, Schlagworte …")}>
       <Icon name="chart" size={14} /> {t("Statistik")}
     </button>

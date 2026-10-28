@@ -139,7 +139,7 @@ vergibt sie in der neuen Sprache neu.
   XMP-Begleitdateien, Katalogeintrag, Bearbeitungen, Masken, Entrauschungen, Reparaturen,
   Vorschauen und Gesichter. Dateien, die sich nicht löschen lassen, bleiben im Katalog und werden
   gemeldet.
-- **Aussortier-Assistent** („Aussortieren“ in der Werkzeugleiste): schlägt vor, was weg kann – aus
+- **Aussortier-Assistent** (Rechtsklick auf Ordner oder Projekt → „Aussortieren …“): schlägt vor, was weg kann – aus
   Serien die schwächeren Fotos (je nach Größe bleiben die schärfsten 3 bis 5), unscharfe Fotos,
   geschlossene Augen, stark falsch belichtete und versehentlich ausgelöste Fotos. Die Schärfe wird
   innerhalb der Serie verglichen, ein Porträt mit unscharfem Hintergrund gilt also nicht als

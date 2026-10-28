@@ -37,6 +37,21 @@
     lib.setFolderSubfolders(path, !on);
   }
 
+  const CULL_HINT = t("Unscharfe Fotos, geschlossene Augen und schwächere Fotos aus Serien zum Ablehnen vorschlagen");
+
+  /** Aussortier-Assistent für einen Ordner bzw. ein Projekt (Werte vor dem
+   *  Schließen des Menüs lesen – `{@const}` folgt dem Menü-Zustand) */
+  function cullFolder(node: FolderNode) {
+    const { path, name } = node;
+    menu = null;
+    lib.cull = { scope: { type: "folder", path, recursive: true }, title: name };
+  }
+  function cullProject(p: Project) {
+    const { id, name } = p;
+    projMenu = null;
+    lib.cull = { scope: { type: "project", id }, title: name };
+  }
+
   /** Kontextmenü eines Projekts und offener Nextcloud-Dialog */
   let projMenu = $state<{ x: number; y: number; project: Project } | null>(null);
   let ncProject = $state<Project | null>(null);
@@ -475,6 +490,9 @@
       <p class="menu-note">{t("Strg-/Umschalt-Klick ändert die Auswahl, Esc hebt sie auf.")}</p>
     {:else}
       <hr />
+      <button role="menuitem" title={CULL_HINT} onclick={() => cullFolder(m.node)}>
+        <Icon name="reject" size={14} /> {t("Aussortieren …")}
+      </button>
       <button role="menuitemcheckbox" aria-checked={menuSubfolders} onclick={toggleSubfolders}>
         <span class="check-mark">{menuSubfolders ? "✓" : ""}</span> {t("Unterordner einbeziehen")}
       </button>
@@ -497,6 +515,9 @@
   {@const pm = projMenu}
   <div class="menu" role="menu" tabindex="-1" style:left="{pm.x}px" style:top="{pm.y}px" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
     <div class="menu-title">{pm.project.name}</div>
+    <button role="menuitem" title={CULL_HINT} onclick={() => cullProject(pm.project)}>
+      <Icon name="reject" size={14} /> {t("Aussortieren …")}
+    </button>
     <button role="menuitem" onclick={() => uploadProject(pm.project)}>
       <Icon name="cloud" size={14} /> {t("Zu Nextcloud hochladen …")}
     </button>

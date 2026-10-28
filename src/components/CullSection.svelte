@@ -37,7 +37,7 @@
 <div class="sep"></div>
 <h4>{t("Aussortier-Assistent")}</h4>
 <p class="muted">
-  {t("Der Assistent („Aussortieren“ in der Werkzeugleiste) lernt aus deinen Entscheidungen: welche Vorschläge du abwählst, welche Grenzfälle du doch ablehnst und welche Ablehnungen du später wieder aufhebst. Je Grund verschiebt sich die Schwelle erst, wenn genug Entscheidungen vorliegen. Alles bleibt auf diesem Rechner.")}
+  {t("Der Assistent („Aussortieren …“ im Rechtsklick-Menü von Ordnern und Projekten) lernt aus deinen Entscheidungen: welche Vorschläge du abwählst, welche Grenzfälle du doch ablehnst und welche Ablehnungen du später wieder aufhebst. Je Grund verschiebt sich die Schwelle erst, wenn genug Entscheidungen vorliegen. Alles bleibt auf diesem Rechner.")}
 </p>
 {#if status}
   {#if status.samples}

@@ -7,7 +7,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- Culling assistant ("Aussortieren" in the toolbar): suggests photos to reject. That covers the
+- Culling assistant (right-click a folder or project → "Aussortieren …"): suggests photos to reject. That covers the
   weaker shots of a burst (the best 3 to 5 stay, depending on its size), blurry photos, closed
   eyes, badly exposed photos and photos taken by accident. You go through the suggestions and
   borderline cases; only what you tick is flagged as rejected, nothing is deleted. Photos with

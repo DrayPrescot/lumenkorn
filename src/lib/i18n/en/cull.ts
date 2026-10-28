@@ -1,6 +1,8 @@
 // English texts: culling assistant
 export default {
   "Aussortieren": "Cull",
+  "Aussortieren …": "Cull…",
+  "Serie, Platz {n}": "Burst, rank {n}",
   "Aussortieren in „{name}“": "Cull “{name}”",
   "Unscharfe Fotos, geschlossene Augen und schwächere Fotos aus Serien zum Ablehnen vorschlagen": "Suggest blurry photos, closed eyes and weaker shots from bursts for rejection",
   "Serie: bessere Fotos vorhanden": "Burst: better shots exist",
@@ -36,7 +38,7 @@ export default {
   "{n} Foto ablehnen": "Reject {n} photo",
   "{n} Fotos ablehnen": "Reject {n} photos",
   "Aussortier-Assistent": "Culling assistant",
-  "Der Assistent („Aussortieren“ in der Werkzeugleiste) lernt aus deinen Entscheidungen: welche Vorschläge du abwählst, welche Grenzfälle du doch ablehnst und welche Ablehnungen du später wieder aufhebst. Je Grund verschiebt sich die Schwelle erst, wenn genug Entscheidungen vorliegen. Alles bleibt auf diesem Rechner.": "The assistant (“Cull” in the toolbar) learns from your decisions: which suggestions you untick, which borderline cases you reject after all, and which rejections you later take back. For each reason, the threshold only moves once there are enough decisions. Everything stays on this computer.",
+  "Der Assistent („Aussortieren …“ im Rechtsklick-Menü von Ordnern und Projekten) lernt aus deinen Entscheidungen: welche Vorschläge du abwählst, welche Grenzfälle du doch ablehnst und welche Ablehnungen du später wieder aufhebst. Je Grund verschiebt sich die Schwelle erst, wenn genug Entscheidungen vorliegen. Alles bleibt auf diesem Rechner.": "The assistant (“Cull…” in the right-click menu of folders and projects) learns from your decisions: which suggestions you untick, which borderline cases you reject after all, and which rejections you later take back. For each reason, the threshold only moves once there are enough decisions. Everything stays on this computer.",
   "Der Aussortier-Assistent hat alles Gelernte vergessen und schlägt wieder vor wie ab Werk.": "The culling assistant has forgotten everything it learned and suggests as it did originally.",
   "schlägt seltener vor": "suggests less often",
   "schlägt öfter vor": "suggests more often",

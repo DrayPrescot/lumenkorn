@@ -68,6 +68,8 @@
 
   /** Alle Fotos mit Vorschlag oder Grenzfall, in Anzeigereihenfolge */
   const shown = $derived([...series.flat().filter((it) => verdicts.has(it.id)), ...singles.flatMap((g) => g.items)]);
+  /** Alle angezeigten Fotos (auch die behaltenen einer Serie) – zum Blättern in der Großansicht */
+  const browse = $derived([...series.flat(), ...singles.flatMap((g) => g.items)]);
   const suggested = $derived(shown.filter((it) => verdicts.get(it.id)?.state === "suggest").length);
   const borderline = $derived(shown.length - suggested);
 
@@ -134,11 +136,11 @@
     onclose();
   }
 
-  /** In der Großansicht blättern */
+  /** In der Großansicht blättern (durch alle angezeigten Fotos) */
   function step(d: number) {
-    if (zoom === null || !shown.length) return;
-    const i = shown.findIndex((it) => it.id === zoom);
-    zoom = shown[Math.max(0, Math.min(shown.length - 1, (i < 0 ? 0 : i) + d))].id;
+    if (zoom === null || !browse.length) return;
+    const i = browse.findIndex((it) => it.id === zoom);
+    zoom = browse[Math.max(0, Math.min(browse.length - 1, (i < 0 ? 0 : i) + d))].id;
   }
 
   function onkeydown(e: KeyboardEvent) {
@@ -269,11 +271,14 @@
 
 {#if zoomItem}
   {@const v = verdicts.get(zoomItem.id)}
+  {@const pos = browse.findIndex((it) => it.id === zoomItem.id)}
   <div class="zoomview" role="presentation" onclick={() => (zoom = null)}>
-    <img src={imageUrl("preview", zoomItem.id, lib.thumbVersion(zoomItem.id))} alt="" />
+    <img src={imageUrl("preview", zoomItem.id, lib.thumbVersion(zoomItem.id))} alt="" class:rejected={v && checked(zoomItem.id)} />
     <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
     <div class="zoombar" onclick={(e) => e.stopPropagation()}>
-      <span>{v ? reasonLabel(v.reason) : zoomItem.protected ? t("Geschützt") : t("Behalten")}</span>
+      <span class="muted small">{pos + 1} / {browse.length}</span>
+      {#if zoomItem.series !== undefined}<span class="muted small">{t("Serie, Platz {n}", { n: String(zoomItem.rank + 1) })}</span>{/if}
+      <span>{v ? `${v.state === "border" ? `${t("Grenzfall")} · ` : ""}${reasonLabel(v.reason)}` : zoomItem.protected ? t("Geschützt") : t("Behalten")}</span>
       {#if v}
         <button class="btn" class:danger={checked(zoomItem.id)} onclick={() => toggle(zoomItem.id)}>
           {checked(zoomItem.id) ? t("Wird abgelehnt") : t("Wird behalten")}
@@ -490,6 +495,11 @@
     height: 100%;
     min-height: 0;
     object-fit: contain;
+    outline: 3px solid color-mix(in srgb, var(--accent) 70%, transparent);
+    outline-offset: -3px;
+  }
+  .zoomview img.rejected {
+    outline-color: var(--reject);
   }
   .zoombar {
     justify-self: center;
