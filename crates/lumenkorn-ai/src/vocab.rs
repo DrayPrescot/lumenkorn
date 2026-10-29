@@ -225,7 +225,7 @@ fn translate_for(query: &str, english_ui: bool) -> String {
             }
             // Tierarten („Blaumeise“ → „eurasian blue tit“)
             if let Some(p) = crate::animals::phrase_for(w, english_ui) {
-                return Some((strip_article(p).to_string(), false));
+                return Some((strip_article(&p).to_string(), false));
             }
             if english_ui {
                 return None;

@@ -6,7 +6,7 @@ use crate::memory::Slot;
 use crate::worker::Job;
 use crate::{AppState, blocking};
 use lumenkorn_ai::accel::{self, Backend, Preference};
-use lumenkorn_ai::animals::{AnimalTagger, Bioclip};
+use lumenkorn_ai::animals::{AnimalTagger, BioTaxonomy, Bioclip};
 use lumenkorn_ai::index::{from_bytes, to_bytes};
 use lumenkorn_ai::models::{self, Component, Status};
 use lumenkorn_ai::parts;
@@ -30,9 +30,10 @@ use tauri::{AppHandle, Emitter, Manager, State};
 const MODEL_KEY: &str = models::MODEL_ID;
 const BATCH: usize = 16;
 /// Stand der Tierart-Schlagworte schon analysierter Fotos: 1 = mit CLIP
-/// nachgetragen, 2 = mit BioCLIP 2 nachbestimmt (sobald es installiert ist).
+/// nachgetragen, 3 = mit BioCLIP 2 und der großen Liste nachbestimmt (sobald
+/// es installiert ist; 2 war die erste, kleine Liste).
 const ANIMAL_TAGS_CLIP: u32 = 1;
-const ANIMAL_TAGS_BIOCLIP: u32 = 2;
+const ANIMAL_TAGS_BIOCLIP: u32 = 3;
 /// Tierfotos je Durchgang beim Nachbestimmen mit BioCLIP (je Foto etwa
 /// 0,3 s auf der CPU – der Worker soll zwischendurch Neues annehmen)
 const BIOCLIP_BACKFILL_BATCH: usize = 16;
@@ -61,7 +62,7 @@ pub struct AiState {
     /// Nachtragen der Tierarten: Ziel-Stand und zuletzt bearbeitete Bild-ID
     animal_backfill: Mutex<(u32, i64)>,
     /// BioCLIP 2 (Bildteil) für genauere Tierarten, falls installiert
-    bioclip: Mutex<Option<Arc<Bioclip>>>,
+    bioclip: Mutex<Option<Arc<BioAnimals>>>,
     /// Letzte Benutzung des Suchindex; der Hausmeister gibt ihn danach frei
     index_used: Mutex<std::time::Instant>,
     pub(crate) downloading: AtomicBool,
@@ -608,15 +609,25 @@ fn animal_tagger(state: &AppState, loaded: &Loaded) -> Option<Arc<AnimalTagger>>
     slot.clone()
 }
 
+/// BioCLIP 2 mit seiner Tierarten-Liste
+pub(crate) struct BioAnimals {
+    model: Bioclip,
+    taxa: BioTaxonomy,
+}
+
 /// BioCLIP 2 für genauere Tierarten, wenn installiert (sonst `None`: dann
 /// bestimmt CLIP die Arten).
-fn bioclip_model(state: &AppState) -> Option<Arc<Bioclip>> {
+fn bioclip_model(state: &AppState) -> Option<Arc<BioAnimals>> {
     if !models::status(&state.data_dir).animals_ready {
         return None;
     }
-    let path = models::animals_dir(&state.data_dir).join(lumenkorn_ai::animals::BIOCLIP_FILE);
+    let dir = models::animals_dir(&state.data_dir);
     lazy_model(state, &state.ai.bioclip, "BioCLIP 2", || {
-        Bioclip::load(&path).map_err(err)
+        Ok(BioAnimals {
+            taxa: BioTaxonomy::load(&dir.join(lumenkorn_ai::animals::BIOCLIP_TAXA_FILE))
+                .map_err(err)?,
+            model: Bioclip::load(&dir.join(lumenkorn_ai::animals::BIOCLIP_FILE)).map_err(err)?,
+        })
     })
     .map_err(|e| log::warn!("BioCLIP 2 nicht nutzbar: {e}"))
     .ok()
@@ -625,7 +636,7 @@ fn bioclip_model(state: &AppState) -> Option<Arc<Bioclip>> {
 /// BioCLIP-Embeddings für die Bilder mit Tier (laut CLIP); sonst `None`.
 fn bioclip_embeddings(
     state: &AppState,
-    bio: Option<&Bioclip>,
+    bio: Option<&BioAnimals>,
     animals: &AnimalTagger,
     images: &[image::DynamicImage],
     clip: &[Vec<f32>],
@@ -645,7 +656,7 @@ fn bioclip_embeddings(
         Some(current_backend()),
         "BioCLIP 2",
     );
-    match bio.embed(&picked) {
+    match bio.model.embed(&picked) {
         Ok(emb) => {
             for (i, e) in which.into_iter().zip(emb) {
                 out[i] = Some(e);
@@ -654,6 +665,20 @@ fn bioclip_embeddings(
         Err(e) => log::warn!("BioCLIP 2: {e}"),
     }
     out
+}
+
+/// Namen der großen Tierarten-Liste für die Suche bereitstellen (einmalig,
+/// ohne das Modell zu laden)
+pub(crate) fn load_search_names(state: &AppState) {
+    if lumenkorn_ai::animals::search_names_loaded()
+        || !models::status(&state.data_dir).animals_ready
+    {
+        return;
+    }
+    let path = models::animals_dir(&state.data_dir).join(lumenkorn_ai::animals::BIOCLIP_TAXA_FILE);
+    if let Err(e) = BioTaxonomy::load(&path) {
+        log::warn!("Tierarten-Liste nicht lesbar: {e}");
+    }
 }
 
 /// Tierarten für schon analysierte Fotos nachtragen bzw. nachbestimmen:
@@ -753,7 +778,8 @@ fn animal_backfill(state: &AppState) -> Result<bool, Error> {
         }
     }
     let bios = bioclip_embeddings(state, Some(&bio), &animals, &images, &clips);
-    let names = lumenkorn_ai::animals::all_names();
+    let mut names = lumenkorn_ai::animals::all_names();
+    names.extend(bio.taxa.names());
     let items: Vec<(i64, Vec<(String, f64)>)> = ok
         .iter()
         .zip(clips.iter().zip(&bios))
@@ -766,7 +792,7 @@ fn animal_backfill(state: &AppState) -> Result<bool, Error> {
                 .into_iter()
                 .filter(|t| names.contains(&t.tag.as_str()))
                 .collect();
-            found.extend(animals.tag(e, b.as_deref()));
+            found.extend(animals.tag(e, b.as_deref().map(|b| (b, &bio.taxa))));
             (*id, merge_tags(found))
         })
         .collect();
@@ -846,7 +872,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
     for ((id, emb), b) in ok_ids.iter().zip(&embeddings).zip(&bios) {
         let mut found = loaded.tagger.tag(emb);
         if let Some(a) = &animals {
-            found.extend(a.tag(emb, b.as_deref()));
+            found.extend(a.tag(emb, b.as_deref().zip(bio.as_deref().map(|x| &x.taxa))));
         }
         let tags = merge_tags(found);
         state
@@ -1213,6 +1239,7 @@ pub async fn semantic_search(
 ) -> Result<Vec<ImageSummary>, Error> {
     blocking(app, move |state| {
         let loaded = ensure_loaded(state)?;
+        load_search_names(state);
         let english = vocab::translate_query(&query);
         let q = loaded
             .clip

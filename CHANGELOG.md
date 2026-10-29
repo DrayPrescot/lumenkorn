@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- With the optional BioCLIP 2 download, animal keywords now cover about 10,000 species instead of
+  300: the species most observed on iNaturalist in Europe, birds worldwide, all primates, and the
+  mammals, birds and reptiles of Kenya, Tanzania and South Africa. German and English names come
+  from Wikidata. Species that are common in their region get a small head start, so a grey heron
+  is not named as a great blue heron. The list (about 9 MB) is downloaded together with the model; if BioCLIP 2 is
+  already installed, Settings → AI offers the missing file. Animal keywords of photos analysed
+  before are determined again in the background. Without BioCLIP 2 the built-in list of about
+  300 animals stays.
+
 ## [1.0.29] – 2026-10-28
 
 ### Added

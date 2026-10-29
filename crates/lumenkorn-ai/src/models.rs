@@ -178,14 +178,24 @@ pub fn animals_dir(data_dir: &Path) -> PathBuf {
 }
 
 /// BioCLIP 2 (Imageomics, MIT), Bildteil als ONNX mit Gewichten in float16 –
-/// umgewandelt für Lumenkorn (`export_onnx.py` im Repository), fester Commit.
+/// umgewandelt für Lumenkorn (`export_onnx.py` im Repository), dazu die
+/// Tierarten-Liste (`tools/bioclip`), fester Commit.
 fn default_animals() -> Vec<FileSpec> {
-    vec![FileSpec::pinned(
-        crate::animals::BIOCLIP_FILE,
-        "https://huggingface.co/DrayPrescot/bioclip2-onnx/resolve/6b0a7b8fcb948f6d599d42040ea0e0dbd9a9f301/bioclip2-vision-fp16.onnx".into(),
-        608_910_301,
-        "db55173badd124cdb8ffc48708d4c7db8f1130ad7365baa221bfcc6b66043527",
-    )]
+    const HF: &str = "https://huggingface.co/DrayPrescot/bioclip2-onnx/resolve/dd52d3d30abd66d4114246de946dca28684631d9";
+    vec![
+        FileSpec::pinned(
+            crate::animals::BIOCLIP_FILE,
+            format!("{HF}/bioclip2-vision-fp16.onnx"),
+            608_910_301,
+            "db55173badd124cdb8ffc48708d4c7db8f1130ad7365baa221bfcc6b66043527",
+        ),
+        FileSpec::pinned(
+            crate::animals::BIOCLIP_TAXA_FILE,
+            format!("{HF}/bioclip2-tierarten.bin"),
+            8_631_414,
+            "4148db5da336573145985c71561188f73418ea8b6bcdba9aae2591030c02345e",
+        ),
+    ]
 }
 
 pub fn faces_dir(data_dir: &Path) -> PathBuf {

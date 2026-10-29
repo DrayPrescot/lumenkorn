@@ -10,7 +10,7 @@
 //! „Vogel“ als eine geratene Art. Jede erreichte Ebene wird ein Schlagwort.
 
 use crate::clip::{Clip, dot};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::tagger::TagSuggestion;
 
 /// Name der Gruppe in den Vorschlägen
@@ -705,8 +705,6 @@ struct Node {
     depth: usize,
     /// CLIP-Text-Embedding der Beschreibung
     embedding: Vec<f32>,
-    /// BioCLIP-2-Text-Embedding (taxonomischer Pfad, vorab berechnet)
-    bioclip: Vec<f32>,
 }
 
 pub struct AnimalTagger {
@@ -746,33 +744,218 @@ fn strip_article(p: &str) -> &str {
 
 // --- BioCLIP 2 ------------------------------------------------------------------
 
+/// Gewicht der Häufigkeit in der Region (Logarithmus, zum Logit addiert):
+/// Ohne sie gewinnen ähnliche Arten anderer Erdteile (Kanadareiher statt
+/// Graureiher); stärker schadet seltenen Arten wie Gorilla oder Waldkauz.
+const PRIOR_WEIGHT: f32 = 0.5;
+
 /// Bildteil von BioCLIP 2 im Ordner `tierarten` (optionaler Download)
 pub const BIOCLIP_FILE: &str = "bioclip2-vision-fp16.onnx";
 
-/// Text-Embeddings der Taxonomie für BioCLIP 2, erzeugt mit
-/// `tools/bioclip/text_embeddings.py` (Format dort beschrieben)
-static BIOCLIP_TEXT: &[u8] = include_bytes!("../assets/bioclip2-tiere.bin");
+/// Tierarten-Liste für BioCLIP 2 (rund 10 000 Arten mit Namen, Einordnung
+/// und vorab berechneten Text-Embeddings, `tools/bioclip`), wird zusammen mit
+/// dem Modell heruntergeladen
+pub const BIOCLIP_TAXA_FILE: &str = "bioclip2-tierarten.bin";
 
-/// Die mitgelieferten BioCLIP-Text-Embeddings: Schlagwort → Vektor
-fn bioclip_text() -> std::collections::HashMap<&'static str, Vec<f32>> {
-    let b = BIOCLIP_TEXT;
-    let u32_at = |i: usize| u32::from_le_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]) as usize;
-    assert_eq!(&b[..4], b"LKTX", "BioCLIP-Texte: unbekanntes Format");
-    let (n, dim) = (u32_at(8), u32_at(12));
-    let mut out = std::collections::HashMap::with_capacity(n);
-    let mut i = 16;
-    for _ in 0..n {
-        let len = u16::from_le_bytes([b[i], b[i + 1]]) as usize;
-        let name = std::str::from_utf8(&b[i + 2..i + 2 + len]).expect("UTF-8");
-        i += 2 + len;
-        let v = b[i..i + 4 * dim]
+/// Ein Eintrag der Tierarten-Liste (Klasse, Gruppe oder Art)
+struct BioNode {
+    parent: Option<usize>,
+    depth: usize,
+    /// Logarithmus der Häufigkeit in der Region (≤ 0)
+    prior: f32,
+    de: String,
+    en: String,
+}
+
+/// Die Tierarten-Liste für BioCLIP 2. Die Text-Embeddings liegen als i8 mit
+/// einem Faktor je Eintrag vor (≈ 8 MB statt 32 MB) – für die Rangfolge der
+/// Arten genau genug.
+pub struct BioTaxonomy {
+    nodes: Vec<BioNode>,
+    dim: usize,
+    scales: Vec<f32>,
+    values: Vec<i8>,
+}
+
+impl BioTaxonomy {
+    pub fn load(path: &std::path::Path) -> Result<Self> {
+        let t = Self::parse(&std::fs::read(path)?)?;
+        set_search_names(&t);
+        Ok(t)
+    }
+
+    /// Format siehe `tools/bioclip/text_embeddings.py`
+    pub fn parse(b: &[u8]) -> Result<Self> {
+        let mut r = Reader { b, i: 0 };
+        if r.take(4)? != b"LKTA" {
+            return Err(bad_taxa("unbekanntes Format"));
+        }
+        if r.u32()? != 2 {
+            return Err(bad_taxa("unbekannte Version"));
+        }
+        let n = r.u32()? as usize;
+        let dim = r.u32()? as usize;
+        let mut nodes: Vec<BioNode> = Vec::with_capacity(n);
+        for k in 0..n {
+            let h = r.take(9)?;
+            let parent = i32::from_le_bytes([h[0], h[1], h[2], h[3]]);
+            let rank = h[4] as usize;
+            let prior = f32::from_le_bytes([h[5], h[6], h[7], h[8]]);
+            let de = r.text()?;
+            let en = r.text()?;
+            // Eltern stehen vor ihren Kindern (für das Aufsummieren)
+            let parent = match parent {
+                -1 => None,
+                p if (p as usize) < k => Some(p as usize),
+                _ => return Err(bad_taxa("Einordnung")),
+            };
+            nodes.push(BioNode {
+                parent,
+                depth: rank,
+                prior,
+                de,
+                en,
+            });
+        }
+        let scales = r
+            .take(4 * n)?
             .chunks_exact(4)
             .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
             .collect();
-        i += 4 * dim;
-        out.insert(name, v);
+        let values = r.take(n * dim)?.iter().map(|&v| v as i8).collect();
+        Ok(Self {
+            nodes,
+            dim,
+            scales,
+            values,
+        })
     }
-    out
+
+    pub fn len(&self) -> usize {
+        self.nodes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
+
+    /// Alle Namen beider Sprachen (zum Ersetzen beim Nachbestimmen)
+    pub fn names(&self) -> Vec<&str> {
+        self.nodes
+            .iter()
+            .flat_map(|n| [n.de.as_str(), n.en.as_str()])
+            .collect()
+    }
+
+    fn name(&self, i: usize) -> &str {
+        let n = &self.nodes[i];
+        if lumenkorn_develop::i18n::is_english() {
+            &n.en
+        } else {
+            &n.de
+        }
+    }
+
+    /// Wahrscheinlichkeiten (eigene, aufsummierte) für ein BioCLIP-Embedding
+    fn probabilities(&self, image: &[f32]) -> (Vec<f32>, Vec<f32>) {
+        let logits: Vec<f32> = self
+            .values
+            .chunks_exact(self.dim)
+            .zip(&self.scales)
+            .zip(&self.nodes)
+            .map(|((row, s), n)| {
+                let d: f32 = row.iter().zip(image).map(|(&q, &x)| q as f32 * x).sum();
+                d * s * LOGIT_SCALE + PRIOR_WEIGHT * n.prior
+            })
+            .collect();
+        let parents: Vec<Option<usize>> = self.nodes.iter().map(|n| n.parent).collect();
+        aggregate(&parents, softmax(&logits))
+    }
+}
+
+fn bad_taxa(what: &str) -> Error {
+    Error::ModelFormat(format!("Tierarten-Liste: {what}"))
+}
+
+/// Liest die Tierarten-Liste der Reihe nach
+struct Reader<'a> {
+    b: &'a [u8],
+    i: usize,
+}
+
+impl<'a> Reader<'a> {
+    fn take(&mut self, n: usize) -> Result<&'a [u8]> {
+        let s = self
+            .b
+            .get(self.i..self.i + n)
+            .ok_or_else(|| bad_taxa("zu kurz"))?;
+        self.i += n;
+        Ok(s)
+    }
+
+    fn u32(&mut self) -> Result<u32> {
+        let s = self.take(4)?;
+        Ok(u32::from_le_bytes([s[0], s[1], s[2], s[3]]))
+    }
+
+    fn text(&mut self) -> Result<String> {
+        let l = self.take(2)?;
+        let len = u16::from_le_bytes([l[0], l[1]]) as usize;
+        String::from_utf8(self.take(len)?.to_vec()).map_err(|_| bad_taxa("Name kein UTF-8"))
+    }
+}
+
+/// Eigene Wahrscheinlichkeiten und mit Unterarten aufsummierte (Kinder
+/// stehen hinter den Eltern, also rückwärts)
+fn aggregate(parents: &[Option<usize>], own: Vec<f32>) -> (Vec<f32>, Vec<f32>) {
+    let mut agg = own.clone();
+    for i in (0..parents.len()).rev() {
+        if let Some(p) = parents[i] {
+            agg[p] += agg[i];
+        }
+    }
+    (own, agg)
+}
+
+/// Pfad zur wahrscheinlichsten Art, so weit er sicher ist: Ist die Art selbst
+/// sicher ([`LEAF_P`]), gilt der ganze Pfad, sonst so weit, wie die Ebenen
+/// ihre Schwelle erreichen. Liefert die Knoten (Klasse zuerst).
+fn descend(parents: &[Option<usize>], depths: &[usize], own: &[f32], agg: &[f32]) -> Vec<usize> {
+    let Some(best) = (0..own.len()).max_by(|a, b| own[*a].total_cmp(&own[*b])) else {
+        return Vec::new();
+    };
+    let mut path = vec![best];
+    while let Some(p) = parents[*path.last().expect("Pfad")] {
+        path.push(p);
+    }
+    path.reverse();
+    let sure = own[best] >= LEAF_P;
+    path.into_iter()
+        .take_while(|&i| sure || agg[i] >= LEVEL_P[depths[i].min(LEVEL_P.len() - 1)])
+        .collect()
+}
+
+/// Namen der großen Liste für die Suche nach Bildinhalt (klein geschrieben →
+/// englischer Name), sobald sie geladen ist
+static SEARCH_NAMES: std::sync::RwLock<Option<std::collections::HashMap<String, (String, bool)>>> =
+    std::sync::RwLock::new(None);
+
+/// Ist die große Liste schon für die Suche bekannt?
+pub fn search_names_loaded() -> bool {
+    SEARCH_NAMES
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .is_some()
+}
+
+fn set_search_names(t: &BioTaxonomy) {
+    let mut m = std::collections::HashMap::with_capacity(2 * t.len());
+    for n in &t.nodes {
+        // (englischer Name, nur bei deutscher Oberfläche)
+        m.entry(n.de.to_lowercase()).or_insert((n.en.clone(), true));
+        m.insert(n.en.to_lowercase(), (n.en.clone(), false));
+    }
+    *SEARCH_NAMES.write().unwrap_or_else(|e| e.into_inner()) = Some(m);
 }
 
 /// BioCLIP 2 (Bildteil): spezialisiert auf Tiere und Pflanzen, trifft Arten
@@ -820,7 +1003,7 @@ impl Bioclip {
 
 impl AnimalTagger {
     /// Text-Embeddings aller Beschreibungen berechnen (einmal, in Stapeln);
-    /// die BioCLIP-Texte kommen fertig mit.
+    /// die Texte für BioCLIP kommen mit dessen Liste.
     pub fn new(clip: &Clip) -> Result<Self> {
         let mut flat = Vec::new();
         walk_nodes(TAXONOMY, None, 0, &mut flat);
@@ -841,7 +1024,6 @@ impl AnimalTagger {
         let mut emb = emb.into_iter();
         let others = emb.by_ref().take(NOT_ANIMAL.len()).collect();
         let hints = emb.by_ref().take(ANIMAL_HINTS.len()).collect();
-        let mut bio = bioclip_text();
         let nodes = flat
             .into_iter()
             .zip(emb)
@@ -850,7 +1032,6 @@ impl AnimalTagger {
                 parent,
                 depth,
                 embedding,
-                bioclip: bio.remove(taxon.tag).unwrap_or_default(),
             })
             .collect();
         Ok(Self {
@@ -882,64 +1063,48 @@ impl AnimalTagger {
         self.animal_share(clip_image) >= GATE_P
     }
 
-    /// Wahrscheinlichkeit je Knoten unter allen Tierknoten: eigene und mit
-    /// Unterarten aufsummierte (Kinder stehen hinter den Eltern). Mit
-    /// BioCLIP-Embedding nach BioCLIP, sonst nach CLIP.
-    fn probabilities(&self, clip_image: &[f32], bioclip: Option<&[f32]>) -> (Vec<f32>, Vec<f32>) {
-        let logits: Vec<f32> = match bioclip {
-            Some(b) => self
-                .nodes
-                .iter()
-                .map(|n| dot(&n.bioclip, b) * LOGIT_SCALE)
-                .collect(),
-            None => self
-                .nodes
-                .iter()
-                .map(|n| dot(&n.embedding, clip_image) * LOGIT_SCALE)
-                .collect(),
-        };
-        let own = softmax(&logits);
-        let mut agg = own.clone();
-        for i in (0..self.nodes.len()).rev() {
-            if let Some(parent) = self.nodes[i].parent {
-                agg[parent] += agg[i];
-            }
-        }
-        (own, agg)
-    }
-
     /// Schlagworte: die erreichten Ebenen, grob zuerst. `clip_image` für die
-    /// Vorprüfung (und die Arten, wenn BioCLIP fehlt), `bioclip` für die Arten.
-    pub fn tag(&self, clip_image: &[f32], bioclip: Option<&[f32]>) -> Vec<TagSuggestion> {
+    /// Vorprüfung; die Art bestimmt BioCLIP 2 mit seiner großen Liste, wenn
+    /// vorhanden, sonst CLIP mit der eingebauten.
+    pub fn tag(
+        &self,
+        clip_image: &[f32],
+        bioclip: Option<(&[f32], &BioTaxonomy)>,
+    ) -> Vec<TagSuggestion> {
         let animal = self.animal_share(clip_image);
         if animal < GATE_P {
             return Vec::new();
         }
-        let (own, agg) = self.probabilities(clip_image, bioclip);
-        // Pfad zur wahrscheinlichsten Art (Klasse zuerst)
-        let best = (0..self.nodes.len())
-            .max_by(|a, b| own[*a].total_cmp(&own[*b]))
-            .expect("Taxonomie nicht leer");
-        let mut path = vec![best];
-        while let Some(parent) = self.nodes[*path.last().expect("Pfad")].parent {
-            path.push(parent);
-        }
-        path.reverse();
-        // Sichere Art: ganzer Pfad. Sonst so weit, wie die Ebenen sicher sind.
-        let sure = own[best] >= LEAF_P;
-        let mut out = Vec::new();
-        for &i in &path {
-            let node = &self.nodes[i];
-            if !sure && agg[i] < LEVEL_P[node.depth.min(LEVEL_P.len() - 1)] {
-                break;
+        let tag = |name: &str, p: f32| TagSuggestion {
+            tag: name.to_string(),
+            group: GROUP.to_string(),
+            confidence: (p * animal).min(1.0),
+        };
+        match bioclip {
+            Some((image, tax)) => {
+                let (own, agg) = tax.probabilities(image);
+                let parents: Vec<Option<usize>> = tax.nodes.iter().map(|n| n.parent).collect();
+                let depths: Vec<usize> = tax.nodes.iter().map(|n| n.depth).collect();
+                descend(&parents, &depths, &own, &agg)
+                    .into_iter()
+                    .map(|i| tag(tax.name(i), agg[i]))
+                    .collect()
             }
-            out.push(TagSuggestion {
-                tag: node.taxon.name().to_string(),
-                group: GROUP.to_string(),
-                confidence: (agg[i] * animal).min(1.0),
-            });
+            None => {
+                let logits: Vec<f32> = self
+                    .nodes
+                    .iter()
+                    .map(|n| dot(&n.embedding, clip_image) * LOGIT_SCALE)
+                    .collect();
+                let parents: Vec<Option<usize>> = self.nodes.iter().map(|n| n.parent).collect();
+                let depths: Vec<usize> = self.nodes.iter().map(|n| n.depth).collect();
+                let (own, agg) = aggregate(&parents, softmax(&logits));
+                descend(&parents, &depths, &own, &agg)
+                    .into_iter()
+                    .map(|i| tag(self.nodes[i].taxon.name(), agg[i]))
+                    .collect()
+            }
         }
-        out
     }
 }
 
@@ -961,12 +1126,19 @@ pub fn all_names() -> Vec<&'static str> {
 /// Englische Beschreibung zu einem Tiernamen (ein Wort, klein geschrieben) –
 /// für die Suche nach Bildinhalt („blaumeise“ → „a eurasian blue tit“).
 /// Deutsche Namen nur bei deutscher Oberfläche (wie im übrigen Vokabular).
-pub fn phrase_for(word: &str, english_ui: bool) -> Option<&'static str> {
+/// Erst die eingebaute Liste, dann die große von BioCLIP, falls geladen.
+pub fn phrase_for(word: &str, english_ui: bool) -> Option<String> {
     let mut all = Vec::new();
     walk(TAXONOMY, &mut all);
-    all.into_iter()
+    if let Some(t) = all
+        .into_iter()
         .find(|t| t.en.to_lowercase() == word || (!english_ui && t.tag.to_lowercase() == word))
-        .map(|t| t.phrase)
+    {
+        return Some(t.phrase.to_string());
+    }
+    let g = SEARCH_NAMES.read().unwrap_or_else(|e| e.into_inner());
+    let (en, german) = g.as_ref()?.get(word)?;
+    (!*german || !english_ui).then(|| format!("a {}", en.to_lowercase()))
 }
 
 #[cfg(test)]
@@ -1003,32 +1175,57 @@ mod tests {
         assert!(all.iter().all(|t| !t.phrase.is_empty() && !t.en.is_empty()));
     }
 
-    /// Jeder Knoten hat ein BioCLIP-Text-Embedding (sonst `tools/bioclip`
-    /// neu erzeugen), alle gleich lang und normiert.
+    /// Die große Liste: Format lesen, Einordnung prüfen, Abstieg bis zur
+    /// sicheren Art bzw. bis zur sicheren Ebene
     #[test]
-    fn bioclip_texts_cover_the_taxonomy() {
-        let texts = bioclip_text();
-        let mut all = Vec::new();
-        walk(TAXONOMY, &mut all);
-        let missing: Vec<_> = all
-            .iter()
-            .filter(|t| !texts.contains_key(t.tag))
-            .map(|t| t.tag)
-            .collect();
-        assert!(missing.is_empty(), "fehlen: {missing:?}");
-        assert_eq!(texts.len(), all.len());
-        for v in texts.values() {
-            assert_eq!(v.len(), 768);
-            let n: f32 = v.iter().map(|x| x * x).sum();
-            assert!((n - 1.0).abs() < 1e-3);
+    fn bio_taxonomy_parses_and_descends() {
+        let mut b = b"LKTA".to_vec();
+        for v in [2u32, 4, 2] {
+            b.extend(v.to_le_bytes());
         }
+        // Vogel → Meisen → Blaumeise, Kohlmeise
+        for (parent, rank, de, en) in [
+            (-1i32, 0u8, "Vogel", "Bird"),
+            (0, 1, "Meisen", "Tits"),
+            (1, 2, "Blaumeise", "Blue tit"),
+            (1, 2, "Kohlmeise", "Great tit"),
+        ] {
+            b.extend(parent.to_le_bytes());
+            b.push(rank);
+            b.extend(0.0f32.to_le_bytes());
+            for s in [de, en] {
+                b.extend((s.len() as u16).to_le_bytes());
+                b.extend(s.as_bytes());
+            }
+        }
+        for _ in 0..4 {
+            b.extend(1.0f32.to_le_bytes());
+        }
+        b.extend([0u8, 0, 0, 0, 0, 0, 1, 0]);
+        let t = BioTaxonomy::parse(&b).unwrap();
+        assert_eq!(t.len(), 4);
+        assert!(t.names().contains(&"Great tit"));
+        assert!(BioTaxonomy::parse(&b[..b.len() - 1]).is_err());
+        // Sichere Art: ganzer Pfad; sonst nur so weit wie sicher
+        let parents = [None, Some(0), Some(1), Some(1)];
+        let depths = [0, 1, 2, 2];
+        let (own, agg) = aggregate(&parents, vec![0.0, 0.0, 0.9, 0.1]);
+        assert_eq!(descend(&parents, &depths, &own, &agg), [0, 1, 2]);
+        let (own, agg) = aggregate(&parents, vec![0.05, 0.05, 0.3, 0.3]);
+        assert_eq!(descend(&parents, &depths, &own, &agg), [0, 1]);
     }
 
     #[test]
     fn search_words_find_animals() {
-        assert_eq!(phrase_for("blaumeise", false), Some("a eurasian blue tit"));
+        assert_eq!(
+            phrase_for("blaumeise", false).as_deref(),
+            Some("a eurasian blue tit")
+        );
         assert_eq!(phrase_for("blaumeise", true), None);
-        assert_eq!(phrase_for("chimpanzee", true), Some("a chimpanzee"));
+        assert_eq!(
+            phrase_for("chimpanzee", true).as_deref(),
+            Some("a chimpanzee")
+        );
         assert_eq!(phrase_for("auto", false), None);
     }
 }
