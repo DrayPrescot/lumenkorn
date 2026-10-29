@@ -15,8 +15,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
   already installed, Settings → AI offers the missing file. Animal keywords of photos analysed
   before are determined again in the background. Without BioCLIP 2 the built-in list of about
   300 animals stays.
-- Settings → AI shows how far the animal species of photos analysed before have been determined
-  again with BioCLIP 2.
+- Settings → AI: sections in a new order (subject recognition, animal recognition, people, noise
+  reduction, masks); animal recognition shows how many photos it has analysed, like the others.
 - Settings: the culling assistant has its own page "Cull", and the data folder moved from
   "General" to "Folders".
 

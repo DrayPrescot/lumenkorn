@@ -699,16 +699,18 @@ fn animal_target(state: &AppState, bio_ready: bool) -> Option<u32> {
     (done < target).then_some(target)
 }
 
-/// Stand des Nachbestimmens mit BioCLIP (durchgesehene Fotos, alle
-/// analysierten); `None`, wenn nichts aussteht oder BioCLIP fehlt.
+/// Stand der Tiererkennung mit BioCLIP (durchgesehene Fotos, alle
+/// analysierten; nach dem Nachbestimmen alle); `None` ohne BioCLIP.
 fn animal_progress(state: &AppState) -> Option<Progress> {
     if !models::status(&state.data_dir).animals_ready {
         return None;
     }
-    let target = animal_target(state, true)?;
-    let after = {
-        let g = state.ai.animal_backfill.locked();
-        if g.0 == target { g.1 } else { 0 }
+    let after = match animal_target(state, true) {
+        None => i64::MAX,
+        Some(target) => {
+            let g = state.ai.animal_backfill.locked();
+            if g.0 == target { g.1 } else { 0 }
+        }
     };
     let (done, total) = state
         .catalog
@@ -859,7 +861,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
         // Alles analysiert: ggf. Tierarten für ältere Analysen nachtragen
         let more = animal_backfill(app, &state)?;
         if models::status(&state.data_dir).animals_ready {
-            // Stand für die Einstellungen; `null`: fertig
+            // Stand für die Einstellungen
             let _ = app.emit("animals-progress", animal_progress(&state));
         }
         return Ok(more);
@@ -962,7 +964,7 @@ pub struct AiStatus {
     accel: AccelStatus,
     /// Lumenkorn ist beim letzten Start abgestürzt – was wurde abgeschaltet?
     crash_notice: Option<String>,
-    /// Nachbestimmen der Tierarten mit BioCLIP, solange es läuft
+    /// Tiererkennung mit BioCLIP: wie weit analysierte Fotos durchgesehen sind
     animals_progress: Option<Progress>,
 }
 

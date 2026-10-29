@@ -961,7 +961,7 @@ export interface AiStatus {
   accel: AccelStatus;
   /** Lumenkorn ist beim letzten Start abgestürzt – was wurde abgeschaltet */
   crashNotice: string | null;
-  /** Nachbestimmen der Tierarten mit BioCLIP, solange es läuft */
+  /** Tiererkennung mit BioCLIP (`null` ohne BioCLIP) */
   animalsProgress: { done: number; total: number } | null;
   downloading: boolean;
   loaded: boolean;
@@ -1312,7 +1312,7 @@ export interface Events {
   "export-progress": ExportProgress;
   "ai-progress": { done: number; total: number; ids: number[] };
   "faces-progress": { done: number; total: number; faces: number; ids: number[] };
-  /** Nachbestimmen der Tierarten; `null`: fertig */
+  /** Tiererkennung mit BioCLIP: durchgesehene Fotos */
   "animals-progress": { done: number; total: number } | null;
   "ai-download": AiDownloadEvent;
   "repair-progress": { imageId: number; done: number; total: number };

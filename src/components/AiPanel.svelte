@@ -189,6 +189,7 @@
       </div>
     {/if}
 
+    <h4>{t("Motiverkennung")}</h4>
     {#if !s}
       <p class="muted">{t("Status wird geladen …")}</p>
     {:else if !s.modelReady || !s.runtimePath}
@@ -211,8 +212,6 @@
           {t("{done} von {total} Fotos", { done: s.analyzed, total: s.total })}
           {#if s.total}<progress max={s.total} value={s.analyzed}></progress>{/if}
         </dd>
-        <dt>{t("Modell")}</dt>
-        <dd>CLIP ViT-B/32{s.loaded ? t(", geladen") : ""}</dd>
       </dl>
       {#if s.error}
         <p class="warn">{t("Das Modell konnte nicht geladen werden: {error}", { error: s.error })}</p>
@@ -228,50 +227,18 @@
 
     {#if s}
       <div class="sep"></div>
-      <h4>{t("KI-Masken")}</h4>
-      {#if s.masksReady && s.skyReady && s.partsReady}
-        <p class="muted">{t("Installiert: „Motiv“, „Objekt per Klick“, KI-„Himmel“, „Person“ und „Tier“ im Entwickeln-Modus unter „Masken“.")}</p>
-      {:else}
-        <div class="box">
-          <p>
-            {t("„Motiv auswählen“ (IS-Net), „Objekt per Klick“ (Segment Anything), die KI-Himmelserkennung (skyseg) sowie Personen und Tiere (OWLv2, MediaPipe) benötigen einmalig etwa")}
-            <strong>{mb(s.masksDownloadSize)}</strong> {t("von GitHub und Hugging Face. „Himmel“ funktioniert auch ohne, wird damit aber deutlich genauer.")}
-          </p>
-          <button class="btn primary" disabled={lib.aiPending("masks")} onclick={() => download("masks")}>{dlLabel("masks", t("KI-Masken herunterladen"))}</button>
-        </div>
-      {/if}
-    {/if}
-
-    {#if s}
-      <div class="sep"></div>
-      <h4>{t("KI-Rauschreduzierung")}</h4>
-      {#if s.denoiseReady}
-        <p class="muted">{t("Installiert: im Entwickeln-Modus unter „Details“.")}</p>
-      {:else}
-        <div class="box">
-          <p>
-            {t("DRUNet entfernt Bildrauschen, ohne Details zu verwischen. Lumenkorn lädt die Original-Gewichte (etwa")}
-            <strong>{mb(s.denoiseDownloadSize)}</strong>{t(", MIT-Lizenz) von GitHub und bereitet das Modell lokal vor.")}
-          </p>
-          <button class="btn primary" disabled={lib.aiPending("denoise")} onclick={() => download("denoise")}>{dlLabel("denoise", t("Rauschreduzierung herunterladen"))}</button>
-        </div>
-      {/if}
-    {/if}
-
-    {#if s}
-      <div class="sep"></div>
-      <h4>{t("Tierarten genauer bestimmen")}</h4>
+      <h4>{t("Tiererkennung")}</h4>
       {#if s.animalsReady}
         <p class="muted">{t("Installiert: Fotos mit Tieren bekommen die Art als Schlagwort (z. B. Vogel → Meise → Blaumeise). Schon analysierte Fotos werden im Hintergrund nachbestimmt.")}</p>
         {#if s.animalsProgress}
           <dl>
-            <dt>{t("Nachbestimmt")}</dt>
+            <dt>{t("Analysiert")}</dt>
             <dd>
               {t("{done} von {total} Fotos", { done: s.animalsProgress.done, total: s.animalsProgress.total })}
               {#if s.animalsProgress.total}<progress max={s.animalsProgress.total} value={s.animalsProgress.done}></progress>{/if}
             </dd>
           </dl>
-          {#if !s.settings.autoTag}
+          {#if !s.settings.autoTag && s.animalsProgress.done < s.animalsProgress.total}
             <p class="muted small">{t("Pausiert, solange „Neue Fotos automatisch verschlagworten“ ausgeschaltet ist.")}</p>
           {/if}
         {/if}
@@ -314,6 +281,38 @@
             <strong>{mb(ps.downloadSize)}</strong> {t("aus dem OpenCV Model Zoo (MIT bzw. Apache-2.0). Gesichtsdaten bleiben auf diesem Rechner.")}
           </p>
           <button class="btn primary" disabled={lib.aiPending("faces")} onclick={() => download("faces").then(() => lib.refreshPeople())}>{dlLabel("faces", t("Personenerkennung herunterladen"))}</button>
+        </div>
+      {/if}
+    {/if}
+
+    {#if s}
+      <div class="sep"></div>
+      <h4>{t("KI-Rauschreduzierung")}</h4>
+      {#if s.denoiseReady}
+        <p class="muted">{t("Installiert: im Entwickeln-Modus unter „Details“.")}</p>
+      {:else}
+        <div class="box">
+          <p>
+            {t("DRUNet entfernt Bildrauschen, ohne Details zu verwischen. Lumenkorn lädt die Original-Gewichte (etwa")}
+            <strong>{mb(s.denoiseDownloadSize)}</strong>{t(", MIT-Lizenz) von GitHub und bereitet das Modell lokal vor.")}
+          </p>
+          <button class="btn primary" disabled={lib.aiPending("denoise")} onclick={() => download("denoise")}>{dlLabel("denoise", t("Rauschreduzierung herunterladen"))}</button>
+        </div>
+      {/if}
+    {/if}
+
+    {#if s}
+      <div class="sep"></div>
+      <h4>{t("KI-Masken")}</h4>
+      {#if s.masksReady && s.skyReady && s.partsReady}
+        <p class="muted">{t("Installiert: „Motiv“, „Objekt per Klick“, KI-„Himmel“, „Person“ und „Tier“ im Entwickeln-Modus unter „Masken“.")}</p>
+      {:else}
+        <div class="box">
+          <p>
+            {t("„Motiv auswählen“ (IS-Net), „Objekt per Klick“ (Segment Anything), die KI-Himmelserkennung (skyseg) sowie Personen und Tiere (OWLv2, MediaPipe) benötigen einmalig etwa")}
+            <strong>{mb(s.masksDownloadSize)}</strong> {t("von GitHub und Hugging Face. „Himmel“ funktioniert auch ohne, wird damit aber deutlich genauer.")}
+          </p>
+          <button class="btn primary" disabled={lib.aiPending("masks")} onclick={() => download("masks")}>{dlLabel("masks", t("KI-Masken herunterladen"))}</button>
         </div>
       {/if}
     {/if}
