@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.0] – 2026-10-29
+
 ### Changed
 - With the optional BioCLIP 2 download, animal keywords now cover about 10,000 species instead of
   300: the species most observed on iNaturalist in Europe, birds worldwide, all primates, and the
