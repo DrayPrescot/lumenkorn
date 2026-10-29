@@ -10,6 +10,8 @@ die Kartenansicht braucht das Internet (siehe [Karte](#karte)). Zum Teilen kann 
 Exporte eines Projekts in deine eigene Nextcloud hochladen und einen Freigabelink anlegen, aber
 erst, wenn du sie selbst verbindest.
 
+<img src="screenshots/develop.webp" alt="Entwickeln-Ansicht mit einem Sonnenuntergang über einem See und den Reglern rechts" width="900">
+
 Lumenkorn ist in Rust geschrieben, die Oberfläche in Svelte, zusammengehalten von Tauri 2. Es läuft
 unter Windows und Linux; für Android ist der Code vorbereitet. Bildbearbeitung und KI nutzen die
 Grafikkarte (AMD, NVIDIA, Intel) über DirectX 12 bzw. Vulkan.
@@ -45,6 +47,8 @@ KI-Schlagworte folgen der Sprache. Schon vergebene Schlagworte bleiben, „Einst
 vergibt sie in der neuen Sprache neu.
 
 ## Bibliothek
+
+<img src="screenshots/library.webp" alt="Bibliothek mit Tierfotos aus einem Zoo, ein Pinguin ausgewählt, rechts seine Kameradaten" width="900">
 
 - **Ordner statt Import.** Du fügst einen Ordner hinzu, Lumenkorn liest ihn ein. Nichts wird
   kopiert, verschoben oder verändert.
@@ -153,6 +157,8 @@ vergibt sie in der neuen Sprache neu.
   (`aussortieren.json` im Datenordner, zurücksetzen unter Einstellungen → KI).
 
 ## Karte
+
+<img src="screenshots/map.webp" alt="Karte von Japan mit gruppierten Markierungen für die Fotos einer Reise" width="900">
 
 Der Reiter **Karte** (Taste M, neben Bibliothek und Entwickeln) zeigt die Fotos der aktuellen
 Ansicht (Ordner, Projekt, Person, Suche, Filter) als gruppierte Markierungen auf einer
@@ -293,6 +299,8 @@ Außerdem:
   KI-Schlagworte und der Ort bleiben draußen.
 
 ## Masken (lokale Anpassungen)
+
+<img src="screenshots/ai-mask.webp" alt="Eisvogel, mit einer KI-Maske ausgewählt und rot hervorgehoben" width="900">
 
 Jede Maskenebene hat eigene Regler (Belichtung, Kontrast, Lichter, Tiefen, Klarheit, Temperatur,
 Tönung, Sättigung) und besteht aus einer oder mehreren Formen, die hinzugefügt oder abgezogen werden,
@@ -469,6 +477,8 @@ RAW entwickelt, Lichter über 1,0 lassen sich also zurückholen. Zusammengefügt
 unbearbeiteten Originale.
 
 ## Fotoalbum
+
+<img src="screenshots/album.webp" alt="Fotoalbum mit Herbstfotos aus Japan, rechts die Textoptionen" width="900">
 
 Über **Fotoalbum** oberhalb eines Projekts oder Ordners entsteht daraus ein Fotobuch. Man wählt
 das Thema (Urlaub, Reise, Hochzeit, Geburtstag, Familie, Baby und Kind, Natur, Feier, Sport,

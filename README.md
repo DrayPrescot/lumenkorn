@@ -12,7 +12,7 @@
 
 [Website](https://lumenkorn.com) · [Features](#features) · [Getting started](#getting-started) · [How it works](#how-it-works) · [Tech stack](#tech-stack) · [Open-source credits](#open-source-projects-used-by-lumenkorn) · [Deutsch](docs/README.de.md)
 
-<img src="docs/screenshots/develop.png" alt="Develop view with a RAW photo" width="900">
+<img src="docs/screenshots/develop.webp" alt="Develop view with a sunset over a lake and the sliders on the right" width="900">
 
 </div>
 
@@ -38,6 +38,9 @@ the catalog before you let Lumenkorn loose on your whole collection.
 ## Features
 
 ### Library
+
+<img src="docs/screenshots/library.webp" alt="Library with animal photos from a zoo, a penguin selected, its camera data on the right" width="900">
+
 - Folders are read in place. Nothing is copied or moved, unless you import from a card.
 - Import from a memory card (`Ctrl+Shift+I` or the arrow next to “Folders”): pick photos by day
   or one by one in a preview grid, and Lumenkorn copies them to `Target\YYYY\YYYY.MM.DD[_Occasion]`
@@ -95,6 +98,9 @@ the catalog before you let Lumenkorn loose on your whole collection.
   Nikon, Sony, Fujifilm, Panasonic, Olympus/OM System, Pentax, DNG and others supported by rawler.
 
 ### Develop (non-destructive)
+
+<img src="docs/screenshots/ai-mask.webp" alt="Kingfisher selected with an AI mask, shown in red" width="900">
+
 - White balance (in Kelvin for RAW files, with **Automatic**), exposure, contrast, highlights, shadows,
   whites, blacks, clarity, dehaze,
   vibrance, saturation and sharpening. **Auto** (`Ctrl+U`) sets the tone sliders for a
@@ -157,8 +163,6 @@ folder). Under **Settings → Develop** you see what has been learned and can sw
 it.
 
 ### Merge
-<img src="docs/screenshots/merge.png" alt="Panorama merge dialog" width="560" align="right">
-
 Select photos, right-click and choose **Zusammenfügen** (merge):
 
 - **HDR** from exposure brackets (`Ctrl+H`), handheld, up to ±6 EV, with optional deghosting.
@@ -172,6 +176,9 @@ right away and is developed like a RAW file, so highlights above 1.0 can still b
 <br clear="right">
 
 ### Photo album
+
+<img src="docs/screenshots/album.webp" alt="Photo album with autumn photos from Japan and the text options on the right" width="900">
+
 **Fotoalbum** above a project or folder makes a photo book from it. Pick a theme (vacation,
 travel, wedding, birthday, family, baby, nature, party, sports, animals, or describe your own),
 a page size (30×30, 20×20, A4 portrait or landscape, 28×21, A3 or your own in mm), the number of
@@ -214,6 +221,9 @@ people can be sorted into your own collapsible groups, such as family and friend
 listed under *Sonstige*, and faces not named yet under *Unbenannt*, so the overview stays short.
 
 ### Map
+
+<img src="docs/screenshots/map.webp" alt="Map of Japan with clustered markers for the photos of a trip" width="900">
+
 The **Map** tab (`M`, next to Library and Develop) shows the photos of the current view (folder,
 project, person, search, filters) as clustered markers on an OpenStreetMap world map. Click a
 marker or cluster to select those photos in the filmstrip below (`Ctrl` adds to the selection);
