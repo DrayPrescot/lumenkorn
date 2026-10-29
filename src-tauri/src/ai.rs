@@ -39,6 +39,9 @@ const ANIMAL_TAGS_BIOCLIP: u32 = 3;
 const BIOCLIP_BACKFILL_BATCH: usize = 16;
 /// Datei im KI-Ordner mit dem Stand, bis zu dem nachgetragen wurde
 const ANIMAL_TAGS_FILE: &str = "tierarten.json";
+/// Laufendes Nachtragen (Ziel-Stand, zuletzt bearbeitete Bild-ID), damit es
+/// nach einem Neustart weitergeht statt von vorn
+const ANIMAL_BACKFILL_FILE: &str = "tierarten-fortschritt.json";
 /// Fotos je Durchgang beim Nachtragen (nur Rechnen auf gespeicherten Vektoren)
 const ANIMAL_BACKFILL_BATCH: usize = 500;
 /// Höchstens so viele Treffer der semantischen Suche, bevor relativ zum besten
@@ -210,7 +213,7 @@ fn handle_previous_crashes(ai_dir: &Path, settings: &mut AiSettings) -> Option<S
 /// Löscht Absturz-Markierungen – beim normalen Beenden, damit ein Schließen
 /// mitten in einer Analyse nicht als Absturz gilt.
 pub fn clear_crash_markers(state: &AppState) {
-    let _ = guard::take_previous(&state.ai.guard_dir);
+    guard::clear_on_exit(&state.ai.guard_dir);
 }
 
 /// Aktuelles Rechenwerk der KI, für Absturz-Markierungen.
@@ -220,6 +223,12 @@ fn current_backend() -> &'static str {
         Some(b) if a.gpu_enabled => backend_id(b),
         _ => "cpu",
     }
+}
+
+/// Rechenwerk eines geladenen Modells: Rechnet es auf der CPU, soll ein
+/// Absturz dabei nicht die GPU-Laufzeit abschalten.
+fn model_backend(on_gpu: bool) -> &'static str {
+    if on_gpu { current_backend() } else { "cpu" }
 }
 
 pub(crate) fn model_guard(state: &AppState, what: &str) -> Guard {
@@ -282,6 +291,8 @@ impl AiState {
         if settings.develop_gpu {
             start_develop_gpu(ai_dir.clone());
         }
+        let animal_backfill =
+            lumenkorn_develop::fsutil::load_json_or_default(&ai_dir.join(ANIMAL_BACKFILL_FILE));
         Self {
             guard_dir: ai_dir,
             crash_notice: Mutex::new(crash_notice),
@@ -290,7 +301,7 @@ impl AiState {
             load_error: Mutex::new(None),
             index: RwLock::new(None),
             animals: Mutex::new(None),
-            animal_backfill: Mutex::new((0, 0)),
+            animal_backfill: Mutex::new(animal_backfill),
             bioclip: Mutex::new(None),
             index_used: Mutex::new(std::time::Instant::now()),
             downloading: AtomicBool::new(false),
@@ -653,7 +664,7 @@ fn bioclip_embeddings(
     let _g = Guard::begin(
         &state.ai.guard_dir,
         Stage::KiAnalyse,
-        Some(current_backend()),
+        Some(model_backend(bio.model.on_gpu())),
         "BioCLIP 2",
     );
     match bio.model.embed(&picked) {
@@ -753,6 +764,7 @@ fn animal_backfill(app: &AppHandle, state: &AppState) -> Result<bool, Error> {
         if let Err(e) = lumenkorn_develop::fsutil::save_json(&path, &target) {
             log::warn!("{ANIMAL_TAGS_FILE} nicht gespeichert: {e}");
         }
+        let _ = std::fs::remove_file(models::ai_dir(&state.data_dir).join(ANIMAL_BACKFILL_FILE));
         log::info!(
             "Tierarten für bereits analysierte Fotos {}",
             if bio_ready {
@@ -785,7 +797,7 @@ fn animal_backfill(app: &AppHandle, state: &AppState) -> Result<bool, Error> {
             state.catalog.locked().add_ai_tags(&items)?;
             tags_changed(app, &items);
         }
-        state.ai.animal_backfill.locked().1 = last_row;
+        set_backfill_pos(state, target, last_row);
         return Ok(true);
     };
     // BioCLIP: nur Fotos mit Tier, höchstens BIOCLIP_BACKFILL_BATCH je Durchgang
@@ -843,8 +855,18 @@ fn animal_backfill(app: &AppHandle, state: &AppState) -> Result<bool, Error> {
             .replace_ai_tags_named(&items, &names)?;
         tags_changed(app, &items);
     }
-    state.ai.animal_backfill.locked().1 = last;
+    set_backfill_pos(state, target, last);
     Ok(true)
+}
+
+/// Nachtragen bis `pos` erledigt – auch auf der Platte, für den nächsten Start
+fn set_backfill_pos(state: &AppState, target: u32, pos: i64) {
+    let mut g = state.ai.animal_backfill.locked();
+    *g = (target, pos);
+    let path = models::ai_dir(&state.data_dir).join(ANIMAL_BACKFILL_FILE);
+    if let Err(e) = lumenkorn_develop::fsutil::save_json(&path, &*g) {
+        log::warn!("{ANIMAL_BACKFILL_FILE} nicht gespeichert: {e}");
+    }
 }
 
 /// Analysiert einen Stapel Bilder. `Ok(true)`, wenn noch weitere ausstehen.
@@ -905,7 +927,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
         let _g = Guard::begin(
             &state.ai.guard_dir,
             Stage::KiAnalyse,
-            Some(current_backend()),
+            Some(model_backend(loaded.clip.on_gpu())),
             "CLIP",
         );
         loaded.clip.embed_images(&images).map_err(err)?

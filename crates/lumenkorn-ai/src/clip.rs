@@ -100,6 +100,11 @@ impl Clip {
         })
     }
 
+    /// Rechnet der Bildteil auf der GPU?
+    pub fn on_gpu(&self) -> bool {
+        self.vision.on_gpu()
+    }
+
     /// L2-normierte Bild-Embeddings.
     pub fn embed_images(&self, images: &[DynamicImage]) -> Result<Vec<Vec<f32>>> {
         if images.is_empty() {

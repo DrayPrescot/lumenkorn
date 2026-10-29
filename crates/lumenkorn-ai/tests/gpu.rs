@@ -3,6 +3,8 @@
 //!     LUMENKORN_TEST_ORT_GPU=/pfad/runtime-webgpu/libonnxruntime.so \
 //!     LUMENKORN_TEST_DENOISE=/pfad cargo test -p lumenkorn-ai --test gpu
 //!
+//! Weitere Modelle: `LUMENKORN_TEST_SEG`, `LUMENKORN_TEST_BIOCLIP` (Ordner).
+//!
 //! Ohne Grafikkarte genügt ein Software-Vulkan (Mesa lavapipe) – dann sehr
 //! langsam, aber die Ergebnisse sind dieselben.
 
@@ -137,4 +139,53 @@ fn denoise_on_gpu_matches_cpu() {
         .filter(|(a, b)| (a[0] - b[0]).abs() > 1e-3)
         .count();
     assert!(changed > w * h / 2);
+}
+
+/// BioCLIP 2: ONNX Runtime legt die Form-Berechnungen (variable Bildzahl) auf
+/// die CPU, das Modell selbst muss trotzdem auf der GPU laufen und dasselbe
+/// liefern. `LUMENKORN_TEST_BIOCLIP`: Ordner mit `bioclip2-vision-fp16.onnx`.
+#[test]
+fn bioclip_on_gpu_matches_cpu() {
+    let (Some(_), Ok(dir)) = (gpu_lib(), std::env::var("LUMENKORN_TEST_BIOCLIP")) else {
+        eprintln!("übersprungen: LUMENKORN_TEST_ORT_GPU/LUMENKORN_TEST_BIOCLIP fehlen");
+        return;
+    };
+    let _g = SERIAL.lock().unwrap();
+    let path = PathBuf::from(dir).join(lumenkorn_ai::animals::BIOCLIP_FILE);
+    let images: Vec<image::DynamicImage> = (0..4u32)
+        .map(|k| {
+            image::DynamicImage::ImageRgb8(image::RgbImage::from_fn(320, 240, |x, y| {
+                let d = ((x as f32 - 120.0 - k as f32 * 20.0).powi(2) + (y as f32 - 120.0).powi(2))
+                    .sqrt();
+                if d < 60.0 {
+                    image::Rgb([180, 110 + k as u8 * 30, 40])
+                } else {
+                    image::Rgb([60, (x % 200) as u8, (y % 180) as u8])
+                }
+            }))
+        })
+        .collect();
+    let run = |gpu: bool| {
+        accel::set_use_gpu(gpu);
+        let m = lumenkorn_ai::animals::Bioclip::load(&path).unwrap();
+        assert_eq!(m.on_gpu(), gpu, "Modell läuft nicht wie gewünscht");
+        let t = std::time::Instant::now();
+        let e = m.embed(&images).unwrap();
+        eprintln!(
+            "BioCLIP {}: {:.2?}",
+            if gpu { "GPU" } else { "CPU" },
+            t.elapsed()
+        );
+        e
+    };
+    let cpu = run(false);
+    let gpu = run(true);
+    // Embeddings sind L2-normiert: Skalarprodukt = Kosinus
+    let min = cpu
+        .iter()
+        .zip(&gpu)
+        .map(|(a, b)| a.iter().zip(b).map(|(x, y)| x * y).sum::<f32>())
+        .fold(1.0f32, f32::min);
+    eprintln!("kleinster Kosinus GPU/CPU: {min:.5}");
+    assert!(min > 0.995, "Embeddings weichen ab: {min}");
 }

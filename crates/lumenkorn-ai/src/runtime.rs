@@ -47,7 +47,7 @@ pub fn init_with(lib: &Path, backend: Backend) -> Result<()> {
             }
         })?;
         builder.with_name("lumenkorn").commit();
-        accel::set_library(backend);
+        accel::set_library(backend, lib);
         log::info!(
             "ONNX Runtime geladen ({}): {}",
             backend.label(),

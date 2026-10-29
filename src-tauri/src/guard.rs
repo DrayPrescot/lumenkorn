@@ -12,10 +12,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Laufende Wächter je Markierungsdatei: Hintergrundanalyse und Masken laufen
 /// parallel – die Datei darf erst weg, wenn der letzte von ihnen fertig ist.
 static ACTIVE: Mutex<Option<HashMap<PathBuf, usize>>> = Mutex::new(None);
+
+/// Lumenkorn wird beendet: Hintergrundarbeiten, die jetzt noch beginnen,
+/// hinterlassen keine Markierung mehr (sie würden sonst als Absturz gelten).
+static EXITING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -74,6 +79,9 @@ impl Guard {
             .get_or_insert_with(HashMap::new)
             .entry(path.clone())
             .or_default() += 1;
+        if EXITING.load(Ordering::Relaxed) {
+            return Guard { path };
+        }
         let crash = Crash {
             stage,
             backend: backend.map(str::to_string),
@@ -102,6 +110,14 @@ impl Drop for Guard {
             map.remove(&self.path);
             let _ = std::fs::remove_file(&self.path);
         }
+    }
+}
+
+/// Normales Beenden: alle Markierungen entfernen und keine neuen mehr anlegen.
+pub fn clear_on_exit(dir: &Path) {
+    EXITING.store(true, Ordering::Relaxed);
+    for stage in Stage::ALL {
+        let _ = std::fs::remove_file(dir.join(stage.file()));
     }
 }
 

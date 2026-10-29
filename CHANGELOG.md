@@ -6,6 +6,18 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.1] – 2026-10-29
+
+### Fixed
+- BioCLIP 2 runs on the GPU again instead of the CPU (about ten times faster on a Radeon RX 7900
+  XTX). ONNX Runtime keeps a few small shape calculations on the CPU, which used to send the whole
+  model there. Models that really need CPU-only operations are remembered, so the check costs
+  time only once.
+- Re-checking animal keywords with BioCLIP 2 continues where it stopped after a restart instead
+  of starting over.
+- Closing Lumenkorn during the background analysis can no longer leave a crash marker behind, and
+  a crash of a model that runs on the CPU no longer turns off the GPU runtime.
+
 ## [1.1.0] – 2026-10-29
 
 ### Changed

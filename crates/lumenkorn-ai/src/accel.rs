@@ -23,7 +23,8 @@ use ort::session::Session;
 use ort::session::builder::{GraphOptimizationLevel, SessionBuilder};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 /// Eine Laufzeitvariante.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -161,7 +162,22 @@ struct Active {
     /// Modelle (Pfad, Dateigröße), die sich sicher nicht auf der GPU anlegen
     /// lassen (Operationen ohne GPU-Umsetzung): der Versuch wird nicht wiederholt
     cpu_only: Vec<(PathBuf, u64)>,
+    /// Dasselbe dauerhaft je Laufzeit, siehe [`CpuOnlyFile`]
+    cpu_only_file: Option<PathBuf>,
+    cpu_only_saved: CpuOnlyFile,
 }
+
+/// Modelle (Dateiname, Größe), die mit dieser Laufzeitbibliothek (Größe)
+/// nicht auf die GPU passen. Liegt im Laufzeitordner, denn die Prüfung kostet
+/// beim ersten Laden Zeit (LaMa etwa 10 s) und ändert sich nur mit Modell
+/// oder Laufzeit.
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct CpuOnlyFile {
+    runtime: u64,
+    models: Vec<(String, u64)>,
+}
+
+const CPU_ONLY_FILE: &str = "nur-cpu.json";
 
 static ACTIVE: Mutex<Active> = Mutex::new(Active {
     library: Backend::Cpu,
@@ -169,11 +185,30 @@ static ACTIVE: Mutex<Active> = Mutex::new(Active {
     gpu_error: None,
     placements: Vec::new(),
     cpu_only: Vec::new(),
+    cpu_only_file: None,
+    cpu_only_saved: CpuOnlyFile {
+        runtime: 0,
+        models: Vec::new(),
+    },
 });
 
 /// Wird von [`crate::runtime::init`] aufgerufen.
-pub(crate) fn set_library(backend: Backend) {
-    ACTIVE.lock().unwrap().library = backend;
+pub(crate) fn set_library(backend: Backend, lib: &Path) {
+    let mut a = ACTIVE.lock().unwrap();
+    a.library = backend;
+    let runtime = std::fs::metadata(lib).map(|m| m.len()).unwrap_or(0);
+    let file = lib.with_file_name(CPU_ONLY_FILE);
+    let saved: CpuOnlyFile = lumenkorn_develop::fsutil::load_json_or_default(&file);
+    a.cpu_only_saved = if saved.runtime == runtime {
+        saved
+    } else {
+        // Andere Laufzeit (Update): neu prüfen
+        CpuOnlyFile {
+            runtime,
+            models: Vec::new(),
+        }
+    };
+    a.cpu_only_file = backend.is_gpu().then_some(file);
 }
 
 /// Schaltet die GPU-Nutzung für künftig geladene Modelle ein oder aus.
@@ -231,12 +266,74 @@ fn cpu_builder() -> Result<SessionBuilder> {
         .with_intra_threads(threads)?)
 }
 
+/// Erster Versuch: alle Knoten auf der GPU. Kann ein Modell nicht vollständig
+/// auf der GPU laufen, scheitert das Anlegen schnell (vor dem Hochladen der
+/// Gewichte), und [`gpu_builder_mixed`] prüft, was auf der CPU landen würde.
 fn gpu_builder(backend: Backend) -> Result<SessionBuilder> {
-    // Ganz oder gar nicht: Kann ein Modell nicht vollständig auf der GPU
-    // laufen (z. B. int8-Operationen unter WebGPU), scheitert das Anlegen, und
-    // es läuft komplett auf der CPU. Ständiges Hin- und Herkopieren zwischen
-    // GPU und CPU wäre oft langsamer als die CPU allein.
     let b = cpu_builder()?.with_config_entry("session.disable_cpu_ep_fallback", "1")?;
+    with_gpu_ep(b, backend)
+}
+
+/// Operationen, die ONNX Runtime bei Modellen mit variabler Bildzahl bewusst
+/// auf die CPU legt: Sie rechnen nur mit Tensor-Formen (wenige int64-Werte),
+/// das kostet nichts. Landet etwas anderes auf der CPU (z. B. MatMulInteger
+/// quantisierter Modelle), läuft das Modell ganz auf der CPU – ständiges
+/// Kopieren großer Tensoren wäre langsamer als die CPU allein.
+const SHAPE_OPS: &[&str] = &[
+    "Shape",
+    "Size",
+    "Gather",
+    "Unsqueeze",
+    "Squeeze",
+    "Concat",
+    "Slice",
+    "Reshape",
+    "Cast",
+    "Add",
+    "Sub",
+    "Mul",
+    "Div",
+    "Mod",
+    "Equal",
+    "Less",
+    "Greater",
+    "Where",
+    "Range",
+    "ConstantOfShape",
+    "Expand",
+];
+
+/// Zweiter Versuch mit erlaubter CPU-Ausweichmöglichkeit. Der Logger sammelt
+/// dabei die Operationen, die ONNX Runtime auf die CPU legt (Meldung
+/// „Node(s) placed on [CPUExecutionProvider]“, Stufe „verbose“ – geprüft mit
+/// ONNX Runtime 1.28). Er bleibt an der Sitzung, gibt nach dem Anlegen aber
+/// nichts mehr weiter.
+fn gpu_builder_mixed(
+    backend: Backend,
+    cpu_ops: Arc<Mutex<Option<Vec<String>>>>,
+) -> Result<SessionBuilder> {
+    let on_cpu = AtomicBool::new(false);
+    let logger: ort::logging::LoggerFunction = Arc::new(move |_level, _cat, _id, _loc, msg| {
+        let mut ops = cpu_ops.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(ops) = ops.as_mut() else { return };
+        for line in msg.lines() {
+            if line.contains("placed on [") {
+                on_cpu.store(line.contains("[CPUExecutionProvider]"), Ordering::Relaxed);
+            } else if let Some(node) = line.strip_prefix("  ")
+                && on_cpu.load(Ordering::Relaxed)
+                && let Some(op) = node.split_whitespace().next()
+            {
+                ops.push(op.to_string());
+            }
+        }
+    });
+    let b = cpu_builder()?
+        .with_logger(logger)?
+        .with_log_level(ort::logging::LogLevel::Verbose)?;
+    with_gpu_ep(b, backend)
+}
+
+fn with_gpu_ep(b: SessionBuilder, backend: Backend) -> Result<SessionBuilder> {
     Ok(match backend {
         Backend::Webgpu => {
             let ep = ort::ep::WebGPU::default();
@@ -341,7 +438,12 @@ fn session_placed(path: &Path) -> Result<(Session, bool)> {
         let a = ACTIVE.lock().unwrap();
         // Steht das Modell schon als „nicht GPU-fähig“ fest, den teuren
         // Versuch (Shader-Übersetzung, Kopieren der Gewichte) überspringen
-        let known_cpu_only = a.cpu_only.iter().any(|(p, n)| p == path && *n == size);
+        let name = file_name(path);
+        let known_cpu_only = a.cpu_only.iter().any(|(p, n)| p == path && *n == size)
+            || a.cpu_only_saved
+                .models
+                .iter()
+                .any(|(m, n)| *m == name && *n == size);
         (
             a.library,
             a.use_gpu && a.library.is_gpu() && !known_cpu_only,
@@ -373,15 +475,26 @@ fn session_placed(path: &Path) -> Result<(Session, bool)> {
                 if e.to_string()
                     .contains("fallback to CPU EP has been explicitly disabled") =>
             {
-                log::info!(
-                    "{} enthält Operationen ohne GPU-Umsetzung – läuft auf der CPU",
-                    file_name(path)
-                );
-                ACTIVE
-                    .lock()
-                    .unwrap()
-                    .cpu_only
-                    .push((path.to_path_buf(), size));
+                match session_mixed(path, backend) {
+                    Ok(Ok(s)) => {
+                        log::info!(
+                            "{} auf der GPU ({}) geladen in {:.2?}, Form-Berechnungen auf der CPU",
+                            file_name(path),
+                            backend.label(),
+                            t.elapsed()
+                        );
+                        record(path, true);
+                        return Ok((s, true));
+                    }
+                    Ok(Err(why)) => {
+                        log::info!("{} läuft auf der CPU: {why}", file_name(path));
+                        remember_cpu_only(path, size);
+                    }
+                    Err(e) => {
+                        log::warn!("GPU nicht nutzbar für {}: {e}", file_name(path));
+                        ACTIVE.lock().unwrap().gpu_error = Some(e.to_string());
+                    }
+                }
             }
             Err(e) => {
                 log::warn!("GPU nicht nutzbar für {}: {e}", file_name(path));
@@ -392,6 +505,49 @@ fn session_placed(path: &Path) -> Result<(Session, bool)> {
     let s = cpu_builder()?.commit_from_file(path)?;
     record(path, false);
     Ok((s, false))
+}
+
+/// GPU-Sitzung, bei der nur Form-Berechnungen ([`SHAPE_OPS`]) auf der CPU
+/// liegen. Sonst (innen) ein Text mit den Operationen, die die GPU nicht kann.
+fn session_mixed(path: &Path, backend: Backend) -> Result<std::result::Result<Session, String>> {
+    let cpu_ops = Arc::new(Mutex::new(Some(Vec::new())));
+    let built = {
+        let _turn = gpu_turn();
+        gpu_builder_mixed(backend, cpu_ops.clone()).and_then(|mut b| Ok(b.commit_from_file(path)?))
+    };
+    // Ab hier nichts mehr sammeln (der Logger lebt mit der Sitzung weiter)
+    let ops = cpu_ops
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
+        .unwrap_or_default();
+    let session = built?;
+    let mut heavy: Vec<String> = ops
+        .into_iter()
+        .filter(|op| !SHAPE_OPS.contains(&op.as_str()))
+        .collect();
+    heavy.sort();
+    heavy.dedup();
+    Ok(if heavy.is_empty() {
+        Ok(session)
+    } else {
+        Err(tr!(
+            "Operationen ohne GPU-Umsetzung: {}",
+            "operations without GPU support: {}",
+            heavy.join(", ")
+        ))
+    })
+}
+
+fn remember_cpu_only(path: &Path, size: u64) {
+    let mut a = ACTIVE.lock().unwrap();
+    a.cpu_only.push((path.to_path_buf(), size));
+    a.cpu_only_saved.models.push((file_name(path), size));
+    if let Some(file) = &a.cpu_only_file
+        && let Err(e) = lumenkorn_develop::fsutil::save_json(file, &a.cpu_only_saved)
+    {
+        log::warn!("{CPU_ONLY_FILE} nicht gespeichert: {e}");
+    }
 }
 
 fn record(path: &Path, gpu: bool) {

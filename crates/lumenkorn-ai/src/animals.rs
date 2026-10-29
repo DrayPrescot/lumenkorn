@@ -987,6 +987,11 @@ impl Bioclip {
         })
     }
 
+    /// Rechnet das Modell auf der GPU?
+    pub fn on_gpu(&self) -> bool {
+        self.session.on_gpu()
+    }
+
     /// L2-normierte Bild-Embeddings (Vorverarbeitung wie bei CLIP)
     pub fn embed(&self, images: &[image::DynamicImage]) -> Result<Vec<Vec<f32>>> {
         if images.is_empty() {
