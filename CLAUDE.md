@@ -116,6 +116,11 @@ einen Ordner im Scratchpad setzen (eigener Katalog, Cache darin).
 3. Auf GitHub ein **veröffentlichtes** Release (kein Entwurf, keine
    Vorabversion) mit Tag `vx.y.z` anlegen und die drei Dateien hochladen – der
    Updater liest `releases/latest/download/latest.json`.
+   Das erledigt `python tools/publish_release.py . x.y.z` (nach dem Commit und
+   `git push origin main`): legt das Release an, lädt die Dateien hoch,
+   veröffentlicht und bricht den dadurch gestarteten `release.yml`-Lauf ab.
+   Den Tag **nicht** selbst pushen – das Skript legt ihn beim Veröffentlichen
+   an. Zugang über `git credential fill` (wird nicht ausgegeben).
 
 Der private Signaturschlüssel gehört nie ins Repository. Mit GitHub Actions
 (`release.yml`) übernimmt das Secret `TAURI_SIGNING_PRIVATE_KEY` die
