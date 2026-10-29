@@ -139,7 +139,7 @@ pub async fn update_install(app: AppHandle) -> Result<(), Error> {
         if app.try_state::<AppState>().is_some() {
             crate::ai::app_restart(app);
         } else {
-            app.restart();
+            crate::exit::restart(&app);
         }
         Ok(())
     }

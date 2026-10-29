@@ -7,6 +7,7 @@ mod commands;
 mod cull;
 mod cull_assist;
 mod develop;
+mod exit;
 mod fonts;
 mod geo;
 mod guard;
@@ -379,11 +380,12 @@ pub fn run() {
         .expect("Lumenkorn konnte nicht gestartet werden")
         .run(|app, event| {
             // Normales Beenden ist kein Absturz – auch nicht mitten in einer Analyse.
-            if let tauri::RunEvent::Exit = event
-                && let Some(state) = app.try_state::<AppState>()
-            {
-                ai::clear_crash_markers(&state);
+            if let tauri::RunEvent::Exit = event {
+                if let Some(state) = app.try_state::<AppState>() {
+                    ai::clear_crash_markers(&state);
+                }
                 log::info!("Lumenkorn beendet");
+                exit::finish(app);
             }
         });
 }

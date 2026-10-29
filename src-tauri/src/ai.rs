@@ -1225,7 +1225,7 @@ pub fn app_restart(app: AppHandle) {
     state.ai.denoise_cancel.store(true, Ordering::SeqCst);
     state.ai.cancel.store(true, Ordering::SeqCst);
     clear_crash_markers(&state);
-    app.restart();
+    crate::exit::restart(&app);
 }
 
 #[derive(Serialize)]
