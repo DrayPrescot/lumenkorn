@@ -681,22 +681,59 @@ pub(crate) fn load_search_names(state: &AppState) {
     }
 }
 
-/// Tierarten für schon analysierte Fotos nachtragen bzw. nachbestimmen:
-/// mit CLIP aus den gespeicherten Embeddings (ergänzt nur), mit BioCLIP 2
-/// für die Fotos mit Tier aus ihren Thumbnails (ersetzt nur die
-/// Tier-Schlagworte). `true`: es gibt noch mehr.
-fn animal_backfill(state: &AppState) -> Result<bool, Error> {
+/// Schlagworte dieser Fotos sind neu (Anzeige auffrischen)
+fn tags_changed(app: &AppHandle, items: &[(i64, Vec<(String, f64)>)]) {
+    let ids: Vec<i64> = items.iter().map(|i| i.0).collect();
+    let _ = app.emit("tags-changed", serde_json::json!({ "ids": ids }));
+}
+
+/// Ziel des Nachtragens (siehe [`ANIMAL_TAGS_CLIP`]), `None`, wenn erreicht
+fn animal_target(state: &AppState, bio_ready: bool) -> Option<u32> {
     let path = models::ai_dir(&state.data_dir).join(ANIMAL_TAGS_FILE);
     let done: u32 = lumenkorn_develop::fsutil::load_json_or_default(&path);
-    let bio_ready = models::status(&state.data_dir).animals_ready;
     let target = if bio_ready {
         ANIMAL_TAGS_BIOCLIP
     } else {
         ANIMAL_TAGS_CLIP
     };
-    if done >= target {
-        return Ok(false);
+    (done < target).then_some(target)
+}
+
+/// Stand des Nachbestimmens mit BioCLIP (durchgesehene Fotos, alle
+/// analysierten); `None`, wenn nichts aussteht oder BioCLIP fehlt.
+fn animal_progress(state: &AppState) -> Option<Progress> {
+    if !models::status(&state.data_dir).animals_ready {
+        return None;
     }
+    let target = animal_target(state, true)?;
+    let after = {
+        let g = state.ai.animal_backfill.locked();
+        if g.0 == target { g.1 } else { 0 }
+    };
+    let (done, total) = state
+        .catalog
+        .locked()
+        .embeddings_progress(MODEL_KEY, after)
+        .ok()?;
+    Some(Progress { done, total })
+}
+
+#[derive(Serialize, Clone, Copy)]
+pub struct Progress {
+    done: i64,
+    total: i64,
+}
+
+/// Tierarten für schon analysierte Fotos nachtragen bzw. nachbestimmen:
+/// mit CLIP aus den gespeicherten Embeddings (ergänzt nur), mit BioCLIP 2
+/// für die Fotos mit Tier aus ihren Thumbnails (ersetzt nur die
+/// Tier-Schlagworte). `true`: es gibt noch mehr.
+fn animal_backfill(app: &AppHandle, state: &AppState) -> Result<bool, Error> {
+    let path = models::ai_dir(&state.data_dir).join(ANIMAL_TAGS_FILE);
+    let bio_ready = models::status(&state.data_dir).animals_ready;
+    let Some(target) = animal_target(state, bio_ready) else {
+        return Ok(false);
+    };
     let after = {
         let mut g = state.ai.animal_backfill.locked();
         if g.0 != target {
@@ -744,6 +781,7 @@ fn animal_backfill(state: &AppState) -> Result<bool, Error> {
             .collect();
         if !items.is_empty() {
             state.catalog.locked().add_ai_tags(&items)?;
+            tags_changed(app, &items);
         }
         state.ai.animal_backfill.locked().1 = last_row;
         return Ok(true);
@@ -801,6 +839,7 @@ fn animal_backfill(state: &AppState) -> Result<bool, Error> {
             .catalog
             .locked()
             .replace_ai_tags_named(&items, &names)?;
+        tags_changed(app, &items);
     }
     state.ai.animal_backfill.locked().1 = last;
     Ok(true)
@@ -818,7 +857,12 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
     let ids = state.catalog.locked().pending_ai(BATCH)?;
     if ids.is_empty() {
         // Alles analysiert: ggf. Tierarten für ältere Analysen nachtragen
-        return animal_backfill(&state);
+        let more = animal_backfill(app, &state)?;
+        if models::status(&state.data_dir).animals_ready {
+            // Stand für die Einstellungen; `null`: fertig
+            let _ = app.emit("animals-progress", animal_progress(&state));
+        }
+        return Ok(more);
     }
     let loaded = ensure_loaded(&state)?;
     let animals = animal_tagger(&state, &loaded);
@@ -918,6 +962,8 @@ pub struct AiStatus {
     accel: AccelStatus,
     /// Lumenkorn ist beim letzten Start abgestürzt – was wurde abgeschaltet?
     crash_notice: Option<String>,
+    /// Nachbestimmen der Tierarten mit BioCLIP, solange es läuft
+    animals_progress: Option<Progress>,
 }
 
 #[derive(Serialize)]
@@ -958,6 +1004,7 @@ pub fn ai_status(state: State<AppState>) -> Result<AiStatus, Error> {
         analyzed,
         total,
         settings: state.ai.settings.locked().clone(),
+        animals_progress: animal_progress(&state),
     })
 }
 

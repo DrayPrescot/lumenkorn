@@ -263,6 +263,18 @@
       <h4>{t("Tierarten genauer bestimmen")}</h4>
       {#if s.animalsReady}
         <p class="muted">{t("Installiert: Fotos mit Tieren bekommen die Art als Schlagwort (z. B. Vogel → Meise → Blaumeise). Schon analysierte Fotos werden im Hintergrund nachbestimmt.")}</p>
+        {#if s.animalsProgress}
+          <dl>
+            <dt>{t("Nachbestimmt")}</dt>
+            <dd>
+              {t("{done} von {total} Fotos", { done: s.animalsProgress.done, total: s.animalsProgress.total })}
+              {#if s.animalsProgress.total}<progress max={s.animalsProgress.total} value={s.animalsProgress.done}></progress>{/if}
+            </dd>
+          </dl>
+          {#if !s.settings.autoTag}
+            <p class="muted small">{t("Pausiert, solange „Neue Fotos automatisch verschlagworten“ ausgeschaltet ist.")}</p>
+          {/if}
+        {/if}
       {:else}
         <div class="box">
           <p>

@@ -54,6 +54,8 @@ export default {
   "Ohne Zusatz bestimmt die Verschlagwortung Tierarten mit dem allgemeinen Modell – bei kleinen Vögeln oder Insekten oft nur grob („Vogel“). BioCLIP 2 ist auf Tiere und Pflanzen spezialisiert und erkennt die Art auch, wenn das Tier klein im Bild ist. Lumenkorn lädt dafür etwa": "Without this, keywording names animal species with the general model – for small birds or insects often only roughly (“Bird”). BioCLIP 2 specialises in animals and plants and recognises the species even when the animal is small in the frame. For this Lumenkorn downloads about",
   " (MIT-Lizenz) von Hugging Face. Es rechnet nur bei Fotos, auf denen ein Tier zu sehen ist.": " (MIT licence) from Hugging Face. It only runs on photos that show an animal.",
   "BioCLIP 2 herunterladen": "Download BioCLIP 2",
+  "Nachbestimmt": "Re-identified",
+  "Pausiert, solange „Neue Fotos automatisch verschlagworten“ ausgeschaltet ist.": "Paused while “Automatically tag new photos” is off.",
   "Tierarten werden jetzt genauer bestimmt – schon analysierte Fotos im Hintergrund.": "Animal species are now identified more precisely – photos analysed before are re-checked in the background.",
   "Personenerkennung": "People recognition",
   "{done} von {total} Fotos, {faces} Gesichter": "{done} of {total} photos, {faces} faces",

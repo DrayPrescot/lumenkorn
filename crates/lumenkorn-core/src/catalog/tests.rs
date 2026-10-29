@@ -195,6 +195,10 @@ mod search_tests {
         assert_eq!(cat.embeddings_after("m", a, 10).unwrap()[0].0, c);
         assert!(cat.embeddings_after("m", c, 10).unwrap().is_empty());
         assert!(cat.embeddings_after("anders", 0, 10).unwrap().is_empty());
+        // Fortschritt: bis `after` durchgesehen, von allen mit Embedding
+        assert_eq!(cat.embeddings_progress("m", 0).unwrap(), (0, 2));
+        assert_eq!(cat.embeddings_progress("m", a).unwrap(), (1, 2));
+        assert_eq!(cat.embeddings_progress("m", c).unwrap(), (2, 2));
         cat.add_ai_tags(&[(a, vec![("Vogel".into(), 0.9), ("Amsel".into(), 0.4)])])
             .unwrap();
         let mut names: Vec<String> = cat

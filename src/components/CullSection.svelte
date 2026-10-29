@@ -34,7 +34,6 @@
   }
 </script>
 
-<div class="sep"></div>
 <h4>{t("Aussortier-Assistent")}</h4>
 <p class="muted">
   {t("Der Assistent („Aussortieren …“ im Rechtsklick-Menü von Ordnern und Projekten) lernt aus deinen Entscheidungen: welche Vorschläge du abwählst, welche Grenzfälle du doch ablehnst und welche Ablehnungen du später wieder aufhebst. Je Grund verschiebt sich die Schwelle erst, wenn genug Entscheidungen vorliegen. Alles bleibt auf diesem Rechner.")}
@@ -69,9 +68,6 @@
 {/if}
 
 <style>
-  .sep {
-    border-top: 1px solid var(--line);
-  }
   h4 {
     margin: 0;
     font-size: var(--step-0);

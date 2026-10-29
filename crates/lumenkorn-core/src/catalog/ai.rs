@@ -35,6 +35,17 @@ impl Catalog {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
+    /// Fortschritt beim seitenweisen Durchgehen mit [`Self::embeddings_after`]:
+    /// (bis einschließlich `after` erledigt, alle)
+    pub fn embeddings_progress(&self, model: &str, after: i64) -> Result<(i64, i64)> {
+        Ok(self.conn.query_row(
+            "SELECT COALESCE(SUM(e.image_id <= ?2), 0), COUNT(*) FROM embeddings e
+             JOIN images i ON i.id = e.image_id WHERE e.model = ?1 AND i.missing = 0",
+            params![model, after],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?)
+    }
+
     /// KI-Schlagworte ergänzen, ohne die vorhandenen zu ersetzen (z. B. neu
     /// hinzugekommene Tierarten für schon analysierte Fotos).
     pub fn add_ai_tags(&mut self, items: &[(i64, Vec<(String, f64)>)]) -> Result<()> {

@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type SettingsPage = "general" | "folders" | "develop" | "ai" | "gpu" | "keys" | "nextcloud" | "agents";
+  export type SettingsPage = "general" | "folders" | "develop" | "cull" | "ai" | "gpu" | "keys" | "nextcloud" | "agents";
 </script>
 
 <script lang="ts">
@@ -34,6 +34,7 @@
     { id: "general", icon: "settings", label: t("Allgemein") },
     { id: "folders", icon: "folder", label: t("Ordner") },
     { id: "develop", icon: "develop", label: t("Entwickeln") },
+    { id: "cull", icon: "reject", label: t("Aussortieren") },
     { id: "ai", icon: "sparkle", label: t("KI") },
     { id: "gpu", icon: "sliders", label: t("Grafikkarte") },
     { id: "keys", icon: "keyboard", label: t("Tastenkürzel") },
@@ -171,13 +172,6 @@
             </div>
             <p class="muted small">{t("Große Vorschauen für Einzelansicht und Entwickeln. Darüber hinaus löscht Lumenkorn die am längsten nicht angesehenen; sie entstehen bei Bedarf neu.")}</p>
           </div>
-          {#if info}
-            <div class="field">
-              <span class="label">{t("Datenordner")}</span>
-              <code class="path">{info.dataDir}</code>
-              <p class="muted small">{t("Katalog, Vorschaubilder, KI-Modelle und Einstellungen. Die Fotos selbst bleiben in ihren Ordnern.")}</p>
-            </div>
-          {/if}
         {:else if current === "folders"}
           <div class="field">
             <span class="label">{t("Import: Zielordner")}</span>
@@ -247,10 +241,18 @@
               {#if prefs.albumDir}<button class="btn quiet" onclick={() => clearDir("albumDir")}>{t("Zurücksetzen")}</button>{/if}
             </div>
           </div>
+          {#if info}
+            <div class="field">
+              <span class="label">{t("Datenordner")}</span>
+              <code class="path">{info.dataDir}</code>
+              <p class="muted small">{t("Katalog, Vorschaubilder, KI-Modelle und Einstellungen. Die Fotos selbst bleiben in ihren Ordnern.")}</p>
+            </div>
+          {/if}
         {:else if current === "develop"}
           <StyleSection />
         {:else if current === "ai"}
           <AiPanel part="ai" />
+        {:else if current === "cull"}
           <CullSection />
         {:else if current === "gpu"}
           <AiPanel part="gpu" />

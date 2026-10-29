@@ -210,6 +210,9 @@ class Library {
       Library.#bump(this.#tagsV, ids);
       this.#tagsEpoch++;
     });
+    listen("animals-progress", (p) => {
+      if (this.ai) this.ai = { ...this.ai, animalsProgress: p };
+    });
     listen("ai-download", async (e) => {
       // Downloads laufen nacheinander: Erst wenn nichts mehr wartet, ist Schluss.
       // Ein Ereignis ohne Fortschritt (etwas wurde eingereiht) behält die Anzeige.
