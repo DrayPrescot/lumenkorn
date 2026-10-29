@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.2] – 2026-10-29
+
 ### Fixed
 - Windows: after closing, Lumenkorn could stay in the Task Manager for a long time while the GPU
   runtime shut down, and a new start then only woke the hanging process. Lumenkorn now ends right
