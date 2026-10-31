@@ -6,6 +6,25 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] – 2026-10-31
+
+### Added
+- Settings → AI → **Use AI features** turns all AI off, for less powerful computers. Lumenkorn
+  then loads no AI runtime or models, analyzes nothing in the background and hides search by
+  image content and the AI buttons in Develop. Existing keywords, people, masks, denoising and
+  repairs are kept and still apply. The sky mask falls back to its color-based rules.
+- Settings → General → **Memory saver** for computers with little RAM. By default it turns on by
+  itself with up to 8 GB. It keeps fewer previews, full-size images, masks and prepared sources
+  in memory, unloads AI models, full-size images and the search index after one minute, develops
+  large images and edited thumbnails one at a time and denoises in smaller tiles on the CPU.
+- If AI is on and a GPU is found, but the GPU runtime for AI is missing or AI is set to “CPU
+  only”, Lumenkorn asks after the start whether to download and turn it on, also after a crash.
+  “No, don’t ask again” is remembered.
+
+### Changed
+- Photo album: the photos to choose from are now a selection with three options: edited only,
+  edited and JPEGs, or all. It used to be a checkbox for “edited and JPEGs” or all.
+
 ## [1.1.2] – 2026-10-29
 
 ### Fixed
