@@ -463,7 +463,7 @@
         <!-- KI-Fortschritt klein daneben, solange etwas läuft -->
         {#if lib.aiDownload}
           <span class="status">{t("KI lädt …")}</span>
-        {:else if lib.ai?.modelReady && lib.ai.analyzed < lib.ai.total}
+        {:else if lib.aiOn && lib.ai?.modelReady && lib.ai.analyzed < lib.ai.total}
           <span class="status" title={t("KI: {done} von {total} analysiert", { done: String(lib.ai.analyzed), total: String(lib.ai.total) })}>{t("KI {done}/{total}", { done: String(lib.ai.analyzed), total: String(lib.ai.total) })}</span>
         {/if}
       </button>

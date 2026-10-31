@@ -3,6 +3,7 @@
 
 import { DEFAULT_PARAMS, NO_GROUPS, transferParams } from "./api";
 import { t } from "./i18n";
+import { photoAllowed } from "./album";
 import type { DevelopParams, Edit, Preset, FolderNode, ImageDetail, ImageMeta, ImageQuery, ImageSummary, ImageTag, MetaPatch, Project, Root } from "./api";
 
 // rating/flag gehören zur Bildliste (ImageSummary), nicht zu den Details
@@ -323,6 +324,9 @@ function withCount(p: Project): Project {
 }
 
 let mockLearnStyle = true;
+let mockAiEnabled = true;
+let mockGpuDeclined = false;
+let mockMemorySaver: "auto" | "on" | "off" = "auto";
 let mockCullSamples = 34;
 let mockMapEnabled = true;
 /** Ereignisse der Attrappe (sonst sendet nur das Backend welche) */
@@ -473,7 +477,7 @@ export const mock = {
         return out(img.snapshots);
       }
       case "ai_status":
-        return out({ runtimePath: null, runtimeDownloadable: true, modelReady: false, missing: ["vision.onnx", "text.onnx", "vocab.json", "merges.txt"], downloadSize: 161_000_000, modelDir: "(Mock)", masksReady: true, skyReady: true, partsReady: true, masksDownloadSize: 0, repairReady: false, repairDownloadSize: 92_600_000, animalsReady: false, animalsDownloadSize: 617_541_715, denoiseReady: false, denoiseDownloadSize: 131_000_000, gpuRuntimes: [{ backend: "webgpu", label: "WebGPU (Vulkan)", version: "1.27.0", installed: false, downloadSize: 25_163_729 }], accel: { active: { library: null, gpuEnabled: false, gpuError: null, placements: [] }, devices: [{ vendor: "AMD", name: "Radeon RX 7900 XTX / XT / GRE", memory: 25_753_026_560, discrete: true }], restartRequired: false, develop: { enabled: true, available: true, info: { name: "AMD Radeon RX 7900 XTX (RADV NAVI31)", backend: "Vulkan", kind: "discrete", driver: "radv Mesa" }, error: null } }, crashNotice: null, animalsProgress: null, downloading: false, loaded: false, error: null, analyzed: 0, total: images.length, settings: { autoTag: true, accel: "auto", developGpu: true, faces: true, learnStyle: mockLearnStyle } });
+        return out({ runtimePath: null, runtimeDownloadable: true, modelReady: false, missing: ["vision.onnx", "text.onnx", "vocab.json", "merges.txt"], downloadSize: 161_000_000, modelDir: "(Mock)", masksReady: true, skyReady: true, partsReady: true, masksDownloadSize: 0, repairReady: false, repairDownloadSize: 92_600_000, animalsReady: false, animalsDownloadSize: 617_541_715, denoiseReady: false, denoiseDownloadSize: 131_000_000, gpuRuntimes: [{ backend: "webgpu", label: "WebGPU (Vulkan)", version: "1.27.0", installed: false, downloadSize: 25_163_729 }], accel: { active: { library: null, gpuEnabled: false, gpuError: null, placements: [] }, devices: [{ vendor: "AMD", name: "Radeon RX 7900 XTX / XT / GRE", memory: 25_753_026_560, discrete: true }], restartRequired: false, develop: { enabled: true, available: true, info: { name: "AMD Radeon RX 7900 XTX (RADV NAVI31)", backend: "Vulkan", kind: "discrete", driver: "radv Mesa" }, error: null } }, crashNotice: null, animalsProgress: null, downloading: false, loaded: false, error: null, analyzed: 0, total: images.length, settings: { enabled: mockAiEnabled, autoTag: true, accel: "auto", developGpu: true, faces: true, learnStyle: mockLearnStyle, gpuPromptDeclined: mockGpuDeclined } });
       case "style_status":
         // Beispielhafter Lernstand für die Vorschau
         return out({
@@ -493,7 +497,9 @@ export const mock = {
           },
         });
       case "app_settings":
-        return out({ mapEnabled: mockMapEnabled, exportSubfolder: mockExportSubfolder, includeSubfolders: mockIncludeSubfolders, previewCacheGb: mockPreviewCacheGb });
+        return out({ mapEnabled: mockMapEnabled, exportSubfolder: mockExportSubfolder, includeSubfolders: mockIncludeSubfolders, previewCacheGb: mockPreviewCacheGb, memorySaver: mockMemorySaver });
+      case "memory_status":
+        return out({ total: 8_437_000_000, lowMemory: mockMemorySaver !== "off" });
       case "preview_cache_usage":
         return out(1_840_000_000);
       case "folder_options":
@@ -512,7 +518,8 @@ export const mock = {
         mockMapEnabled = a.settings?.mapEnabled ?? mockMapEnabled;
         mockIncludeSubfolders = a.settings?.includeSubfolders ?? mockIncludeSubfolders;
         mockPreviewCacheGb = a.settings?.previewCacheGb ?? mockPreviewCacheGb;
-        return out({ mapEnabled: mockMapEnabled, exportSubfolder: mockExportSubfolder, includeSubfolders: mockIncludeSubfolders, previewCacheGb: mockPreviewCacheGb });
+        mockMemorySaver = a.settings?.memorySaver ?? mockMemorySaver;
+        return out({ mapEnabled: mockMapEnabled, exportSubfolder: mockExportSubfolder, includeSubfolders: mockIncludeSubfolders, previewCacheGb: mockPreviewCacheGb, memorySaver: mockMemorySaver });
       }
       case "style_reset":
         return out(null);
@@ -631,7 +638,7 @@ export const mock = {
         // Wertung aus Bewertung und einer festen Streuung, Ereignisse je Tag
         await new Promise((r) => setTimeout(r, 400));
         const list = query({ scope: a.request.scope, sort: "capturedAsc" }).filter(
-          (i) => i.flag !== -1 && !(a.request.skipUneditedRaw && i.kind === "raw" && !i.edited),
+          (i) => photoAllowed(i, a.request.photos),
         );
         const days = [...new Set(list.map((i) => (i.capturedAt ?? "").slice(0, 10)))];
         const cands = list.map((i) => ({
@@ -752,6 +759,8 @@ export const mock = {
         return out(null);
       case "ai_set_settings":
         mockLearnStyle = a.settings?.learnStyle ?? mockLearnStyle;
+        mockAiEnabled = a.settings?.enabled ?? mockAiEnabled;
+        mockGpuDeclined = a.settings?.gpuPromptDeclined ?? mockGpuDeclined;
         return out(null);
       case "ai_retag_all":
       case "ai_cancel_download":

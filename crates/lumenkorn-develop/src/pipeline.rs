@@ -280,6 +280,8 @@ static REPAIRED: Mutex<Vec<(RepairedKey, Arc<Source>, u64)>> = Mutex::new(Vec::n
 /// die GPU erkennt sie daran sicher als neu (siehe `gpu::ImageKey`).
 static REPAIRED_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 const REPAIRED_ENTRIES: usize = 4;
+/// Im Speicher-Sparmodus: nur das Paar der zuletzt benutzten Ansicht
+const REPAIRED_ENTRIES_LOW: usize = 2;
 
 /// Verwirft die zwischengespeicherten reparierten Quellbilder.
 pub(crate) fn release_cache() {
@@ -365,7 +367,11 @@ fn prepared_image(
     let mut c = REPAIRED.lock().unwrap_or_else(|e| e.into_inner());
     c.retain(|(k, _, _)| *k != key);
     c.insert(0, (key, out.clone(), id));
-    c.truncate(REPAIRED_ENTRIES);
+    c.truncate(if crate::low_memory() {
+        REPAIRED_ENTRIES_LOW
+    } else {
+        REPAIRED_ENTRIES
+    });
     (out, id)
 }
 

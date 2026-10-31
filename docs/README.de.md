@@ -332,6 +332,15 @@ Alle KI-Funktionen sind optional und werden unter **Einstellungen → KI** (unte
 Modelle einmal herunter; danach läuft alles offline. **Alle KI-Komponenten herunterladen** holt alles auf
 einmal, weitere Downloads während eines laufenden reihen sich ein.
 
+Auf schwachen Rechnern schaltet **KI-Funktionen verwenden** die KI ganz ab: Lumenkorn lädt dann weder
+die ONNX-Laufzeit noch Modelle und analysiert nichts im Hintergrund. Vorhandene Schlagworte, Personen,
+Masken, Entrauschungen und Reparaturen bleiben und wirken weiter; der Himmel wird ohne Modell aus Farbe
+und Helligkeit erkannt.
+
+Ist die KI an und eine Grafikkarte da, fehlt aber die GPU-Unterstützung (oder steht die KI auf „Nur
+Prozessor“), fragt Lumenkorn nach dem Start, ob sie geladen und eingeschaltet werden soll – auch nach
+einem Absturz. „Nein, nicht mehr fragen“ merkt es sich.
+
 | Funktion | Modell | Download |
 |---|---|---|
 | Schlagworte und Inhaltssuche | CLIP ViT-B/32 | ca. 160 MB inkl. ONNX Runtime |
@@ -496,7 +505,8 @@ A3 oder eigene Maße in mm), die Anzahl der Fotos und Seiten und ob mit Rand ode
   Bildschirmfotos und abfotografierte Dokumente nach hinten; bei Personenthemen zählen
   Gesichter. Ohne KI bleibt das Thema unberücksichtigt.
 - Standardmäßig kommen nur bearbeitete Fotos und JPEGs ins Album; unbearbeitete RAW-Dateien,
-  die nur das flaue Kamerabild zeigen, bleiben draußen. Ein Haken im Dialog nimmt sie dazu.
+  die nur das flaue Kamerabild zeigen, bleiben draußen. Unter **Fotos** im Dialog lässt sich
+  stattdessen „Nur bearbeitete“ oder „Alle“ wählen.
 - Serien und fast gleiche Fotos zählen als ein Motiv, auch wenn andere Fotos dazwischen liegen –
   außer es sind andere Personen darauf. Fotos mit 4 oder 5 Sternen kommen immer ins Album, auch
   wenn es dadurch mehr werden als gewünscht. Die Fotos werden über die Tage und Ausflüge
@@ -528,11 +538,12 @@ A3 oder eigene Maße in mm), die Anzahl der Fotos und Seiten und ob mit Rand ode
 Der Knopf **Einstellungen** unten links öffnet ein Menü mit diesen Bereichen:
 
 - **Allgemein:** Sprache, nach Updates suchen, Karte und Ortsnamen (OpenStreetMap) an/aus,
-  Datenordner.
+  Vorschau-Cache, Speicher-Sparmodus, Datenordner.
 - **Ordner:** Standardziel für den Import, den Export (sonst Unterordner „Export“ neben dem
   Original) und für Fotoalben.
 - **Entwickeln:** Auto nach deinem Stil.
-- **KI:** Modelle für Schlagworte und Suche, Masken, Rauschreduzierung, Personenerkennung.
+- **KI:** KI-Funktionen an/aus, Modelle für Schlagworte und Suche, Masken, Rauschreduzierung,
+  Personenerkennung.
 - **Grafikkarte:** Bildbearbeitung und KI auf der Grafikkarte.
 - **Tastenkürzel:** Jeder Befehl lässt sich mit einer anderen oder weiteren Taste belegen; ist eine
   Taste schon vergeben, sagt Lumenkorn das. Einzelne Befehle oder alle lassen sich zurücksetzen.
@@ -706,6 +717,12 @@ zerlegt jedes Bild in eine Laplace-Pyramide und behält je Stufe das schärfste 
 - **Speicher:** Zwischenspeicher wie das Bild in voller Auflösung werden beim Verlassen des Entwickelns
   freigegeben, KI-Modelle nach 3 bzw. 5 Minuten ohne Nutzung. Die Vorschauen der letzten vier
   bearbeiteten Fotos bleiben im Speicher, damit sie beim Zurückkehren sofort da sind.
+- **Speicher-Sparmodus** (Einstellungen → Allgemein): schaltet sich bei bis zu 8 GB Arbeitsspeicher
+  von selbst ein, lässt sich aber auch fest ein- oder ausschalten. Dann bleiben nur zwei Vorschauen
+  und Vollbilder im Speicher, Masken und vorbereitete Quellbilder nehmen weniger Platz, Modelle,
+  Vollbilder und Suchindex gehen schon nach einer Minute, große Bilder und bearbeitete Thumbnails
+  werden nacheinander entwickelt und die Rauschreduzierung rechnet auf dem Prozessor in kleineren
+  Kacheln.
 - **Protokoll:** `lumenkorn.log` im Datenordner, mit Fehlern, Rust-Paniken und den Angaben der KI
   (z. B. „Himmel (KI): Fläche …“).
 

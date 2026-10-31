@@ -359,8 +359,10 @@
       />
       <div class="dn-again">
         <Slider label={t("Stärke")} value={dev.denoiseStrength} min={0} max={100} neutral={50} oninput={(v) => (dev.denoiseStrength = v)} oncommit={() => {}} />
-        <button class="btn small" onclick={() => dev.startDenoise()} title={t("Mit dieser Stärke neu berechnen")}>{t("Neu berechnen")}</button>
+        <button class="btn small" disabled={!lib.aiOn} onclick={() => dev.startDenoise()} title={lib.aiOn ? t("Mit dieser Stärke neu berechnen") : t("Die KI ist in den Einstellungen ausgeschaltet")}>{t("Neu berechnen")}</button>
       </div>
+    {:else if !lib.aiOn}
+      <p class="dn-note">{t("Die KI ist in den Einstellungen ausgeschaltet.")}</p>
     {:else if !lib.ai?.denoiseReady}
       <p class="dn-note">{t("Entfernt Bildrauschen mit DRUNet, ohne Details zu verwischen. Benötigt einmalig etwa {n} MB.", { n: Math.round((lib.ai?.denoiseDownloadSize ?? 131e6) / 1e6) })}</p>
       <button class="btn small" disabled={lib.aiPending("denoise")} onclick={() => api.aiDownload("denoise").then(() => lib.refreshAi())}>

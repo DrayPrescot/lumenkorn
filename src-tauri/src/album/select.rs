@@ -64,10 +64,33 @@ pub struct AlbumRequest {
     pub custom_theme: Option<String>,
     /// Gewünschte Anzahl Fotos insgesamt
     pub count: usize,
-    /// Nur bearbeitete Fotos und fertige Bilddateien (JPEG …): unbearbeitete
-    /// RAWs zeigen nur das flaue Kamerabild und kommen nicht in Frage
+    /// Aus welchen Fotos gewählt wird
     #[serde(default)]
-    pub skip_unedited_raw: bool,
+    pub photos: PhotoSource,
+}
+
+/// Fotos, aus denen das Album gewählt wird (abgelehnte nie)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PhotoSource {
+    /// Nur bearbeitete Fotos
+    Edited,
+    /// Bearbeitete und fertige Bilddateien (JPEG …): unbearbeitete RAWs zeigen
+    /// nur das flaue Kamerabild
+    #[default]
+    EditedJpeg,
+    /// Alle
+    All,
+}
+
+impl PhotoSource {
+    fn allows(self, i: &lumenkorn_core::ImageSummary) -> bool {
+        match self {
+            Self::Edited => i.edited,
+            Self::EditedJpeg => !is_unedited_raw(i),
+            Self::All => true,
+        }
+    }
 }
 
 /// Ein bewertetes Foto. Alle nicht abgelehnten Fotos kommen zurück – die nicht
@@ -790,7 +813,7 @@ fn suggest(state: &AppState, app: &AppHandle, req: AlbumRequest) -> Result<Album
     };
     let images: Vec<_> = images
         .into_iter()
-        .filter(|i| i.flag != -1 && !(req.skip_unedited_raw && is_unedited_raw(i)))
+        .filter(|i| i.flag != -1 && req.photos.allows(i))
         .collect();
     let total = images.len();
     let done = AtomicUsize::new(0);

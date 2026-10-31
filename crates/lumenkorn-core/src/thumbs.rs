@@ -778,7 +778,13 @@ pub fn generate_some(
             jobs.iter().partition(|j| j.edit.is_some());
         let mut results: Vec<(&ThumbJob, Result<Vec<u8>>)> =
             plain.par_iter().map(|j| (*j, one(j))).collect();
-        for pair in edited.chunks(EDITED_PARALLEL) {
+        // Speicher-Sparmodus: eins nach dem anderen
+        let parallel = if lumenkorn_develop::low_memory() {
+            1
+        } else {
+            EDITED_PARALLEL
+        };
+        for pair in edited.chunks(parallel) {
             results.extend(pair.par_iter().map(|j| (*j, one(j))).collect::<Vec<_>>());
         }
 

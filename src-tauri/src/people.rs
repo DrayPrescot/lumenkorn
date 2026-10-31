@@ -27,7 +27,7 @@ const FACE_THUMB: u32 = 160;
 pub struct PeopleState {
     models: Mutex<Option<Arc<(FaceDetector, FaceEmbedder)>>>,
     index: Mutex<Option<PeopleIndex>>,
-    load_error: Mutex<Option<String>>,
+    pub(crate) load_error: Mutex<Option<String>>,
 }
 
 impl PeopleState {
@@ -74,7 +74,11 @@ struct FacesProgress {
 /// Sucht Gesichter in einem Stapel Bilder. `Ok(true)`, wenn noch weitere ausstehen.
 pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
     let state = app.state::<AppState>();
-    if !state.ai.settings.locked().faces
+    let on = {
+        let s = state.ai.settings.locked();
+        s.enabled && s.faces
+    };
+    if !on
         || state.ai.downloading.load(Ordering::Relaxed)
         || !models::status(&state.data_dir).faces_ready
         || state.people.load_error.locked().is_some()

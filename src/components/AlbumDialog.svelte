@@ -3,7 +3,7 @@
   // Backend (Vorschauen messen, KI-Thema), danach öffnet sich die Album-Ansicht.
   import { onMount, untrack } from "svelte";
   import type { Scope } from "../lib/api";
-  import { DEFAULT_SETTINGS, FORMATS, formatName, textStyleOf, autoPages, MAX_PER_PAGE, THEME_KEYS, type AlbumSettings, type ThemeKey } from "../lib/album";
+  import { DEFAULT_SETTINGS, FORMATS, formatName, textStyleOf, autoPages, MAX_PER_PAGE, THEME_KEYS, photoAllowed, type AlbumSettings, type PhotoSource, type ThemeKey } from "../lib/album";
   import { album } from "../lib/album.svelte";
   import TextStyleFields from "./TextStyleFields.svelte";
   import FontSelect from "./FontSelect.svelte";
@@ -26,9 +26,13 @@
     custom: t("Eigenes Thema …"),
   };
 
-  // Fotos, aus denen gewählt werden kann (abgelehnte zählen nie, unbearbeitete
-  // RAWs nur, wenn erlaubt)
-  const usable = (skipRaw: boolean) => lib.images.filter((i) => i.flag !== -1 && !(skipRaw && i.kind === "raw" && !i.edited)).length;
+  // Fotos, aus denen gewählt werden kann (abgelehnte zählen nie)
+  const usable = (src: PhotoSource) => lib.images.filter((i) => photoAllowed(i, src)).length;
+  const SOURCES: [PhotoSource, string][] = [
+    ["edited", t("Nur bearbeitete")],
+    ["editedJpeg", t("Bearbeitete und JPEGs")],
+    ["all", t("Alle")],
+  ];
 
   const s = $state<AlbumSettings>(
     untrack(() => {
@@ -36,10 +40,10 @@
         ...DEFAULT_SETTINGS,
         ...(album.state && JSON.stringify(album.state.scope) === JSON.stringify(scope) ? album.state.settings : album.lastSettings()),
       };
-      return { ...prev, count: Math.max(1, Math.min(prev.count, usable(prev.skipUneditedRaw))) };
+      return { ...prev, count: Math.max(1, Math.min(prev.count, usable(prev.photos))) };
     }),
   );
-  const available = $derived(usable(s.skipUneditedRaw));
+  const available = $derived(usable(s.photos));
   let running = $state(false);
   let autoPagesOn = $state(untrack(() => s.pages === 0));
   let manualPages = $state(untrack(() => (s.pages > 0 ? s.pages : autoPages(s.count))));
@@ -149,13 +153,14 @@
           <span class="muted">{t("von {n}", { n: available })}</span>
         </span>
       </label>
-      <div class="row">
-        <span></span>
-        <label class="check">
-          <input type="checkbox" bind:checked={s.skipUneditedRaw} />
-          {t("Nur bearbeitete Fotos und JPEGs (keine unbearbeiteten RAW-Dateien)")}
-        </label>
-      </div>
+      <label class="row">
+        <span>{t("Fotos")}</span>
+        <select bind:value={s.photos} title={t("JPEGs: auch unbearbeitete fertige Bilddateien (JPEG, PNG, TIFF …), aber keine unbearbeiteten RAW-Dateien")}>
+          {#each SOURCES as [v, label] (v)}
+            <option value={v}>{label}</option>
+          {/each}
+        </select>
+      </label>
 
       <div class="row">
         <span>{t("Seiten")}</span>
@@ -210,7 +215,11 @@
     </fieldset>
 
     {#if available === 0}
-      <p class="warn">{t("Hier gibt es keine bearbeiteten Fotos oder JPEGs. Bearbeite zuerst ein paar Fotos oder nimm unbearbeitete RAW-Dateien dazu.")}</p>
+      <p class="warn">
+        {s.photos === "edited"
+          ? t("Hier gibt es keine bearbeiteten Fotos. Bearbeite zuerst ein paar Fotos oder nimm JPEGs bzw. alle Fotos dazu.")
+          : t("Hier gibt es keine bearbeiteten Fotos oder JPEGs. Bearbeite zuerst ein paar Fotos oder nimm unbearbeitete RAW-Dateien dazu.")}
+      </p>
     {:else if s.count > available}
       <p class="warn">{t("Es stehen nur {n} Fotos zur Auswahl.", { n: available })}</p>
     {:else if !sizeOk}
@@ -222,7 +231,9 @@
     {:else if tooFew}
       <p class="warn">{t("Für {pages} Seiten braucht es mindestens {pages} Fotos.", { pages: photoPages })}</p>
     {/if}
-    {#if !lib.ai?.modelReady}
+    {#if !lib.aiOn}
+      <p class="meta small">{t("Die KI ist ausgeschaltet: Die Fotos werden nur nach Schärfe, Belichtung und Bewertung gewählt, das Thema bleibt unberücksichtigt.")}</p>
+    {:else if !lib.ai?.modelReady}
       <p class="meta small">{t("Die KI ist nicht eingerichtet: Die Fotos werden nur nach Schärfe, Belichtung und Bewertung gewählt, das Thema bleibt unberücksichtigt.")}</p>
     {/if}
 
@@ -302,11 +313,6 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 8px 12px;
-  }
-  .check {
-    display: flex;
-    align-items: flex-start;
-    gap: 6px;
   }
   .dims label {
     display: inline-flex;

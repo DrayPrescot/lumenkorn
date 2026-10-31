@@ -4,7 +4,7 @@
 import { invoke as tauriInvoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
 import { mock } from "./mock";
-import type { AlbumDoc, AlbumSuggestion } from "./album";
+import type { AlbumDoc, AlbumSuggestion, PhotoSource } from "./album";
 
 export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -863,12 +863,16 @@ export interface ExportProgress {
 export type Backend = "cpu" | "webgpu" | "directml";
 export type AccelPreference = "auto" | Backend;
 export interface AiSettings {
+  /** Hauptschalter: aus = keine KI-Modelle, keine Analyse im Hintergrund */
+  enabled: boolean;
   autoTag: boolean;
   accel: AccelPreference;
   developGpu: boolean;
   faces: boolean;
   /** „Auto“ lernt aus den Bearbeitungen */
   learnStyle: boolean;
+  /** Beim Start nicht mehr nach der GPU-Unterstützung für die KI fragen */
+  gpuPromptDeclined: boolean;
 }
 
 /** Allgemeine Einstellungen (einstellungen.json) */
@@ -881,6 +885,17 @@ export interface AppSettings {
   includeSubfolders: boolean;
   /** Höchstens so viele GB Großvorschauen auf der Platte */
   previewCacheGb: number;
+  /** Speicher-Sparmodus: automatisch (bis 8 GB Arbeitsspeicher), an oder aus */
+  memorySaver: MemorySaver;
+}
+
+export type MemorySaver = "auto" | "on" | "off";
+
+export interface MemoryStatus {
+  /** Eingebauter Arbeitsspeicher in Bytes (null: unbekannt) */
+  total: number | null;
+  /** Sparmodus gerade wirksam */
+  lowMemory: boolean;
 }
 
 /** Stand von „Auto nach deinem Stil“ */
@@ -1176,7 +1191,7 @@ export const api = {
   aiRetagAll: () => call<void>("ai_retag_all"),
   semanticSearch: (query: string, scope: Scope, minRating: number | null, exts: string[] | null, edited: boolean | null) =>
     call<ImageSummary[]>("semantic_search", { query, scope, minRating, exts, edited }),
-  albumSuggest: (request: { scope: Scope; theme: string; customTheme: string | null; count: number; skipUneditedRaw: boolean }) =>
+  albumSuggest: (request: { scope: Scope; theme: string; customTheme: string | null; count: number; photos: PhotoSource }) =>
     call<AlbumSuggestion>("album_suggest", { request }),
   albumSuggestCancel: () => call<void>("album_suggest_cancel"),
   /** Schriftfamilien des Betriebssystems (für das Fotoalbum) */
@@ -1190,6 +1205,7 @@ export const api = {
   appSettings: () => call<AppSettings>("app_settings"),
   /** Belegter Platz der Großvorschauen in Bytes */
   previewCacheUsage: () => call<number>("preview_cache_usage"),
+  memoryStatus: () => call<MemoryStatus>("memory_status"),
   /** Nur die genannten Einstellungen ändern; liefert den neuen Stand */
   appSetSettings: (settings: Partial<AppSettings>) => call<AppSettings>("app_set_settings", { settings }),
   importSetTarget: (target: string | null) => call<void>("import_set_target", { target }),

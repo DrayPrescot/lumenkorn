@@ -189,7 +189,8 @@ photos and pages, with or without margins.
   scores how well a photo fits the theme and pushes screenshots and photos of documents down;
   for people themes, faces count. Without the AI the theme is left out.
 - By default only edited photos and JPEGs are used; unedited RAW files, which only show the
-  flat camera image, are left out. A checkbox in the dialog lets them in.
+  flat camera image, are left out. In the dialog, **Photos** can be set to edited only, edited
+  and JPEGs, or all.
 - Bursts and near-identical shots count as one, even with other photos in between, unless
   different people are in them. Photos with 4 or 5 stars are always included, even if that makes
   the album larger than asked for. Photos are spread over the days and outings of the project,
@@ -450,6 +451,16 @@ the same time.
 Results that are expensive to compute (denoised image, repair patches, AI masks) are stored in
 the data folder and used by the pipeline like any other input. Models are unloaded after a
 few minutes without use.
+
+**Settings → AI → Use AI features** switches all of this off. The AI runtime and models are then
+never loaded and nothing is analyzed in the background; results computed earlier stay and still
+apply. If AI is on and a GPU is found but the GPU runtime is missing (or AI is set to “CPU
+only”), Lumenkorn asks after the start whether to download and turn it on; “No, don’t ask again”
+is remembered.
+
+On computers with up to 8 GB of RAM, the **memory saver** (Settings → General) turns on by itself.
+It keeps fewer images and masks in memory, unloads models and full-size images after one minute,
+and develops large images one at a time. It can also be switched on or off by hand.
 
 ### Merge
 All three merge modes share an alignment step: Harris corners on a brightness-normalized

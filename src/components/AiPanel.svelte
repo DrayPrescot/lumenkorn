@@ -167,6 +167,23 @@
       </div>
     {/if}
 
+    {#if s}
+      <div class="sub">
+        <label class="check master">
+          <input type="checkbox" checked={s.settings.enabled} onchange={(e) => lib.setAiEnabled(e.currentTarget.checked)} />
+          {t("KI-Funktionen verwenden")}
+        </label>
+        <p class="muted small">
+          {s.settings.enabled
+            ? t("Auf schwachen Rechnern ausschalten: Dann lädt Lumenkorn keine KI-Modelle, analysiert nichts im Hintergrund und braucht deutlich weniger Arbeitsspeicher.")
+            : t("Ausgeschaltet: keine KI-Modelle, keine Analyse im Hintergrund, keine Suche nach Bildinhalten. Vorhandene Schlagworte, Personen, Masken, Entrauschungen und Reparaturen bleiben erhalten und wirken weiter.")}
+        </p>
+      </div>
+    {/if}
+
+    {#if s && !s.settings.enabled}
+      <!-- Ausgeschaltet: nichts zum Herunterladen oder Einstellen anbieten -->
+    {:else}
     {#if lib.aiDownload}
       <div class="progress">
         <div class="line">
@@ -320,6 +337,7 @@
     <p class="note">
       {t("KI-Schlagworte sind gestrichelt umrandet und lassen sich wie eigene entfernen. Eigene Schlagworte werden nie überschrieben.")}
     </p>
+    {/if}
   {:else}
     {#if !s}
       <p class="muted">{t("Wird geladen …")}</p>
@@ -335,7 +353,9 @@
         <p class="muted small" class:warn={dev?.enabled && (dev.available === false || dev.error)}>{devText}</p>
       </div>
       <h5>{t("KI-Modelle")}</h5>
-      {#if s.gpuRuntimes.length === 0}
+      {#if !s.settings.enabled}
+        <p class="muted">{t("Die KI ist ausgeschaltet (Einstellungen → KI).")}</p>
+      {:else if s.gpuRuntimes.length === 0}
         <p class="muted">{t("Auf dieser Plattform rechnet die KI auf dem Prozessor.")}</p>
       {:else if gpuInstalled.length === 0}
         <div class="box">
@@ -492,6 +512,9 @@
   }
   .check input {
     accent-color: var(--accent);
+  }
+  .master {
+    font-weight: 600;
   }
   .actions {
     display: flex;

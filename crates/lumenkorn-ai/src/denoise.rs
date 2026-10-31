@@ -255,7 +255,9 @@ impl Denoiser {
     /// Kachelgröße (ohne Rand) für ein Bild `w`×`h`: an kleine Bilder
     /// angepasst, Vielfache von 8 fürs Netz.
     fn tile_dims(&self, w: usize, h: usize) -> (usize, usize) {
-        let tile = if self.session.on_gpu() {
+        // Speicher-Sparmodus: kleinere Kacheln auch auf der CPU – je Kachel
+        // ein Viertel der Zwischenergebnisse, dafür etwas mehr Rand
+        let tile = if self.session.on_gpu() || lumenkorn_develop::low_memory() {
             TILE_GPU
         } else {
             TILE_CPU

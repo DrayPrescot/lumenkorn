@@ -1,7 +1,7 @@
 // Zentraler Oberflächenzustand (Svelte-5-Runes).
 
 import { isCanceled, lang, num, t, tc } from "./i18n";
-import { api, listen, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type AiComponent, type DeleteReport, type RenameOptions, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress, type ImportProgress, type ImportDone, type ImageQuery, type LocationItem, type MetaPatch, type MetaReport } from "./api";
+import { api, listen, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type AiComponent, type MemorySaver, type DeleteReport, type RenameOptions, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress, type ImportProgress, type ImportDone, type ImageQuery, type LocationItem, type MetaPatch, type MetaReport } from "./api";
 
 class Library {
   roots = $state<Root[]>([]);
@@ -192,6 +192,7 @@ class Library {
         this.exportSubfolder = s.exportSubfolder;
         this.includeSubfolders = s.includeSubfolders;
         this.previewCacheGb = s.previewCacheGb;
+        this.memorySaver = s.memorySaver;
       })
       .catch(() => {});
     void this.refreshNcShared();
@@ -1088,6 +1089,38 @@ class Library {
     } catch (e) {
       this.notify(String(e), "error");
     }
+  }
+
+  /** Speicher-Sparmodus (Einstellung; ob er wirkt, sagt `api.memoryStatus`) */
+  memorySaver = $state<MemorySaver>("auto");
+
+  async setMemorySaver(mode: MemorySaver) {
+    try {
+      const s = await api.appSetSettings({ memorySaver: mode });
+      this.memorySaver = s.memorySaver;
+    } catch (e) {
+      this.notify(String(e), "error");
+    }
+  }
+
+  /** KI eingeschaltet (Hauptschalter in den Einstellungen)? Vor dem ersten
+   *  Status gilt sie als an, damit nichts kurz verschwindet. */
+  get aiOn(): boolean {
+    return this.ai?.settings.enabled ?? true;
+  }
+
+  async setAiEnabled(on: boolean) {
+    if (!this.ai) return;
+    try {
+      await api.aiSetSettings({ ...this.ai.settings, enabled: on });
+    } catch (e) {
+      this.notify(String(e), "error");
+    }
+    if (!on && this.semantic) {
+      this.semantic = false;
+      if (this.search.trim()) void this.loadImages();
+    }
+    await Promise.all([this.refreshAi(), this.refreshPeople()]);
   }
 
   async setMapEnabled(on: boolean) {

@@ -57,6 +57,21 @@ pub use error::{Error, Result};
 /// (Vorschau, Thumbnails) und überleben [`release_large_caches`].
 pub(crate) const LARGE_PIXELS: usize = 12 << 20;
 
+static LOW_MEMORY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Speicher-Sparmodus für Rechner mit wenig Arbeitsspeicher: Zwischenspeicher
+/// fassen weniger, Modelle und Bilder werden früher losgelassen, es wird
+/// weniger gleichzeitig dekodiert. Kostet etwas Geschwindigkeit beim
+/// Hin- und Herwechseln.
+pub fn set_low_memory(on: bool) {
+    LOW_MEMORY.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Ist der Speicher-Sparmodus an? (siehe [`set_low_memory`])
+pub fn low_memory() -> bool {
+    LOW_MEMORY.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Gibt alle Zwischenspeicher der Bildbearbeitung frei (reparierte Quelle,
 /// Masken, GPU-Puffer). Für das Verlassen des Entwickeln-Modus: Danach
 /// dauert das erste Rendern etwas länger, der Speicher ist aber wieder frei.

@@ -18,6 +18,7 @@
   import MergeDialog from "./components/MergeDialog.svelte";
   import ImportDialog from "./components/ImportDialog.svelte";
   import UpdateDialog from "./components/UpdateDialog.svelte";
+  import GpuPromptDialog from "./components/GpuPromptDialog.svelte";
   import CatalogTooNew from "./components/CatalogTooNew.svelte";
   import PresetDialog from "./components/PresetDialog.svelte";
   import AlbumDialog from "./components/AlbumDialog.svelte";
@@ -236,6 +237,7 @@
   <CatalogTooNew message={tooNew} />
 {:else}
   <UpdateDialog />
+  <GpuPromptDialog />
 {/if}
 
 {#if deleteImages}

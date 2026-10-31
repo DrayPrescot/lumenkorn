@@ -171,7 +171,12 @@ impl DevelopCache {
                 scaled: None,
             },
         );
-        entries.truncate(CACHE_ENTRIES);
+        // Speicher-Sparmodus: nur das aktuelle und das vorige Foto
+        entries.truncate(if lumenkorn_develop::low_memory() {
+            2
+        } else {
+            CACHE_ENTRIES
+        });
     }
 
     /// Gibt die großen Puffer frei (volle Auflösung, entrauschte Fassungen).

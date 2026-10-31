@@ -106,6 +106,10 @@ struct Loaded {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AiSettings {
+    /// Hauptschalter: aus = keine KI-Laufzeit, keine Modelle, keine Analyse im
+    /// Hintergrund (für schwache Rechner). Vorhandene Schlagworte, Masken,
+    /// Entrauschungen und Reparaturen bleiben und wirken weiter.
+    pub enabled: bool,
     /// Neue Bilder automatisch analysieren
     pub auto_tag: bool,
     /// Rechenwerk für die KI: automatisch (GPU, falls installiert), CPU, …
@@ -116,16 +120,21 @@ pub struct AiSettings {
     pub faces: bool,
     /// „Auto“ lernt aus den Bearbeitungen (siehe `style`)
     pub learn_style: bool,
+    /// Beim Start nicht mehr fragen, ob die GPU-Laufzeit für die KI geladen
+    /// und eingeschaltet werden soll (vom Nutzer abgelehnt)
+    pub gpu_prompt_declined: bool,
 }
 
 impl Default for AiSettings {
     fn default() -> Self {
         Self {
+            enabled: true,
             auto_tag: true,
             accel: Preference::Auto,
             develop_gpu: true,
             faces: true,
             learn_style: true,
+            gpu_prompt_declined: false,
         }
     }
 }
@@ -355,7 +364,28 @@ fn desired_library(state: &AppState) -> Option<(PathBuf, Backend)> {
     accel::choose_library(&models::ai_dir(&state.data_dir), pref)
 }
 
+/// Ist die KI eingeschaltet (Hauptschalter in den Einstellungen)?
+pub(crate) fn enabled(state: &AppState) -> bool {
+    state.ai.settings.locked().enabled
+}
+
+/// Fehler für alles, was ein Modell bräuchte, solange die KI aus ist.
+fn disabled_error() -> Error {
+    Error::Invalid(
+        tr_s(
+            "Die KI ist in den Einstellungen ausgeschaltet",
+            "AI is turned off in the settings",
+        )
+        .into(),
+    )
+}
+
+/// Jedes Modell wird hierüber geladen: Bei ausgeschalteter KI scheitert es,
+/// und die Laufzeit kommt gar nicht erst in den Speicher.
 pub(crate) fn ensure_runtime(state: &AppState) -> Result<(), Error> {
+    if !enabled(state) {
+        return Err(disabled_error());
+    }
     if runtime::is_loaded() {
         return Ok(());
     }
@@ -872,7 +902,11 @@ fn set_backfill_pos(state: &AppState, target: u32, pos: i64) {
 /// Analysiert einen Stapel Bilder. `Ok(true)`, wenn noch weitere ausstehen.
 pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
     let state = app.state::<AppState>();
-    if !state.ai.settings.locked().auto_tag || state.ai.downloading.load(Ordering::Relaxed) {
+    let on = {
+        let s = state.ai.settings.locked();
+        s.enabled && s.auto_tag
+    };
+    if !on || state.ai.downloading.load(Ordering::Relaxed) {
         return Ok(false);
     }
     if !models::status(&state.data_dir).model_ready || state.ai.load_error.locked().is_some() {
@@ -1041,7 +1075,9 @@ pub fn ai_set_settings(state: State<AppState>, settings: AiSettings) -> Result<(
         &state.ai.settings_path,
         serde_json::to_string_pretty(&settings)?,
     )?;
-    let auto = settings.auto_tag;
+    let auto = settings.enabled && settings.auto_tag;
+    let was_enabled = enabled(&state);
+    let now_enabled = settings.enabled;
     lumenkorn_develop::gpu::set_enabled(settings.develop_gpu);
     if settings.develop_gpu {
         start_develop_gpu(state.ai.guard_dir.clone());
@@ -1052,6 +1088,23 @@ pub fn ai_set_settings(state: State<AppState>, settings: AiSettings) -> Result<(
     if accel_changed && runtime::is_loaded() {
         accel::set_use_gpu(gpu);
         unload_models(&state);
+    }
+    if was_enabled && !now_enabled {
+        // Ausgeschaltet: Modelle und Suchindex sofort freigeben. Was gerade
+        // rechnet, behält seine Kopie und lässt sie danach los.
+        state.ai.denoise_cancel.store(true, Ordering::SeqCst);
+        unload_models(&state);
+        *state.ai.bioclip.locked() = None;
+        *state.ai.animals.locked() = None;
+        forget_in_index(&state, None);
+        crate::repair::release_model(&state);
+        crate::people::release_models(&state);
+        crate::memory::trim_heap();
+        log::info!("KI ausgeschaltet: Modelle freigegeben");
+    } else if !was_enabled && now_enabled {
+        // Fehler aus der Zeit, als sie aus war, nicht nachtragen
+        *state.ai.load_error.locked() = None;
+        *state.people.load_error.locked() = None;
     }
     if auto {
         state.worker.submit(Job::Ai);
@@ -1567,13 +1620,15 @@ pub async fn mask_sky(app: AppHandle, id: i64) -> Result<MaskResult, Error> {
         let dir = models::masks_dir(&state.data_dir);
         let status = models::status(&state.data_dir);
         let t = std::time::Instant::now();
-        let mask = if status.sky_ready {
+        // Ohne KI bleibt die Erkennung aus Farbe und Helligkeit
+        let ai = enabled(state);
+        let mask = if ai && status.sky_ready {
             let sky = lazy_model(state, &state.ai.sky, "skyseg (Himmel)", || {
                 SkyModel::load(&dir.join(models::SKY_MODEL)).map_err(err)
             })?;
             let _g = analysis_guard(state, tr_s("Himmel", "Sky"));
             segment::sky_mask(&input, Some(&sky), None).map_err(err)?
-        } else if status.masks_ready {
+        } else if ai && status.masks_ready {
             let s = sam_model(state)?;
             let emb = sam_embedding(state, &s, id)?;
             segment::sky_mask(&input, None, Some((&s, &emb))).map_err(err)?

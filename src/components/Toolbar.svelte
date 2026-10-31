@@ -141,7 +141,7 @@
       oninput={() => lib.reloadSoon()}
       onkeydown={(e) => e.stopPropagation()}
     />
-    {#if lib.ai?.modelReady}
+    {#if lib.ai?.modelReady && lib.aiOn}
       <button
         class="mode"
         class:on={lib.semantic}

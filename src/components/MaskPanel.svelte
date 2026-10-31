@@ -15,7 +15,7 @@
   let group = $state<"person" | "animal" | null>(null);
   let renaming = $state<number | null>(null);
 
-  const aiReady = $derived(!!lib.ai?.masksReady);
+  const aiReady = $derived(lib.aiOn && !!lib.ai?.masksReady);
   const partsReady = $derived(aiReady && !!lib.ai?.partsReady);
 
   const kinds: { kind: NewMaskKind; label: string; hint: string; ai?: boolean }[] = [
@@ -231,10 +231,10 @@
   <div class="menu" role="menu" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
     {#each kinds as k (k.kind)}
       {@const disabled = k.ai && !aiReady}
-      <button role="menuitem" {disabled} onclick={() => pick(k.kind)} title={disabled ? t("Benötigt die KI-Masken (unten links unter „KI“)") : k.hint}>
+      <button role="menuitem" {disabled} onclick={() => pick(k.kind)} title={disabled ? (lib.aiOn ? t("Benötigt die KI-Masken (unten links unter „KI“)") : t("Die KI ist in den Einstellungen ausgeschaltet")) : k.hint}>
         {#if k.ai || k.kind === "sky"}<Icon name="sparkle" size={12} />{:else}<span class="sp"></span>{/if}
         <span class="l">{k.label}</span>
-        <span class="h">{disabled ? t("KI-Masken fehlen") : k.hint}</span>
+        <span class="h">{disabled ? (lib.aiOn ? t("KI-Masken fehlen") : t("KI aus")) : k.hint}</span>
       </button>
       {#if k.kind === "sky"}
         {@render groupItem("person", t("Person"), t("Ganz oder einzelne Teile"), PERSON_PARTS.map(([p, l]) => [`person:${p}`, l] as [NewMaskKind, string]))}
@@ -252,11 +252,11 @@
     aria-expanded={group === id}
     {disabled}
     onclick={() => (group = group === id ? null : id)}
-    title={disabled ? t("Benötigt die KI-Modelle für Personen und Tiere (unten links unter „KI“ nachladen)") : hint}
+    title={disabled ? (lib.aiOn ? t("Benötigt die KI-Modelle für Personen und Tiere (unten links unter „KI“ nachladen)") : t("Die KI ist in den Einstellungen ausgeschaltet")) : hint}
   >
     <Icon name="sparkle" size={12} />
     <span class="l">{label} <span class="chev" class:open={group === id}>▸</span></span>
-    <span class="h">{disabled ? t("KI-Modelle fehlen") : hint}</span>
+    <span class="h">{disabled ? (lib.aiOn ? t("KI-Modelle fehlen") : t("KI aus")) : hint}</span>
   </button>
   {#if group === id}
     <div class="sub" role="group" aria-label={label}>

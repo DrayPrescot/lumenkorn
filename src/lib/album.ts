@@ -155,8 +155,8 @@ export interface AlbumSettings {
   count: number;
   style: AlbumStyle;
   background: AlbumBackground;
-  /** Unbearbeitete RAW-Dateien auslassen (nur Bearbeitetes und JPEGs) */
-  skipUneditedRaw: boolean;
+  /** Aus welchen Fotos gewählt wird */
+  photos: PhotoSource;
   captions: CaptionMode;
   map: MapPlacement;
   font: AlbumFont;
@@ -181,6 +181,25 @@ export function textStyleOf(s: Partial<AlbumSettings>): TextStyle {
   return ok ? { ...DEFAULT_TEXT_STYLE, ...t } : DEFAULT_TEXT_STYLE;
 }
 
+/** Nur bearbeitete, bearbeitete und fertige Bilddateien (JPEG …), alle */
+export type PhotoSource = "edited" | "editedJpeg" | "all";
+
+/** Darf das Foto ins Album? (abgelehnte nie) */
+export function photoAllowed(i: { flag: number; kind: string; edited: boolean }, src: PhotoSource): boolean {
+  if (i.flag === -1) return false;
+  if (src === "edited") return i.edited;
+  if (src === "editedJpeg") return i.edited || i.kind !== "raw";
+  return true;
+}
+
+/** Gespeicherte Einstellungen mit Vorgaben ergänzen. Ältere Fassungen hatten
+ *  statt `photos` nur `skipUneditedRaw` (aus = alle Fotos). */
+export function withDefaults(s: Partial<AlbumSettings> & { skipUneditedRaw?: boolean }): AlbumSettings {
+  const { skipUneditedRaw, ...rest } = s;
+  const photos: PhotoSource = rest.photos ?? (skipUneditedRaw === false ? "all" : "editedJpeg");
+  return { ...DEFAULT_SETTINGS, ...rest, photos };
+}
+
 export const DEFAULT_SETTINGS: AlbumSettings = {
   theme: "vacation",
   customTheme: "",
@@ -191,7 +210,7 @@ export const DEFAULT_SETTINGS: AlbumSettings = {
   count: 60,
   style: "margins",
   background: "white",
-  skipUneditedRaw: true,
+  photos: "editedJpeg",
   captions: "both",
   map: "none",
   font: "sans",

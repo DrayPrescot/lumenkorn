@@ -6,7 +6,7 @@
   // Einstellungen: links die Bereiche, rechts der Inhalt. Bündelt, was vorher
   // im KI-Dialog und in der Fußzeile lag, dazu Ordner und Tastenkürzel.
   import { onMount } from "svelte";
-  import { api, isTauri, pickFolder, type AppInfo } from "../lib/api";
+  import { api, isTauri, pickFolder, type AppInfo, type MemorySaver, type MemoryStatus } from "../lib/api";
   import { lang, num, setLang, t } from "../lib/i18n";
   import { keymap } from "../lib/keymap.svelte";
   import { prefs } from "../lib/prefs.svelte";
@@ -28,6 +28,11 @@
   let importTarget = $state<string | null>(null);
   /** Belegter Platz der Großvorschauen (Bytes) */
   let cacheUsage = $state<number | null>(null);
+  let memory = $state<MemoryStatus | null>(null);
+  async function setMemorySaver(mode: MemorySaver) {
+    await lib.setMemorySaver(mode);
+    memory = await api.memoryStatus().catch(() => memory);
+  }
   const gb = (b: number) => `${num(b / 2 ** 30, { maximumFractionDigits: 1 })} GB`;
 
   const PAGES: { id: SettingsPage; icon: IconName; label: string }[] = [
@@ -48,6 +53,7 @@
     void lib.refreshPeople();
     api.appInfo().then((i) => (info = i)).catch(() => {});
     api.previewCacheUsage().then((b) => (cacheUsage = b)).catch(() => {});
+    api.memoryStatus().then((m) => (memory = m)).catch(() => {});
     api
       .importDefaults()
       .then((d) => (importTarget = d.settings.target ?? null))
@@ -171,6 +177,24 @@
               {/if}
             </div>
             <p class="muted small">{t("Große Vorschauen für Einzelansicht und Entwickeln. Darüber hinaus löscht Lumenkorn die am längsten nicht angesehenen; sie entstehen bei Bedarf neu.")}</p>
+          </div>
+          <div class="field">
+            <span class="label">{t("Speicher-Sparmodus")}</span>
+            <div class="row">
+              <select value={lib.memorySaver} onchange={(e) => setMemorySaver(e.currentTarget.value as MemorySaver)}>
+                <option value="auto">{t("Automatisch (bis 8 GB Arbeitsspeicher)")}</option>
+                <option value="on">{t("Ein")}</option>
+                <option value="off">{t("Aus")}</option>
+              </select>
+              {#if memory}
+                <span class="muted small">
+                  {memory.total ? t("{size} Arbeitsspeicher", { size: gb(memory.total) }) + " · " : ""}{memory.lowMemory ? t("aktiv") : t("nicht aktiv")}
+                </span>
+              {/if}
+            </div>
+            <p class="muted small">
+              {t("Für Rechner mit wenig Arbeitsspeicher: Lumenkorn hält weniger Bilder und Masken im Speicher, entlädt KI-Modelle schon nach einer Minute und entwickelt große Bilder nacheinander statt gleichzeitig. Das Hin- und Herwechseln zwischen Fotos dauert dadurch manchmal etwas länger. Wer noch mehr sparen will, schaltet unter „KI“ die KI-Funktionen aus.")}
+            </p>
           </div>
         {:else if current === "folders"}
           <div class="field">

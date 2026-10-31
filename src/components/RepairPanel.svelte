@@ -14,8 +14,10 @@
   let menu = $state<{ mode: "new" | "add" | "subtract" } | null>(null);
   let renaming = $state<number | null>(null);
 
-  const segReady = $derived(!!lib.ai?.masksReady);
+  const segReady = $derived(lib.aiOn && !!lib.ai?.masksReady);
   const ready = $derived(!!lib.ai?.repairReady);
+  // KI ausgeschaltet: vorhandene Reparaturen bleiben sichtbar, neue gibt es nicht
+  const canRun = $derived(ready && lib.aiOn);
 
   const kinds: { kind: NewMaskKind; label: string; hint: string; ai?: boolean }[] = [
     { kind: "brush", label: t("Pinsel"), hint: t("Bereich übermalen") },
@@ -77,7 +79,7 @@
 <section class="repair">
   <header>
     <h4>{t("Reparatur")} <span class="ki">{t("KI")}</span></h4>
-    {#if ready}
+    {#if canRun}
       <div class="anchor">
         <button class="btn small" disabled={!!dev.repairing} onclick={(e) => { e.stopPropagation(); menu = menu?.mode === "new" ? null : { mode: "new" }; }}>
           <Icon name="plus" size={12} /> {t("Neu")}
@@ -87,7 +89,9 @@
     {/if}
   </header>
 
-  {#if !ready}
+  {#if !lib.aiOn && !repairs.length}
+    <p class="empty">{t("Die KI ist in den Einstellungen ausgeschaltet.")}</p>
+  {:else if !ready && lib.aiOn}
     <p class="empty">
       {t("Entfernt Störendes – Staubflecken, Leitungen, Passanten – und füllt die Stelle passend aus der Umgebung (LaMa).")}
       {t("Benötigt einmalig etwa {n} MB.", { n: Math.round((lib.ai?.repairDownloadSize ?? 92.6e6) / 1e6) })}
@@ -157,11 +161,11 @@
 
       <div class="row">
         <div class="anchor">
-          <button class="btn small" disabled={!!dev.repairing} onclick={(e) => { e.stopPropagation(); menu = menu?.mode === "add" ? null : { mode: "add" }; }}>{t("Hinzufügen")}</button>
+          <button class="btn small" disabled={!!dev.repairing || !lib.aiOn} onclick={(e) => { e.stopPropagation(); menu = menu?.mode === "add" ? null : { mode: "add" }; }}>{t("Hinzufügen")}</button>
           {#if menu?.mode === "add"}{@render kindMenu()}{/if}
         </div>
         <div class="anchor">
-          <button class="btn small" disabled={!!dev.repairing || !active.shapes.length} onclick={(e) => { e.stopPropagation(); menu = menu?.mode === "subtract" ? null : { mode: "subtract" }; }}>{t("Abziehen")}</button>
+          <button class="btn small" disabled={!!dev.repairing || !active.shapes.length || !lib.aiOn} onclick={(e) => { e.stopPropagation(); menu = menu?.mode === "subtract" ? null : { mode: "subtract" }; }}>{t("Abziehen")}</button>
           {#if menu?.mode === "subtract"}{@render kindMenu()}{/if}
         </div>
         <button class="btn small" class:on={dev.showOverlay} onclick={() => dev.toggleOverlay()} title={withKey(t("Auswahl rot anzeigen"), "maskOverlay")}>{t("Auswahl zeigen")}</button>
@@ -187,9 +191,9 @@
       {:else}
         <button
           class="btn primary wide"
-          disabled={!active.shapes.length || st === "done" || !!dev.repairing}
+          disabled={!active.shapes.length || st === "done" || !!dev.repairing || !lib.aiOn}
           onclick={() => dev.computeRepair(i)}
-          title={t("Auswahl bestätigen und mit KI füllen")}
+          title={lib.aiOn ? t("Auswahl bestätigen und mit KI füllen") : t("Die KI ist in den Einstellungen ausgeschaltet")}
         >
           {st === "new" ? t("Reparieren") : st === "stale" ? t("Neu berechnen") : t("Repariert")}
         </button>
@@ -205,10 +209,10 @@
   <div class="menu" role="menu" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
     {#each kinds as k (k.kind)}
       {@const disabled = k.ai && !segReady}
-      <button role="menuitem" {disabled} onclick={() => pick(k.kind)} title={disabled ? t("Benötigt die KI-Masken (unten links unter „KI“)") : k.hint}>
+      <button role="menuitem" {disabled} onclick={() => pick(k.kind)} title={disabled ? (lib.aiOn ? t("Benötigt die KI-Masken (unten links unter „KI“)") : t("Die KI ist in den Einstellungen ausgeschaltet")) : k.hint}>
         {#if k.ai}<Icon name="sparkle" size={12} />{:else}<span class="sp"></span>{/if}
         <span class="l">{k.label}</span>
-        <span class="h">{disabled ? t("KI-Masken fehlen") : k.hint}</span>
+        <span class="h">{disabled ? (lib.aiOn ? t("KI-Masken fehlen") : t("KI aus")) : k.hint}</span>
       </button>
     {/each}
   </div>

@@ -171,8 +171,19 @@ impl<'s> Prefetch<'s> {
 /// Verfügbarer Arbeitsspeicher: `MemAvailable` aus /proc/meminfo (Linux).
 #[cfg(not(windows))]
 pub fn available_bytes() -> Option<usize> {
+    meminfo("MemAvailable:")
+}
+
+/// Eingebauter Arbeitsspeicher: `MemTotal` aus /proc/meminfo (Linux).
+#[cfg(not(windows))]
+pub fn total_bytes() -> Option<usize> {
+    meminfo("MemTotal:")
+}
+
+#[cfg(not(windows))]
+fn meminfo(key: &str) -> Option<usize> {
     let s = std::fs::read_to_string("/proc/meminfo").ok()?;
-    let line = s.lines().find(|l| l.starts_with("MemAvailable:"))?;
+    let line = s.lines().find(|l| l.starts_with(key))?;
     let kb: usize = line.split_whitespace().nth(1)?.parse().ok()?;
     Some(kb * 1024)
 }
@@ -180,6 +191,18 @@ pub fn available_bytes() -> Option<usize> {
 /// Verfügbarer Arbeitsspeicher laut `GlobalMemoryStatusEx` (Windows).
 #[cfg(windows)]
 pub fn available_bytes() -> Option<usize> {
+    memory_status().map(|(_, avail)| avail)
+}
+
+/// Eingebauter Arbeitsspeicher laut `GlobalMemoryStatusEx` (Windows).
+#[cfg(windows)]
+pub fn total_bytes() -> Option<usize> {
+    memory_status().map(|(total, _)| total)
+}
+
+/// (gesamt, verfügbar) in Bytes
+#[cfg(windows)]
+fn memory_status() -> Option<(usize, usize)> {
     #[repr(C)]
     struct MemoryStatusEx {
         length: u32,
@@ -210,7 +233,8 @@ pub fn available_bytes() -> Option<usize> {
     // SAFETY: Zeiger auf eine gültige, richtig ausgerichtete Struktur mit
     // gesetzter Länge, wie die Windows-API es verlangt.
     let ok = unsafe { GlobalMemoryStatusEx(&mut m) } != 0;
-    ok.then(|| usize::try_from(m.avail_phys).unwrap_or(usize::MAX))
+    let size = |b: u64| usize::try_from(b).unwrap_or(usize::MAX);
+    ok.then(|| (size(m.total_phys), size(m.avail_phys)))
 }
 
 pub(crate) fn check(cancel: &AtomicBool) -> Result<()> {
@@ -275,6 +299,8 @@ mod tests {
         if cfg!(any(windows, target_os = "linux")) {
             let a = super::available_bytes().expect("Speicher abfragbar");
             assert!(a > 64 << 20, "{a}");
+            let total = super::total_bytes().expect("Gesamtspeicher abfragbar");
+            assert!(total >= a, "{total} < {a}");
         }
         let k = super::keep_bytes();
         assert!((256 << 20..=3 << 30).contains(&k));

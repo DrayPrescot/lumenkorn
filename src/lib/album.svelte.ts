@@ -4,7 +4,6 @@
 
 import { api, listen, pickPdfTarget, type AlbumExportProgress, type Scope } from "./api";
 import {
-  DEFAULT_SETTINGS,
   autoCaptions,
   buildAlbum,
   mapPage,
@@ -22,6 +21,7 @@ import {
   type PageLayout,
   type TextStyle,
   textStyleOf,
+  withDefaults,
 } from "./album";
 import { renderOverlay } from "./albumDraw";
 import { lib } from "./store.svelte";
@@ -135,7 +135,7 @@ class AlbumStore {
 
   /** Gespeicherte Einstellungen (zuletzt benutzt) */
   lastSettings(): AlbumSettings {
-    return { ...DEFAULT_SETTINGS, ...(load<Partial<AlbumSettings>>(SETTINGS_KEY) ?? {}) };
+    return withDefaults(load<Partial<AlbumSettings>>(SETTINGS_KEY) ?? {});
   }
 
   /** Album des Bereichs öffnen; gibt es noch keins, die Einstellungen zeigen. */
@@ -144,7 +144,7 @@ class AlbumStore {
     const saved = load<unknown>(albumKey(scope));
     if (validAlbum(saved)) {
       // Ältere Fassungen kennen Schrift, Beschriftung und Karte noch nicht
-      saved.settings = { ...DEFAULT_SETTINGS, ...saved.settings };
+      saved.settings = withDefaults(saved.settings);
       this.state = saved;
       this.selection = null;
       lib.view = "album";
@@ -162,7 +162,7 @@ class AlbumStore {
         theme: settings.theme,
         customTheme: settings.theme === "custom" ? settings.customTheme : null,
         count: settings.count,
-        skipUneditedRaw: settings.skipUneditedRaw,
+        photos: settings.photos,
       });
       if (!this.progress) return false; // abgebrochen
       this.state = buildAlbum(settings, scope, title, s);

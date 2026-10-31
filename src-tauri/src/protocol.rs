@@ -124,7 +124,15 @@ static POOL: Pool = Pool::new(|| {
         .unwrap_or(4)
         .clamp(2, 8)
 });
-static FULL_POOL: Pool = Pool::new(|| 2);
+// Speicher-Sparmodus: ein großes Bild nach dem anderen (ein RAW in voller
+// Auflösung belegt beim Entwickeln bis ~1,5 GB). Gilt ab dem ersten Bild.
+static FULL_POOL: Pool = Pool::new(|| {
+    if lumenkorn_develop::low_memory() {
+        1
+    } else {
+        2
+    }
+});
 static TILE_POOL: Pool = Pool::new(|| 2);
 
 /// Zuletzt gelieferte Bilder in voller Auflösung: (ID, Bearbeitung, JPEG).
@@ -181,7 +189,11 @@ fn serve_full(state: &AppState, id: i64) -> Response<Vec<u8>> {
             // Für Cache und Antwort je ein Puffer – Kopie unvermeidbar (s. o.)
             let bytes = Arc::new(bytes);
             c.0.insert(0, (key, job.edit.clone(), bytes.clone()));
-            c.0.truncate(FULL_ENTRIES);
+            c.0.truncate(if lumenkorn_develop::low_memory() {
+                2
+            } else {
+                FULL_ENTRIES
+            });
             jpeg(bytes.to_vec())
         }
         Err(e) => {

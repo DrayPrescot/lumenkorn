@@ -94,7 +94,13 @@ pub(crate) fn evaluate_cached(
     store: &dyn MaskSource,
     image: Option<&ImageF32>,
 ) -> Arc<Vec<f32>> {
-    const ENTRIES: usize = 8;
+    // Speicher-Sparmodus: halb so viele Masken, ~64 MB statt ~256 MB und
+    // nur zwei der größten Art
+    let (entries, budget, largest_kept) = if crate::low_memory() {
+        (4, 64usize << 20, 2)
+    } else {
+        (8, 256usize << 20, 3)
+    };
 
     // Fehlt eine Modellmaske (noch), nicht merken – sie kann gleich da sein.
     let complete = layer.shapes.iter().all(|s| match s {
@@ -132,12 +138,12 @@ pub(crate) fn evaluate_cached(
     if complete {
         let mut c = CACHE.lock().unwrap_or_else(|e| e.into_inner());
         c.insert(0, (key, w, h, a.clone()));
-        c.truncate(ENTRIES);
+        c.truncate(entries);
         // Volle Auflösung (Zoom) belegt viel Speicher: ~256 MB behalten, aber
         // mindestens drei Masken der größten Art – sonst verdrängen sich zwei
         // Ebenen in der 45-MP-Zoomansicht bei jedem Rendern gegenseitig.
         let largest = c.iter().map(|e| e.3.len() * 4).max().unwrap_or(0);
-        let max_bytes = (256usize << 20).max(3 * largest);
+        let max_bytes = budget.max(largest_kept * largest);
         while c.len() > 1 && c.iter().map(|e| e.3.len() * 4).sum::<usize>() > max_bytes {
             c.pop();
         }

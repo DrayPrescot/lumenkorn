@@ -156,6 +156,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     .with_repairs(repairs.clone())
     .with_denoise_dir(denoised_dir.clone());
     log::info!("Katalog: {}", catalog_path.display());
+    // Allgemeine Einstellungen wirksam machen (Karte, Speicher-Sparmodus) –
+    // vor dem Worker, der gleich Thumbnails entwickelt
+    settings::load(&data_dir);
 
     // Eigene Ordner nie als Fotos aufnehmen (siehe scanner::set_excluded_dirs)
     lumenkorn_core::scanner::set_excluded_dirs(vec![data_dir.clone(), cache.base().to_path_buf()]);
@@ -189,8 +192,6 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     let ai_state = ai::AiState::new(&data_dir);
     let style_state = style::StyleState::new(&data_dir);
-    // Allgemeine Einstellungen wirksam machen (Karte an/aus)
-    settings::load(&data_dir);
     app.manage(AppState {
         catalog,
         cache,
@@ -252,6 +253,7 @@ pub fn run() {
             settings::app_settings,
             settings::app_set_settings,
             settings::preview_cache_usage,
+            settings::memory_status,
             commands::folder_options,
             commands::folder_set_subfolders,
             nextcloud::nc_status,

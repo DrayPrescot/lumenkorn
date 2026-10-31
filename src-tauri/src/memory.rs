@@ -11,6 +11,8 @@
 //!   Modell, das gerade rechnet, wird nie entladen.
 //! - Zwischengespeicherte Vollbilder (Zoom, Vergleich) ebenso.
 //! - Verwaiste Dateien im Datenordner: kurz nach dem Start, dann täglich.
+//! - Im Speicher-Sparmodus (`settings::MemorySaver`) jeweils schon nach einer
+//!   Minute; die Zwischenspeicher der Bildbearbeitung fassen dann weniger.
 
 use crate::AppState;
 use lumenkorn_core::LockExt;
@@ -28,6 +30,9 @@ const FULL_IDLE: Duration = Duration::from_secs(3 * 60);
 /// Der Suchindex der semantischen Suche (bis ~200 MB bei 100 000 Fotos) wird
 /// nach so langer Ruhe freigegeben und bei der nächsten Suche neu aufgebaut.
 const INDEX_IDLE: Duration = Duration::from_secs(10 * 60);
+/// Im Speicher-Sparmodus gilt für Modelle, Vollbilder und Suchindex diese
+/// kürzere Wartezeit (sie werden danach bei Bedarf neu geladen).
+const LOW_MEMORY_IDLE: Duration = Duration::from_secs(60);
 const TICK: Duration = Duration::from_secs(30);
 /// Erstes Aufräumen des Datenordners nach dem Start, danach täglich
 const SWEEP_FIRST: Duration = Duration::from_secs(90);
@@ -119,22 +124,29 @@ pub fn start_janitor(app: AppHandle) {
                         crate::settings::trim_previews(&state);
                     }
                     let mut freed = Vec::new();
-                    if state.usage.idle(Slot::Interactive) >= INTERACTIVE_IDLE {
+                    let idle = |d: Duration| {
+                        if lumenkorn_develop::low_memory() {
+                            d.min(LOW_MEMORY_IDLE)
+                        } else {
+                            d
+                        }
+                    };
+                    if state.usage.idle(Slot::Interactive) >= idle(INTERACTIVE_IDLE) {
                         freed.extend(crate::ai::release_models(&state, true, false));
                         if crate::repair::release_model(&state) {
                             freed.push("LaMa");
                         }
                     }
-                    if state.usage.idle(Slot::Background) >= BACKGROUND_IDLE {
+                    if state.usage.idle(Slot::Background) >= idle(BACKGROUND_IDLE) {
                         freed.extend(crate::ai::release_models(&state, false, true));
                         if crate::people::release_models(&state) {
                             freed.push("Gesichter");
                         }
                     }
-                    if crate::ai::release_index(&state, INDEX_IDLE) {
+                    if crate::ai::release_index(&state, idle(INDEX_IDLE)) {
                         freed.push("Suchindex");
                     }
-                    let full = crate::protocol::release_full(FULL_IDLE);
+                    let full = crate::protocol::release_full(idle(FULL_IDLE));
                     if full {
                         log::info!("Ungenutzte Vollbilder freigegeben");
                     }
