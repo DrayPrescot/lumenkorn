@@ -1448,19 +1448,19 @@ export async function pickVideoTarget(title: string, name: string): Promise<stri
   }
 }
 
-/** Musikdatei wählen (Diashow). `null`, wenn abgebrochen oder nicht verfügbar. */
-export async function pickMusicFile(title: string): Promise<string | null> {
-  if (!isTauri) return null;
+/** Musikdateien wählen (Diashow, mehrere). Leer, wenn abgebrochen oder nicht verfügbar. */
+export async function pickMusicFiles(title: string): Promise<string[]> {
+  if (!isTauri) return [];
   try {
     const { open } = await import("@tauri-apps/plugin-dialog");
     const res = await open({
       title,
-      multiple: false,
+      multiple: true,
       filters: [{ name: t("Musik"), extensions: ["mp3", "m4a", "aac", "wav", "flac", "ogg", "opus"] }],
     });
-    return typeof res === "string" ? res : null;
+    return Array.isArray(res) ? res : typeof res === "string" ? [res] : [];
   } catch {
-    return null;
+    return [];
   }
 }
 

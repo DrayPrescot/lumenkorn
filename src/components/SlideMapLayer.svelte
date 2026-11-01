@@ -15,16 +15,19 @@
 </script>
 
 <script lang="ts">
-  // Karte beim Ortswechsel in der Bühne der Diashow (Vorschau und Vollbild)
-  import { drawMapLeg, type MapLeg } from "../lib/slideMap";
+  // Karte der Diashow in der Bühne (Vorschau und Vollbild): Flug beim
+  // Ortswechsel oder alle Orte am Ende. Kacheln werden nachgeladen; bis sie
+  // da sind, zeichnet die Ebene neu, sobald sich die Zeit ändert.
+  import { drawMapLeg, drawOverview, type MapLeg, type MapPlace } from "../lib/slideMap";
   import { fontFamily } from "../lib/album";
+  import { lib } from "../lib/store.svelte";
 
-  let { leg, p }: { leg: MapLeg; p: number } = $props();
+  let { leg, places, p }: { leg?: MapLeg; places?: MapPlace[]; p: number } = $props();
 
   let canvas = $state<HTMLCanvasElement>();
   let w = $state(0);
   let h = $state(0);
-  const font = fontFamily("sans");
+  const style = $derived({ tiles: lib.mapEnabled, font: fontFamily("sans") });
   ensureData();
 
   $effect(() => {
@@ -39,7 +42,8 @@
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    drawMapLeg(ctx, cw, ch, leg, p, shared, font);
+    if (leg) drawMapLeg(ctx, cw, ch, leg, p, shared, style);
+    else if (places) drawOverview(ctx, cw, ch, places, p, shared, style);
   });
 </script>
 

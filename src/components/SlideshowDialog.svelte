@@ -140,9 +140,12 @@
       </div>
       <div class="row">
         <span>{t("Karte")}</span>
-        <label class="dims" title={t("Wenn der nächste Aufnahmeort mehr als {km} km entfernt ist", { km: MAP_MIN_KM })}>
-          <input type="checkbox" bind:checked={s.maps} /> {t("Animierte Karte beim Ortswechsel")}
-        </label>
+        <span class="stack">
+          <label class="dims" title={t("Wenn der nächste Aufnahmeort mehr als {km} km entfernt ist", { km: MAP_MIN_KM })}>
+            <input type="checkbox" bind:checked={s.maps} /> {t("Animierte Karte beim Ortswechsel")}
+          </label>
+          <label class="dims"><input type="checkbox" bind:checked={s.endMap} /> {t("Zum Schluss Karte mit allen Orten")}</label>
+        </span>
       </div>
       <label class="row">
         <span>{t("Datum und Ort")}</span>
@@ -246,6 +249,10 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 8px 12px;
+  }
+  .stack {
+    display: grid;
+    gap: 4px;
   }
   input[type="number"] {
     width: 80px;

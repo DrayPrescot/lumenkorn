@@ -6,20 +6,32 @@
   import { imageUrl } from "../lib/api";
   import type { Frame } from "../lib/slideshow";
   import { lib } from "../lib/store.svelte";
+  import { fullReady, fullUrl } from "../lib/fullImages.svelte";
   import SlideMapLayer from "./SlideMapLayer.svelte";
 
-  let { frame, title }: { frame: Frame; title: string } = $props();
+  /** `full`: volle Auflösung zeigen, sobald geladen (Vollbild) */
+  let { frame, title, full = false }: { frame: Frame; title: string; full?: boolean } = $props();
+
+  function srcOf(id: number): string {
+    if (full) {
+      const u = fullUrl(id);
+      if (fullReady.has(u)) return u;
+    }
+    return imageUrl("preview", id, lib.thumbVersion(id));
+  }
 </script>
 
 <div class="stage">
   {#each frame.layers as l (l.index)}
-    {@const src = imageUrl("preview", l.id, lib.thumbVersion(l.id))}
+    {@const src = l.map || l.overview ? "" : srcOf(l.id)}
     <div class="layer" style:opacity={l.opacity} style:transform="translateX({l.shift * 100}%)">
       {#if l.map}
         <SlideMapLayer leg={l.map.leg} p={l.map.p} />
+      {:else if l.overview}
+        <SlideMapLayer places={l.overview.places} p={l.overview.p} />
       {:else}
         {#if l.contain}
-          <img class="backdrop" {src} alt="" draggable="false" />
+          <img class="backdrop" src={imageUrl("preview", l.id, lib.thumbVersion(l.id))} alt="" draggable="false" />
         {/if}
         <img
           class="photo"

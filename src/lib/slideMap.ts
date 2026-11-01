@@ -1,12 +1,17 @@
-// Animierte Karte der Diashow beim Ortswechsel: Die Kamera fliegt vom
-// vorigen zum neuen Aufnahmeort (gleichmäßiges Zoomen und Schwenken nach
-// van Wijk & Nuij, wie `flyTo` in Leaflet bzw. `interpolateZoom` in d3), die
-// Route wird als Bogen nachgezeichnet, am Ziel fällt eine Stecknadel.
-// Gezeichnet wird mit den eingebauten Kartendaten (Natural Earth) wie im
-// Fotoalbum – ohne Internet, für Vorschau, Vollbild und Video gleich.
+// Karten der Diashow: beim Ortswechsel fliegt die Kamera vom vorigen zum
+// neuen Aufnahmeort (gleichmäßiges Zoomen und Schwenken nach van Wijk & Nuij,
+// wie `flyTo` in Leaflet bzw. `interpolateZoom` in d3), die Route wird als
+// Bogen nachgezeichnet, am Ziel fällt eine Stecknadel. Am Ende zeigt eine
+// Karte alle Orte der Reise.
+//
+// Grundlage sind die eingebauten Kartendaten (Natural Earth) wie im
+// Fotoalbum – ohne Internet. Für nahe Orte, wo diese Daten zu grob sind,
+// kommen Kartenkacheln von OpenStreetMap dazu (über das Backend mit
+// Zwischenspeicher, nur wenn die Karte in den Einstellungen eingeschaltet ist).
 
 import { MAP, mapData, type MapData } from "./albumDraw";
 import { countryAt } from "./countries";
+import { tileUrlTemplate } from "./api";
 import { lang } from "./i18n";
 
 export { mapData, type MapData };
@@ -24,14 +29,24 @@ export interface MapLeg {
   to: MapPlace;
 }
 
+/** Wie gezeichnet wird: OSM-Kacheln erlaubt, Schrift */
+export interface MapStyle {
+  tiles: boolean;
+  font: string;
+}
+
 /** Anteil der Zeit, in der die Karte am Start bzw. Ziel steht */
 const HOLD_START = 0.15;
 const HOLD_END = 0.25;
 /** Steilheit der Flugkurve (d3: √2) */
 const RHO = Math.SQRT2;
+/** Kacheln nur, wenn der Ausschnitt schmaler ist als das (Bogenmaß, ~6°) */
+const TILE_BELOW = (6 * Math.PI) / 180;
+/** Höchstens so viele Kacheln im Speicher */
+const TILE_CACHE = 400;
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
-const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (Math.max(-80, Math.min(80, lat)) * Math.PI) / 360));
+const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (Math.max(-85, Math.min(85, lat)) * Math.PI) / 360));
 const latOf = (y: number) => (Math.atan(Math.sinh(y)) * 180) / Math.PI;
 const smooth = (x: number) => {
   const v = Math.min(1, Math.max(0, x));
@@ -75,29 +90,192 @@ export function flyTo(p0: Camera, p1: Camera): (t: number) => Camera {
   };
 }
 
-/** Ort in Mercator; das Ziel über die Datumsgrenze hinweg auf dem kürzeren Weg */
-function legPoints(leg: MapLeg): { a: [number, number]; b: [number, number] } {
-  let lonB = leg.to.lon;
-  if (lonB - leg.from.lon > 180) lonB -= 360;
-  else if (leg.from.lon - lonB > 180) lonB += 360;
-  return { a: [rad(leg.from.lon), mercY(leg.from.lat)], b: [rad(lonB), mercY(leg.to.lat)] };
+/** Ort in Mercator; `nearLon`: über die Datumsgrenze hinweg auf dem kürzeren Weg */
+function toMerc(p: MapPlace, nearLon = p.lon): [number, number] {
+  let lon = p.lon;
+  while (lon - nearLon > 180) lon -= 360;
+  while (nearLon - lon > 180) lon += 360;
+  return [rad(lon), mercY(p.lat)];
 }
 
-/** Punkt auf der Route (Bogen, nach Norden gewölbt), `s`: 0…1 */
-function routeAt(a: [number, number], b: [number, number], s: number): [number, number] {
-  const mx = (a[0] + b[0]) / 2;
-  const my = (a[1] + b[1]) / 2;
+/** Punkt auf dem Bogen von `a` nach `b` (nach Norden gewölbt), `s`: 0…1 */
+function arcAt(a: [number, number], b: [number, number], s: number, bend = 0.18): [number, number] {
   const dx = b[0] - a[0];
   const dy = b[1] - a[1];
-  // Senkrechte, nach oben (Norden) zeigend
   let nx = -dy;
   let ny = dx;
   if (ny < 0) ((nx = -nx), (ny = -ny));
-  const cx = mx + nx * 0.18;
-  const cy = my + ny * 0.18;
+  const cx = (a[0] + b[0]) / 2 + nx * bend;
+  const cy = (a[1] + b[1]) / 2 + ny * bend;
   const u = 1 - s;
   return [u * u * a[0] + 2 * u * s * cx + s * s * b[0], u * u * a[1] + 2 * u * s * cy + s * s * b[1]];
 }
+
+/** Ausschnitt rund um einen Ort, so weit, dass die Entfernung `dist` (Bogenmaß) gut zu sehen ist */
+function nearWidth(dist: number): number {
+  return Math.min(rad(14), Math.max(rad(0.06), dist * 2.2));
+}
+
+// --- Kamera der Abschnitte --------------------------------------------------------
+
+/** Kamera und Routenstand des Flugs zum Zeitpunkt `p` */
+function legState(leg: MapLeg, p: number): { cam: Camera; a: [number, number]; b: [number, number]; q: number } {
+  const a = toMerc(leg.from);
+  const b = toMerc(leg.to, leg.from.lon);
+  const near = nearWidth(Math.hypot(b[0] - a[0], b[1] - a[1]));
+  const q = smooth((p - HOLD_START) / (1 - HOLD_START - HOLD_END));
+  return { cam: flyTo([a[0], a[1], near], [b[0], b[1], near])(q), a, b, q };
+}
+
+/** Ausschnitt mit allen Orten (mit Rand), passend zum Seitenverhältnis */
+function fitAll(pts: [number, number][], aspect: number): Camera {
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  const x0 = Math.min(...xs);
+  const x1 = Math.max(...xs);
+  const y0 = Math.min(...ys);
+  const y1 = Math.max(...ys);
+  const w = Math.max((x1 - x0) * 1.35, (y1 - y0) * 1.35 * aspect, rad(0.08));
+  return [(x0 + x1) / 2, (y0 + y1) / 2, Math.min(w, 2 * Math.PI)];
+}
+
+function overviewState(places: MapPlace[], p: number, aspect: number) {
+  const pts: [number, number][] = [];
+  for (const pl of places) pts.push(toMerc(pl, pts.length ? (pts[pts.length - 1][0] * 180) / Math.PI : pl.lon));
+  const last = pts[pts.length - 1];
+  const prev = pts[pts.length - 2] ?? last;
+  const end = fitAll(pts, aspect);
+  const start: Camera = [last[0], last[1], nearWidth(Math.hypot(last[0] - prev[0], last[1] - prev[1]))];
+  // Erst herauszoomen, dann die Route zeichnen, zuletzt die Namen
+  const cam = flyTo(start, end)(smooth(p / 0.3));
+  const route = smooth((p - 0.25) / 0.5);
+  return { cam, pts, route };
+}
+
+// --- Kacheln -------------------------------------------------------------------------
+
+type TileEntry = ImageBitmap | null | Promise<void>;
+const tiles = new Map<string, TileEntry>();
+const key = (z: number, x: number, y: number) => `${z}/${x}/${y}`;
+
+function requestTile(z: number, x: number, y: number): TileEntry {
+  const k = key(z, x, y);
+  const have = tiles.get(k);
+  if (have !== undefined) return have;
+  const url = tileUrlTemplate().replace("{z}", String(z)).replace("{x}", String(x)).replace("{y}", String(y));
+  const job = (async () => {
+    try {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = url;
+      await img.decode();
+      tiles.set(k, await createImageBitmap(img));
+    } catch {
+      tiles.set(k, null);
+    }
+    // Älteste verwerfen
+    while (tiles.size > TILE_CACHE) {
+      const first = tiles.keys().next().value!;
+      const v = tiles.get(first);
+      if (v instanceof ImageBitmap) v.close();
+      tiles.delete(first);
+    }
+  })();
+  tiles.set(k, job);
+  return job;
+}
+
+/** Zoomstufe der Kacheln: so, dass eine Kachel mindestens 256 Pixel breit erscheint */
+function tileZoom(cam: Camera, w: number): number {
+  const worldPx = (w / cam[2]) * 2 * Math.PI;
+  return Math.max(1, Math.min(18, Math.floor(Math.log2(worldPx / 256))));
+}
+
+/** Kacheln im Ausschnitt: [z, x (umgebrochen), y, x (ungebrochen)] */
+function visibleTiles(cam: Camera, w: number, h: number, z: number): [number, number, number, number][] {
+  const n = 2 ** z;
+  const vh = (cam[2] * h) / w;
+  const tx = (x: number) => ((x + Math.PI) / (2 * Math.PI)) * n;
+  const ty = (y: number) => ((Math.PI - y) / (2 * Math.PI)) * n;
+  const out: [number, number, number, number][] = [];
+  for (let y = Math.max(0, Math.floor(ty(cam[1] + vh / 2))); y <= Math.min(n - 1, Math.floor(ty(cam[1] - vh / 2))); y++)
+    for (let x = Math.floor(tx(cam[0] - cam[2] / 2)); x <= Math.floor(tx(cam[0] + cam[2] / 2)); x++) out.push([z, ((x % n) + n) % n, y, x]);
+  return out;
+}
+
+const useTiles = (cam: Camera, style: MapStyle) => style.tiles && cam[2] < TILE_BELOW;
+
+/**
+ * Kacheln zeichnen; fehlende werden angefordert und so lange aus einer
+ * gröberen Stufe vergrößert. Liefert, ob etwas gezeichnet wurde.
+ */
+function drawTiles(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number): boolean {
+  const z = tileZoom(cam, w);
+  const n = 2 ** z;
+  const scale = w / cam[2];
+  const size = (2 * Math.PI * scale) / n;
+  const x0 = (cam[0] + Math.PI) * scale - w / 2;
+  const y0 = (Math.PI - cam[1]) * scale - h / 2;
+  let drawn = false;
+  for (const [, x, y, ux] of visibleTiles(cam, w, h, z)) {
+    const dx = ux * size - x0;
+    const dy = y * size - y0;
+    const t = requestTile(z, x, y);
+    if (t instanceof ImageBitmap) {
+      // Etwas Überlappung gegen feine Fugen
+      ctx.drawImage(t, dx, dy, size + 0.5, size + 0.5);
+      drawn = true;
+      continue;
+    }
+    // Gröbere Stufe vergrößern, solange die feine lädt
+    for (let up = 1; up <= 4 && z - up >= 0; up++) {
+      const f = 2 ** up;
+      const p = tiles.get(key(z - up, Math.floor(x / f), Math.floor(y / f)));
+      if (p instanceof ImageBitmap) {
+        const sw = 256 / f;
+        ctx.drawImage(p, (x % f) * sw, (y % f) * sw, sw, sw, dx, dy, size + 0.5, size + 0.5);
+        drawn = true;
+        break;
+      }
+    }
+  }
+  return drawn;
+}
+
+/** Kacheln für einen Ausschnitt anfordern und auf sie warten (Videoexport) */
+async function awaitTiles(cam: Camera, w: number, h: number) {
+  const jobs = visibleTiles(cam, w, h, tileZoom(cam, w)).map(([z, x, y]) => requestTile(z, x, y));
+  const pending = jobs.filter((j): j is Promise<void> => j instanceof Promise);
+  if (pending.length) await Promise.race([Promise.all(pending), new Promise((r) => setTimeout(r, 15000))]);
+}
+
+/** Kacheln vorab laden, damit der Flug im Vollbild nicht auf sie wartet */
+export function prefetchLeg(leg: MapLeg, w: number, h: number, style: MapStyle) {
+  for (let p = 0; p <= 1.001; p += 0.1) {
+    const { cam } = legState(leg, p);
+    if (useTiles(cam, style)) for (const [z, x, y] of visibleTiles(cam, w, h, tileZoom(cam, w))) requestTile(z, x, y);
+  }
+}
+
+export function prefetchOverview(places: MapPlace[], w: number, h: number, style: MapStyle) {
+  for (let p = 0; p <= 1.001; p += 0.1) {
+    const { cam } = overviewState(places, p, w / h);
+    if (useTiles(cam, style)) for (const [z, x, y] of visibleTiles(cam, w, h, tileZoom(cam, w))) requestTile(z, x, y);
+  }
+}
+
+/** Für den Export: Kacheln dieses Zeitpunkts laden, bevor gezeichnet wird */
+export async function readyLeg(leg: MapLeg, p: number, w: number, h: number, style: MapStyle) {
+  const { cam } = legState(leg, p);
+  if (useTiles(cam, style)) await awaitTiles(cam, w, h);
+}
+
+export async function readyOverview(places: MapPlace[], p: number, w: number, h: number, style: MapStyle) {
+  const { cam } = overviewState(places, p, w / h);
+  if (useTiles(cam, style)) await awaitTiles(cam, w, h);
+}
+
+// --- Zeichnen -----------------------------------------------------------------------
 
 interface Box {
   x: number;
@@ -137,31 +315,36 @@ function drawPin(ctx: CanvasRenderingContext2D, x: number, y: number, h: number)
   ctx.fill();
 }
 
-/**
- * Zeichnet den Flug `leg` zum Zeitpunkt `p` (0…1 über die Dauer der Karte)
- * in eine Fläche der Größe `w`×`h` (Pixel). `font`: CSS-Schriftfamilie.
- */
-export function drawMapLeg(ctx: CanvasRenderingContext2D, w: number, h: number, leg: MapLeg, p: number, data: MapData | null, font: string) {
-  const { a, b } = legPoints(leg);
-  const dist = Math.hypot(b[0] - a[0], b[1] - a[1]);
-  // Am Start und Ziel: etwas Umgebung (mindestens ~250 km, bei weiten Reisen mehr)
-  const near = Math.min(rad(14), Math.max(rad(2.5), dist * 0.6));
-  const fly = flyTo([a[0], a[1], near], [b[0], b[1], near]);
-  const q = smooth((p - HOLD_START) / (1 - HOLD_START - HOLD_END));
-  const [cx, cy, vw] = fly(q);
+/** Projektion der Kamera auf die Fläche */
+function projector(cam: Camera, w: number, h: number) {
+  const [cx, cy, vw] = cam;
   const vh = (vw * h) / w;
-  const toX = (x: number) => ((x - cx) / vw) * w + w / 2;
-  const toY = (y: number) => ((cy - y) / vh) * h + h / 2;
-  const lon0 = ((cx - vw / 2) * 180) / Math.PI;
-  const lon1 = ((cx + vw / 2) * 180) / Math.PI;
-  const lat0 = latOf(cy - vh / 2);
-  const lat1 = latOf(cy + vh / 2);
-  // Länge der Datumsgrenze: Daten liegen in −180…180, die Kamera evtl. daneben
-  const shifts = [0, ...(lon0 < -180 ? [-360] : []), ...(lon1 > 180 ? [360] : [])];
+  return {
+    x: (x: number) => ((x - cx) / vw) * w + w / 2,
+    y: (y: number) => ((cy - y) / vh) * h + h / 2,
+    lon0: ((cx - vw / 2) * 180) / Math.PI,
+    lon1: ((cx + vw / 2) * 180) / Math.PI,
+    lat0: latOf(cy - vh / 2),
+    lat1: latOf(cy + vh / 2),
+  };
+}
+
+/**
+ * Grundkarte: Meer, Länder (besuchte hervorgehoben), Gewässer, Städte – bzw.
+ * bei nahen Orten die OSM-Kacheln. `keep`: Bereiche, die frei bleiben sollen
+ * (Stecknadeln), `skip`: Ortsnamen, die schon dort stehen.
+ */
+function drawBase(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number, data: MapData | null, style: MapStyle, visitedAt: MapPlace[], keep: Box[], skip: Set<string>): boolean {
+  const pr = projector(cam, w, h);
+  const side = Math.min(w, h);
+  ctx.fillStyle = MAP.sea;
+  ctx.fillRect(0, 0, w, h);
+  // Datumsgrenze: Daten liegen in −180…180, die Kamera evtl. daneben
+  const shifts = [0, ...(pr.lon0 < -180 ? [-360] : []), ...(pr.lon1 > 180 ? [360] : [])];
   const inView = ([a0, b0, a1, b1]: [number, number, number, number], s: number, pad = 0) =>
-    !(a1 + s < lon0 - pad || a0 + s > lon1 + pad || b1 < lat0 - pad || b0 > lat1 + pad);
+    !(a1 + s < pr.lon0 - pad || a0 + s > pr.lon1 + pad || b1 < pr.lat0 - pad || b0 > pr.lat1 + pad);
   // Punkte, die weniger als ~0,8 Pixel auseinanderliegen, überspringen
-  const minStep = (0.8 / w) * vw;
+  const minStep = (0.8 / w) * cam[2];
   const path = (pts: [number, number][], s: number, close: boolean) => {
     let lx = Infinity;
     let ly = Infinity;
@@ -171,21 +354,13 @@ export function drawMapLeg(ctx: CanvasRenderingContext2D, w: number, h: number, 
       if (i > 0 && i < pts.length - 1 && Math.abs(x - lx) < minStep && Math.abs(y - ly) < minStep) return;
       lx = x;
       ly = y;
-      if (i === 0) ctx.moveTo(toX(x), toY(y));
-      else ctx.lineTo(toX(x), toY(y));
+      if (i === 0) ctx.moveTo(pr.x(x), pr.y(y));
+      else ctx.lineTo(pr.x(x), pr.y(y));
     });
     if (close) ctx.closePath();
   };
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, 0, w, h);
-  ctx.clip();
-  ctx.fillStyle = MAP.sea;
-  ctx.fillRect(0, 0, w, h);
-  const side = Math.min(w, h);
   if (data) {
-    const visited = new Set([countryAt(data.countries, leg.from.lon, leg.from.lat)?.iso, countryAt(data.countries, leg.to.lon, leg.to.lat)?.iso].filter(Boolean));
+    const visited = new Set(visitedAt.map((p) => countryAt(data.countries, p.lon, p.lat)?.iso).filter(Boolean));
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     for (const s of shifts)
@@ -199,72 +374,75 @@ export function drawMapLeg(ctx: CanvasRenderingContext2D, w: number, h: number, 
         ctx.lineWidth = Math.max(0.5, side * 0.0012);
         ctx.stroke();
       }
-    const d = data.details;
-    const degPerPx = (lon1 - lon0) / w;
-    if (d) {
-      // Je weiter herausgezoomt, desto nur die wichtigeren Gewässer und Städte
-      const maxRank = degPerPx > 0.05 ? 3 : degPerPx > 0.015 ? 5 : degPerPx > 0.005 ? 7 : 10;
-      ctx.fillStyle = MAP.sea;
-      ctx.strokeStyle = MAP.river;
-      ctx.lineWidth = Math.max(0.5, side * 0.0009);
-      for (const l of d.lakes) {
-        if (l.rank > maxRank || !inView(l.bbox, 0)) continue;
-        ctx.beginPath();
-        for (const poly of l.polygons) for (const ring of poly) path(ring, 0, true);
-        ctx.fill("evenodd");
-        ctx.stroke();
-      }
-      for (const r of d.rivers) {
-        if (r.rank > maxRank || !inView(r.bbox, 0)) continue;
-        ctx.lineWidth = Math.max(0.5, side * (0.003 - Math.min(r.rank, 10) * 0.0002));
-        ctx.beginPath();
-        for (const line of r.lines) path(line, 0, false);
-        ctx.stroke();
-      }
-    }
-    // Städte nur, wo Platz ist (die Stecknadeln haben Vorrang)
-    if (d) {
-      const size = side * 0.024;
-      const placed: Box[] = [];
-      for (const pt of [a, b]) placed.push({ x: toX(pt[0]) - size * 3, y: toY(pt[1]) - size * 3, w: size * 12, h: size * 4 });
-      ctx.font = `500 ${size}px ${font}`;
-      ctx.textBaseline = "middle";
-      ctx.textAlign = "left";
-      const dot = size * 0.3;
-      const skip = new Set([leg.from.label, leg.to.label].map((s) => s.toLowerCase()));
-      let shown = 0;
-      const cities = d.cities.filter((c) => c.lon >= lon0 && c.lon <= lon1 && c.lat >= lat0 && c.lat <= lat1).sort((x, y) => x.rank - y.rank);
-      for (const c of cities) {
-        if (shown >= 12) break;
-        const name = (lang === "de" && c.de) || c.en;
-        if (!name || skip.has(name.toLowerCase())) continue;
-        const x = toX(rad(c.lon));
-        const y = toY(mercY(c.lat));
-        const tw = ctx.measureText(name).width;
-        const box = { x: x - dot * 2, y: y - size * 0.7, w: tw + dot * 4, h: size * 1.4 };
-        if (overlaps(box, placed) || box.x < 0 || box.x + box.w > w || box.y < 0 || box.y + box.h > h) continue;
-        placed.push(box);
-        skip.add(name.toLowerCase());
-        shown++;
-        ctx.beginPath();
-        ctx.arc(x, y, dot, 0, Math.PI * 2);
-        ctx.fillStyle = MAP.city;
-        ctx.fill();
-        haloText(ctx, name, x + dot * 2, y, size, MAP.city);
-      }
-    }
   }
+  // Nahe Orte: Kacheln darüber (solange sie laden, bleibt die Grundkarte sichtbar)
+  if (useTiles(cam, style) && drawTiles(ctx, cam, w, h)) {
+    const size = Math.max(10, side * 0.018);
+    ctx.font = `${size}px ${style.font}`;
+    ctx.textAlign = "right";
+    ctx.textBaseline = "bottom";
+    const text = "© OpenStreetMap";
+    const tw = ctx.measureText(text).width;
+    ctx.fillStyle = "rgba(255,255,255,0.75)";
+    ctx.fillRect(w - tw - size * 0.8, h - size * 1.5, tw + size * 0.8, size * 1.5);
+    ctx.fillStyle = "#333";
+    ctx.fillText(text, w - size * 0.4, h - size * 0.25);
+    return true;
+  }
+  const d = data?.details;
+  if (!d) return false;
+  const degPerPx = (pr.lon1 - pr.lon0) / w;
+  // Je weiter herausgezoomt, desto nur die wichtigeren Gewässer und Städte
+  const maxRank = degPerPx > 0.05 ? 3 : degPerPx > 0.015 ? 5 : degPerPx > 0.005 ? 7 : 10;
+  ctx.fillStyle = MAP.sea;
+  ctx.strokeStyle = MAP.river;
+  ctx.lineWidth = Math.max(0.5, side * 0.0009);
+  for (const l of d.lakes) {
+    if (l.rank > maxRank || !inView(l.bbox, 0)) continue;
+    ctx.beginPath();
+    for (const poly of l.polygons) for (const ring of poly) path(ring, 0, true);
+    ctx.fill("evenodd");
+    ctx.stroke();
+  }
+  for (const r of d.rivers) {
+    if (r.rank > maxRank || !inView(r.bbox, 0)) continue;
+    ctx.lineWidth = Math.max(0.5, side * (0.003 - Math.min(r.rank, 10) * 0.0002));
+    ctx.beginPath();
+    for (const line of r.lines) path(line, 0, false);
+    ctx.stroke();
+  }
+  // Städte nur, wo Platz ist (die Stecknadeln haben Vorrang)
+  const size = side * 0.024;
+  const placed = [...keep];
+  ctx.font = `500 ${size}px ${style.font}`;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  const dot = size * 0.3;
+  let shown = 0;
+  const cities = d.cities.filter((c) => c.lon >= pr.lon0 && c.lon <= pr.lon1 && c.lat >= pr.lat0 && c.lat <= pr.lat1).sort((x, y) => x.rank - y.rank);
+  for (const c of cities) {
+    if (shown >= 12) break;
+    const name = (lang === "de" && c.de) || c.en;
+    if (!name || skip.has(name.toLowerCase())) continue;
+    const x = pr.x(rad(c.lon));
+    const y = pr.y(mercY(c.lat));
+    const tw = ctx.measureText(name).width;
+    const box = { x: x - dot * 2, y: y - size * 0.7, w: tw + dot * 4, h: size * 1.4 };
+    if (overlaps(box, placed) || box.x < 0 || box.x + box.w > w || box.y < 0 || box.y + box.h > h) continue;
+    placed.push(box);
+    skip.add(name.toLowerCase());
+    shown++;
+    ctx.beginPath();
+    ctx.arc(x, y, dot, 0, Math.PI * 2);
+    ctx.fillStyle = MAP.city;
+    ctx.fill();
+    haloText(ctx, name, x + dot * 2, y, size, MAP.city);
+  }
+  return false;
+}
 
-  // Route bis zur aktuellen Stelle, gestrichelt, mit Punkt an der Spitze
-  const steps = 64;
-  const head = Math.max(0, q);
-  ctx.beginPath();
-  for (let i = 0; i <= steps; i++) {
-    const s = (i / steps) * head;
-    const [x, y] = routeAt(a, b, s);
-    if (i === 0) ctx.moveTo(toX(x), toY(y));
-    else ctx.lineTo(toX(x), toY(y));
-  }
+/** Route als Linie mit hellem Rand, gestrichelt */
+function strokeRoute(ctx: CanvasRenderingContext2D, side: number) {
   ctx.lineWidth = side * 0.012;
   ctx.strokeStyle = "rgba(255,255,255,0.85)";
   ctx.setLineDash([]);
@@ -274,13 +452,40 @@ export function drawMapLeg(ctx: CanvasRenderingContext2D, w: number, h: number, 
   ctx.setLineDash([side * 0.018, side * 0.012]);
   ctx.stroke();
   ctx.setLineDash([]);
+}
+
+/**
+ * Zeichnet den Flug `leg` zum Zeitpunkt `p` (0…1 über die Dauer der Karte)
+ * in eine Fläche der Größe `w`×`h` (Pixel).
+ */
+export function drawMapLeg(ctx: CanvasRenderingContext2D, w: number, h: number, leg: MapLeg, p: number, data: MapData | null, style: MapStyle) {
+  const { cam, a, b, q } = legState(leg, p);
+  const pr = projector(cam, w, h);
+  const side = Math.min(w, h);
   const pinH = side * 0.07;
-  const [ax, ay] = [toX(a[0]), toY(a[1])];
+  const size = side * 0.042;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, w, h);
+  ctx.clip();
+  const keep = [a, b].map((pt) => ({ x: pr.x(pt[0]) - size * 3, y: pr.y(pt[1]) - size * 3, w: size * 12, h: size * 4 }));
+  drawBase(ctx, cam, w, h, data, style, [leg.from, leg.to], keep, new Set([leg.from.label, leg.to.label].map((s) => s.toLowerCase())));
+
+  // Route bis zur aktuellen Stelle, mit Punkt an der Spitze
+  const head = Math.max(0, q);
+  ctx.beginPath();
+  for (let i = 0; i <= 64; i++) {
+    const [x, y] = arcAt(a, b, (i / 64) * head);
+    if (i === 0) ctx.moveTo(pr.x(x), pr.y(y));
+    else ctx.lineTo(pr.x(x), pr.y(y));
+  }
+  strokeRoute(ctx, side);
+  const [ax, ay] = [pr.x(a[0]), pr.y(a[1])];
   drawPin(ctx, ax, ay, pinH * 0.75);
   if (q > 0 && q < 1) {
-    const [hx, hy] = routeAt(a, b, head);
+    const [hx, hy] = arcAt(a, b, head);
     ctx.beginPath();
-    ctx.arc(toX(hx), toY(hy), side * 0.011, 0, Math.PI * 2);
+    ctx.arc(pr.x(hx), pr.y(hy), side * 0.011, 0, Math.PI * 2);
     ctx.fillStyle = MAP.pin;
     ctx.fill();
     ctx.lineWidth = side * 0.004;
@@ -289,7 +494,7 @@ export function drawMapLeg(ctx: CanvasRenderingContext2D, w: number, h: number, 
   }
   // Ziel: Nadel fällt nach der Ankunft herein
   const arrive = smooth((p - (1 - HOLD_END)) / 0.1);
-  const [bx, by] = [toX(b[0]), toY(b[1])];
+  const [bx, by] = [pr.x(b[0]), pr.y(b[1])];
   if (arrive > 0) {
     ctx.save();
     ctx.globalAlpha = arrive;
@@ -297,8 +502,7 @@ export function drawMapLeg(ctx: CanvasRenderingContext2D, w: number, h: number, 
     ctx.restore();
   }
   // Namen: Start am Anfang, Ziel nach der Ankunft
-  const size = side * 0.042;
-  ctx.font = `600 ${size}px ${font}`;
+  ctx.font = `600 ${size}px ${style.font}`;
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
   const fromAlpha = 1 - smooth((p - HOLD_START) / 0.15);
@@ -313,6 +517,74 @@ export function drawMapLeg(ctx: CanvasRenderingContext2D, w: number, h: number, 
     ctx.globalAlpha = arrive;
     haloText(ctx, leg.to.label, bx + pinH * 0.5, by - pinH * 0.6, size, MAP.text);
     ctx.restore();
+  }
+  ctx.restore();
+}
+
+/**
+ * Karte mit allen Orten der Reise zum Zeitpunkt `p`: vom letzten Ort
+ * herauszoomen, die ganze Route nachzeichnen, die Stecknadeln setzen und
+ * zuletzt die Namen zeigen.
+ */
+export function drawOverview(ctx: CanvasRenderingContext2D, w: number, h: number, places: MapPlace[], p: number, data: MapData | null, style: MapStyle) {
+  const { cam, pts, route } = overviewState(places, p, w / h);
+  const pr = projector(cam, w, h);
+  const side = Math.min(w, h);
+  const pinH = side * 0.05;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, w, h);
+  ctx.clip();
+  const xy = pts.map((pt) => [pr.x(pt[0]), pr.y(pt[1])] as [number, number]);
+  const keep = xy.map(([x, y]) => ({ x: x - pinH * 0.5, y: y - pinH, w: pinH, h: pinH }));
+  drawBase(ctx, cam, w, h, data, style, places, keep, new Set(places.map((pl) => pl.label.toLowerCase())));
+  // Route: Bögen von Ort zu Ort, nacheinander
+  const legs = pts.length - 1;
+  const upto = route * legs;
+  ctx.beginPath();
+  for (let k = 0; k < legs && k < upto; k++) {
+    const part = Math.min(1, upto - k);
+    for (let i = 0; i <= 24; i++) {
+      const [x, y] = arcAt(pts[k], pts[k + 1], (i / 24) * part, 0.12);
+      if (i === 0 && k === 0) ctx.moveTo(pr.x(x), pr.y(y));
+      else ctx.lineTo(pr.x(x), pr.y(y));
+    }
+  }
+  strokeRoute(ctx, side * 0.8);
+  // Stecknadeln, sobald die Route sie erreicht; nahe beieinander nur eine
+  const pins: { x: number; y: number; label: string }[] = [];
+  xy.forEach(([x, y], k) => {
+    if (k > upto + 0.001 && route < 1) return;
+    const near = pins.find((q) => Math.hypot(q.x - x, q.y - y) < pinH * 0.7);
+    if (near) {
+      if (!near.label) near.label = places[k].label;
+      return;
+    }
+    pins.push({ x, y, label: places[k].label });
+  });
+  for (const pin of pins) drawPin(ctx, pin.x, pin.y, pinH);
+  // Namen zum Schluss, so viele wie ohne Überlappung Platz haben
+  const labels = smooth((p - 0.75) / 0.12);
+  if (labels > 0) {
+    const size = side * 0.03;
+    ctx.font = `600 ${size}px ${style.font}`;
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    ctx.globalAlpha = labels;
+    const placed: Box[] = pins.map((q) => ({ x: q.x - pinH * 0.4, y: q.y - pinH, w: pinH * 0.8, h: pinH }));
+    const seen = new Set<string>();
+    for (const pin of pins) {
+      if (!pin.label || seen.has(pin.label)) continue;
+      const tw = ctx.measureText(pin.label).width;
+      const cy = pin.y - pinH * 0.68;
+      const box = [pin.x + pinH * 0.45, pin.x - pinH * 0.45 - tw]
+        .map((bx) => ({ x: bx, y: cy - size * 0.6, w: tw, h: size * 1.2 }))
+        .find((bb) => bb.x >= 0 && bb.x + bb.w <= w && bb.y >= 0 && bb.y + bb.h <= h && !overlaps(bb, placed));
+      if (!box) continue;
+      placed.push(box);
+      seen.add(pin.label);
+      haloText(ctx, pin.label, box.x, cy, size, MAP.text);
+    }
   }
   ctx.restore();
 }

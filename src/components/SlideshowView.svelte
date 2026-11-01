@@ -5,7 +5,7 @@
   import { onDestroy } from "svelte";
   import { imageUrl, isTauri } from "../lib/api";
   import { focusPosition, type AlbumCandidate, type CaptionMode } from "../lib/album";
-  import { durationOf, formatDuration, frameAt, isContain, MAX_SECONDS, MIN_SECONDS, MAP_MIN_KM, photoDuration, slideAlternatives, slideSeconds, timeline, type Transition } from "../lib/slideshow";
+  import { PLACE_KM, coverId, durationOf, formatDuration, frameAt, isContain, MAX_SECONDS, MIN_SECONDS, MAP_MIN_KM, photoDuration, slideAlternatives, slideSeconds, timeline, type Transition } from "../lib/slideshow";
   import { slideshow } from "../lib/slideshow.svelte";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
@@ -78,10 +78,10 @@
       last = 0;
       return;
     }
-    // Gewähltes Foto samt Karte davor
+    // Gewähltes Foto samt Karte davor; ohne Auswahl der Anfang (Titelbild)
     const i = sel ?? 0;
-    const e = tl.photoEntry[i] ?? 0;
-    const e0 = mapBefore(i) ? e - 1 : e;
+    const e = sel == null ? 0 : (tl.photoEntry[i] ?? 0);
+    const e0 = sel != null && mapBefore(i) ? e - 1 : e;
     const start = tl.starts[e0] ?? 0;
     const dur = a.slides[i] ? tl.starts[e] - start + durationOf(tl, e) : 1;
     const dt = last ? (now - last) / 1000 : 0;
@@ -95,12 +95,16 @@
   const frame = $derived(frameAt(a, tl, previewTime, ASPECT, slideshow.byId));
   const secs = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
   // Mit Musik im Takt bzw. angepasst weicht die Dauer von der eingestellten ab
-  const musicTimed = $derived(!!a.music && (a.music.sync || a.music.fit));
+  const musicTimed = $derived(!!a.music && (a.music.sync || (a.music.fit && a.music.mode === "sequence")));
+  /** Foto des Titelbilds */
+  const cover = $derived(coverId(a, slideshow.byId));
+  /** Dauer ergibt sich aus der Länge der Musik */
+  const fitted = $derived(!!a.music?.fit && a.music.mode === "sequence");
 
   /** Browser-Vorschau: Musik über ein Dateifeld */
   let fileInput = $state<HTMLInputElement>();
   function chooseMusic() {
-    if (isTauri) slideshow.pickMusic();
+    if (isTauri) slideshow.addMusic();
     else fileInput?.click();
   }
 
@@ -267,7 +271,7 @@
           </span>
         </label>
         {#if musicTimed}
-          <p class="muted small">{a.music?.sync ? t("Mit Musik: Der Wechsel liegt auf dem Schlag, der der gewünschten Dauer am nächsten ist.") : t("Mit Musik: Die Dias ohne eigene Dauer teilen sich die Länge des Stücks.")}</p>
+          <p class="muted small">{a.music?.sync ? t("Mit Musik: Das Foto steht mindestens so lange und wechselt auf dem nächsten passenden Schlag.") : t("Mit Musik: Die Dias ohne eigene Dauer teilen sich die Länge des Stücks.")}</p>
         {/if}
         <label class="field">
           <span>{t("Text")}</span>
@@ -294,6 +298,12 @@
           />
           {t("Ganzes Foto zeigen (nicht beschneiden)")}
         </label>
+        {#if a.title.trim()}
+          <label class="check">
+            <input type="checkbox" checked={cover === selSlide.id} disabled={cover === selSlide.id} onchange={() => slideshow.setCover(selSlide.id)} />
+            {t("Als Titelbild verwenden")}
+          </label>
+        {/if}
         <div class="actions">
           <button class="btn quiet" disabled={sel === 0} onclick={() => slideshow.move(sel, sel - 1)}><Icon name="back" size={13} /> {t("Früher")}</button>
           <button class="btn quiet" disabled={sel >= a.slides.length - 1} onclick={() => slideshow.move(sel, sel + 1)}>{t("Später")} <Icon name="chevron" size={13} /></button>
@@ -324,28 +334,57 @@
           <span>{t("Titel")}</span>
           <input type="text" value={a.title} placeholder={t("ohne Titel")} oninput={(e) => slideshow.setTitle(e.currentTarget.value)} onkeydown={(e) => e.stopPropagation()} />
         </label>
-        <h4>{t("Musik")}</h4>
-        {#if a.music}
-          <div class="music">
-            <span class="name" title={a.music.path}>♪ {a.music.name}</span>
+        {#if a.title.trim() && cover !== undefined}
+          <div class="cover">
+            <img src={imageUrl("thumb", cover, lib.thumbVersion(cover))} alt="" />
             <span class="muted small">
-              {formatDuration(a.music.beats.duration)}{a.music.beats.bpm ? ` · ${t("{bpm} Schläge/min", { bpm: Math.round(a.music.beats.bpm) })}` : ""}
+              {a.cover !== undefined ? t("Titelbild: eigene Wahl") : t("Titelbild: das am besten bewertete Foto")}
+              {#if a.cover !== undefined}
+                <button class="btn quiet link" onclick={() => slideshow.setCover(null)}>{t("Wieder das beste Foto")}</button>
+              {/if}
             </span>
           </div>
+        {/if}
+        <h4>{t("Musik")}</h4>
+        {#if a.music}
+          <ol class="tracks">
+            {#each a.music.tracks as tr, i (tr.path)}
+              <li>
+                <span class="name" title={tr.path}>♪ {tr.name}</span>
+                <span class="muted small">{formatDuration(tr.beats.duration)}{tr.beats.bpm ? ` · ${t("{bpm} Schläge/min", { bpm: Math.round(tr.beats.bpm) })}` : ""}</span>
+                <span class="trackbtns">
+                  <button class="icon-btn" disabled={i === 0} title={t("Früher")} aria-label={t("Früher")} onclick={() => slideshow.moveTrack(i, -1)}><Icon name="back" size={12} /></button>
+                  <button class="icon-btn" disabled={i === a.music.tracks.length - 1} title={t("Später")} aria-label={t("Später")} onclick={() => slideshow.moveTrack(i, 1)}><Icon name="chevron" size={12} /></button>
+                  <button class="icon-btn" title={t("Entfernen")} aria-label={t("Entfernen")} onclick={() => slideshow.removeTrack(i)}><Icon name="trash" size={12} /></button>
+                </span>
+              </li>
+            {/each}
+          </ol>
+          {#if a.music.tracks.length > 1}
+            <div class="seg">
+              <button class="btn quiet" class:on={a.music.mode === "sequence"} onclick={() => slideshow.setMusic({ mode: "sequence" })}>{t("Hintereinander mit Überblenden")}</button>
+              <button class="btn quiet" class:on={a.music.mode === "place"} onclick={() => slideshow.setMusic({ mode: "place" })}>{t("Ein Lied pro Ort")}</button>
+            </div>
+            {#if a.music.mode === "place"}
+              <p class="muted small">{t("Jeder Ort (ab {km} km Entfernung) bekommt das nächste Lied, beim Ortswechsel wird übergeblendet. Gibt es mehr Orte als Lieder, beginnt die Liste von vorn.", { km: PLACE_KM })}</p>
+            {/if}
+          {/if}
           <label class="check">
-            <input type="checkbox" checked={a.music.sync} disabled={!a.music.beats.bpm} onchange={(e) => slideshow.setMusic({ sync: e.currentTarget.checked })} />
+            <input type="checkbox" checked={a.music.sync} disabled={!a.music.tracks.some((x) => x.beats.bpm)} onchange={(e) => slideshow.setMusic({ sync: e.currentTarget.checked })} />
             {t("Bildwechsel im Takt der Musik")}
           </label>
-          <label class="check">
-            <input type="checkbox" checked={a.music.fit} onchange={(e) => slideshow.setMusic({ fit: e.currentTarget.checked })} />
-            {t("Diashow endet mit der Musik")}
-          </label>
+          {#if a.music.mode === "sequence"}
+            <label class="check">
+              <input type="checkbox" checked={a.music.fit} onchange={(e) => slideshow.setMusic({ fit: e.currentTarget.checked })} />
+              {t("Diashow endet mit der Musik")}
+            </label>
+          {/if}
           <label class="field">
             <span>{t("Lautstärke")}</span>
             <input type="range" min="0" max="1" step="0.05" value={a.music.volume} oninput={(e) => slideshow.setMusic({ volume: Number(e.currentTarget.value) })} />
           </label>
           <div class="actions">
-            <button class="btn quiet" disabled={slideshow.musicBusy} onclick={chooseMusic}>{t("Andere Musik …")}</button>
+            <button class="btn quiet" disabled={slideshow.musicBusy} onclick={chooseMusic}><Icon name="plus" size={13} /> {t("Lied hinzufügen …")}</button>
             <button class="btn quiet danger" onclick={() => slideshow.removeMusic()}><Icon name="trash" size={13} /> {t("Ohne Musik")}</button>
           </div>
         {:else}
@@ -363,19 +402,20 @@
             class="hidden"
             type="file"
             accept="audio/*"
+            multiple
             onchange={(e) => {
-              const f = e.currentTarget.files?.[0];
-              if (f) slideshow.pickMusic(f);
+              const files = [...(e.currentTarget.files ?? [])];
+              if (files.length) slideshow.addMusic(files);
               e.currentTarget.value = "";
             }}
           />
         {/if}
         <h4>{t("Bilder")}</h4>
         <label class="field">
-          <span>{a.music?.fit ? t("Dauer je Foto (ergibt sich aus der Musik)") : t("Dauer je Foto")}</span>
+          <span>{fitted ? t("Dauer je Foto (ergibt sich aus der Musik)") : a.music?.sync ? t("Dauer je Foto (mindestens, bis zum nächsten Schlag)") : t("Dauer je Foto")}</span>
           <span class="inline">
-            <input type="range" min={MIN_SECONDS} max={Math.min(15, MAX_SECONDS)} step="0.5" value={s.seconds} disabled={!!a.music?.fit} oninput={(e) => slideshow.setSeconds(Number(e.currentTarget.value))} />
-            <span class="muted small">{a.music?.fit && a.slides.length ? `≈ ${secs(tl.total / a.slides.length)}` : secs(s.seconds)} s</span>
+            <input type="range" min={MIN_SECONDS} max={Math.min(15, MAX_SECONDS)} step="0.5" value={s.seconds} disabled={fitted} oninput={(e) => slideshow.setSeconds(Number(e.currentTarget.value))} />
+            <span class="muted small">{fitted && a.slides.length ? `≈ ${secs(tl.total / a.slides.length)}` : secs(s.seconds)} s</span>
           </span>
         </label>
         <label class="field">
@@ -393,6 +433,10 @@
         <label class="check" title={t("Wenn der nächste Aufnahmeort mehr als {km} km entfernt ist", { km: MAP_MIN_KM })}>
           <input type="checkbox" checked={s.maps} onchange={(e) => slideshow.setMaps(e.currentTarget.checked)} />
           {t("Animierte Karte beim Ortswechsel")}
+        </label>
+        <label class="check">
+          <input type="checkbox" checked={s.endMap} onchange={(e) => slideshow.setEndMap(e.currentTarget.checked)} />
+          {t("Zum Schluss Karte mit allen Orten")}
         </label>
         <label class="field">
           <span>{t("Datum und Ort")}</span>
@@ -612,16 +656,53 @@
   .link {
     align-self: flex-start;
   }
-  .music {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+  .tracks {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 6px;
+  }
+  .tracks li {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0 6px;
     min-width: 0;
   }
-  .music .name {
+  .tracks .name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .trackbtns {
+    grid-row: span 2;
+    display: flex;
+    align-items: center;
+  }
+  .seg {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .seg .on {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .cover {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .cover img {
+    width: 64px;
+    height: 36px;
+    object-fit: cover;
+    border-radius: var(--radius-s);
+  }
+  .cover .small {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
   }
   .hidden {
     display: none;

@@ -2,16 +2,19 @@
 // Bearbeiten in der Zeitleiste, Abspielen. Die Diashow eines Bereichs bleibt im
 // Speicher der WebView erhalten und lässt sich später weiterbearbeiten.
 
-import { api, isTauri, listen, pickMusicFile, pickVideoTarget, type Scope } from "./api";
+import { api, isTauri, listen, pickMusicFiles, pickVideoTarget, type Scope } from "./api";
 import { renderVideo, type VideoProgress, type VideoSize } from "./slideshowVideo";
 import { downmix, type BeatInfo } from "./beats";
-import type { CaptionMode } from "./album";
+import { fontFamily, type CaptionMode } from "./album";
 import {
   autoCaptions,
   buildSlideshow,
   clampSeconds,
   slideshowDefaults,
+  upgradeSlideshow,
   validSlideshow,
+  type MusicMode,
+  type MusicTrack,
   type Slide,
   type SlideshowSettings,
   type SlideshowMusic,
@@ -72,14 +75,13 @@ class SlideshowStore {
   /** Abspielen läuft, ab diesem Dia */
   playing = $state<{ from: number } | null>(null);
 
-  /** Abspielbare Musik (Blob-URL) zur Diashow im Speicher */
-  musicUrl = $state<string | null>(null);
+  /** Abspielbare Lieder (Pfad → Blob-URL) der Diashow im Speicher */
+  musicUrls = $state<Record<string, string>>({});
   /** Musik wird geladen bzw. analysiert */
   musicBusy = $state(false);
   /** Video wird gespeichert */
   exporting = $state<VideoProgress | null>(null);
   #exportAbort: AbortController | null = null;
-  #musicFor: string | null = null;
 
   byId = $derived(new Map<number, AlbumCandidate>((this.state?.candidates ?? []).map((c) => [c.id, c])));
 
@@ -109,13 +111,13 @@ class SlideshowStore {
   /** Diashow des Bereichs öffnen; gibt es noch keine, die Einstellungen zeigen. */
   open(scope: Scope, title: string) {
     this.#listen();
-    const saved = load<unknown>(showKey(scope));
+    const saved = upgradeSlideshow(load<unknown>(showKey(scope)));
     if (validSlideshow(saved)) {
       saved.settings = slideshowDefaults(saved.settings);
       this.state = saved;
       this.selection = null;
       lib.view = "slideshow";
-      this.#dropMusicUrl();
+      this.#dropMusicUrls();
       this.ensureMusic();
     } else this.dialog = { scope, title };
   }
@@ -137,7 +139,7 @@ class SlideshowStore {
       const music = this.state && JSON.stringify(this.state.scope) === JSON.stringify(scope) ? this.state.music : undefined;
       this.state = buildSlideshow(settings, scope, title, s);
       if (music) this.state.music = music;
-      else this.#dropMusicUrl();
+      else this.#dropMusicUrls();
       this.selection = null;
       this.#save();
       lib.view = "slideshow";
@@ -175,7 +177,7 @@ class SlideshowStore {
       this.#markProject(this.state.scope, false);
     }
     this.state = null;
-    this.#dropMusicUrl();
+    this.#dropMusicUrls();
     this.close();
   }
 
@@ -304,74 +306,89 @@ class SlideshowStore {
 
   // --- Musik ---------------------------------------------------------------------
 
-  #dropMusicUrl() {
-    if (this.musicUrl) URL.revokeObjectURL(this.musicUrl);
-    this.musicUrl = null;
-    this.#musicFor = null;
+  #dropMusicUrls(keep: string[] = []) {
+    const next: Record<string, string> = {};
+    for (const [path, url] of Object.entries(this.musicUrls)) {
+      if (keep.includes(path)) next[path] = url;
+      else URL.revokeObjectURL(url);
+    }
+    this.musicUrls = next;
   }
 
-  /** Musik der Diashow laden (App: aus der Datei), falls noch nicht geschehen */
+  /** Lieder der Diashow laden (App: aus den Dateien), soweit noch nicht geschehen */
   async ensureMusic() {
     const m = this.state?.music;
-    if (!m || !isTauri || (this.musicUrl && this.#musicFor === m.path)) return;
-    try {
-      const blob = await api.slideshowMusic(m.path);
-      if (this.state?.music?.path !== m.path) return;
-      this.#dropMusicUrl();
-      this.musicUrl = URL.createObjectURL(blob);
-      this.#musicFor = m.path;
-    } catch (e) {
-      lib.notify(t("Die Musik „{name}“ ließ sich nicht laden: {error}", { name: m.name, error: String(e) }), "error");
+    if (!m || !isTauri) return;
+    for (const tr of m.tracks) {
+      if (this.musicUrls[tr.path]) continue;
+      try {
+        const blob = await api.slideshowMusic(tr.path);
+        if (!this.state?.music?.tracks.some((x) => x.path === tr.path)) continue;
+        this.musicUrls = { ...this.musicUrls, [tr.path]: URL.createObjectURL(blob) };
+      } catch (e) {
+        lib.notify(t("Die Musik „{name}“ ließ sich nicht laden: {error}", { name: tr.name, error: String(e) }), "error");
+      }
     }
   }
 
-  /** Musik wählen: in der App per Dateidialog; im Browser übergibt die Ansicht die Datei */
-  async pickMusic(file?: File) {
+  /** Lieder hinzufügen: in der App per Dateidialog (mehrere), im Browser übergibt die Ansicht die Dateien */
+  async addMusic(files?: File[]) {
     if (!this.state || this.musicBusy) return;
-    let blob: Blob;
-    let path: string;
-    let name: string;
-    if (file) {
-      blob = file;
-      path = name = file.name;
-    } else {
-      const p = await pickMusicFile(t("Musik für die Diashow wählen"));
-      if (!p) return;
-      path = p;
-      name = p.split(/[\\/]/).pop() ?? p;
-      try {
-        blob = await api.slideshowMusic(p);
-      } catch (e) {
-        lib.notify(String(e), "error");
-        return;
-      }
+    let items: { path: string; name: string; blob: () => Promise<Blob> }[];
+    if (files) items = files.map((f) => ({ path: f.name, name: f.name, blob: async () => f }));
+    else {
+      const paths = await pickMusicFiles(t("Musik für die Diashow wählen"));
+      if (!paths.length) return;
+      items = paths.map((p) => ({ path: p, name: p.split(/[\\/]/).pop() ?? p, blob: () => api.slideshowMusic(p) }));
     }
     this.musicBusy = true;
     try {
-      const beats = await analyzeMusic(blob);
-      if (!this.state) return;
-      const prev = this.state.music;
-      const music: SlideshowMusic = { path, name, beats, sync: prev?.sync ?? true, fit: prev?.fit ?? true, volume: prev?.volume ?? 0.8 };
-      this.#dropMusicUrl();
-      this.musicUrl = URL.createObjectURL(blob);
-      this.#musicFor = path;
-      this.#edit((a) => {
-        a.music = music;
-      });
-      if (!beats.bpm) lib.notify(t("In dieser Musik war kein gleichmäßiger Takt zu erkennen – die Bilder wechseln deshalb nach der eingestellten Dauer."));
-    } catch (e) {
-      lib.notify(t("Die Musik ließ sich nicht lesen: {error}", { error: String(e) }), "error");
+      for (const it of items) {
+        if (this.state?.music?.tracks.some((x) => x.path === it.path)) continue;
+        try {
+          const blob = await it.blob();
+          const beats = await analyzeMusic(blob);
+          if (!this.state) return;
+          const track: MusicTrack = { path: it.path, name: it.name, beats };
+          this.musicUrls = { ...this.musicUrls, [it.path]: URL.createObjectURL(blob) };
+          this.#edit((a) => {
+            if (a.music) a.music.tracks.push(track);
+            else a.music = { tracks: [track], mode: "sequence", sync: true, fit: true, volume: 0.8 };
+          });
+          if (!beats.bpm) lib.notify(t("In „{name}“ war kein gleichmäßiger Takt zu erkennen – dort wechseln die Bilder nach der eingestellten Dauer.", { name: it.name }));
+        } catch (e) {
+          lib.notify(t("Die Musik „{name}“ ließ sich nicht lesen: {error}", { name: it.name, error: String(e) }), "error");
+        }
+      }
     } finally {
       this.musicBusy = false;
     }
   }
 
+  removeTrack(index: number) {
+    this.#edit((a) => {
+      if (!a.music) return;
+      a.music.tracks.splice(index, 1);
+      if (!a.music.tracks.length) delete a.music;
+    });
+    this.#dropMusicUrls(this.state?.music?.tracks.map((x) => x.path) ?? []);
+  }
+
+  moveTrack(index: number, dir: -1 | 1) {
+    this.#edit((a) => {
+      const tr = a.music?.tracks;
+      const to = index + dir;
+      if (!tr || to < 0 || to >= tr.length) return;
+      [tr[index], tr[to]] = [tr[to], tr[index]];
+    });
+  }
+
   removeMusic() {
-    this.#dropMusicUrl();
+    this.#dropMusicUrls();
     this.#edit((a) => delete a.music);
   }
 
-  setMusic(patch: Partial<Pick<SlideshowMusic, "sync" | "fit" | "volume">>) {
+  setMusic(patch: Partial<{ sync: boolean; fit: boolean; volume: number; mode: MusicMode }>) {
     this.#edit((a) => {
       if (a.music) Object.assign(a.music, patch);
     });
@@ -388,11 +405,14 @@ class SlideshowStore {
       path = await pickVideoTarget(t("Diashow als Video speichern"), name);
       if (!path) return;
     }
-    // Musik (in der App aus der Datei, in der Browser-Vorschau die gewählte)
-    let music: Blob | null = null;
+    // Lieder (in der App aus den Dateien, in der Browser-Vorschau die gewählten)
+    const music: (Blob | null)[] = [];
     if (a.music) {
       await this.ensureMusic();
-      if (this.musicUrl) music = await fetch(this.musicUrl).then((r) => r.blob());
+      for (const tr of a.music.tracks) {
+        const url = this.musicUrls[tr.path];
+        music.push(url ? await fetch(url).then((r) => r.blob()) : null);
+      }
     }
     const abort = new AbortController();
     this.#exportAbort = abort;
@@ -412,6 +432,7 @@ class SlideshowStore {
         (id) => lib.thumbVersion(id),
         music,
         size,
+        { tiles: lib.mapEnabled, font: fontFamily("sans") },
         async (c) => {
           if (path) await api.slideshowVideoWrite(c.data, c.position);
           else parts.push({ data: c.data.slice(), position: c.position });
@@ -441,6 +462,18 @@ class SlideshowStore {
 
   setTitle(title: string) {
     this.#edit((a) => (a.title = title));
+  }
+
+  /** Foto für das Titelbild (`null`: das am besten bewertete) */
+  setCover(id: number | null) {
+    this.#edit((a) => {
+      if (id === null) delete a.cover;
+      else a.cover = id;
+    });
+  }
+
+  setEndMap(on: boolean) {
+    this.#edit((a) => (a.settings.endMap = on));
   }
 
   setSeconds(seconds: number) {

@@ -283,8 +283,8 @@ export function detectBeats(samples: Float32Array, rate: number): BeatInfo {
   return { duration, bpm: (fps * 60) / period, beats, strength, bar };
 }
 
-/** Ein Schlag der Musik, über das Stückende hinaus fortgesetzt */
-interface Beat {
+/** Ein Schlag in der Zeit der Diashow */
+export interface Beat {
   t: number;
   strength: number;
   /** Taktanfang */
@@ -292,35 +292,43 @@ interface Beat {
 }
 
 /**
- * Diashow: Legt die Bildwechsel auf Schläge. `d`: gewünschte Dauer je Dia.
- * Für jedes Dia wird der Schlag nahe der gewünschten Dauer gesucht, starke
- * Schläge und Taktanfänge bevorzugt, aber nicht vor `minSeconds`. Läuft die
- * Diashow länger als das Stück, beginnt die Musik von vorn – die Schläge auch.
+ * Schläge eines Stücks in der Zeit der Diashow: Das Stück beginnt bei `start`
+ * und wiederholt sich, bis `end` erreicht ist. Nur Schläge in `[from, to)`.
  */
-export function snapToBeats(d: number[], info: BeatInfo, minSeconds: number): { starts: number[]; total: number } {
-  const need = d.reduce((x, y) => x + y, 0) * 1.6 + 10;
-  const beats: Beat[] = [];
-  for (let k = 0; info.duration > 0 && k * info.duration <= need; k++) {
-    const off = k * info.duration;
-    info.beats.forEach((t, i) => beats.push({ t: t + off, strength: info.strength[i] ?? 0.5, down: (((i - info.bar) % 4) + 4) % 4 === 0 }));
+export function beatGrid(info: BeatInfo, start: number, end: number, from = start, to = end): Beat[] {
+  const out: Beat[] = [];
+  if (!(info.duration > 0) || !info.beats.length) return out;
+  for (let off = start; off < end; off += info.duration) {
+    info.beats.forEach((b, i) => {
+      const t = off + b;
+      if (t >= from && t < to && t < end) out.push({ t, strength: info.strength[i] ?? 0.5, down: (((i - info.bar) % 4) + 4) % 4 === 0 });
+    });
   }
+  return out;
+}
+
+/**
+ * Diashow: Legt die Bildwechsel auf Schläge. `d`: gewünschte Dauer je
+ * Abschnitt, `t0`: Beginn des ersten. Jeder Abschnitt dauert mindestens so
+ * lange wie gewünscht und endet auf dem nächsten passenden Schlag danach –
+ * starke Schläge und Taktanfänge bevorzugt, aber höchstens etwa die Hälfte
+ * länger. `beats` aufsteigend sortiert.
+ */
+export function snapToBeats(d: number[], beats: Beat[], t0 = 0): { starts: number[]; total: number } {
   const starts: number[] = [];
-  let prev = 0;
-  let ideal = 0;
+  let prev = t0;
   let j = 0;
   for (let i = 0; i < d.length; i++) {
     starts.push(prev);
-    // Ziel aus dem ungerundeten Zeitplan: Abweichungen summieren sich nicht auf
-    ideal += d[i];
-    const want = Math.min(prev + d[i] * 1.4, Math.max(prev + d[i] * 0.7, ideal));
-    const lo = prev + Math.max(minSeconds, d[i] * 0.6);
+    const want = prev + d[i];
     const hi = prev + d[i] * 1.5;
-    while (j < beats.length && beats[j].t < lo) j++;
+    // Winzige Toleranz: ein Schlag eine Spur vor der Mindestdauer zählt mit
+    while (j < beats.length && beats[j].t < want - 0.02) j++;
     let best = want;
     let bestCost = Infinity;
     for (let k = j; k < beats.length && beats[k].t <= hi; k++) {
       const b = beats[k];
-      const cost = Math.abs(b.t - want) / d[i] - 0.3 * b.strength - (b.down ? 0.2 : 0);
+      const cost = (b.t - want) / d[i] - 0.3 * b.strength - (b.down ? 0.2 : 0);
       if (cost < bestCost) {
         bestCost = cost;
         best = b.t;

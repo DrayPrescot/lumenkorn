@@ -1,16 +1,17 @@
 // Diashow: Datenmodell, Zeitleiste und Bewegung (Ken Burns).
 //
 // Die Auswahl der Fotos kommt aus demselben Backend wie beim Fotoalbum
-// (album/select.rs). Hier wird daraus eine Folge von Dias mit Dauer,
-// Übergängen und Beschriftung, bei einem Ortswechsel mit einer Karte
-// dazwischen. Was zu einem Zeitpunkt zu sehen ist, berechnet `frameAt` allein
-// aus der Zeit – so laufen Vorschau, Abspielen, Musik und Videoexport auf
-// derselben Zeitleiste.
+// (album/select.rs). Hier wird daraus eine Folge von Abschnitten: Titelbild,
+// Fotos mit Dauer, Übergängen und Beschriftung, bei einem Ortswechsel eine
+// Karte dazwischen, am Ende auf Wunsch die Karte der ganzen Reise. Was zu
+// einem Zeitpunkt zu sehen und zu hören ist, berechnen `frameAt` und die
+// Audio-Stücke der Zeitleiste allein aus der Zeit – so laufen Vorschau,
+// Abspielen und Videoexport auf derselben Zeitleiste.
 
 import type { Scope } from "./api";
 import { focusPosition, shortPlace, type AlbumCandidate, type AlbumSuggestion, type CaptionMode, type PhotoSource, type ThemeKey } from "./album";
-import { snapToBeats, type BeatInfo } from "./beats";
-import { distanceKm, type MapLeg } from "./slideMap";
+import { beatGrid, snapToBeats, type Beat, type BeatInfo } from "./beats";
+import { distanceKm, type MapLeg, type MapPlace } from "./slideMap";
 import { locale } from "./i18n";
 
 export type Transition = "fade" | "slide" | "none";
@@ -27,8 +28,10 @@ export interface SlideshowSettings {
   kenBurns: boolean;
   /** Datum und Ort einblenden, wo ein neuer Tag bzw. Ort beginnt */
   captions: CaptionMode;
-  /** Animierte Karte, wenn sich der Aufnahmeort deutlich ändert */
+  /** Animierte Karte, wenn sich der Aufnahmeort ändert */
   maps: boolean;
+  /** Zum Schluss die Karte mit allen Orten der Reise */
+  endMap: boolean;
 }
 
 export const DEFAULT_SLIDESHOW: SlideshowSettings = {
@@ -41,11 +44,12 @@ export const DEFAULT_SLIDESHOW: SlideshowSettings = {
   kenBurns: true,
   captions: "both",
   maps: true,
+  endMap: true,
 };
 
 export const MIN_SECONDS = 1.5;
 export const MAX_SECONDS = 30;
-/** Dauer eines Übergangs (s), höchstens die Hälfte des kürzeren Dias */
+/** Dauer eines Übergangs (s), höchstens die Hälfte des kürzeren Abschnitts */
 export const TRANSITION_S = 1;
 /** Ein- und Ausblenden am Anfang und Ende (s) */
 const EDGE_FADE_S = 1;
@@ -55,8 +59,14 @@ const CONTAIN_BELOW = 0.8;
 const ZOOM = 0.12;
 /** Dauer der Karte beim Ortswechsel (s) */
 export const MAP_SECONDS = 4;
+/** Dauer der Karte mit allen Orten am Ende (s) */
+export const OVERVIEW_SECONDS = 7;
 /** Ab dieser Entfernung zum vorigen Aufnahmeort kommt eine Karte (km) */
-export const MAP_MIN_KM = 50;
+export const MAP_MIN_KM = 5;
+/** „Ein Lied pro Ort“: neuer Ort ab dieser Entfernung vom ersten Foto des bisherigen (km) */
+export const PLACE_KM = 20;
+/** Überblenden zwischen zwei Liedern (s) */
+export const CROSSFADE_S = 3;
 
 export interface Slide {
   id: number;
@@ -72,16 +82,25 @@ export interface Slide {
   map?: boolean;
 }
 
-/** Hintergrundmusik */
-export interface SlideshowMusic {
+/** Ein Lied */
+export interface MusicTrack {
   /** Pfad der Datei (in der Browser-Vorschau nur der Name) */
   path: string;
   name: string;
   /** Erkannter Takt (gespeichert, damit nicht bei jedem Öffnen neu gerechnet wird) */
   beats: BeatInfo;
+}
+
+/** Hintereinander mit Überblenden oder ein Lied pro Ort */
+export type MusicMode = "sequence" | "place";
+
+/** Hintergrundmusik */
+export interface SlideshowMusic {
+  tracks: MusicTrack[];
+  mode: MusicMode;
   /** Bildwechsel auf den Takt legen */
   sync: boolean;
-  /** Dauer der Dias so wählen, dass die Diashow mit der Musik endet */
+  /** Dauer der Fotos so wählen, dass die Diashow mit der Musik endet (nur hintereinander) */
   fit: boolean;
   /** Lautstärke 0…1 */
   volume: number;
@@ -91,8 +110,10 @@ export interface SlideshowState {
   version: 1;
   settings: SlideshowSettings;
   scope: Scope;
-  /** Titel, groß über dem ersten Dia (leer: ohne) */
+  /** Titel über dem Titelbild (leer: ohne Titelbild) */
   title: string;
+  /** Foto für das Titelbild; ohne Angabe das am besten bewertete */
+  cover?: number;
   candidates: AlbumCandidate[];
   slides: Slide[];
   music?: SlideshowMusic;
@@ -110,6 +131,25 @@ export function slideshowDefaults(s: Partial<SlideshowSettings>): SlideshowSetti
 
 export function clampSeconds(v: number): number {
   return Number.isFinite(v) ? Math.min(MAX_SECONDS, Math.max(MIN_SECONDS, v)) : DEFAULT_SLIDESHOW.seconds;
+}
+
+/**
+ * Ältere gespeicherte Fassungen anheben: Musik war ein einzelnes Lied
+ * (`path`, `name`, `beats` direkt in `music`).
+ */
+export function upgradeSlideshow(x: unknown): unknown {
+  const a = x as { music?: Record<string, unknown> } | null;
+  const m = a?.music;
+  if (m && !Array.isArray(m.tracks) && typeof m.path === "string") {
+    a.music = {
+      tracks: [{ path: m.path, name: m.name, beats: m.beats }],
+      mode: "sequence",
+      sync: m.sync ?? true,
+      fit: m.fit ?? true,
+      volume: m.volume ?? 0.8,
+    };
+  }
+  return x;
 }
 
 // --- Erstellen ---------------------------------------------------------------
@@ -177,12 +217,25 @@ export function slideAlternatives(a: SlideshowState, ref: { group?: number; even
     .slice(0, limit);
 }
 
+/** Foto des Titelbilds: das gewählte, sonst das am besten bewertete der Diashow */
+export function coverId(a: SlideshowState, byId: Map<number, AlbumCandidate>): number | undefined {
+  if (a.cover !== undefined && byId.has(a.cover)) return a.cover;
+  let best: AlbumCandidate | undefined;
+  for (const s of a.slides) {
+    const c = byId.get(s.id);
+    if (c && (!best || c.score > best.score)) best = c;
+  }
+  return best?.id;
+}
+
 // --- Zeitleiste ----------------------------------------------------------------
 
 /** Eingestellte Dauer eines Dias (ohne Anpassung an die Musik) */
 export function slideSeconds(a: SlideshowState, s: Slide): number {
   return clampSeconds(s.seconds ?? a.settings.seconds);
 }
+
+const placeOf = (c: AlbumCandidate): MapPlace => ({ lat: c.lat!, lon: c.lon!, label: shortPlace(c.place) });
 
 /** Flug vom vorigen Aufnahmeort zum Ort des Dias (Index → Flug), soweit eine Karte kommt */
 export function mapLegs(a: SlideshowState, byId: Map<number, AlbumCandidate>): Map<number, MapLeg> {
@@ -192,53 +245,82 @@ export function mapLegs(a: SlideshowState, byId: Map<number, AlbumCandidate>): M
     const c = byId.get(s.id);
     if (c?.lat == null || c.lon == null) return;
     if (prev) {
-      const from = { lat: prev.lat!, lon: prev.lon!, label: shortPlace(prev.place) };
-      const to = { lat: c.lat, lon: c.lon, label: shortPlace(c.place) };
+      const from = placeOf(prev);
+      const to = placeOf(c);
       const km = distanceKm(from, to);
       const want = s.map ?? (a.settings.maps && km >= MAP_MIN_KM);
       // Am selben Ort ergibt ein Flug keinen Sinn, auch wenn eingeschaltet
-      if (want && km >= 1) legs.set(j, { from, to });
+      if (want && km >= 0.5) legs.set(j, { from, to });
     }
     prev = c;
   });
   return legs;
 }
 
-/** Abschnitt der Zeitleiste: ein Foto oder die Karte vor einem Foto */
-export type Entry = { kind: "photo"; slide: number } | { kind: "map"; slide: number; leg: MapLeg };
+/** Alle Aufnahmeorte in Reihenfolge (direkt aufeinanderfolgende nahe Orte einmal) */
+export function routePlaces(a: SlideshowState, byId: Map<number, AlbumCandidate>): MapPlace[] {
+  const out: MapPlace[] = [];
+  for (const s of a.slides) {
+    const c = byId.get(s.id);
+    if (c?.lat == null || c.lon == null) continue;
+    const p = placeOf(c);
+    const last = out[out.length - 1];
+    if (last && distanceKm(last, p) < 1) {
+      if (!last.label) last.label = p.label;
+      continue;
+    }
+    out.push(p);
+  }
+  return out;
+}
+
+/** Abschnitt der Zeitleiste. `slide`: zugehöriges Foto (für Zähler und Auswahl). */
+export type Entry =
+  | { kind: "title"; slide: number; id: number }
+  | { kind: "photo"; slide: number }
+  | { kind: "map"; slide: number; leg: MapLeg }
+  | { kind: "overview"; slide: number; places: MapPlace[] };
 
 /** Abschnitte in Reihenfolge */
 export function entriesOf(a: SlideshowState, byId: Map<number, AlbumCandidate>): Entry[] {
-  const legs = mapLegs(a, byId);
   const out: Entry[] = [];
+  if (!a.slides.length) return out;
+  const cover = coverId(a, byId);
+  if (a.title.trim() && cover !== undefined) out.push({ kind: "title", slide: 0, id: cover });
+  const legs = mapLegs(a, byId);
   a.slides.forEach((_, j) => {
     const leg = legs.get(j);
     if (leg) out.push({ kind: "map", slide: j, leg });
     out.push({ kind: "photo", slide: j });
   });
+  if (a.settings.endMap) {
+    const places = routePlaces(a, byId);
+    if (places.length >= 2) out.push({ kind: "overview", slide: a.slides.length - 1, places });
+  }
   return out;
 }
 
-/**
- * Gewünschte Dauer je Abschnitt: Karten fest, Fotos mit eigener oder
- * eingestellter Dauer; mit „an die Musik anpassen“ teilen sich die Fotos ohne
- * eigene Dauer die übrige Länge des Stücks.
- */
-export function baseDurations(a: SlideshowState, entries: Entry[]): number[] {
-  let def = a.settings.seconds;
-  const m = a.music;
-  if (m?.fit && m.beats.duration > 0) {
-    let fixed = 0;
-    let rest = 0;
-    for (const e of entries) {
-      const s = a.slides[e.slide];
-      if (e.kind === "map") fixed += MAP_SECONDS;
-      else if (s.seconds !== undefined) fixed += clampSeconds(s.seconds);
-      else rest++;
-    }
-    if (rest) def = (m.beats.duration - fixed) / rest;
-  }
-  return entries.map((e) => (e.kind === "map" ? MAP_SECONDS : clampSeconds(a.slides[e.slide].seconds ?? def)));
+/** Gesamtlänge der Lieder hintereinander (mit Überblenden) */
+function playlistSeconds(m: SlideshowMusic): number {
+  const ds = m.tracks.map((t) => t.beats.duration).filter((d) => d > 0);
+  return ds.reduce((s, d) => s + d, 0) - Math.max(0, ds.length - 1) * CROSSFADE_S;
+}
+
+/** Gewünschte Dauer je Abschnitt; `def`: Dauer der Fotos ohne eigene */
+function durationsFor(a: SlideshowState, entries: Entry[], def: number): number[] {
+  return entries.map((e) =>
+    e.kind === "map" ? MAP_SECONDS : e.kind === "overview" ? OVERVIEW_SECONDS : e.kind === "title" ? clampSeconds(def) : clampSeconds(a.slides[e.slide].seconds ?? def),
+  );
+}
+
+/** Ein Stück Musik in der Zeitleiste: Lied `track` ab `offset`, von `start` bis `end` (s) */
+export interface AudioClip {
+  track: number;
+  start: number;
+  end: number;
+  offset: number;
+  fadeIn: number;
+  fadeOut: number;
 }
 
 export interface Timeline {
@@ -250,11 +332,68 @@ export interface Timeline {
   transition: number;
   /** Abschnitt jedes Fotos */
   photoEntry: number[];
+  /** Musik: welche Lieder wann laufen */
+  clips: AudioClip[];
+}
+
+/** Lieder hintereinander mit Überblenden, wiederholt bis `total` */
+function sequenceClips(m: SlideshowMusic, total: number): AudioClip[] {
+  const tracks = m.tracks.map((t, i) => ({ i, d: t.beats.duration })).filter((t) => t.d > 0);
+  const clips: AudioClip[] = [];
+  if (!tracks.length) return clips;
+  let t = 0;
+  for (let k = 0; t < total && k < 10000; k++) {
+    const { i, d } = tracks[k % tracks.length];
+    const first = k === 0;
+    clips.push({ track: i, start: t, end: t + d, offset: 0, fadeIn: first ? 0 : CROSSFADE_S, fadeOut: CROSSFADE_S });
+    t += d - CROSSFADE_S;
+  }
+  return clips;
+}
+
+/** Schläge aller Lieder hintereinander; in Überblendungen gilt das neue Lied ab der Mitte */
+function sequenceBeats(m: SlideshowMusic, clips: AudioClip[]): Beat[] {
+  return clips.flatMap((c, k) => {
+    const from = k > 0 ? c.start + CROSSFADE_S / 2 : c.start;
+    const to = k + 1 < clips.length ? c.end - CROSSFADE_S / 2 : c.end;
+    return beatGrid(m.tracks[c.track].beats, c.start, c.end, from, to);
+  });
+}
+
+function plainStarts(d: number[], t0 = 0): { starts: number[]; total: number } {
+  const starts: number[] = [];
+  let t = t0;
+  for (const x of d) {
+    starts.push(t);
+    t += x;
+  }
+  return { starts, total: t };
 }
 
 /**
- * Beginn jedes Abschnitts und Gesamtdauer. Der Übergang liegt mittig auf der
- * Grenze zwischen zwei Abschnitten – mit Musik genau auf dem Schlag.
+ * „Ein Lied pro Ort“: Abschnitte, bei denen ein neuer Ort beginnt (die Karte
+ * davor gehört schon zum neuen Ort).
+ */
+function placeBreaks(a: SlideshowState, entries: Entry[], byId: Map<number, AlbumCandidate>): Set<number> {
+  const breaks = new Set<number>();
+  let anchor: AlbumCandidate | undefined;
+  entries.forEach((e, i) => {
+    if (e.kind !== "photo") return;
+    const c = byId.get(a.slides[e.slide].id);
+    if (c?.lat == null || c.lon == null) return;
+    if (anchor && distanceKm(placeOf(anchor), placeOf(c)) >= PLACE_KM) {
+      breaks.add(entries[i - 1]?.kind === "map" ? i - 1 : i);
+      anchor = c;
+    }
+    anchor ??= c;
+  });
+  return breaks;
+}
+
+/**
+ * Beginn jedes Abschnitts, Gesamtdauer und Musik. Der Übergang liegt mittig
+ * auf der Grenze zwischen zwei Abschnitten – mit Musik im Takt genau auf dem
+ * Schlag, und kein Foto steht kürzer als eingestellt.
  */
 export function timeline(a: SlideshowState, byId = new Map(a.candidates.map((c) => [c.id, c]))): Timeline {
   const entries = entriesOf(a, byId);
@@ -262,19 +401,72 @@ export function timeline(a: SlideshowState, byId = new Map(a.candidates.map((c) 
   entries.forEach((e, i) => {
     if (e.kind === "photo") photoEntry[e.slide] = i;
   });
-  const d = baseDurations(a, entries);
-  const info = a.music?.beats;
-  if (a.music?.sync && info && info.bpm > 0 && info.beats.length >= 4) {
-    // Übergang höchstens einen Schlag lang, sonst verschwimmt der Schnitt
-    return { entries, photoEntry, ...snapToBeats(d, info, MIN_SECONDS * 0.8), transition: Math.min(TRANSITION_S, 60 / info.bpm) };
+  const m = a.music?.tracks.some((t) => t.beats.duration > 0) ? a.music : undefined;
+  const sync = !!m?.sync;
+  const beatLen = m ? Math.min(...m.tracks.map((t) => (t.beats.bpm > 0 ? 60 / t.beats.bpm : TRANSITION_S))) : TRANSITION_S;
+  const transition = sync ? Math.min(TRANSITION_S, beatLen) : TRANSITION_S;
+  const base = { entries, photoEntry, transition };
+
+  if (m?.mode === "place") {
+    // Je Ort ein Lied (reihum), Wechsel mit Überblenden an der Ortsgrenze
+    const d = durationsFor(a, entries, a.settings.seconds);
+    const breaks = placeBreaks(a, entries, byId);
+    const tracks = m.tracks.map((t, i) => ({ i, t })).filter((x) => x.t.beats.duration > 0);
+    const starts: number[] = [];
+    const clips: AudioClip[] = [];
+    let t = 0;
+    let seg = 0;
+    let i = 0;
+    while (i < entries.length) {
+      let j = i + 1;
+      while (j < entries.length && !breaks.has(j)) j++;
+      const { i: track, t: info } = tracks[seg % tracks.length];
+      const segBeats = sync ? beatGrid(info.beats, t, t + d.slice(i, j).reduce((s, x) => s + x, 0) * 1.6 + 10) : [];
+      const r = sync ? snapToBeats(d.slice(i, j), segBeats, t) : plainStarts(d.slice(i, j), t);
+      starts.push(...r.starts);
+      const last = j >= entries.length;
+      // Lied wiederholen, falls der Ort länger dauert als das Lied
+      for (let off = t; off < r.total; off += info.beats.duration) {
+        clips.push({
+          track,
+          start: off,
+          end: Math.min(off + info.beats.duration, r.total + (last ? 0 : CROSSFADE_S / 2)),
+          offset: 0,
+          fadeIn: seg === 0 && off === t ? 0 : CROSSFADE_S / 2,
+          fadeOut: CROSSFADE_S / 2,
+        });
+      }
+      t = r.total;
+      seg++;
+      i = j;
+    }
+    return { ...base, starts, total: t, clips };
   }
-  const starts: number[] = [];
-  let t = 0;
-  for (const x of d) {
-    starts.push(t);
-    t += x;
+
+  // Hintereinander (oder ohne Musik)
+  let def = a.settings.seconds;
+  let r = plainStarts(durationsFor(a, entries, def));
+  if (m?.fit) {
+    // Die Fotos ohne eigene Dauer teilen sich die Länge der Musik; mit Takt
+    // werden sie durch das Warten auf den Schlag länger – nachregeln
+    const want = playlistSeconds(m);
+    const free = entries.filter((e) => e.kind === "title" || (e.kind === "photo" && a.slides[e.slide].seconds === undefined)).length;
+    if (free && want > 0) {
+      const fixed = durationsFor(a, entries, 0).reduce((s, x, k) => s + (entries[k].kind === "title" || (entries[k].kind === "photo" && a.slides[entries[k].slide].seconds === undefined) ? 0 : x), 0);
+      def = Math.max(MIN_SECONDS, (want - fixed) / free);
+      for (let iter = 0; iter < 5; iter++) {
+        const d = durationsFor(a, entries, def);
+        r = sync ? snapToBeats(d, sequenceBeats(m, sequenceClips(m, want + 60))) : plainStarts(d);
+        if (!sync || Math.abs(r.total - want) < beatLen) break;
+        def = Math.max(MIN_SECONDS, def * Math.max(0.5, (want - fixed) / Math.max(1, r.total - fixed)));
+      }
+    }
+  } else if (m && sync) {
+    const d = durationsFor(a, entries, def);
+    const est = d.reduce((s, x) => s + x, 0) * 1.6 + 10;
+    r = snapToBeats(d, sequenceBeats(m, sequenceClips(m, est)));
   }
-  return { entries, photoEntry, starts, total: t, transition: TRANSITION_S };
+  return { ...base, ...r, clips: m ? sequenceClips(m, r.total).map((c) => ({ ...c, end: Math.min(c.end, r.total) })).filter((c) => c.end > c.start) : [] };
 }
 
 /** Tatsächliche Dauer des Abschnitts `i` */
@@ -285,6 +477,15 @@ export function durationOf(tl: Timeline, i: number): number {
 /** Tatsächliche Dauer des Fotos `j` (ohne Karte davor) */
 export function photoDuration(tl: Timeline, j: number): number {
   return durationOf(tl, tl.photoEntry[j]);
+}
+
+/** Lautstärke eines Musikstücks zur Zeit `t` (0…1, ohne Gesamtlautstärke), samt Ein-/Ausblenden der ganzen Diashow */
+export function clipGain(c: AudioClip, t: number, total: number): number {
+  if (t < c.start || t >= c.end) return 0;
+  const fin = c.fadeIn > 0 ? Math.min(1, (t - c.start) / c.fadeIn) : 1;
+  const fout = c.fadeOut > 0 ? Math.min(1, (c.end - t) / c.fadeOut) : 1;
+  const edge = Math.min(1, t / 0.5, (total - t) / 2);
+  return Math.max(0, Math.min(fin, fout, edge));
 }
 
 /** Index des Abschnitts zur Zeit `t` */
@@ -299,8 +500,9 @@ export function slideAt(starts: number[], t: number): number {
   return Math.max(0, lo);
 }
 
-/** Ein sichtbares Dia zu einem Zeitpunkt */
+/** Ein sichtbarer Abschnitt zu einem Zeitpunkt */
 export interface Layer {
+  /** Schlüssel (Foto: Index des Dias, Titelbild, Karten: negativ) */
   index: number;
   id: number;
   opacity: number;
@@ -318,6 +520,8 @@ export interface Layer {
   captionOpacity: number;
   /** Karte statt Foto: Flug und Fortschritt 0…1 */
   map?: { leg: MapLeg; p: number };
+  /** Karte mit allen Orten, Fortschritt 0…1 */
+  overview?: { places: MapPlace[]; p: number };
 }
 
 export interface Frame {
@@ -340,8 +544,8 @@ function hash01(n: number): number {
 }
 
 /** Ganzes Foto zeigen? (ausdrücklich oder Hochformat in breitem Bild) */
-export function isContain(s: Slide, c: AlbumCandidate | undefined, frameAspect: number): boolean {
-  if (s.fit) return s.fit === "contain";
+export function isContain(s: Slide | undefined, c: AlbumCandidate | undefined, frameAspect: number): boolean {
+  if (s?.fit) return s.fit === "contain";
   return (c?.aspect ?? 1.5) < frameAspect * CONTAIN_BELOW;
 }
 
@@ -371,6 +575,9 @@ export function kenBurns(index: number, c: AlbumCandidate | undefined, contain: 
   return { scale, tx: clamp(dx) * max, ty: clamp(dy) * max };
 }
 
+const TITLE_KEY = -1_000_000;
+const OVERVIEW_KEY = -2_000_000;
+
 /** Was zur Zeit `t` zu sehen ist. `frameAspect`: Breite/Höhe der Bildfläche. */
 export function frameAt(a: SlideshowState, tl: Timeline, t: number, frameAspect: number, byId: Map<number, AlbumCandidate>): Frame {
   const { starts, total, entries } = tl;
@@ -379,50 +586,41 @@ export function frameAt(a: SlideshowState, tl: Timeline, t: number, frameAspect:
   const tr = a.settings.transition;
   const i = slideAt(starts, t);
   const layers: Layer[] = [];
-  // Halbe Dauer des Übergangs vor Dia `j` (höchstens die Hälfte beider Dias)
-  const halfOf = (j: number) =>
-    tr === "none" || j <= 0 || j >= n ? 0 : Math.min(tl.transition, durationOf(tl, j) / 2, durationOf(tl, j - 1) / 2) / 2;
+  // Halbe Dauer des Übergangs vor Abschnitt `j` (höchstens die Hälfte beider)
+  const halfOf = (j: number) => (tr === "none" || j <= 0 || j >= n ? 0 : Math.min(tl.transition, durationOf(tl, j) / 2, durationOf(tl, j - 1) / 2) / 2);
+  const still = { scale: 1, tx: 0, ty: 0, contain: false, pos: [0.5, 0.5] as [number, number], captionOpacity: 0 };
   const make = (j: number, opacity: number, shift: number): Layer => {
     const e = entries[j];
-    const s = a.slides[e.slide];
-    const c = byId.get(s.id);
     const start = starts[j];
     const dur = durationOf(tl, j);
-    // Sichtbar von halbem Übergang vor bis halbem Übergang nach dem Dia
+    const own = Math.min(1, Math.max(0, (t - start) / Math.max(0.001, dur)));
+    if (e.kind === "map") return { index: -1 - e.slide, id: a.slides[e.slide].id, opacity, shift, ...still, map: { leg: e.leg, p: own } };
+    if (e.kind === "overview") return { index: OVERVIEW_KEY, id: -1, opacity, shift, ...still, overview: { places: e.places, p: own } };
+    const s = e.kind === "photo" ? a.slides[e.slide] : undefined;
+    const id = e.kind === "title" ? e.id : s!.id;
+    const c = byId.get(id);
+    // Sichtbar von halbem Übergang vor bis halbem Übergang nach dem Abschnitt
     const from = start - halfOf(j);
     const to = start + dur + halfOf(j + 1);
     const p = (t - from) / Math.max(0.001, to - from);
-    if (e.kind === "map") {
-      return {
-        index: -1 - e.slide,
-        id: s.id,
-        opacity,
-        shift,
-        scale: 1,
-        tx: 0,
-        ty: 0,
-        contain: false,
-        pos: [0.5, 0.5],
-        captionOpacity: 0,
-        map: { leg: e.leg, p: Math.min(1, Math.max(0, (t - start) / Math.max(0.001, dur))) },
-      };
-    }
-    const contain = isContain(s, c, frameAspect);
-    const kb = a.settings.kenBurns ? kenBurns(e.slide, c, contain, Math.min(1, Math.max(0, p))) : { scale: 1, tx: 0, ty: 0 };
+    const contain = isContain(s ?? a.slides.find((x) => x.id === id), c, frameAspect);
+    const key = e.kind === "title" ? TITLE_KEY : e.slide;
+    const kb = a.settings.kenBurns ? kenBurns(e.kind === "title" ? 0 : e.slide + 1, c, contain, Math.min(1, Math.max(0, p))) : { scale: 1, tx: 0, ty: 0 };
     // Text kurz nach Beginn einblenden, vor dem Ende ausblenden
     const local = t - start;
     const capIn = smooth((local - 0.3) / 0.6);
     const capOut = 1 - smooth((local - (dur - 1.2)) / 0.6);
+    const caption = s?.caption;
     return {
-      index: e.slide,
-      id: s.id,
+      index: key,
+      id,
       opacity,
       shift,
       ...kb,
       contain,
       pos: contain ? [0.5, 0.5] : focusPosition(c?.aspect ?? 1.5, frameAspect, c?.focus),
-      caption: s.caption,
-      captionOpacity: s.caption ? Math.min(capIn, capOut) : 0,
+      caption,
+      captionOpacity: caption ? Math.min(capIn, capOut) : 0,
     };
   };
 
@@ -439,18 +637,18 @@ export function frameAt(a: SlideshowState, tl: Timeline, t: number, frameAspect:
   if (pair) {
     const [j0, j1, raw] = pair;
     const q = smooth(raw);
-    if (tr === "slide") {
-      layers.push(make(j0, 1, -q), make(j1, 1, 1 - q));
-    } else {
-      // Überblenden: das neue Dia liegt oben und wird deckend
-      layers.push(make(j0, 1, 0), make(j1, q, 0));
-    }
+    if (tr === "slide") layers.push(make(j0, 1, -q), make(j1, 1, 1 - q));
+    // Überblenden: der neue Abschnitt liegt oben und wird deckend
+    else layers.push(make(j0, 1, 0), make(j1, q, 0));
   } else layers.push(make(i, 1, 0));
 
   const fadeIn = 1 - smooth(t / EDGE_FADE_S);
   const fadeOut = smooth((t - (total - EDGE_FADE_S)) / EDGE_FADE_S);
-  const firstDur = durationOf(tl, 0);
-  const title = a.title.trim() ? Math.min(smooth((t - 0.4) / 0.8), 1 - smooth((t - (firstDur - 1.4)) / 0.8)) : 0;
+  let title = 0;
+  if (entries[0].kind === "title") {
+    const d0 = durationOf(tl, 0);
+    title = Math.min(smooth((t - 0.4) / 0.8), 1 - smooth((t - (d0 - 1.2)) / 0.7));
+  }
   return { layers, title, black: Math.max(fadeIn, fadeOut) };
 }
 
@@ -475,6 +673,7 @@ export function validSlideshow(x: unknown): x is SlideshowState {
     typeof a.settings === "object" &&
     typeof a.title === "string" &&
     a.title.length <= 500 &&
+    (a.cover === undefined || id(a.cover)) &&
     Array.isArray(a.candidates) &&
     a.candidates.every((c) => id(c?.id) && num(c.aspect, 0.01, 100) && num(c.score) && num(c.event, 0) && num(c.group, 0)) &&
     Array.isArray(a.slides) &&
@@ -493,16 +692,13 @@ export function validSlideshow(x: unknown): x is SlideshowState {
   );
 }
 
-function validMusic(m: SlideshowMusic): boolean {
+function validTrack(t: MusicTrack): boolean {
   const num = (v: unknown, min = -Infinity, max = Infinity) => typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
-  const b = m?.beats;
+  const b = t?.beats;
   return (
-    !!m &&
-    typeof m.path === "string" &&
-    typeof m.name === "string" &&
-    typeof m.sync === "boolean" &&
-    typeof m.fit === "boolean" &&
-    num(m.volume, 0, 1) &&
+    !!t &&
+    typeof t.path === "string" &&
+    typeof t.name === "string" &&
     !!b &&
     num(b.duration, 0, 24 * 3600) &&
     num(b.bpm, 0, 400) &&
@@ -513,5 +709,21 @@ function validMusic(m: SlideshowMusic): boolean {
     b.beats.length <= 100000 &&
     b.beats.every((x) => num(x)) &&
     b.strength.every((x) => num(x, 0, 1))
+  );
+}
+
+function validMusic(m: SlideshowMusic): boolean {
+  return (
+    !!m &&
+    Array.isArray(m.tracks) &&
+    m.tracks.length >= 1 &&
+    m.tracks.length <= 100 &&
+    m.tracks.every(validTrack) &&
+    (m.mode === "sequence" || m.mode === "place") &&
+    typeof m.sync === "boolean" &&
+    typeof m.fit === "boolean" &&
+    typeof m.volume === "number" &&
+    m.volume >= 0 &&
+    m.volume <= 1
   );
 }

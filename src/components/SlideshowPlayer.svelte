@@ -1,13 +1,18 @@
 <script lang="ts">
   // Diashow abspielen: Vollbild, Uhr per requestAnimationFrame – mit Musik gibt
-  // die Wiedergabe der Musik die Zeit vor, damit die Schnitte auf dem Takt
-  // bleiben. Leertaste hält an, Pfeiltasten springen ein Dia weiter bzw.
-  // zurück, Esc beendet. Die Steuerleiste erscheint, wenn sich die Maus bewegt.
+  // das gerade lauteste Lied die Zeit vor, damit die Schnitte auf dem Takt
+  // bleiben. Jedes Musikstück der Zeitleiste bekommt ein eigenes Audio-Element
+  // (beim Überblenden laufen zwei). Leertaste hält an, Pfeiltasten springen
+  // einen Abschnitt weiter bzw. zurück, Esc beendet. Die Steuerleiste erscheint,
+  // wenn sich die Maus bewegt.
   import { onDestroy, onMount } from "svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { imageUrl, isTauri } from "../lib/api";
-  import { formatDuration, frameAt, slideAt, timeline } from "../lib/slideshow";
+  import { isTauri } from "../lib/api";
+  import { clipGain, formatDuration, frameAt, slideAt, timeline } from "../lib/slideshow";
   import { slideshow } from "../lib/slideshow.svelte";
+  import { preloadFull } from "../lib/fullImages.svelte";
+  import { prefetchLeg, prefetchOverview } from "../lib/slideMap";
+  import { fontFamily } from "../lib/album";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
   import SlideStage from "./SlideStage.svelte";
@@ -16,73 +21,111 @@
   let { from = 0 }: { from?: number } = $props();
 
   const a = $derived(slideshow.state!);
-  const tl = $derived(timeline(a));
+  const tl = $derived(timeline(a, slideshow.byId));
 
   let el = $state<HTMLDivElement>();
   let width = $state(16);
   let height = $state(9);
   // svelte-ignore state_referenced_locally
   let time = $state((() => {
-    const t0 = timeline(slideshow.state!);
-    return t0.starts[t0.photoEntry[from]] ?? 0;
+    const t0 = timeline(slideshow.state!, slideshow.byId);
+    // Ab dem ersten Foto: mit Titelbild
+    return from > 0 ? (t0.starts[t0.photoEntry[from]] ?? 0) : 0;
   })());
   let paused = $state(false);
   let controls = $state(true);
   const frame = $derived(frameAt(a, tl, time, width / Math.max(1, height), slideshow.byId));
-  /** Abschnitt (Foto oder Karte) und Foto zur aktuellen Zeit */
+  /** Abschnitt und Foto zur aktuellen Zeit */
   const current = $derived(slideAt(tl.starts, time));
   const photo = $derived(tl.entries[current]?.slide ?? 0);
+
+  // --- Musik ---------------------------------------------------------------------
+  /** Audio-Element je laufendem Musikstück (Index in `tl.clips`) */
+  const players = new Map<number, HTMLAudioElement>();
+  /** Die WebView hat das Abspielen verweigert: nicht in jedem Bild neu versuchen */
+  let audioBlocked = false;
+
+  const urlOf = (track: number) => {
+    const tr = a.music?.tracks[track];
+    return tr ? slideshow.musicUrls[tr.path] : undefined;
+  };
+
+  /** Audio-Elemente der Stücke um `time` anlegen bzw. verwerfen, Lautstärke setzen */
+  function syncAudio(): HTMLAudioElement | null {
+    const vol = a.music?.volume ?? 0;
+    let lead: HTMLAudioElement | null = null;
+    let leadGain = -1;
+    tl.clips.forEach((c, i) => {
+      const near = time >= c.start - 1 && time < c.end;
+      let au = players.get(i);
+      const url = urlOf(c.track);
+      if (!near || !url) {
+        if (au) {
+          au.pause();
+          players.delete(i);
+        }
+        return;
+      }
+      if (!au) {
+        au = new Audio(url);
+        au.preload = "auto";
+        players.set(i, au);
+      }
+      const want = c.offset + (time - c.start);
+      const g = clipGain(c, time, tl.total);
+      au.volume = Math.max(0, Math.min(1, vol * g));
+      const active = time >= c.start;
+      if (paused || !active) {
+        if (!au.paused) au.pause();
+        if (!active && au.readyState >= 1 && Math.abs(au.currentTime - c.offset) > 0.05) au.currentTime = c.offset;
+        return;
+      }
+      if (au.paused && au.readyState >= 2 && !audioBlocked) {
+        au.currentTime = want;
+        au.play().catch(() => (audioBlocked = true));
+      } else if (!au.paused && g > leadGain && au.readyState >= 3) {
+        lead = au;
+        leadGain = g;
+      }
+      // Nebenstimmen nachführen, wenn sie abweichen
+      if (!au.paused && Math.abs(au.currentTime - want) > 0.25) au.currentTime = want;
+    });
+    return lead;
+  }
+
+  /** Alle Stücke an die Zeit der Diashow setzen (nach Springen) */
+  function seekAudio() {
+    tl.clips.forEach((c, i) => {
+      const au = players.get(i);
+      if (au && time >= c.start && time < c.end && au.readyState >= 1) au.currentTime = c.offset + (time - c.start);
+    });
+  }
 
   // --- Uhr ---------------------------------------------------------------------
   let raf = 0;
   let last = 0;
-  let audio = $state<HTMLAudioElement>();
-  /** Beginn des laufenden Durchgangs der Musik (sie wiederholt sich, wenn sie kürzer ist) */
-  let loopBase = 0;
-  let lastCt = 0;
-  /** Die WebView hat das Abspielen verweigert: nicht in jedem Bild neu versuchen */
-  let audioBlocked = false;
-  const musicDur = () => (audio && Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : a.music?.beats.duration || 0);
 
   function tick(now: number) {
     const dt = last ? (now - last) / 1000 : 0;
     last = now;
-    const dur = musicDur();
     if (!paused) {
-      if (audio && slideshow.musicUrl && dur > 0) {
-        if (audio.paused && audio.readyState >= 2 && !audioBlocked) {
-          // Musik ist (wieder) bereit: an der aktuellen Stelle einsetzen
-          seekAudio();
-          audio.play().catch(() => (audioBlocked = true));
-        }
-        if (!audio.paused && audio.readyState >= 3) {
-          const ct = audio.currentTime;
-          if (ct + 0.5 < lastCt) loopBase += dur; // von vorn begonnen
-          lastCt = ct;
-          time = loopBase + ct;
-        } else time += dt;
+      // Lautestes laufendes Lied als Uhr, sonst die Bildwiederholung
+      const leadIdx = [...players.entries()].find(([, au]) => au === lastLead)?.[0];
+      const c = leadIdx !== undefined ? tl.clips[leadIdx] : undefined;
+      if (lastLead && c && !lastLead.paused && lastLead.readyState >= 3) {
+        const t2 = c.start + (lastLead.currentTime - c.offset);
+        // Sprünge der Audio-Uhr (Puffern) nicht übernehmen
+        time = Math.abs(t2 - (time + dt)) < 0.3 ? t2 : time + dt;
       } else time += dt;
       if (time >= tl.total) {
         close();
         return;
       }
     }
-    if (audio && a.music) {
-      // Am Anfang kurz ein-, am Ende ausblenden
-      const edge = Math.min(1, time / 0.5, (tl.total - time) / 2);
-      audio.volume = a.music.volume * Math.max(0, Math.min(1, edge));
-    }
+    lastLead = syncAudio();
     raf = requestAnimationFrame(tick);
   }
-
-  /** Musik an die Zeit der Diashow setzen */
-  function seekAudio() {
-    const dur = musicDur();
-    if (!audio || !dur) return;
-    loopBase = Math.floor(time / dur) * dur;
-    audio.currentTime = time - loopBase;
-    lastCt = audio.currentTime;
-  }
+  let lastLead: HTMLAudioElement | null = null;
 
   function setTime(x: number) {
     time = Math.max(0, Math.min(tl.total - 0.01, x));
@@ -90,17 +133,23 @@
     showControls();
   }
 
-  // Die nächsten Fotos vorab laden, damit der Übergang nicht auf das Bild wartet
-  const preload = new Map<number, HTMLImageElement>();
+  // Die nächsten Fotos in voller Auflösung vorab laden, Kacheln der nächsten Karten ebenso
   $effect(() => {
-    const want = a.slides.slice(photo, photo + 3).map((s) => s.id);
-    for (const id of want) {
-      if (preload.has(id)) continue;
-      const img = new Image();
-      img.src = imageUrl("preview", id, lib.thumbVersion(id));
-      preload.set(id, img);
+    const ids: number[] = [];
+    for (let i = current; i < Math.min(tl.entries.length, current + 4); i++) {
+      const e = tl.entries[i];
+      if (e.kind === "photo") ids.push(a.slides[e.slide].id);
+      else if (e.kind === "title") ids.push(e.id);
     }
-    if (preload.size > 12) for (const id of [...preload.keys()].slice(0, preload.size - 12)) preload.delete(id);
+    preloadFull(ids);
+  });
+  const style = $derived({ tiles: lib.mapEnabled, font: fontFamily("sans") });
+  $effect(() => {
+    for (let i = current; i < Math.min(tl.entries.length, current + 3); i++) {
+      const e = tl.entries[i];
+      if (e.kind === "map") prefetchLeg(e.leg, width, height, style);
+      else if (e.kind === "overview") prefetchOverview(e.places, width, height, style);
+    }
   });
 
   // --- Vollbild ------------------------------------------------------------------
@@ -125,7 +174,8 @@
 
   onDestroy(() => {
     cancelAnimationFrame(raf);
-    audio?.pause();
+    for (const au of players.values()) au.pause();
+    players.clear();
     clearTimeout(hideTimer);
     if (wasFullscreen) return;
     if (isTauri) getCurrentWindow().setFullscreen(false).catch(() => {});
@@ -152,12 +202,10 @@
 
   function togglePause() {
     paused = !paused;
-    if (paused) audio?.pause();
-    else if (audio && slideshow.musicUrl) {
-      audioBlocked = false;
-      seekAudio();
-      audio.play().catch(() => (audioBlocked = true));
-    }
+    // Klick des Nutzers: Abspielen darf wieder versucht werden
+    audioBlocked = false;
+    if (paused) for (const au of players.values()) au.pause();
+    else seekAudio();
     last = 0;
     showControls();
   }
@@ -194,12 +242,9 @@
   aria-label={t("Diashow")}
   onpointermove={showControls}
 >
-  {#if slideshow.musicUrl && a.music}
-    <audio bind:this={audio} src={slideshow.musicUrl} preload="auto"></audio>
-  {/if}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="click" onclick={togglePause}>
-    <SlideStage {frame} title={a.title} />
+    <SlideStage {frame} title={a.title} full />
   </div>
   {#if paused}
     <div class="paused" aria-hidden="true"><Icon name="play" size={56} /></div>

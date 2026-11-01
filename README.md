@@ -221,20 +221,24 @@ photos and pages, with or without margins.
 makes a slideshow from them. Pick a theme, the number of photos, how long each one stays, the
 transition (crossfade, slide or hard cut) and whether to show date and place.
 
-- Photos slowly zoom and pan, towards faces when there are any. Portrait photos are shown whole
-  on a blurred copy of themselves. The title appears over the first photo; date and place fade in
-  where a new day or place begins.
+- It starts with the best rated photo and the title (another photo can be chosen). Photos slowly
+  zoom and pan, towards faces when there are any. Portrait photos are shown whole on a blurred
+  copy of themselves. Date and place fade in where a new day or place begins. Full screen and
+  video use the photos in full resolution.
 - Drag photos to change the order. Click one to give it its own duration or text, to show it
   whole, or to swap it for another photo (shots from the same burst come first). The preview on
   the right plays the selected photo.
-- **Music:** pick an MP3, M4A, WAV, FLAC or Ogg file. Lumenkorn finds the beat (spectral flux,
-  tempo from autocorrelation, beats by dynamic programming) and puts each change of photo on the
-  beat closest to the wanted duration, preferring strong beats and the start of a bar. With
-  *End the slideshow with the music* the photos share the length of the track. Shorter tracks
-  start again.
-- **Map:** when the next photo was taken more than 50 km away, a map flies from the previous place
-  to the new one, draws the route and drops a pin with the place name. It uses the same built-in
-  map data as the photo album. It can be switched off, or on and off for single photos.
+- **Music:** add one or more MP3, M4A, WAV, FLAC or Ogg files. They play one after another with
+  crossfades, or each place (from 20 km apart) gets the next song. Lumenkorn finds the beat
+  (spectral flux, tempo from autocorrelation, beats by dynamic programming); each photo stays at
+  least the set duration and changes on the next suitable beat, preferring strong beats and the
+  start of a bar. With *End the slideshow with the music* the photos share the length of the
+  songs.
+- **Map:** when the next photo was taken more than 5 km away, a map flies from the previous place
+  to the new one, zoomed to the distance, draws the route and drops a pin with the place name.
+  Long trips use the built-in map data of the photo album; for nearby places OpenStreetMap tiles
+  are added if the map is turned on in the settings. It can be switched off, or on and off for
+  single photos. Optionally a last map shows all places and the whole route.
 - **Abspielen** plays full screen. Space pauses, the arrow keys skip, Esc ends.
 - **Save as video** writes an MP4 file (H.264 with AAC sound, 720p, 1080p or 1440p, 30 frames per
   second). WebView2 encodes it with the encoders of Windows or the graphics card, so nothing has

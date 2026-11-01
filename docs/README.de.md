@@ -540,20 +540,25 @@ Fotoalbum und macht daraus eine Diashow. Man wählt das Thema, die Anzahl der Fo
 jedes zu sehen ist, den Übergang (weich überblenden, schieben oder harter Schnitt) und ob Datum
 und Ort erscheinen.
 
-- Die Fotos zoomen und schwenken langsam, zu Gesichtern hin, wenn welche darauf sind. Hochformate
-  erscheinen ganz vor einer unscharfen Kopie ihrer selbst. Der Titel steht über dem ersten Foto;
-  Datum und Ort werden eingeblendet, wo ein neuer Tag bzw. Ort beginnt.
+- Am Anfang steht das am besten bewertete Foto mit dem Titel (ein anderes lässt sich wählen). Die
+  Fotos zoomen und schwenken langsam, zu Gesichtern hin, wenn welche darauf sind. Hochformate
+  erscheinen ganz vor einer unscharfen Kopie ihrer selbst. Datum und Ort werden eingeblendet, wo
+  ein neuer Tag bzw. Ort beginnt. Vollbild und Video zeigen die Fotos in voller Auflösung.
 - Ziehen ändert die Reihenfolge. Ein Klick auf ein Foto erlaubt eine eigene Dauer, einen eigenen
   Text, das ganze Foto ohne Beschnitt oder den Tausch gegen ein anderes (aus derselben Serie
   zuerst). Rechts spielt die Vorschau das gewählte Foto ab.
-- **Musik:** eine MP3-, M4A-, WAV-, FLAC- oder Ogg-Datei wählen. Lumenkorn erkennt den Takt
-  (Spectral Flux, Tempo per Autokorrelation, Schläge per dynamischer Programmierung) und legt
-  jeden Bildwechsel auf den Schlag, der der gewünschten Dauer am nächsten ist – starke Schläge und
-  Taktanfänge bevorzugt. Mit „Diashow endet mit der Musik“ teilen sich die Fotos die Länge des
-  Stücks. Kürzere Stücke beginnen von vorn.
-- **Karte:** Liegt der nächste Aufnahmeort mehr als 50 km entfernt, fliegt eine Karte vom vorigen
-  zum neuen Ort, zeichnet die Route und setzt eine Stecknadel mit dem Ortsnamen. Sie nutzt
-  dieselben eingebauten Kartendaten wie das Fotoalbum. Abschaltbar, auch für einzelne Fotos.
+- **Musik:** eine oder mehrere MP3-, M4A-, WAV-, FLAC- oder Ogg-Dateien. Sie laufen
+  hintereinander mit Überblenden, oder jeder Ort (ab 20 km Entfernung) bekommt das nächste Lied.
+  Lumenkorn erkennt den Takt (Spectral Flux, Tempo per Autokorrelation, Schläge per dynamischer
+  Programmierung); jedes Foto steht mindestens die eingestellte Zeit und wechselt auf dem nächsten
+  passenden Schlag – starke Schläge und Taktanfänge bevorzugt. Mit „Diashow endet mit der Musik“
+  teilen sich die Fotos die Länge der Lieder.
+- **Karte:** Liegt der nächste Aufnahmeort mehr als 5 km entfernt, fliegt eine Karte vom vorigen
+  zum neuen Ort, passend zur Entfernung gezoomt, zeichnet die Route und setzt eine Stecknadel mit
+  dem Ortsnamen. Weite Reisen nutzen die eingebauten Kartendaten des Fotoalbums, für nahe Orte
+  kommen Kacheln von OpenStreetMap dazu, wenn die Karte in den Einstellungen eingeschaltet ist.
+  Abschaltbar, auch für einzelne Fotos. Auf Wunsch zeigt eine letzte Karte alle Orte und die ganze
+  Route.
 - **Abspielen** zeigt die Diashow im Vollbild. Leertaste hält an, die Pfeiltasten springen, Esc
   beendet.
 - **Als Video speichern** schreibt eine MP4-Datei (H.264 mit AAC-Ton, 720p, 1080p oder 1440p, 30

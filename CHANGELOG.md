@@ -9,17 +9,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ### Added
 - **Slideshow** next to the photo album button: Lumenkorn picks the best photos of a project or
   folder with the same rules as the album (sharpness, exposure, theme, no bursts or duplicates,
-  spread over all days) and makes a slideshow from them. Crossfade, slide or hard cut, slow zoom
-  and pan towards faces, date and place where a new day or place begins, a title over the first
-  photo. Portrait photos are shown whole on a blurred copy of themselves. Photos can be
+  spread over all days) and makes a slideshow from them. It starts with the best photo and the
+  title, then crossfade, slide or hard cut, slow zoom and pan towards faces, date and place where
+  a new day or place begins. Full screen and video use the photos in full resolution. Portrait photos are shown whole on a blurred copy of themselves. Photos can be
   reordered by dragging, swapped, removed, added, and get their own duration and text. Plays
   full screen; space pauses, the arrow keys skip.
-- Slideshow music: pick an MP3, M4A, WAV, FLAC or Ogg file. Lumenkorn finds the beat and puts
-  each change of photo on a beat, preferring strong beats and the start of a bar, and can make the
-  slideshow end with the music.
-- Slideshow map: when the next photo was taken more than 50 km away, a map flies from the
-  previous place to the new one and draws the route. It uses the built-in map data, so it needs
-  no internet. Can be switched off for the whole slideshow or for single photos.
+- Slideshow music: add one or more MP3, M4A, WAV, FLAC or Ogg files, played one after another
+  with crossfades or one song per place. Lumenkorn finds the beat and changes the photo on the
+  next suitable beat after the set duration, preferring strong beats and the start of a bar, and
+  can make the slideshow end with the music.
+- Slideshow map: when the next photo was taken more than 5 km away, a map flies from the
+  previous place to the new one and draws the route, zoomed to the distance. Far trips use the
+  built-in map data; for nearby places OpenStreetMap tiles are added when the map is turned on in
+  the settings. Can be switched off for the whole slideshow or for single photos. Optionally the
+  slideshow ends with a map of all places and the whole route.
 - **Save as video** writes the slideshow with music as an MP4 file (H.264 and AAC, 720p, 1080p
   or 1440p), encoded by Windows or the graphics card.
 

@@ -16,8 +16,8 @@ import {
 } from "mediabunny";
 import { imageUrl } from "./api";
 import { fontFamily, type AlbumCandidate } from "./album";
-import { frameAt, slideAt, timeline, type Frame, type SlideshowState } from "./slideshow";
-import { drawMapLeg, mapData, type MapData } from "./slideMap";
+import { clipGain, frameAt, slideAt, timeline, type AudioClip, type Frame, type SlideshowState } from "./slideshow";
+import { drawMapLeg, drawOverview, mapData, readyLeg, readyOverview, type MapData, type MapStyle } from "./slideMap";
 import { t } from "./i18n";
 
 export type VideoSize = "720p" | "1080p" | "1440p";
@@ -36,7 +36,7 @@ const FONT = fontFamily("sans");
 type Source = CanvasImageSource & { width: number; height: number };
 
 /** Ein Zeitpunkt der Diashow auf die Leinwand – dieselbe Gestaltung wie `SlideStage.svelte`. */
-export function drawFrame(ctx: CanvasRenderingContext2D, frame: Frame, title: string, w: number, h: number, images: Map<number, Source>, map: MapData | null) {
+export function drawFrame(ctx: CanvasRenderingContext2D, frame: Frame, title: string, w: number, h: number, images: Map<number, Source>, map: MapData | null, style: MapStyle) {
   ctx.save();
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, w, h);
@@ -49,7 +49,8 @@ export function drawFrame(ctx: CanvasRenderingContext2D, frame: Frame, title: st
     ctx.rect(x0, 0, w, h);
     ctx.clip();
     ctx.translate(x0, 0);
-    if (l.map) drawMapLeg(ctx, w, h, l.map.leg, l.map.p, map, FONT);
+    if (l.map) drawMapLeg(ctx, w, h, l.map.leg, l.map.p, map, style);
+    else if (l.overview) drawOverview(ctx, w, h, l.overview.places, l.overview.p, map, style);
     else if (img) {
       if (l.contain) {
         // Unscharfer, dunklerer Hintergrund aus demselben Foto
@@ -146,24 +147,34 @@ function drawText(
 
 // --- Bilder laden ------------------------------------------------------------------
 
-/** Vorschau eines Fotos laden (wie in der Oberfläche über ein Bild-Element).
- *  Ohne eigene Pixelgröße (SVG der Browser-Vorschau) nach dem Seitenverhältnis. */
-async function loadImage(id: number, version: number, aspect: number): Promise<ImageBitmap | null> {
-  try {
+/**
+ * Foto in voller Auflösung laden (wie im Vollbild über ein Bild-Element) und
+ * auf etwa die doppelte Videohöhe verkleinern – genug Reserve für den
+ * Ken-Burns-Zoom, ohne riesige Bilder im Speicher. Ohne eigene Pixelgröße
+ * (SVG der Browser-Vorschau) nach dem Seitenverhältnis.
+ */
+async function loadImage(id: number, version: number, aspect: number, maxEdge: number): Promise<ImageBitmap | null> {
+  const load = async (variant: "full" | "preview") => {
     const img = new Image();
     img.crossOrigin = "anonymous";
-    img.src = imageUrl("preview", id, version);
+    img.src = imageUrl(variant, id, version);
     await img.decode();
-    try {
-      return await createImageBitmap(img);
-    } catch {
-      // Über eine Leinwand rastern (createImageBitmap liefert hier ein leeres Bild)
+    return img;
+  };
+  try {
+    // Volle Auflösung; gelingt sie nicht (Entwickeln fehlgeschlagen), die Vorschau
+    const img = await load("full").catch(() => load("preview"));
+    if (img.src.startsWith("data:image/svg")) {
+      // SVG ohne eigene Größe (Browser-Vorschau): über eine Leinwand rastern,
+      // createImageBitmap liefert dafür ein leeres Bild
       const c = document.createElement("canvas");
-      c.width = 2048;
-      c.height = Math.round(2048 / aspect);
+      c.width = Math.round(Math.min(maxEdge, 2048));
+      c.height = Math.round(c.width / aspect);
       c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
       return await createImageBitmap(c);
     }
+    const k = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+    return await createImageBitmap(img, { resizeWidth: Math.round(img.naturalWidth * k), resizeHeight: Math.round(img.naturalHeight * k), resizeQuality: "high" });
   } catch {
     return null;
   }
@@ -172,23 +183,31 @@ async function loadImage(id: number, version: number, aspect: number): Promise<I
 // --- Ton ---------------------------------------------------------------------------
 
 /**
- * Tonspur in Stücken: die Musik (wiederholt, falls kürzer), mit Lautstärke
- * und demselben Ein- und Ausblenden wie im Player.
+ * Tonspur von `from` bis `to`: alle Musikstücke der Zeitleiste gemischt, mit
+ * Lautstärke, Überblenden und demselben Ein- und Ausblenden wie im Player.
  */
-function audioChunk(music: AudioBuffer, from: number, to: number, total: number, volume: number): AudioBuffer {
-  const rate = music.sampleRate;
-  const channels = Math.min(2, music.numberOfChannels);
+function audioChunk(clips: AudioClip[], buffers: (AudioBuffer | null)[], rate: number, from: number, to: number, total: number, volume: number): AudioBuffer {
   const length = Math.max(1, Math.round((to - from) * rate));
-  const out = new AudioBuffer({ length, numberOfChannels: channels, sampleRate: rate });
-  const srcLen = music.length;
-  for (let c = 0; c < channels; c++) {
-    const src = music.getChannelData(c);
-    const dst = out.getChannelData(c);
-    const start = Math.round(from * rate);
-    for (let i = 0; i < length; i++) {
-      const t = (start + i) / rate;
-      const edge = Math.max(0, Math.min(1, t / 0.5, (total - t) / 2));
-      dst[i] = src[(start + i) % srcLen] * volume * edge;
+  const out = new AudioBuffer({ length, numberOfChannels: 2, sampleRate: rate });
+  const left = out.getChannelData(0);
+  const right = out.getChannelData(1);
+  for (const c of clips) {
+    const buf = buffers[c.track];
+    if (!buf || c.end <= from || c.start >= to) continue;
+    const l = buf.getChannelData(0);
+    const r = buf.numberOfChannels > 1 ? buf.getChannelData(1) : l;
+    const sr = buf.sampleRate;
+    const i0 = Math.max(0, Math.floor((c.start - from) * rate));
+    const i1 = Math.min(length, Math.ceil((c.end - from) * rate));
+    for (let i = i0; i < i1; i++) {
+      const t = from + i / rate;
+      const g = clipGain(c, t, total) * volume;
+      if (g <= 0) continue;
+      // Stelle im Lied (andere Abtastrate: nächster Wert genügt)
+      const k = Math.floor((c.offset + t - c.start) * sr);
+      if (k < 0 || k >= l.length) continue;
+      left[i] += l[k] * g;
+      right[i] += r[k] * g;
     }
   }
   return out;
@@ -210,30 +229,35 @@ export async function renderVideo(
   a: SlideshowState,
   byId: Map<number, AlbumCandidate>,
   version: (id: number) => number,
-  music: Blob | null,
+  music: (Blob | null)[],
   size: VideoSize,
+  style: MapStyle,
   write: (chunk: StreamTargetChunk) => Promise<void>,
   onProgress: (p: VideoProgress) => void,
   signal: AbortSignal,
 ): Promise<void> {
   const [w, h] = VIDEO_SIZES[size];
-  const tl = timeline(a);
+  const tl = timeline(a, byId);
   const frames = Math.ceil(tl.total * VIDEO_FPS);
   if (!frames) throw t("Die Diashow ist leer.");
 
   const codec = await getFirstEncodableVideoCodec(["avc", "hevc", "vp9", "av1"], { width: w, height: h });
   if (!codec) throw t("Dieses System kann kein Video kodieren.");
 
-  let audio: AudioBuffer | null = null;
-  if (music && a.music) {
-    const ctx = new AudioContext();
+  // Lieder dekodieren (gleiche Abtastrate für alle: die des AudioContext)
+  const buffers: (AudioBuffer | null)[] = [];
+  let rate = 48000;
+  if (a.music && music.some(Boolean)) {
+    const actx = new AudioContext();
+    rate = actx.sampleRate;
     try {
-      audio = await ctx.decodeAudioData(await music.arrayBuffer());
+      for (const m of music) buffers.push(m ? await actx.decodeAudioData(await m.arrayBuffer()).catch(() => null) : null);
     } finally {
-      ctx.close().catch(() => {});
+      actx.close().catch(() => {});
     }
   }
-  const audioCodec = audio ? ((await canEncodeAudio("aac", { numberOfChannels: Math.min(2, audio.numberOfChannels), sampleRate: audio.sampleRate })) ? "aac" : "opus") : null;
+  const hasAudio = buffers.some(Boolean) && tl.clips.length > 0;
+  const audioCodec = hasAudio ? ((await canEncodeAudio("aac", { numberOfChannels: 2, sampleRate: rate })) ? "aac" : "opus") : null;
 
   const canvas = document.createElement("canvas");
   canvas.width = w;
@@ -241,7 +265,7 @@ export async function renderVideo(
   const ctx = canvas.getContext("2d", { alpha: false })!;
   await document.fonts.load(`600 20px ${FONT}`).catch(() => {});
   await document.fonts.load(`500 20px ${FONT}`).catch(() => {});
-  const map = tl.entries.some((e) => e.kind === "map") ? await mapData().catch(() => null) : null;
+  const map = tl.entries.some((e) => e.kind === "map" || e.kind === "overview") ? await mapData().catch(() => null) : null;
 
   const output = new Output({
     format: new Mp4OutputFormat({ fastStart: false }),
@@ -249,7 +273,7 @@ export async function renderVideo(
   });
   const video = new CanvasSource(canvas, { codec, bitrate: QUALITY_HIGH, keyFrameInterval: 2 });
   output.addVideoTrack(video, { frameRate: VIDEO_FPS });
-  const sound = audio && audioCodec ? new AudioBufferSource({ codec: audioCodec, bitrate: QUALITY_HIGH }) : null;
+  const sound = hasAudio && audioCodec ? new AudioBufferSource({ codec: audioCodec, bitrate: QUALITY_HIGH }) : null;
   if (sound) output.addAudioTrack(sound);
   await output.start();
 
@@ -259,7 +283,7 @@ export async function renderVideo(
     if (images.has(id) || pending.has(id)) return;
     pending.set(
       id,
-      loadImage(id, version(id), byId.get(id)?.aspect ?? 1.5).then((b) => {
+      loadImage(id, version(id), byId.get(id)?.aspect ?? 1.5, h * 2).then((b) => {
         pending.delete(id);
         if (b) images.set(id, b);
         return b;
@@ -273,22 +297,31 @@ export async function renderVideo(
       const time = f / VIDEO_FPS;
       const frame = frameAt(a, tl, time, w / h, byId);
       // Sichtbare und die nächsten Fotos laden, ältere freigeben
-      const cur = tl.entries[slideAt(tl.starts, time)].slide;
-      const keep = new Set(a.slides.slice(Math.max(0, cur - 1), cur + 3).map((s) => s.id));
+      const cur = slideAt(tl.starts, time);
+      const keep = new Set<number>();
+      for (let i = Math.max(0, cur - 1); i < Math.min(tl.entries.length, cur + 3); i++) {
+        const e = tl.entries[i];
+        if (e.kind === "photo") keep.add(a.slides[e.slide].id);
+        else if (e.kind === "title") keep.add(e.id);
+      }
       for (const id of keep) need(id);
       for (const [id, b] of images) if (!keep.has(id)) (b.close(), images.delete(id));
-      for (const l of frame.layers) if (!l.map && pending.has(l.id)) await pending.get(l.id);
-      drawFrame(ctx, frame, a.title, w, h, images, map);
+      for (const l of frame.layers) {
+        if (l.map) await readyLeg(l.map.leg, l.map.p, w, h, style);
+        else if (l.overview) await readyOverview(l.overview.places, l.overview.p, w, h, style);
+        else if (pending.has(l.id)) await pending.get(l.id);
+      }
+      drawFrame(ctx, frame, a.title, w, h, images, map, style);
       // Ton vorausschicken, damit der Muxer beides verschränken kann
-      if (sound && audio && audioUntil < Math.min(tl.total, time + 1)) {
+      if (sound && audioUntil < Math.min(tl.total, time + 1)) {
         const to = Math.min(tl.total, audioUntil + 2);
-        await sound.add(audioChunk(audio, audioUntil, to, tl.total, a.music!.volume));
+        await sound.add(audioChunk(tl.clips, buffers, rate, audioUntil, to, tl.total, a.music!.volume));
         audioUntil = to;
       }
       await video.add(time, 1 / VIDEO_FPS);
       if (f % 15 === 0) onProgress({ done: f, total: frames });
     }
-    if (sound && audio && audioUntil < tl.total) await sound.add(audioChunk(audio, audioUntil, tl.total, tl.total, a.music!.volume));
+    if (sound && audioUntil < tl.total) await sound.add(audioChunk(tl.clips, buffers, rate, audioUntil, tl.total, tl.total, a.music!.volume));
     await output.finalize();
     onProgress({ done: frames, total: frames });
   } catch (e) {
