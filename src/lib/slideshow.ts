@@ -63,7 +63,7 @@ export const MAP_SECONDS = 4;
 export const OVERVIEW_SECONDS = 7;
 /** Ab dieser Entfernung zum vorigen Aufnahmeort kommt eine Karte (km) */
 export const MAP_MIN_KM = 5;
-/** „Ein Lied pro Ort“: neuer Ort ab dieser Entfernung vom ersten Foto des bisherigen (km) */
+/** „Lieder nach Ort“: neuer Ort ab dieser Entfernung vom ersten Foto des bisherigen (km) */
 export const PLACE_KM = 20;
 /** Überblenden zwischen zwei Liedern (s) */
 export const CROSSFADE_S = 3;
@@ -91,7 +91,7 @@ export interface MusicTrack {
   beats: BeatInfo;
 }
 
-/** Hintereinander mit Überblenden oder ein Lied pro Ort */
+/** Hintereinander mit Überblenden oder nach Ort */
 export type MusicMode = "sequence" | "place";
 
 /** Hintergrundmusik */
@@ -104,7 +104,7 @@ export interface SlideshowMusic {
   fit: boolean;
   /** Lautstärke 0…1 */
   volume: number;
-  /** „Ein Lied pro Ort“: Lieder je Ort (Schlüssel aus `musicPlaces`, Werte: Pfade der Lieder) */
+  /** „Lieder nach Ort“: Lieder je Ort (Schlüssel aus `musicPlaces`, Werte: Pfade der Lieder) */
   assign?: Record<string, string[]>;
 }
 
@@ -396,7 +396,7 @@ export interface MusicPlace {
 }
 
 /**
- * „Ein Lied pro Ort“: Orte in Reihenfolge. Ein neuer Ort beginnt, wenn ein
+ * „Lieder nach Ort“: Orte in Reihenfolge. Ein neuer Ort beginnt, wenn ein
  * Foto mindestens `PLACE_KM` vom ersten Foto des bisherigen entfernt ist;
  * die Karte davor gehört schon zum neuen Ort.
  */

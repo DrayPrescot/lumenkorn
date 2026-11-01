@@ -390,7 +390,7 @@ class SlideshowStore {
     });
   }
 
-  /** „Ein Lied pro Ort“: Lied einem Ort zuordnen bzw. die Zuordnung lösen */
+  /** „Lieder nach Ort“: Lied einem Ort zuordnen bzw. die Zuordnung lösen */
   assignTrack(place: string, path: string, on: boolean) {
     this.#edit((a) => {
       const m = a.music;

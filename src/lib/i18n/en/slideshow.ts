@@ -79,7 +79,7 @@ export default {
   "Titelbild: das am besten bewertete Foto": "Title picture: the best rated photo",
   "Wieder das beste Foto": "Use the best photo again",
   "Hintereinander mit Überblenden": "One after another with crossfades",
-  "Ein Lied pro Ort": "One song per place",
+  "Lieder nach Ort": "Songs by place",
   "Lied hinzufügen …": "Add song …",
   "Dauer je Foto (mindestens, bis zum nächsten Schlag)": "Duration per photo (at least, up to the next beat)",
   "In „{name}“ war kein gleichmäßiger Takt zu erkennen – dort wechseln die Bilder nach der eingestellten Dauer.": "No steady beat was found in “{name}” – there the photos change after the set duration.",

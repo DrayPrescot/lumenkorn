@@ -115,7 +115,7 @@
   const cover = $derived(coverId(a, slideshow.byId));
   /** Dauer ergibt sich aus der Länge der Musik */
   const fitted = $derived(!!a.music?.fit && a.music.mode === "sequence");
-  /** „Ein Lied pro Ort“: die Orte, denen Lieder zugeordnet werden können */
+  /** „Lieder nach Ort“: die Orte, denen Lieder zugeordnet werden können */
   const places = $derived(a.music?.mode === "place" ? musicPlaces(a, slideshow.byId) : []);
 
   /** Browser-Vorschau: Musik über ein Dateifeld */
@@ -385,7 +385,7 @@
           {#if a.music.tracks.length > 1}
             <div class="seg">
               <button class="btn quiet" class:on={a.music.mode === "sequence"} onclick={() => slideshow.setMusic({ mode: "sequence" })}>{t("Hintereinander mit Überblenden")}</button>
-              <button class="btn quiet" class:on={a.music.mode === "place"} onclick={() => slideshow.setMusic({ mode: "place" })}>{t("Ein Lied pro Ort")}</button>
+              <button class="btn quiet" class:on={a.music.mode === "place"} onclick={() => slideshow.setMusic({ mode: "place" })}>{t("Lieder nach Ort")}</button>
             </div>
             {#if a.music.mode === "place"}
               <p class="muted small">{t("Ein neuer Ort beginnt ab {km} km Entfernung. Hake je Ort die Lieder an, die dort nacheinander laufen sollen; ohne Haken bekommt der Ort reihum das nächste Lied. Beim Ortswechsel wird übergeblendet.", { km: PLACE_KM })}</p>
