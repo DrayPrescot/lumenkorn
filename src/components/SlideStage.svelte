@@ -4,7 +4,7 @@
   // wächst mit der Fläche (Containerhöhe), damit Vorschau und Vollbild gleich
   // aussehen.
   import { imageUrl } from "../lib/api";
-  import type { Frame } from "../lib/slideshow";
+  import type { Frame, SlideTextStyle } from "../lib/slideshow";
   import { lib } from "../lib/store.svelte";
   import { fullReady, fullUrl } from "../lib/fullImages.svelte";
   import SlideMapLayer from "./SlideMapLayer.svelte";
@@ -21,14 +21,20 @@
   }
 </script>
 
+{#snippet text(value: string, st: SlideTextStyle, opacity: number, isTitle: boolean)}
+  <div class="text {st.pos} {st.align}" class:title={isTitle} style:opacity={opacity}>
+    <span class:dark={st.color === "dark"} style:font-family={frame.font} style:font-size="{st.size}cqh" style:font-weight={st.bold ? 650 : isTitle ? 600 : 500}>{value}</span>
+  </div>
+{/snippet}
+
 <div class="stage">
   {#each frame.layers as l (l.index)}
     {@const src = l.map || l.overview ? "" : srcOf(l.id)}
     <div class="layer" style:opacity={l.opacity} style:transform="translateX({l.shift * 100}%)">
       {#if l.map}
-        <SlideMapLayer leg={l.map.leg} p={l.map.p} />
+        <SlideMapLayer leg={l.map.leg} p={l.map.p} font={frame.font} />
       {:else if l.overview}
-        <SlideMapLayer places={l.overview.places} p={l.overview.p} />
+        <SlideMapLayer places={l.overview.places} p={l.overview.p} font={frame.font} />
       {:else}
         {#if l.contain}
           <img class="backdrop" src={imageUrl("preview", l.id, lib.thumbVersion(l.id))} alt="" draggable="false" />
@@ -44,12 +50,12 @@
         />
       {/if}
       {#if l.caption && l.captionOpacity > 0}
-        <div class="caption" style:opacity={l.captionOpacity}>{l.caption}</div>
+        {@render text(l.caption, l.captionStyle, l.captionOpacity, false)}
       {/if}
     </div>
   {/each}
   {#if title.trim() && frame.title > 0}
-    <div class="title" style:opacity={frame.title}>{title}</div>
+    {@render text(title, frame.titleStyle, frame.title, true)}
   {/if}
   {#if frame.black > 0}
     <div class="black" style:opacity={frame.black}></div>
@@ -92,36 +98,58 @@
     filter: blur(28px) brightness(0.55);
     transform: scale(1.15);
   }
-  .caption {
+  /* Texte im sicheren Bereich, oben/Mitte/unten und links/mittig/rechts */
+  .text {
     position: absolute;
-    left: 5cqw;
-    bottom: 9cqh;
-    max-width: 70cqw;
+    inset: 7cqh 5cqw 9cqh;
+    display: flex;
+    flex-direction: column;
+    pointer-events: none;
+  }
+  .text.top {
+    justify-content: flex-start;
+  }
+  .text.middle {
+    justify-content: center;
+  }
+  .text.bottom {
+    justify-content: flex-end;
+  }
+  .text.left {
+    align-items: flex-start;
+    text-align: left;
+  }
+  .text.center {
+    align-items: center;
+    text-align: center;
+  }
+  .text.right {
+    align-items: flex-end;
+    text-align: right;
+  }
+  .text span {
+    max-width: 75cqw;
     color: #fff;
-    font-size: 3.6cqh;
-    font-weight: 500;
-    line-height: 1.25;
+    line-height: 1.22;
+    white-space: pre-line;
     text-shadow:
       0 0 0.4em rgb(0 0 0 / 0.7),
       0 0.05em 0.15em rgb(0 0 0 / 0.8);
-    white-space: pre-line;
   }
-  .title {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    padding: 0 8cqw;
-    text-align: center;
-    color: #fff;
-    font-size: 8cqh;
-    font-weight: 600;
-    line-height: 1.15;
+  .text span.dark {
+    color: #1c1c1c;
     text-shadow:
-      0 0 0.5em rgb(0 0 0 / 0.6),
-      0 0.04em 0.12em rgb(0 0 0 / 0.8);
+      0 0 0.35em rgb(255 255 255 / 0.85),
+      0 0 0.1em rgb(255 255 255 / 0.9);
+  }
+  .text.center span {
+    max-width: 90cqw;
+  }
+  /* Titel: leicht abgedunkelt dahinter */
+  .text.title {
+    inset: 0;
+    padding: 7cqh 5cqw 9cqh;
     background: radial-gradient(ellipse at center, rgb(0 0 0 / 0.35), transparent 70%);
-    white-space: pre-line;
   }
   .black {
     position: absolute;

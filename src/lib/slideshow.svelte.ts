@@ -5,19 +5,24 @@
 import { api, isTauri, listen, pickMusicFiles, pickVideoTarget, type Scope } from "./api";
 import { renderVideo, type VideoCodecKey, type VideoProgress, type VideoSize } from "./slideshowVideo";
 import { downmix, type BeatInfo } from "./beats";
-import { fontFamily, type CaptionMode } from "./album";
+import type { AlbumFont, CaptionMode } from "./album";
 import {
   autoCaptions,
   buildSlideshow,
   clampSeconds,
+  fontCss,
   slideshowDefaults,
+  textStyle,
   upgradeSlideshow,
+  DEFAULT_CAPTION_STYLE,
+  DEFAULT_TITLE_STYLE,
   validSlideshow,
   type MusicMode,
   type MusicTrack,
   type Slide,
   type SlideshowSettings,
   type SlideshowMusic,
+  type SlideTextStyle,
   type SlideshowState,
   type Transition,
 } from "./slideshow";
@@ -457,7 +462,7 @@ class SlideshowStore {
         music,
         size,
         codec,
-        { font: fontFamily("sans") },
+        { font: fontCss(a.settings.font) },
         async (c) => {
           if (path) await api.slideshowVideoWrite(c.data, c.position);
           else parts.push({ data: c.data.slice(), position: c.position });
@@ -494,6 +499,32 @@ class SlideshowStore {
     this.#edit((a) => {
       if (id === null) delete a.cover;
       else a.cover = id;
+    });
+  }
+
+  setFont(font: AlbumFont) {
+    this.#edit((a) => (a.settings.font = font));
+  }
+
+  /** Stil von Datum/Ort und eigenen Texten bzw. des Titels */
+  setTextStyle(which: "captionStyle" | "titleStyle", st: SlideTextStyle) {
+    this.#edit((a) => (a.settings[which] = textStyle(st, which === "captionStyle" ? DEFAULT_CAPTION_STYLE : DEFAULT_TITLE_STYLE)));
+  }
+
+  /** Eigener Stil des Textes eines Fotos (`null`: wie alle) – gespeichert wird nur, was abweicht */
+  setSlideStyle(index: number, st: SlideTextStyle | null) {
+    this.#edit((a) => {
+      const s = a.slides[index];
+      if (!s) return;
+      if (!st) {
+        delete s.style;
+        return;
+      }
+      const base = a.settings.captionStyle;
+      const diff: Partial<SlideTextStyle> = {};
+      for (const k of Object.keys(base) as (keyof SlideTextStyle)[]) if (st[k] !== base[k]) Object.assign(diff, { [k]: st[k] });
+      if (Object.keys(diff).length) s.style = diff;
+      else delete s.style;
     });
   }
 

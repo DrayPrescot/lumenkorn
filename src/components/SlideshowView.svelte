@@ -5,13 +5,15 @@
   import { onDestroy } from "svelte";
   import { imageUrl, isTauri } from "../lib/api";
   import { focusPosition, type AlbumCandidate, type CaptionMode } from "../lib/album";
-  import { PLACE_KM, coverId, musicPlaces, durationOf, formatDuration, frameAt, isContain, MAX_SECONDS, MIN_SECONDS, MAP_MIN_KM, photoDuration, slideAlternatives, slideSeconds, timeline, type Transition } from "../lib/slideshow";
+  import { PLACE_KM, coverId, musicPlaces, textStyle, durationOf, formatDuration, frameAt, isContain, MAX_SECONDS, MIN_SECONDS, MAP_MIN_KM, photoDuration, slideAlternatives, slideSeconds, timeline, type Transition } from "../lib/slideshow";
   import { slideshow } from "../lib/slideshow.svelte";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
   import { isTyping } from "../lib/keys";
   import { VIDEO_CODECS, VIDEO_SIZES, encodableCodecs, type VideoCodecKey, type VideoSize } from "../lib/slideshowVideo";
   import SlideStage from "./SlideStage.svelte";
+  import SlideTextFields from "./SlideTextFields.svelte";
+  import FontSelect from "./FontSelect.svelte";
   import Icon from "./Icon.svelte";
 
   /** Bildformat der Vorschau (wie ein Bildschirm) */
@@ -308,6 +310,15 @@
         {#if selSlide.auto === false}
           <button class="btn quiet link" onclick={() => slideshow.setCaption(sel, null)}>{t("Wieder automatisch beschriften")}</button>
         {/if}
+        {#if selSlide.caption}
+          <details class="style" open={!!selSlide.style}>
+            <summary>{selSlide.style ? t("Eigener Stil für diesen Text") : t("Stil dieses Textes ändern")}</summary>
+            <SlideTextFields stacked value={textStyle(selSlide.style, s.captionStyle)} onchange={(v) => slideshow.setSlideStyle(sel, v)} />
+            {#if selSlide.style}
+              <button class="btn quiet link" onclick={() => slideshow.setSlideStyle(sel, null)}>{t("Stil wie alle Texte")}</button>
+            {/if}
+          </details>
+        {/if}
         <label class="check" title={canMap(sel) ? "" : t("Dieses oder die vorigen Fotos haben keinen Aufnahmeort.")}>
           <input type="checkbox" checked={mapBefore(sel)} disabled={!canMap(sel)} onchange={(e) => slideshow.setSlideMap(sel, e.currentTarget.checked)} />
           {t("Davor Karte vom vorigen Ort")}
@@ -366,6 +377,21 @@
               {/if}
             </span>
           </div>
+        {/if}
+        <h4>{t("Texte")}</h4>
+        <label class="field">
+          <span>{t("Schrift")}</span>
+          <FontSelect value={s.font} onchange={(f) => slideshow.setFont(f)} />
+        </label>
+        <details class="style">
+          <summary>{t("Datum, Ort und eigene Texte")}</summary>
+          <SlideTextFields stacked value={s.captionStyle} onchange={(v) => slideshow.setTextStyle("captionStyle", v)} />
+        </details>
+        {#if a.title.trim()}
+          <details class="style">
+            <summary>{t("Titel")}</summary>
+            <SlideTextFields stacked value={s.titleStyle} onchange={(v) => slideshow.setTextStyle("titleStyle", v)} />
+          </details>
         {/if}
         <h4>{t("Musik")}</h4>
         {#if a.music}
@@ -719,6 +745,21 @@
     grid-row: span 2;
     display: flex;
     align-items: center;
+  }
+  .style {
+    display: grid;
+    gap: 8px;
+  }
+  .style[open] {
+    padding-bottom: 4px;
+  }
+  .style summary {
+    cursor: pointer;
+    color: var(--muted);
+    font-size: var(--step--1);
+  }
+  .style[open] summary {
+    margin-bottom: 6px;
   }
   .places {
     display: grid;

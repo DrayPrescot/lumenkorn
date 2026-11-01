@@ -9,12 +9,41 @@
 // Abspielen und Videoexport auf derselben Zeitleiste.
 
 import type { Scope } from "./api";
-import { focusPosition, shortPlace, type AlbumCandidate, type AlbumSuggestion, type CaptionMode, type PhotoSource, type ThemeKey } from "./album";
+import { focusPosition, fontFamily, shortPlace, type AlbumCandidate, type AlbumFont, type AlbumSuggestion, type CaptionMode, type PhotoSource, type ThemeKey } from "./album";
 import { beatGrid, snapToBeats, type Beat, type BeatInfo } from "./beats";
 import { distanceKm, type MapLeg, type MapPlace } from "./slideMap";
 import { locale } from "./i18n";
 
 export type Transition = "fade" | "slide" | "none";
+
+/** Stil eines Textes auf dem Bild. Größe in Prozent der Bildhöhe, damit
+ *  Vorschau, Vollbild und Video gleich aussehen. */
+export interface SlideTextStyle {
+  size: number;
+  align: "left" | "center" | "right";
+  /** Lage auf dem Bild */
+  pos: "top" | "middle" | "bottom";
+  /** Hell mit Schatten oder dunkel mit hellem Schein */
+  color: "light" | "dark";
+  bold: boolean;
+}
+
+export const DEFAULT_CAPTION_STYLE: SlideTextStyle = { size: 3.6, align: "left", pos: "bottom", color: "light", bold: false };
+export const DEFAULT_TITLE_STYLE: SlideTextStyle = { size: 8, align: "center", pos: "middle", color: "light", bold: true };
+export const MIN_TEXT_SIZE = 1.5;
+export const MAX_TEXT_SIZE = 16;
+
+/** Gültiger Stil: fehlende oder unsinnige Angaben aus der Vorgabe */
+export function textStyle(s: Partial<SlideTextStyle> | undefined, base: SlideTextStyle): SlideTextStyle {
+  const out = { ...base };
+  if (!s) return out;
+  if (typeof s.size === "number" && Number.isFinite(s.size)) out.size = Math.min(MAX_TEXT_SIZE, Math.max(MIN_TEXT_SIZE, s.size));
+  if (s.align === "left" || s.align === "center" || s.align === "right") out.align = s.align;
+  if (s.pos === "top" || s.pos === "middle" || s.pos === "bottom") out.pos = s.pos;
+  if (s.color === "light" || s.color === "dark") out.color = s.color;
+  if (typeof s.bold === "boolean") out.bold = s.bold;
+  return out;
+}
 
 export interface SlideshowSettings {
   theme: ThemeKey;
@@ -32,6 +61,12 @@ export interface SlideshowSettings {
   maps: boolean;
   /** Zum Schluss die Karte mit allen Orten der Reise */
   endMap: boolean;
+  /** Schrift aller Texte (wie im Fotoalbum: mitgeliefert oder vom System) */
+  font: AlbumFont;
+  /** Stil von Datum/Ort und eigenen Texten (einzelne Fotos können abweichen) */
+  captionStyle: SlideTextStyle;
+  /** Stil des Titels */
+  titleStyle: SlideTextStyle;
 }
 
 export const DEFAULT_SLIDESHOW: SlideshowSettings = {
@@ -45,6 +80,9 @@ export const DEFAULT_SLIDESHOW: SlideshowSettings = {
   captions: "both",
   maps: true,
   endMap: true,
+  font: "sans",
+  captionStyle: DEFAULT_CAPTION_STYLE,
+  titleStyle: DEFAULT_TITLE_STYLE,
 };
 
 export const MIN_SECONDS = 1.5;
@@ -80,6 +118,8 @@ export interface Slide {
   fit?: "cover" | "contain";
   /** Karte vor diesem Foto ein- bzw. ausschalten; ohne Angabe nach Entfernung */
   map?: boolean;
+  /** Eigener Stil des Textes (nur die abweichenden Angaben) */
+  style?: Partial<SlideTextStyle>;
 }
 
 /** Ein Lied */
@@ -128,6 +168,9 @@ export function slideshowDefaults(s: Partial<SlideshowSettings>): SlideshowSetti
   const out = { ...DEFAULT_SLIDESHOW, ...s };
   out.seconds = clampSeconds(out.seconds);
   if (!["fade", "slide", "none"].includes(out.transition)) out.transition = "fade";
+  if (typeof out.font !== "string" || !out.font || out.font.length > 200) out.font = "sans";
+  out.captionStyle = textStyle(out.captionStyle, DEFAULT_CAPTION_STYLE);
+  out.titleStyle = textStyle(out.titleStyle, DEFAULT_TITLE_STYLE);
   return out;
 }
 
@@ -561,9 +604,10 @@ export interface Layer {
   /** Bildfüllend mit Ausschnitt (object-position) oder ganz */
   contain: boolean;
   pos: [number, number];
-  /** Beschriftung mit Deckkraft */
+  /** Beschriftung mit Deckkraft und Stil */
   caption?: string;
   captionOpacity: number;
+  captionStyle: SlideTextStyle;
   /** Karte statt Foto: Flug und Fortschritt 0…1 */
   map?: { leg: MapLeg; p: number };
   /** Karte mit allen Orten, Fortschritt 0…1 */
@@ -572,8 +616,11 @@ export interface Layer {
 
 export interface Frame {
   layers: Layer[];
-  /** Deckkraft des Titels */
+  /** Deckkraft und Stil des Titels */
   title: number;
+  titleStyle: SlideTextStyle;
+  /** CSS-Schriftfamilie aller Texte */
+  font: string;
   /** Abdunkeln am Anfang und Ende (0: Bild, 1: schwarz) */
   black: number;
 }
@@ -628,13 +675,15 @@ const OVERVIEW_KEY = -2_000_000;
 export function frameAt(a: SlideshowState, tl: Timeline, t: number, frameAspect: number, byId: Map<number, AlbumCandidate>): Frame {
   const { starts, total, entries } = tl;
   const n = entries.length;
-  if (!n) return { layers: [], title: 0, black: 1 };
+  const font = fontCss(a.settings.font);
+  const capBase = a.settings.captionStyle;
+  if (!n) return { layers: [], title: 0, titleStyle: a.settings.titleStyle, font, black: 1 };
   const tr = a.settings.transition;
   const i = slideAt(starts, t);
   const layers: Layer[] = [];
   // Halbe Dauer des Übergangs vor Abschnitt `j` (höchstens die Hälfte beider)
   const halfOf = (j: number) => (tr === "none" || j <= 0 || j >= n ? 0 : Math.min(tl.transition, durationOf(tl, j) / 2, durationOf(tl, j - 1) / 2) / 2);
-  const still = { scale: 1, tx: 0, ty: 0, contain: false, pos: [0.5, 0.5] as [number, number], captionOpacity: 0 };
+  const still = { scale: 1, tx: 0, ty: 0, contain: false, pos: [0.5, 0.5] as [number, number], captionOpacity: 0, captionStyle: capBase };
   const make = (j: number, opacity: number, shift: number): Layer => {
     const e = entries[j];
     const start = starts[j];
@@ -667,6 +716,7 @@ export function frameAt(a: SlideshowState, tl: Timeline, t: number, frameAspect:
       pos: contain ? [0.5, 0.5] : focusPosition(c?.aspect ?? 1.5, frameAspect, c?.focus),
       caption,
       captionOpacity: caption ? Math.min(capIn, capOut) : 0,
+      captionStyle: s?.style ? textStyle(s.style, capBase) : capBase,
     };
   };
 
@@ -695,7 +745,12 @@ export function frameAt(a: SlideshowState, tl: Timeline, t: number, frameAspect:
     const d0 = durationOf(tl, 0);
     title = Math.min(smooth((t - 0.4) / 0.8), 1 - smooth((t - (d0 - 1.2)) / 0.7));
   }
-  return { layers, title, black: Math.max(fadeIn, fadeOut) };
+  return { layers, title, titleStyle: a.settings.titleStyle, font, black: Math.max(fadeIn, fadeOut) };
+}
+
+/** CSS-Schriftfamilie einer Diashow-Schrift (mit Ersatz) */
+export function fontCss(font: AlbumFont): string {
+  return `${fontFamily(font)}, system-ui, sans-serif`;
 }
 
 /** Dauer als „m:ss“ */
@@ -730,7 +785,8 @@ export function validSlideshow(x: unknown): x is SlideshowState {
         (s.seconds === undefined || num(s.seconds, MIN_SECONDS, MAX_SECONDS)) &&
         (s.caption === undefined || (typeof s.caption === "string" && s.caption.length <= 1000)) &&
         (s.fit === undefined || s.fit === "cover" || s.fit === "contain") &&
-        (s.map === undefined || typeof s.map === "boolean"),
+        (s.map === undefined || typeof s.map === "boolean") &&
+        (s.style === undefined || (typeof s.style === "object" && s.style !== null)),
     ) &&
     (a.music === undefined || validMusic(a.music)) &&
     typeof a.scope === "object" &&

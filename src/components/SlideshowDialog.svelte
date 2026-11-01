@@ -6,6 +6,8 @@
   import { THEME_KEYS, photoAllowed, type PhotoSource, type ThemeKey } from "../lib/album";
   import { DEFAULT_SLIDESHOW, MAP_MIN_KM, MAX_SECONDS, MIN_SECONDS, formatDuration, type SlideshowSettings } from "../lib/slideshow";
   import { slideshow } from "../lib/slideshow.svelte";
+  import FontSelect from "./FontSelect.svelte";
+  import SlideTextFields from "./SlideTextFields.svelte";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
 
@@ -156,6 +158,12 @@
           <option value="none">{t("Keine")}</option>
         </select>
       </label>
+      <label class="row">
+        <span>{t("Schrift")}</span>
+        <FontSelect value={s.font} onchange={(f) => (s.font = f)} />
+      </label>
+      <SlideTextFields value={s.captionStyle} onchange={(v) => (s.captionStyle = v)} />
+      <p class="meta small">{t("Stil für Datum, Ort und eigene Texte – einzelne Texte und der Titel lassen sich später anpassen.")}</p>
     </fieldset>
 
     {#if available === 0}

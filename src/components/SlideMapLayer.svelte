@@ -18,14 +18,14 @@
   // Karte der Diashow in der Bühne (Vorschau und Vollbild): Flug beim
   // Ortswechsel oder alle Orte am Ende.
   import { drawMapLeg, drawOverview, type MapLeg, type MapPlace } from "../lib/slideMap";
-  import { fontFamily } from "../lib/album";
 
-  let { leg, places, p }: { leg?: MapLeg; places?: MapPlace[]; p: number } = $props();
+  /** `font`: CSS-Schriftfamilie der Diashow */
+  let { leg, places, p, font }: { leg?: MapLeg; places?: MapPlace[]; p: number; font: string } = $props();
 
   let canvas = $state<HTMLCanvasElement>();
   let w = $state(0);
   let h = $state(0);
-  const style = { font: fontFamily("sans") };
+  const style = $derived({ font });
   ensureData();
 
   $effect(() => {

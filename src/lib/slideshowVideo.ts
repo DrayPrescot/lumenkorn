@@ -15,8 +15,8 @@ import {
   type StreamTargetChunk,
 } from "mediabunny";
 import { imageUrl } from "./api";
-import { fontFamily, type AlbumCandidate } from "./album";
-import { clipGain, frameAt, slideAt, timeline, type AudioClip, type Frame, type SlideshowState } from "./slideshow";
+import type { AlbumCandidate } from "./album";
+import { clipGain, fontCss, frameAt, slideAt, timeline, type AudioClip, type Frame, type SlideshowState, type SlideTextStyle } from "./slideshow";
 import { drawMapLeg, drawOverview, mapData, type MapData, type MapStyle } from "./slideMap";
 import { t } from "./i18n";
 
@@ -46,9 +46,6 @@ export async function encodableCodecs(size: VideoSize): Promise<Set<VideoCodecKe
   }
   return out;
 }
-
-/** Schrift wie in der Oberfläche */
-const FONT = fontFamily("sans");
 
 // --- Zeichnen ----------------------------------------------------------------------
 
@@ -82,14 +79,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, frame: Frame, title: st
     }
     if (l.caption && l.captionOpacity > 0) {
       ctx.globalAlpha = l.opacity * l.captionOpacity;
-      drawText(ctx, l.caption, {
-        x: w * 0.05,
-        bottom: h * 0.91,
-        maxWidth: w * 0.7,
-        size: h * 0.036,
-        weight: 500,
-        align: "left",
-      });
+      drawText(ctx, l.caption, l.captionStyle, frame.font, w, h, false);
     }
     ctx.restore();
   }
@@ -101,7 +91,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, frame: Frame, title: st
     g.addColorStop(1, "rgb(0 0 0 / 0)");
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, w, h);
-    drawText(ctx, title, { x: w / 2, middle: h / 2, maxWidth: w * 0.84, size: h * 0.08, weight: 600, align: "center" });
+    drawText(ctx, title, frame.titleStyle, frame.font, w, h, true);
     ctx.restore();
   }
   if (frame.black > 0) {
@@ -132,35 +122,50 @@ function drawContain(ctx: CanvasRenderingContext2D, img: Source, w: number, h: n
   ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
 }
 
-/** Text mit Schatten, umbrochen auf `maxWidth`; unten bündig (`bottom`) oder mittig (`middle`) */
-function drawText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  o: { x: number; bottom?: number; middle?: number; maxWidth: number; size: number; weight: number; align: CanvasTextAlign },
-) {
+/**
+ * Text im sicheren Bereich (wie `.text` in `SlideStage.svelte`): oben, mittig
+ * oder unten, links, mittig oder rechts; hell mit Schatten oder dunkel mit
+ * hellem Schein, umbrochen an Wortgrenzen.
+ */
+function drawText(ctx: CanvasRenderingContext2D, text: string, st: SlideTextStyle, font: string, w: number, h: number, isTitle: boolean) {
+  const size = (st.size / 100) * h;
+  const left = w * 0.05;
+  const right = w * 0.95;
+  const top = h * 0.07;
+  const bottom = h * 0.91;
+  const maxWidth = w * (st.align === "center" ? 0.9 : 0.75);
   ctx.save();
-  ctx.font = `${o.weight} ${o.size}px ${FONT}`;
-  ctx.textAlign = o.align;
+  ctx.font = `${st.bold ? 650 : isTitle ? 600 : 500} ${size}px ${font}`;
+  ctx.textAlign = st.align;
   ctx.textBaseline = "alphabetic";
-  ctx.fillStyle = "#fff";
-  ctx.shadowColor = "rgb(0 0 0 / 0.75)";
-  ctx.shadowBlur = o.size * 0.4;
-  ctx.shadowOffsetY = o.size * 0.05;
+  if (st.color === "dark") {
+    ctx.fillStyle = "#1c1c1c";
+    ctx.shadowColor = "rgb(255 255 255 / 0.85)";
+    ctx.shadowBlur = size * 0.35;
+  } else {
+    ctx.fillStyle = "#fff";
+    ctx.shadowColor = "rgb(0 0 0 / 0.75)";
+    ctx.shadowBlur = size * 0.4;
+    ctx.shadowOffsetY = size * 0.05;
+  }
   const lines: string[] = [];
   for (const para of text.split("\n")) {
     let line = "";
     for (const word of para.split(/\s+/)) {
       const next = line ? `${line} ${word}` : word;
-      if (line && ctx.measureText(next).width > o.maxWidth) {
+      if (line && ctx.measureText(next).width > maxWidth) {
         lines.push(line);
         line = word;
       } else line = next;
     }
     lines.push(line);
   }
-  const lh = o.size * 1.22;
-  const top = o.bottom !== undefined ? o.bottom - lh * (lines.length - 1) : (o.middle ?? 0) - (lh * (lines.length - 1)) / 2 + o.size * 0.35;
-  lines.forEach((l, i) => ctx.fillText(l, o.x, top + i * lh));
+  const lh = size * 1.22;
+  const block = lh * lines.length;
+  const y0 = st.pos === "top" ? top : st.pos === "middle" ? (top + bottom) / 2 - block / 2 : bottom - block;
+  const x = st.align === "left" ? left : st.align === "right" ? right : w / 2;
+  // Grundlinie etwa 80 % der Zeilenhöhe unter der Oberkante
+  lines.forEach((l, i) => ctx.fillText(l, x, y0 + i * lh + lh * 0.8));
   ctx.restore();
 }
 
@@ -283,8 +288,9 @@ export async function renderVideo(
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext("2d", { alpha: false })!;
-  await document.fonts.load(`600 20px ${FONT}`).catch(() => {});
-  await document.fonts.load(`500 20px ${FONT}`).catch(() => {});
+  // Schriften laden, sonst zeichnet die Leinwand mit der Ersatzschrift
+  const textFont = fontCss(a.settings.font);
+  for (const wgt of [500, 600, 650]) await document.fonts.load(`${wgt} 20px ${textFont}`).catch(() => {});
   const map = tl.entries.some((e) => e.kind === "map" || e.kind === "overview") ? await mapData().catch(() => null) : null;
 
   const output = new Output({

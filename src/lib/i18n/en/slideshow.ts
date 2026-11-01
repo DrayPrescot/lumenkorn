@@ -92,4 +92,13 @@ export default {
   "Ort {n}": "Place {n}",
   "Ohne Aufnahmeort": "Without location",
   "Dieses System kann {codec} in dieser Größe nicht kodieren.": "This system cannot encode {codec} at this size.",
+  "Stil für Datum, Ort und eigene Texte – einzelne Texte und der Titel lassen sich später anpassen.": "Style for date, place and your own texts – single texts and the title can be adjusted later.",
+  "Eigener Stil für diesen Text": "Own style for this text",
+  "Stil dieses Textes ändern": "Change the style of this text",
+  "Stil wie alle Texte": "Same style as all texts",
+  "Texte": "Texts",
+  "Datum, Ort und eigene Texte": "Date, place and own texts",
+  "Oben": "Top",
+  "Unten": "Bottom",
+  "Prozent der Bildhöhe": "Percent of the picture height",
 };
