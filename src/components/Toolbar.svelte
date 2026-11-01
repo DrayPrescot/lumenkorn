@@ -1,6 +1,7 @@
 <script lang="ts">
   import { lib } from "../lib/store.svelte";
   import { album } from "../lib/album.svelte";
+  import { slideshow } from "../lib/slideshow.svelte";
   import type { Scope } from "../lib/api";
   import { dev } from "../lib/develop.svelte";
   import { t } from "../lib/i18n";
@@ -48,7 +49,7 @@
     <button class="btn quiet" onclick={() => lib.peopleBack++} title={t("Zurück zur Übersicht aller Personen")}>
       <Icon name="back" size={14} /> {t("Personen")}
     </button>
-  {:else if lib.mode === "library" && (lib.view === "loupe" || lib.view === "compare" || lib.view === "people" || lib.view === "album" || lib.view === "stats")}
+  {:else if lib.mode === "library" && (lib.view === "loupe" || lib.view === "compare" || lib.view === "people" || lib.view === "album" || lib.view === "slideshow" || lib.view === "stats")}
     <button class="btn quiet" onclick={() => (lib.view = "grid")}><Icon name="back" size={14} /> {t("Raster")}</button>
   {/if}
   {#if lib.scope.type === "person" && lib.view !== "people"}
@@ -112,6 +113,9 @@
   {#if lib.mode === "library" && lib.view === "grid" && (lib.scope.type === "project" || lib.scope.type === "folder") && lib.images.length}
     <button class="btn" onclick={() => album.open($state.snapshot(lib.scope) as Scope, lib.scopeTitle)} title={t("Aus den besten Fotos dieser Ansicht ein Fotoalbum gestalten und als PDF speichern")}>
       <Icon name="book" size={14} /> {t("Fotoalbum")}
+    </button>
+    <button class="btn" onclick={() => slideshow.open($state.snapshot(lib.scope) as Scope, lib.scopeTitle)} title={t("Aus den besten Fotos dieser Ansicht eine Diashow gestalten und abspielen")}>
+      <Icon name="slides" size={14} /> {t("Diashow")}
     </button>
   {/if}
 

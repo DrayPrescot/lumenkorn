@@ -31,6 +31,9 @@
     book: "M12 6.5C10.5 5 8 4.5 4 4.5v14c4 0 6.5.5 8 2 1.5-1.5 4-2 8-2v-14c-4 0-6.5.5-8 2zM12 6.5v14",
     filter: "M4 5h16l-6 7.5V19l-4-2v-4.5z",
     chart: "M4 20h16M7 20v-6M12 20V6M17 20v-9",
+    play: "M7 4.5v15l12-7.5z",
+    pause: "M8 5v14M16 5v14",
+    slides: "M3 6h18v12H3zM10 9.5v5l4.5-2.5z",
   };
   export type IconName = keyof typeof paths;
 </script>

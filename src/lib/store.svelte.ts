@@ -26,7 +26,7 @@ class Library {
   focus = $state(-1);
   /** Mehrfachauswahl (IDs). */
   selection = $state<Set<number>>(new Set());
-  view = $state<"grid" | "loupe" | "compare" | "people" | "map" | "album" | "stats">("grid");
+  view = $state<"grid" | "loupe" | "compare" | "people" | "map" | "album" | "slideshow" | "stats">("grid");
   /** Zählt Änderungen an Aufnahmeorten (Infobereich lädt neu) */
   geoVersion = $state(0);
   #geoTimer: ReturnType<typeof setTimeout> | undefined;

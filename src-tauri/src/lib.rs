@@ -23,6 +23,7 @@ mod protocol;
 mod rename;
 mod repair;
 mod settings;
+mod slideshow;
 mod style;
 mod updater;
 mod worker;
@@ -249,6 +250,10 @@ pub fn run() {
             fonts::system_fonts,
             album::select::album_suggest_cancel,
             album::select::album_places,
+            slideshow::slideshow_music,
+            slideshow::slideshow_video_open,
+            slideshow::slideshow_video_write,
+            slideshow::slideshow_video_close,
             style::style_status,
             settings::app_settings,
             settings::app_set_settings,

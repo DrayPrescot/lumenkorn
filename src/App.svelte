@@ -24,8 +24,12 @@
   import AlbumDialog from "./components/AlbumDialog.svelte";
   import CullDialog from "./components/CullDialog.svelte";
   import AlbumView from "./components/AlbumView.svelte";
+  import SlideshowDialog from "./components/SlideshowDialog.svelte";
+  import SlideshowView from "./components/SlideshowView.svelte";
+  import SlideshowPlayer from "./components/SlideshowPlayer.svelte";
   import StatsView from "./components/StatsView.svelte";
   import { album } from "./lib/album.svelte";
+  import { slideshow } from "./lib/slideshow.svelte";
   import { api, isTauri, type ImageSummary } from "./lib/api";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { dev } from "./lib/develop.svelte";
@@ -113,9 +117,9 @@
       return;
     }
     if (isTyping(e) || exportIds || renameIds || deleteImages || lib.merge || lib.importOpen) return;
-    // Personen- und Albumansicht: Kein Foto ist zu sehen – Bewerten oder
+    // Personen-, Album- und Diashow-Ansicht: Kein Foto ist zu sehen – Bewerten oder
     // Ablehnen träfe unbemerkt das zuletzt gewählte
-    const noPhoto = lib.mode === "library" && (lib.view === "people" || lib.view === "album" || lib.view === "stats");
+    const noPhoto = lib.mode === "library" && (lib.view === "people" || lib.view === "album" || lib.view === "slideshow" || lib.view === "stats");
     // Befehl, Wirkung, nur mit sichtbarem Foto (Belegung: Einstellungen → Tastenkürzel)
     const actions: [string, () => void, boolean?][] = [
       ["import", () => (lib.importOpen = true)],
@@ -158,7 +162,7 @@
 
 <svelte:window {onkeydown} />
 
-<div class="app" class:info={(infoOpen && lib.view !== "album" && lib.view !== "stats") || lib.mode === "develop"}>
+<div class="app" class:info={(infoOpen && lib.view !== "album" && lib.view !== "slideshow" && lib.view !== "stats") || lib.mode === "develop"}>
   <div class="sidebar" class:open={sidebarOpen}>
     <Sidebar />
   </div>
@@ -183,6 +187,8 @@
       {/await}
     {:else if lib.view === "album" && lib.mode === "library" && album.state}
       <AlbumView />
+    {:else if lib.view === "slideshow" && lib.mode === "library" && slideshow.state}
+      <SlideshowView />
     {:else if lib.view === "stats" && lib.mode === "library"}
       <StatsView />
     {:else if lib.view === "compare" && lib.compareItems.length >= 2}
@@ -196,7 +202,7 @@
 
   {#if lib.mode === "develop" && lib.focused}
     <div class="info-panel"><DevelopPanel onexport={openExport} /></div>
-  {:else if infoOpen && lib.view !== "album" && lib.view !== "stats"}
+  {:else if infoOpen && lib.view !== "album" && lib.view !== "slideshow" && lib.view !== "stats"}
     <div class="info-panel"><InfoPanel onexport={openExport} /></div>
   {/if}
 </div>
@@ -215,6 +221,14 @@
 
 {#if album.dialog}
   <AlbumDialog scope={album.dialog.scope} title={album.dialog.title} onclose={() => (album.dialog = null)} />
+{/if}
+
+{#if slideshow.dialog}
+  <SlideshowDialog scope={slideshow.dialog.scope} title={slideshow.dialog.title} onclose={() => (slideshow.dialog = null)} />
+{/if}
+
+{#if slideshow.playing && slideshow.state}
+  <SlideshowPlayer from={slideshow.playing.from} />
 {/if}
 
 {#if lib.cull}

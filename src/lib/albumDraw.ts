@@ -194,7 +194,7 @@ export function clusterPins(cands: AlbumCandidate[], view: View, minMm: number):
   });
 }
 
-const MAP = {
+export const MAP = {
   sea: "#dfe9ef",
   land: "#f4f1ea",
   visited: "#e6d9bd",

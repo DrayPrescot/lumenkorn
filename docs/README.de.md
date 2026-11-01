@@ -533,6 +533,34 @@ A3 oder eigene Maße in mm), die Anzahl der Fotos und Seiten und ob mit Rand ode
   Fotobuch-Druckereien annehmen. Das Album bleibt erhalten und lässt sich später weiter
   bearbeiten.
 
+## Diashow
+
+Über **Diashow** neben **Fotoalbum** wählt Lumenkorn die besten Fotos genauso aus wie für das
+Fotoalbum und macht daraus eine Diashow. Man wählt das Thema, die Anzahl der Fotos, wie lange
+jedes zu sehen ist, den Übergang (weich überblenden, schieben oder harter Schnitt) und ob Datum
+und Ort erscheinen.
+
+- Die Fotos zoomen und schwenken langsam, zu Gesichtern hin, wenn welche darauf sind. Hochformate
+  erscheinen ganz vor einer unscharfen Kopie ihrer selbst. Der Titel steht über dem ersten Foto;
+  Datum und Ort werden eingeblendet, wo ein neuer Tag bzw. Ort beginnt.
+- Ziehen ändert die Reihenfolge. Ein Klick auf ein Foto erlaubt eine eigene Dauer, einen eigenen
+  Text, das ganze Foto ohne Beschnitt oder den Tausch gegen ein anderes (aus derselben Serie
+  zuerst). Rechts spielt die Vorschau das gewählte Foto ab.
+- **Musik:** eine MP3-, M4A-, WAV-, FLAC- oder Ogg-Datei wählen. Lumenkorn erkennt den Takt
+  (Spectral Flux, Tempo per Autokorrelation, Schläge per dynamischer Programmierung) und legt
+  jeden Bildwechsel auf den Schlag, der der gewünschten Dauer am nächsten ist – starke Schläge und
+  Taktanfänge bevorzugt. Mit „Diashow endet mit der Musik“ teilen sich die Fotos die Länge des
+  Stücks. Kürzere Stücke beginnen von vorn.
+- **Karte:** Liegt der nächste Aufnahmeort mehr als 50 km entfernt, fliegt eine Karte vom vorigen
+  zum neuen Ort, zeichnet die Route und setzt eine Stecknadel mit dem Ortsnamen. Sie nutzt
+  dieselben eingebauten Kartendaten wie das Fotoalbum. Abschaltbar, auch für einzelne Fotos.
+- **Abspielen** zeigt die Diashow im Vollbild. Leertaste hält an, die Pfeiltasten springen, Esc
+  beendet.
+- **Als Video speichern** schreibt eine MP4-Datei (H.264 mit AAC-Ton, 720p, 1080p oder 1440p, 30
+  Bilder pro Sekunde). Kodiert wird mit den Encodern von Windows bzw. der Grafikkarte über
+  WebView2, es muss nichts heruntergeladen werden. Die Diashow bleibt erhalten und lässt sich
+  später weiter bearbeiten.
+
 ## Einstellungen
 
 Der Knopf **Einstellungen** unten links öffnet ein Menü mit diesen Bereichen:
@@ -780,7 +808,8 @@ die Kameradaten von [rawspeed](https://github.com/darktable-org/rawspeed) (LGPL-
 [libloading](https://github.com/nagisa/rust_libloading) (ISC),
 die [Lensfun](https://github.com/lensfun/lensfun)-Datenbank für die Objektivkorrektur (CC BY-SA 3.0, als JSON mitgeliefert, erzeugt mit `tools/lensfun_db.py`),
 die Schriften [Instrument Sans](https://github.com/Instrument/instrument-sans) und [Lora](https://github.com/cyrealtype/Lora-Cyrillic) über [Fontsource](https://fontsource.org) (OFL-1.1),
-die Kartendaten von [Natural Earth](https://www.naturalearthdata.com) für die Karte im Fotoalbum – Länder (1:50m), Städte, Berggipfel, Flüsse und Seen (1:10m) – (gemeinfrei, mitgeliefert, erzeugt mit `tools/build_countries.mjs` und `tools/build_mapdetails.mjs`),
+die Kartendaten von [Natural Earth](https://www.naturalearthdata.com) für die Karte im Fotoalbum und in der Diashow – Länder (1:50m), Städte, Berggipfel, Flüsse und Seen (1:10m) – (gemeinfrei, mitgeliefert, erzeugt mit `tools/build_countries.mjs` und `tools/build_mapdetails.mjs`),
+[Mediabunny](https://github.com/Vanilagy/mediabunny) zum Schreiben des Diashow-Videos (MPL-2.0),
 [Leaflet](https://github.com/Leaflet/Leaflet) für die Kartenanzeige (BSD-2-Clause),
 [Leaflet.markercluster](https://github.com/Leaflet/Leaflet.markercluster) für die gruppierten Markierungen (MIT).
 

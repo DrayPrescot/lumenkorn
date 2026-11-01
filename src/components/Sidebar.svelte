@@ -3,6 +3,7 @@
   import { api, faceUrl, isTauri, pickFolder, type FolderNode, type Person, type Project, type Root } from "../lib/api";
   import { lib, topFolders } from "../lib/store.svelte";
   import { album } from "../lib/album.svelte";
+  import { slideshow } from "../lib/slideshow.svelte";
   import { t, tc } from "../lib/i18n";
   import { withKey } from "../lib/keymap.svelte";
   import FolderTree from "./FolderTree.svelte";
@@ -62,6 +63,13 @@
     lib.mode = "library";
     lib.setScope({ type: "project", id: p.id });
     album.open({ type: "project", id: p.id }, p.name);
+  }
+
+  /** Gespeicherte Diashow eines Projekts öffnen (Bereich wechselt mit) */
+  function openSlideshow(p: Project) {
+    lib.mode = "library";
+    lib.setScope({ type: "project", id: p.id });
+    slideshow.open({ type: "project", id: p.id }, p.name);
   }
 
   async function uploadProject(p: Project) {
@@ -325,10 +333,12 @@
             class="item"
             class:active={lib.isScope({ type: "project", id: p.id })}
             onclick={(e) => {
-              // Klick auf die Wolke: Nextcloud-Dialog mit dem Link; aufs Buch: das Album
+              // Klick auf die Wolke: Nextcloud-Dialog mit dem Link; aufs Buch: das
+              // Album; auf das Dia: die Diashow
               const target = e.target as Element;
               if (target.closest(".shared")) uploadProject(p);
               else if (target.closest(".album")) openAlbum(p);
+              else if (target.closest(".slideshow")) openSlideshow(p);
               else lib.setScope({ type: "project", id: p.id });
             }}
             ondblclick={() => (renaming = p.id)}
@@ -344,6 +354,9 @@
             <span>{p.name}</span>
             {#if album.projects[p.id]}
               <span class="album" title={t("Fotoalbum vorhanden – Klick öffnet es")}><Icon name="book" size={14} /></span>
+            {/if}
+            {#if slideshow.projects[p.id]}
+              <span class="slideshow" title={t("Diashow vorhanden – Klick öffnet sie")}><Icon name="slides" size={14} /></span>
             {/if}
             {#if lib.ncShared[p.id]}
               <span class="shared" title={t("In Nextcloud geteilt: {url}", { url: lib.ncShared[p.id] })}><Icon name="cloud" size={14} /></span>
@@ -697,7 +710,8 @@
     text-align: center;
   }
   .shared,
-  .album {
+  .album,
+  .slideshow {
     display: inline-flex;
     cursor: pointer;
   }

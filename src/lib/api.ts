@@ -4,6 +4,7 @@
 import { invoke as tauriInvoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
 import { mock } from "./mock";
+import { t } from "./i18n";
 import type { AlbumDoc, AlbumSuggestion, PhotoSource } from "./album";
 
 export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -1213,6 +1214,17 @@ export const api = {
   albumPlaces: (ids: number[]) => call<Record<string, string>>("album_places", { ids }),
   albumExport: (doc: AlbumDoc, path: string) => call<void>("album_export", { doc, path }),
   albumExportCancel: () => call<void>("album_export_cancel"),
+  /** Musikdatei für die Diashow (nur in der App) */
+  async slideshowMusic(path: string): Promise<Blob> {
+    if (!isTauri) throw t("Musik aus Dateien gibt es nur in der App.");
+    const buf = await tauriInvoke<ArrayBuffer>("slideshow_music", { path });
+    return new Blob([buf]);
+  },
+  /** Video schreiben: anlegen, Stücke an ihre Position, abschließen (nur in der App) */
+  slideshowVideoOpen: (path: string) => call<void>("slideshow_video_open", { path }),
+  slideshowVideoWrite: (data: Uint8Array, position: number) =>
+    tauriInvoke<void>("slideshow_video_write", data, { headers: { "x-position": String(position) } }),
+  slideshowVideoClose: (keep: boolean) => call<void>("slideshow_video_close", { keep }),
 };
 
 // --- Zusammenfügen ------------------------------------------------------------
@@ -1418,6 +1430,34 @@ export async function pickPdfTarget(title: string, name: string, dir: string | n
     const sep = dir && dir.includes("/") && !dir.includes("\\") ? "/" : "\\";
     const defaultPath = dir ? `${dir.replace(/[\\/]+$/, "")}${sep}${name}.pdf` : `${name}.pdf`;
     const res = await save({ title, defaultPath, filters: [{ name: "PDF", extensions: ["pdf"] }] });
+    return typeof res === "string" ? res : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Speichern-Dialog für ein Video (MP4). `null`, wenn abgebrochen oder nicht verfügbar. */
+export async function pickVideoTarget(title: string, name: string): Promise<string | null> {
+  if (!isTauri) return null;
+  try {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const res = await save({ title, defaultPath: `${name}.mp4`, filters: [{ name: t("Video (MP4)"), extensions: ["mp4"] }] });
+    return typeof res === "string" ? res : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Musikdatei wählen (Diashow). `null`, wenn abgebrochen oder nicht verfügbar. */
+export async function pickMusicFile(title: string): Promise<string | null> {
+  if (!isTauri) return null;
+  try {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const res = await open({
+      title,
+      multiple: false,
+      filters: [{ name: t("Musik"), extensions: ["mp3", "m4a", "aac", "wav", "flac", "ogg", "opus"] }],
+    });
     return typeof res === "string" ? res : null;
   } catch {
     return null;

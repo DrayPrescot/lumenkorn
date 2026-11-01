@@ -215,6 +215,31 @@ photos and pages, with or without margins.
   folder with every page as a JPG, which most photo book printers accept. The album is kept and
   can be opened and changed again later.
 
+### Slideshow
+
+**Diashow** next to **Fotoalbum** picks the best photos in the same way as the photo album and
+makes a slideshow from them. Pick a theme, the number of photos, how long each one stays, the
+transition (crossfade, slide or hard cut) and whether to show date and place.
+
+- Photos slowly zoom and pan, towards faces when there are any. Portrait photos are shown whole
+  on a blurred copy of themselves. The title appears over the first photo; date and place fade in
+  where a new day or place begins.
+- Drag photos to change the order. Click one to give it its own duration or text, to show it
+  whole, or to swap it for another photo (shots from the same burst come first). The preview on
+  the right plays the selected photo.
+- **Music:** pick an MP3, M4A, WAV, FLAC or Ogg file. Lumenkorn finds the beat (spectral flux,
+  tempo from autocorrelation, beats by dynamic programming) and puts each change of photo on the
+  beat closest to the wanted duration, preferring strong beats and the start of a bar. With
+  *End the slideshow with the music* the photos share the length of the track. Shorter tracks
+  start again.
+- **Map:** when the next photo was taken more than 50 km away, a map flies from the previous place
+  to the new one, draws the route and drops a pin with the place name. It uses the same built-in
+  map data as the photo album. It can be switched off, or on and off for single photos.
+- **Abspielen** plays full screen. Space pauses, the arrow keys skip, Esc ends.
+- **Save as video** writes an MP4 file (H.264 with AAC sound, 720p, 1080p or 1440p, 30 frames per
+  second). WebView2 encodes it with the encoders of Windows or the graphics card, so nothing has
+  to be downloaded. The slideshow is kept and can be opened and changed again later.
+
 ### People
 Faces are found in the background, grouped by similarity, and suggested for a name once you
 have named a few. Suggestions can be confirmed or rejected one by one or many at once. Named
@@ -637,7 +662,8 @@ The same list is shown in the app: click ⓘ (**About Lumenkorn**) at the bottom
 | [Lensfun](https://github.com/lensfun/lensfun) database (bundled, converted to JSON by `tools/lensfun_db.py`) | lens profiles for lens correction | CC BY-SA 3.0 |
 | [Instrument Sans](https://github.com/Instrument/instrument-sans) via [Fontsource](https://fontsource.org) | interface font, photo album | OFL-1.1 |
 | [Lora](https://github.com/cyrealtype/Lora-Cyrillic) via [Fontsource](https://fontsource.org) | serif font for the photo album | OFL-1.1 |
-| [Natural Earth](https://www.naturalearthdata.com) countries 1:50m, populated places, elevation points, rivers and lakes 1:10m (built into the app, made with `tools/build_countries.mjs` and `tools/build_mapdetails.mjs`) | map in the photo album | Public domain |
+| [Natural Earth](https://www.naturalearthdata.com) countries 1:50m, populated places, elevation points, rivers and lakes 1:10m (built into the app, made with `tools/build_countries.mjs` and `tools/build_mapdetails.mjs`) | map in the photo album and the slideshow | Public domain |
+| [Mediabunny](https://github.com/Vanilagy/mediabunny) | writing the slideshow video (MP4) | MPL-2.0 |
 | [Leaflet](https://github.com/Leaflet/Leaflet) | map display | BSD-2-Clause |
 | [Leaflet.markercluster](https://github.com/Leaflet/Leaflet.markercluster) | clustered markers on the map | MIT |
 
