@@ -17,7 +17,7 @@ import {
 import { imageUrl } from "./api";
 import { fontFamily, type AlbumCandidate } from "./album";
 import { clipGain, frameAt, slideAt, timeline, type AudioClip, type Frame, type SlideshowState } from "./slideshow";
-import { drawMapLeg, drawOverview, mapData, readyLeg, readyOverview, type MapData, type MapStyle } from "./slideMap";
+import { drawMapLeg, drawOverview, mapData, type MapData, type MapStyle } from "./slideMap";
 import { t } from "./i18n";
 
 export type VideoSize = "720p" | "1080p" | "1440p";
@@ -326,11 +326,7 @@ export async function renderVideo(
       }
       for (const id of keep) need(id);
       for (const [id, b] of images) if (!keep.has(id)) (b.close(), images.delete(id));
-      for (const l of frame.layers) {
-        if (l.map) await readyLeg(l.map.leg, l.map.p, w, h, style);
-        else if (l.overview) await readyOverview(l.overview.places, l.overview.p, w, h, style);
-        else if (pending.has(l.id)) await pending.get(l.id);
-      }
+      for (const l of frame.layers) if (!l.map && !l.overview && pending.has(l.id)) await pending.get(l.id);
       drawFrame(ctx, frame, a.title, w, h, images, map, style);
       // Ton vorausschicken, damit der Muxer beides verschränken kann
       if (sound && audioUntil < Math.min(tl.total, time + 1)) {

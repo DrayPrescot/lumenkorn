@@ -237,8 +237,9 @@ transition (crossfade, slide or hard cut) and whether to show date and place.
   songs.
 - **Map:** when the next photo was taken more than 5 km away, a map flies from the previous place
   to the new one, zoomed to the distance, draws the route and drops a pin with the place name.
-  Long trips use the built-in map data of the photo album; for nearby places OpenStreetMap tiles
-  are added if the map is turned on in the settings. It can be switched off, or on and off for
+  It looks like the map page of the photo album (country outlines, visited countries, rivers,
+  lakes, cities and mountains from the built-in map data) and needs no internet. It can be
+  switched off, or on and off for
   single photos. Optionally a last map shows all places and the whole route.
 - **Abspielen** plays full screen. Space pauses, the arrow keys skip, Esc ends.
 - **Save as video** writes an MP4 file (H.264, H.265, AV1 or VP9 with AAC sound, 720p, 1080p or

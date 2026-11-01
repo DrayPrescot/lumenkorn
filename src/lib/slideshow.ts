@@ -242,6 +242,8 @@ const placeOf = (c: AlbumCandidate): MapPlace => ({ lat: c.lat!, lon: c.lon!, la
 /** Flug vom vorigen Aufnahmeort zum Ort des Dias (Index → Flug), soweit eine Karte kommt */
 export function mapLegs(a: SlideshowState, byId: Map<number, AlbumCandidate>): Map<number, MapLeg> {
   const legs = new Map<number, MapLeg>();
+  // Länder der ganzen Reise hervorheben, wie auf der Kartenseite im Fotoalbum
+  const visited = routePlaces(a, byId);
   let prev: AlbumCandidate | undefined;
   a.slides.forEach((s, j) => {
     const c = byId.get(s.id);
@@ -252,7 +254,7 @@ export function mapLegs(a: SlideshowState, byId: Map<number, AlbumCandidate>): M
       const km = distanceKm(from, to);
       const want = s.map ?? (a.settings.maps && km >= MAP_MIN_KM);
       // Am selben Ort ergibt ein Flug keinen Sinn, auch wenn eingeschaltet
-      if (want && km >= 0.5) legs.set(j, { from, to });
+      if (want && km >= 0.5) legs.set(j, { from, to, visited });
     }
     prev = c;
   });

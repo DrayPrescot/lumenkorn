@@ -11,9 +11,7 @@
   import { clipGain, formatDuration, frameAt, slideAt, timeline } from "../lib/slideshow";
   import { slideshow } from "../lib/slideshow.svelte";
   import { preloadFull } from "../lib/fullImages.svelte";
-  import { prefetchLeg, prefetchOverview } from "../lib/slideMap";
-  import { fontFamily } from "../lib/album";
-  import { lib } from "../lib/store.svelte";
+
   import { t } from "../lib/i18n";
   import SlideStage from "./SlideStage.svelte";
   import Icon from "./Icon.svelte";
@@ -133,7 +131,7 @@
     showControls();
   }
 
-  // Die nächsten Fotos in voller Auflösung vorab laden, Kacheln der nächsten Karten ebenso
+  // Die nächsten Fotos in voller Auflösung vorab laden
   $effect(() => {
     const ids: number[] = [];
     for (let i = current; i < Math.min(tl.entries.length, current + 4); i++) {
@@ -142,14 +140,6 @@
       else if (e.kind === "title") ids.push(e.id);
     }
     preloadFull(ids);
-  });
-  const style = $derived({ tiles: lib.mapEnabled, font: fontFamily("sans") });
-  $effect(() => {
-    for (let i = current; i < Math.min(tl.entries.length, current + 3); i++) {
-      const e = tl.entries[i];
-      if (e.kind === "map") prefetchLeg(e.leg, width, height, style);
-      else if (e.kind === "overview") prefetchOverview(e.places, width, height, style);
-    }
   });
 
   // --- Vollbild ------------------------------------------------------------------

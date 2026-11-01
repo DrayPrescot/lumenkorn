@@ -556,8 +556,8 @@ und Ort erscheinen.
   teilen sich die Fotos die Länge der Lieder.
 - **Karte:** Liegt der nächste Aufnahmeort mehr als 5 km entfernt, fliegt eine Karte vom vorigen
   zum neuen Ort, passend zur Entfernung gezoomt, zeichnet die Route und setzt eine Stecknadel mit
-  dem Ortsnamen. Weite Reisen nutzen die eingebauten Kartendaten des Fotoalbums, für nahe Orte
-  kommen Kacheln von OpenStreetMap dazu, wenn die Karte in den Einstellungen eingeschaltet ist.
+  dem Ortsnamen. Sie sieht aus wie die Kartenseite im Fotoalbum (Ländergrenzen, besuchte Länder,
+  Flüsse, Seen, Städte und Berge aus den eingebauten Kartendaten) und braucht kein Internet.
   Abschaltbar, auch für einzelne Fotos. Auf Wunsch zeigt eine letzte Karte alle Orte und die ganze
   Route.
 - **Abspielen** zeigt die Diashow im Vollbild. Leertaste hält an, die Pfeiltasten springen, Esc

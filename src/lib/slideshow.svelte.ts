@@ -457,7 +457,7 @@ class SlideshowStore {
         music,
         size,
         codec,
-        { tiles: lib.mapEnabled, font: fontFamily("sans") },
+        { font: fontFamily("sans") },
         async (c) => {
           if (path) await api.slideshowVideoWrite(c.data, c.position);
           else parts.push({ data: c.data.slice(), position: c.position });
