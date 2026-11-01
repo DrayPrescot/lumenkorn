@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.1] – 2026-11-01
+
 ### Added
 - **Slideshow** next to the photo album button: Lumenkorn picks the best photos of a project or
   folder with the same rules as the album (sharpness, exposure, theme, no bursts or duplicates,
