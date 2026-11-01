@@ -14,18 +14,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
   a new day or place begins. Full screen and video use the photos in full resolution. Texts use
   any font, as in the photo album, with alignment, position, size, colour and bold for the
   captions, the title and single texts. Portrait photos are shown whole on a blurred copy of
-  themselves. Photos can be
-  reordered by dragging, swapped, removed, added, and get their own duration and text. Plays
-  full screen; space pauses, the arrow keys skip.
-- Slideshow music: add one or more MP3, M4A, WAV, FLAC or Ogg files, played one after another
-  with crossfades or by place; each place can get its own songs, the others take turns. Lumenkorn finds the beat and changes the photo on the
-  next suitable beat after the set duration, preferring strong beats and the start of a bar, and
-  can make the slideshow end with the music.
-- Slideshow map: when the next photo was taken more than 5 km away, a map flies from the
-  previous place to the new one and draws the route, zoomed to the distance. It is drawn like
-  the map page of the photo album from the built-in map data, so it needs no internet. Can be
-  switched off for the whole slideshow or for single photos. Optionally the
-  slideshow ends with a map of all places and the whole route.
+  themselves. Photos can be reordered by dragging, swapped, removed, added, and get their own
+  duration and text. Plays full screen; space pauses, the arrow keys skip.
+- Slideshow music: add one or more MP3, M4A, WAV, FLAC or Ogg files, played one after another with
+  crossfades or by place; each place can get its own songs, the others take turns. Lumenkorn finds
+  the beat and changes the photo on the next suitable beat after the set duration, preferring
+  strong beats and the start of a bar, and can make the slideshow end with the music.
+- Slideshow map: when the next photo was taken more than 5 km away, a map flies from the previous
+  place to the new one and draws the route, zoomed to the distance. It is drawn like the map page
+  of the photo album from the built-in map data, so it needs no internet. Can be switched off for
+  the whole slideshow or for single photos. Optionally the slideshow ends with a map of all places
+  and the whole route.
 - **Save as video** writes the slideshow with music as an MP4 file (H.264, H.265, AV1 or VP9 with
   AAC sound, 720p, 1080p or 1440p), encoded by Windows or the graphics card. Codecs the system
   cannot encode are greyed out.
