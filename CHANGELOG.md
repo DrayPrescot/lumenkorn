@@ -15,7 +15,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
   reordered by dragging, swapped, removed, added, and get their own duration and text. Plays
   full screen; space pauses, the arrow keys skip.
 - Slideshow music: add one or more MP3, M4A, WAV, FLAC or Ogg files, played one after another
-  with crossfades or one song per place. Lumenkorn finds the beat and changes the photo on the
+  with crossfades or by place; each place can get its own songs, the others take turns. Lumenkorn finds the beat and changes the photo on the
   next suitable beat after the set duration, preferring strong beats and the start of a bar, and
   can make the slideshow end with the music.
 - Slideshow map: when the next photo was taken more than 5 km away, a map flies from the
@@ -23,8 +23,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   built-in map data; for nearby places OpenStreetMap tiles are added when the map is turned on in
   the settings. Can be switched off for the whole slideshow or for single photos. Optionally the
   slideshow ends with a map of all places and the whole route.
-- **Save as video** writes the slideshow with music as an MP4 file (H.264 and AAC, 720p, 1080p
-  or 1440p), encoded by Windows or the graphics card.
+- **Save as video** writes the slideshow with music as an MP4 file (H.264, H.265, AV1 or VP9 with
+  AAC sound, 720p, 1080p or 1440p), encoded by Windows or the graphics card. Codecs the system
+  cannot encode are greyed out.
 
 ## [1.2.0] – 2026-10-31
 

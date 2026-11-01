@@ -5,37 +5,52 @@
   import { onDestroy } from "svelte";
   import { imageUrl, isTauri } from "../lib/api";
   import { focusPosition, type AlbumCandidate, type CaptionMode } from "../lib/album";
-  import { PLACE_KM, coverId, durationOf, formatDuration, frameAt, isContain, MAX_SECONDS, MIN_SECONDS, MAP_MIN_KM, photoDuration, slideAlternatives, slideSeconds, timeline, type Transition } from "../lib/slideshow";
+  import { PLACE_KM, coverId, musicPlaces, durationOf, formatDuration, frameAt, isContain, MAX_SECONDS, MIN_SECONDS, MAP_MIN_KM, photoDuration, slideAlternatives, slideSeconds, timeline, type Transition } from "../lib/slideshow";
   import { slideshow } from "../lib/slideshow.svelte";
   import { lib } from "../lib/store.svelte";
   import { t } from "../lib/i18n";
   import { isTyping } from "../lib/keys";
-  import { VIDEO_SIZES, type VideoSize } from "../lib/slideshowVideo";
+  import { VIDEO_CODECS, VIDEO_SIZES, encodableCodecs, type VideoCodecKey, type VideoSize } from "../lib/slideshowVideo";
   import SlideStage from "./SlideStage.svelte";
   import Icon from "./Icon.svelte";
 
   /** Bildformat der Vorschau (wie ein Bildschirm) */
   const ASPECT = 16 / 9;
   const SIZE_KEY = "lumenkorn.slideshow.videoSize";
+  const CODEC_KEY = "lumenkorn.slideshow.videoCodec";
 
-  /** Auflösung des Videos (zuletzt benutzte) */
-  let videoSize = $state<VideoSize>(
-    (() => {
-      try {
-        const v = localStorage.getItem(SIZE_KEY);
-        return v && v in VIDEO_SIZES ? (v as VideoSize) : "1080p";
-      } catch {
-        return "1080p";
-      }
-    })(),
-  );
+  function stored<T extends string>(key: string, valid: Record<string, unknown>, fallback: T): T {
+    try {
+      const v = localStorage.getItem(key);
+      return v && v in valid ? (v as T) : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  /** Auflösung und Codec des Videos (zuletzt benutzte) */
+  let videoSize = $state<VideoSize>(stored(SIZE_KEY, VIDEO_SIZES, "1080p"));
+  let videoCodec = $state<VideoCodecKey>(stored(CODEC_KEY, VIDEO_CODECS, "avc"));
+  /** Codecs, die dieses System in der gewählten Größe kodieren kann (`null`: wird geprüft) */
+  let codecs = $state<Set<VideoCodecKey> | null>(null);
+  $effect(() => {
+    const size = videoSize;
+    codecs = null;
+    encodableCodecs(size).then((c) => {
+      if (videoSize !== size) return;
+      codecs = c;
+      // Gewählter Codec geht nicht: den ersten, der geht
+      if (!c.has(videoCodec)) videoCodec = (Object.keys(VIDEO_CODECS) as VideoCodecKey[]).find((k) => c.has(k)) ?? videoCodec;
+    });
+  });
   function exportVideo() {
     try {
       localStorage.setItem(SIZE_KEY, videoSize);
+      localStorage.setItem(CODEC_KEY, videoCodec);
     } catch {
       // nur für diese Sitzung
     }
-    slideshow.exportVideo(videoSize);
+    slideshow.exportVideo(videoSize, videoCodec);
   }
   const exportPct = $derived(slideshow.exporting ? Math.round((100 * slideshow.exporting.done) / Math.max(1, slideshow.exporting.total)) : 0);
 
@@ -100,6 +115,8 @@
   const cover = $derived(coverId(a, slideshow.byId));
   /** Dauer ergibt sich aus der Länge der Musik */
   const fitted = $derived(!!a.music?.fit && a.music.mode === "sequence");
+  /** „Ein Lied pro Ort“: die Orte, denen Lieder zugeordnet werden können */
+  const places = $derived(a.music?.mode === "place" ? musicPlaces(a, slideshow.byId) : []);
 
   /** Browser-Vorschau: Musik über ein Dateifeld */
   let fileInput = $state<HTMLInputElement>();
@@ -182,7 +199,12 @@
             <option value={k}>{k}</option>
           {/each}
         </select>
-        <button class="btn" onclick={exportVideo} disabled={!a.slides.length} title={t("Als MP4-Video speichern (H.264, mit Musik), z. B. für den Fernseher oder zum Teilen")}>
+        <select bind:value={videoCodec} aria-label={t("Videocodec")} title={t("Videocodec: H.264 spielt fast überall, H.265 und AV1 sind bei gleicher Qualität kleiner, brauchen aber neuere Geräte.")}>
+          {#each Object.entries(VIDEO_CODECS) as [k, label] (k)}
+            <option value={k} disabled={codecs !== null && !codecs.has(k as VideoCodecKey)}>{label}{codecs !== null && !codecs.has(k as VideoCodecKey) ? ` – ${t("nicht verfügbar")}` : ""}</option>
+          {/each}
+        </select>
+        <button class="btn" onclick={exportVideo} disabled={!a.slides.length || (codecs !== null && !codecs.has(videoCodec))} title={t("Als MP4-Video speichern (mit Musik), z. B. für den Fernseher oder zum Teilen")}>
           <Icon name="export" size={14} /> {t("Als Video speichern …")}
         </button>
       </span>
@@ -366,7 +388,26 @@
               <button class="btn quiet" class:on={a.music.mode === "place"} onclick={() => slideshow.setMusic({ mode: "place" })}>{t("Ein Lied pro Ort")}</button>
             </div>
             {#if a.music.mode === "place"}
-              <p class="muted small">{t("Jeder Ort (ab {km} km Entfernung) bekommt das nächste Lied, beim Ortswechsel wird übergeblendet. Gibt es mehr Orte als Lieder, beginnt die Liste von vorn.", { km: PLACE_KM })}</p>
+              <p class="muted small">{t("Ein neuer Ort beginnt ab {km} km Entfernung. Hake je Ort die Lieder an, die dort nacheinander laufen sollen; ohne Haken bekommt der Ort reihum das nächste Lied. Beim Ortswechsel wird übergeblendet.", { km: PLACE_KM })}</p>
+              <div class="places">
+                {#each places as pl, pi (pi)}
+                  {@const own = a.music.assign?.[pl.key] ?? []}
+                  <div class="place">
+                    <span class="pname">{pl.label || (pl.key ? t("Ort {n}", { n: pi + 1 }) : t("Ohne Aufnahmeort"))} <span class="muted small">· {t(pl.photos === 1 ? "{n} Foto" : "{n} Fotos", { n: pl.photos })}</span></span>
+                    {#if pl.key}
+                      {#each a.music.tracks as tr (tr.path)}
+                        <label class="check small">
+                          <input type="checkbox" checked={own.includes(tr.path)} onchange={(e) => slideshow.assignTrack(pl.key, tr.path, e.currentTarget.checked)} />
+                          <span class="tname">{tr.name}</span>
+                        </label>
+                      {/each}
+                      {#if !own.length}<span class="muted small">{t("automatisch")}</span>{/if}
+                    {:else}
+                      <span class="muted small">{t("automatisch")}</span>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
             {/if}
           {/if}
           <label class="check">
@@ -678,6 +719,25 @@
     grid-row: span 2;
     display: flex;
     align-items: center;
+  }
+  .places {
+    display: grid;
+    gap: 8px;
+  }
+  .place {
+    display: grid;
+    gap: 2px;
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-s);
+  }
+  .pname {
+    font-weight: 500;
+  }
+  .tname {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .seg {
     display: flex;

@@ -11,7 +11,7 @@ import {
   QUALITY_HIGH,
   StreamTarget,
   canEncodeAudio,
-  getFirstEncodableVideoCodec,
+  canEncodeVideo,
   type StreamTargetChunk,
 } from "mediabunny";
 import { imageUrl } from "./api";
@@ -27,6 +27,25 @@ export const VIDEO_SIZES: Record<VideoSize, [number, number]> = {
   "1440p": [2560, 1440],
 };
 export const VIDEO_FPS = 30;
+
+/** Videocodecs zur Wahl (alle in MP4) */
+export type VideoCodecKey = "avc" | "hevc" | "av1" | "vp9";
+export const VIDEO_CODECS: Record<VideoCodecKey, string> = {
+  avc: "H.264",
+  hevc: "H.265 (HEVC)",
+  av1: "AV1",
+  vp9: "VP9",
+};
+
+/** Welche Codecs dieses System in der Größe kodieren kann */
+export async function encodableCodecs(size: VideoSize): Promise<Set<VideoCodecKey>> {
+  const [width, height] = VIDEO_SIZES[size];
+  const out = new Set<VideoCodecKey>();
+  for (const c of Object.keys(VIDEO_CODECS) as VideoCodecKey[]) {
+    if (await canEncodeVideo(c, { width, height, bitrate: QUALITY_HIGH }).catch(() => false)) out.add(c);
+  }
+  return out;
+}
 
 /** Schrift wie in der Oberfläche */
 const FONT = fontFamily("sans");
@@ -231,6 +250,7 @@ export async function renderVideo(
   version: (id: number) => number,
   music: (Blob | null)[],
   size: VideoSize,
+  codec: VideoCodecKey,
   style: MapStyle,
   write: (chunk: StreamTargetChunk) => Promise<void>,
   onProgress: (p: VideoProgress) => void,
@@ -241,8 +261,8 @@ export async function renderVideo(
   const frames = Math.ceil(tl.total * VIDEO_FPS);
   if (!frames) throw t("Die Diashow ist leer.");
 
-  const codec = await getFirstEncodableVideoCodec(["avc", "hevc", "vp9", "av1"], { width: w, height: h });
-  if (!codec) throw t("Dieses System kann kein Video kodieren.");
+  if (!(await canEncodeVideo(codec, { width: w, height: h, bitrate: QUALITY_HIGH }).catch(() => false)))
+    throw t("Dieses System kann {codec} in dieser Größe nicht kodieren.", { codec: VIDEO_CODECS[codec] });
 
   // Lieder dekodieren (gleiche Abtastrate für alle: die des AudioContext)
   const buffers: (AudioBuffer | null)[] = [];

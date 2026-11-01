@@ -104,6 +104,8 @@ export interface SlideshowMusic {
   fit: boolean;
   /** Lautstärke 0…1 */
   volume: number;
+  /** „Ein Lied pro Ort“: Lieder je Ort (Schlüssel aus `musicPlaces`, Werte: Pfade der Lieder) */
+  assign?: Record<string, string[]>;
 }
 
 export interface SlideshowState {
@@ -336,22 +338,35 @@ export interface Timeline {
   clips: AudioClip[];
 }
 
-/** Lieder hintereinander mit Überblenden, wiederholt bis `total` */
-function sequenceClips(m: SlideshowMusic, total: number): AudioClip[] {
-  const tracks = m.tracks.map((t, i) => ({ i, d: t.beats.duration })).filter((t) => t.d > 0);
+/**
+ * Lieder `tracks` (Indizes) hintereinander mit Überblenden ab `start`,
+ * wiederholt, bis `until` erreicht ist.
+ */
+function chainClips(m: SlideshowMusic, tracks: number[], start: number, until: number, firstFadeIn: number): AudioClip[] {
+  const list = tracks.filter((i) => m.tracks[i]?.beats.duration > 0);
   const clips: AudioClip[] = [];
-  if (!tracks.length) return clips;
-  let t = 0;
-  for (let k = 0; t < total && k < 10000; k++) {
-    const { i, d } = tracks[k % tracks.length];
-    const first = k === 0;
-    clips.push({ track: i, start: t, end: t + d, offset: 0, fadeIn: first ? 0 : CROSSFADE_S, fadeOut: CROSSFADE_S });
+  let t = start;
+  for (let k = 0; list.length && t < until && k < 10000; k++) {
+    const i = list[k % list.length];
+    const d = m.tracks[i].beats.duration;
+    clips.push({ track: i, start: t, end: t + d, offset: 0, fadeIn: k === 0 ? firstFadeIn : CROSSFADE_S, fadeOut: CROSSFADE_S });
     t += d - CROSSFADE_S;
   }
   return clips;
 }
 
-/** Schläge aller Lieder hintereinander; in Überblendungen gilt das neue Lied ab der Mitte */
+/** Alle Lieder hintereinander mit Überblenden, wiederholt bis `total` */
+function sequenceClips(m: SlideshowMusic, total: number): AudioClip[] {
+  return chainClips(
+    m,
+    m.tracks.map((_, i) => i),
+    0,
+    total,
+    0,
+  );
+}
+
+/** Schläge der Lieder hintereinander; in Überblendungen gilt das neue Lied ab der Mitte */
 function sequenceBeats(m: SlideshowMusic, clips: AudioClip[]): Beat[] {
   return clips.flatMap((c, k) => {
     const from = k > 0 ? c.start + CROSSFADE_S / 2 : c.start;
@@ -370,24 +385,60 @@ function plainStarts(d: number[], t0 = 0): { starts: number[]; total: number } {
   return { starts, total: t };
 }
 
+/** Ein Ort für die Musik: ab Abschnitt `start`, benannt nach seinem ersten Foto mit Aufnahmeort */
+export interface MusicPlace {
+  start: number;
+  /** Schlüssel für die Zuordnung der Lieder (gerundete Koordinaten; leer: ohne Ort) */
+  key: string;
+  label: string;
+  /** Zahl der Fotos */
+  photos: number;
+}
+
 /**
- * „Ein Lied pro Ort“: Abschnitte, bei denen ein neuer Ort beginnt (die Karte
- * davor gehört schon zum neuen Ort).
+ * „Ein Lied pro Ort“: Orte in Reihenfolge. Ein neuer Ort beginnt, wenn ein
+ * Foto mindestens `PLACE_KM` vom ersten Foto des bisherigen entfernt ist;
+ * die Karte davor gehört schon zum neuen Ort.
  */
-function placeBreaks(a: SlideshowState, entries: Entry[], byId: Map<number, AlbumCandidate>): Set<number> {
-  const breaks = new Set<number>();
+function placeSegments(a: SlideshowState, entries: Entry[], byId: Map<number, AlbumCandidate>): MusicPlace[] {
+  const out: MusicPlace[] = [{ start: 0, key: "", label: "", photos: 0 }];
   let anchor: AlbumCandidate | undefined;
   entries.forEach((e, i) => {
     if (e.kind !== "photo") return;
     const c = byId.get(a.slides[e.slide].id);
-    if (c?.lat == null || c.lon == null) return;
-    if (anchor && distanceKm(placeOf(anchor), placeOf(c)) >= PLACE_KM) {
-      breaks.add(entries[i - 1]?.kind === "map" ? i - 1 : i);
-      anchor = c;
+    if (c?.lat != null && c.lon != null) {
+      if (anchor && distanceKm(placeOf(anchor), placeOf(c)) >= PLACE_KM) {
+        out.push({ start: entries[i - 1]?.kind === "map" ? i - 1 : i, key: "", label: "", photos: 0 });
+        anchor = undefined;
+      }
+      const seg = out[out.length - 1];
+      if (!anchor) {
+        anchor = c;
+        seg.key = `${c.lat.toFixed(2)},${c.lon.toFixed(2)}`;
+      }
+      if (!seg.label) seg.label = shortPlace(c.place);
     }
-    anchor ??= c;
+    out[out.length - 1].photos++;
   });
-  return breaks;
+  return out;
+}
+
+/** Orte für die Zuordnung der Lieder (wie sie die Zeitleiste im Modus „pro Ort“ bildet) */
+export function musicPlaces(a: SlideshowState, byId: Map<number, AlbumCandidate>): MusicPlace[] {
+  return placeSegments(a, entriesOf(a, byId), byId);
+}
+
+/**
+ * Lieder eines Orts: die zugeordneten; Orte ohne Zuordnung bekommen reihum
+ * eines der Lieder, die keinem Ort zugeordnet sind (sind alle vergeben, alle).
+ */
+function placeTracks(m: SlideshowMusic, places: MusicPlace[]): number[][] {
+  const lists = places.map((pl) => (m.assign?.[pl.key] ?? []).map((path) => m.tracks.findIndex((t) => t.path === path)).filter((i) => i >= 0));
+  const used = new Set(lists.flat());
+  const unused = m.tracks.map((_, i) => i).filter((i) => !used.has(i));
+  const pool = unused.length ? unused : m.tracks.map((_, i) => i);
+  let free = 0;
+  return lists.map((own) => (own.length ? own : [pool[free++ % pool.length]]));
 }
 
 /**
@@ -408,38 +459,31 @@ export function timeline(a: SlideshowState, byId = new Map(a.candidates.map((c) 
   const base = { entries, photoEntry, transition };
 
   if (m?.mode === "place") {
-    // Je Ort ein Lied (reihum), Wechsel mit Überblenden an der Ortsgrenze
+    // Je Ort seine Lieder (sonst reihum eins), Wechsel mit Überblenden an der Ortsgrenze
     const d = durationsFor(a, entries, a.settings.seconds);
-    const breaks = placeBreaks(a, entries, byId);
-    const tracks = m.tracks.map((t, i) => ({ i, t })).filter((x) => x.t.beats.duration > 0);
+    const places = placeSegments(a, entries, byId);
+    const lists = placeTracks(m, places);
     const starts: number[] = [];
     const clips: AudioClip[] = [];
     let t = 0;
-    let seg = 0;
-    let i = 0;
-    while (i < entries.length) {
-      let j = i + 1;
-      while (j < entries.length && !breaks.has(j)) j++;
-      const { i: track, t: info } = tracks[seg % tracks.length];
-      const segBeats = sync ? beatGrid(info.beats, t, t + d.slice(i, j).reduce((s, x) => s + x, 0) * 1.6 + 10) : [];
-      const r = sync ? snapToBeats(d.slice(i, j), segBeats, t) : plainStarts(d.slice(i, j), t);
+    places.forEach((pl, seg) => {
+      const i = pl.start;
+      const j = places[seg + 1]?.start ?? entries.length;
+      if (j <= i) return;
+      const part = d.slice(i, j);
+      const firstFade = seg === 0 ? 0 : CROSSFADE_S / 2;
+      const est = t + part.reduce((x, y) => x + y, 0) * 1.6 + 10;
+      const chain = chainClips(m, lists[seg], t, est, firstFade);
+      const r = sync ? snapToBeats(part, sequenceBeats(m, chain), t) : plainStarts(part, t);
       starts.push(...r.starts);
       const last = j >= entries.length;
-      // Lied wiederholen, falls der Ort länger dauert als das Lied
-      for (let off = t; off < r.total; off += info.beats.duration) {
-        clips.push({
-          track,
-          start: off,
-          end: Math.min(off + info.beats.duration, r.total + (last ? 0 : CROSSFADE_S / 2)),
-          offset: 0,
-          fadeIn: seg === 0 && off === t ? 0 : CROSSFADE_S / 2,
-          fadeOut: CROSSFADE_S / 2,
-        });
+      const end = r.total + (last ? 0 : CROSSFADE_S / 2);
+      for (const c of chain) {
+        if (c.start >= end) break;
+        clips.push(c.end > end ? { ...c, end, fadeOut: last ? c.fadeOut : CROSSFADE_S / 2 } : c);
       }
       t = r.total;
-      seg++;
-      i = j;
-    }
+    });
     return { ...base, starts, total: t, clips };
   }
 
@@ -724,6 +768,10 @@ function validMusic(m: SlideshowMusic): boolean {
     typeof m.fit === "boolean" &&
     typeof m.volume === "number" &&
     m.volume >= 0 &&
-    m.volume <= 1
+    m.volume <= 1 &&
+    (m.assign === undefined ||
+      (typeof m.assign === "object" &&
+        m.assign !== null &&
+        Object.values(m.assign).every((v) => Array.isArray(v) && v.length <= 100 && v.every((p) => typeof p === "string"))))
   );
 }

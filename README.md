@@ -229,7 +229,8 @@ transition (crossfade, slide or hard cut) and whether to show date and place.
   whole, or to swap it for another photo (shots from the same burst come first). The preview on
   the right plays the selected photo.
 - **Music:** add one or more MP3, M4A, WAV, FLAC or Ogg files. They play one after another with
-  crossfades, or each place (from 20 km apart) gets the next song. Lumenkorn finds the beat
+  crossfades, or by place (from 20 km apart): tick the songs for each place, which then play
+  one after another there; places without ticks take turns with the remaining songs. Lumenkorn finds the beat
   (spectral flux, tempo from autocorrelation, beats by dynamic programming); each photo stays at
   least the set duration and changes on the next suitable beat, preferring strong beats and the
   start of a bar. With *End the slideshow with the music* the photos share the length of the
@@ -240,8 +241,9 @@ transition (crossfade, slide or hard cut) and whether to show date and place.
   are added if the map is turned on in the settings. It can be switched off, or on and off for
   single photos. Optionally a last map shows all places and the whole route.
 - **Abspielen** plays full screen. Space pauses, the arrow keys skip, Esc ends.
-- **Save as video** writes an MP4 file (H.264 with AAC sound, 720p, 1080p or 1440p, 30 frames per
-  second). WebView2 encodes it with the encoders of Windows or the graphics card, so nothing has
+- **Save as video** writes an MP4 file (H.264, H.265, AV1 or VP9 with AAC sound, 720p, 1080p or
+  1440p, 30 frames per second). H.264 plays almost everywhere; H.265 and AV1 are smaller at the
+  same quality. Codecs the system cannot encode are greyed out. WebView2 encodes it with the encoders of Windows or the graphics card, so nothing has
   to be downloaded. The slideshow is kept and can be opened and changed again later.
 
 ### People

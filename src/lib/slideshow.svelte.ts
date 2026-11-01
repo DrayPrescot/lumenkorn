@@ -3,7 +3,7 @@
 // Speicher der WebView erhalten und lässt sich später weiterbearbeiten.
 
 import { api, isTauri, listen, pickMusicFiles, pickVideoTarget, type Scope } from "./api";
-import { renderVideo, type VideoProgress, type VideoSize } from "./slideshowVideo";
+import { renderVideo, type VideoCodecKey, type VideoProgress, type VideoSize } from "./slideshowVideo";
 import { downmix, type BeatInfo } from "./beats";
 import { fontFamily, type CaptionMode } from "./album";
 import {
@@ -368,7 +368,14 @@ class SlideshowStore {
   removeTrack(index: number) {
     this.#edit((a) => {
       if (!a.music) return;
-      a.music.tracks.splice(index, 1);
+      const [gone] = a.music.tracks.splice(index, 1);
+      // Auch aus der Zuordnung zu den Orten nehmen
+      if (a.music.assign && gone) {
+        for (const k of Object.keys(a.music.assign)) {
+          a.music.assign[k] = a.music.assign[k].filter((p) => p !== gone.path);
+          if (!a.music.assign[k].length) delete a.music.assign[k];
+        }
+      }
       if (!a.music.tracks.length) delete a.music;
     });
     this.#dropMusicUrls(this.state?.music?.tracks.map((x) => x.path) ?? []);
@@ -380,6 +387,23 @@ class SlideshowStore {
       const to = index + dir;
       if (!tr || to < 0 || to >= tr.length) return;
       [tr[index], tr[to]] = [tr[to], tr[index]];
+    });
+  }
+
+  /** „Ein Lied pro Ort“: Lied einem Ort zuordnen bzw. die Zuordnung lösen */
+  assignTrack(place: string, path: string, on: boolean) {
+    this.#edit((a) => {
+      const m = a.music;
+      if (!m) return;
+      const assign = { ...(m.assign ?? {}) };
+      const list = (assign[place] ?? []).filter((p) => p !== path);
+      // In der Reihenfolge der Liederliste
+      if (on) list.push(path);
+      const order = m.tracks.map((t) => t.path);
+      list.sort((x, y) => order.indexOf(x) - order.indexOf(y));
+      if (list.length) assign[place] = list;
+      else delete assign[place];
+      m.assign = Object.keys(assign).length ? assign : undefined;
     });
   }
 
@@ -396,7 +420,7 @@ class SlideshowStore {
 
   // --- Video ---------------------------------------------------------------------
 
-  async exportVideo(size: VideoSize) {
+  async exportVideo(size: VideoSize, codec: VideoCodecKey) {
     const a = this.state;
     if (!a?.slides.length || this.exporting) return;
     const name = (a.title || t("Diashow")).replace(/[\\/:*?"<>|]+/g, " ").trim() || t("Diashow");
@@ -432,6 +456,7 @@ class SlideshowStore {
         (id) => lib.thumbVersion(id),
         music,
         size,
+        codec,
         { tiles: lib.mapEnabled, font: fontFamily("sans") },
         async (c) => {
           if (path) await api.slideshowVideoWrite(c.data, c.position);

@@ -548,7 +548,8 @@ und Ort erscheinen.
   Text, das ganze Foto ohne Beschnitt oder den Tausch gegen ein anderes (aus derselben Serie
   zuerst). Rechts spielt die Vorschau das gewählte Foto ab.
 - **Musik:** eine oder mehrere MP3-, M4A-, WAV-, FLAC- oder Ogg-Dateien. Sie laufen
-  hintereinander mit Überblenden, oder jeder Ort (ab 20 km Entfernung) bekommt das nächste Lied.
+  hintereinander mit Überblenden oder nach Ort (ab 20 km Entfernung): Je Ort lassen sich Lieder
+  anhaken, die dort nacheinander laufen; Orte ohne Haken bekommen reihum die übrigen Lieder.
   Lumenkorn erkennt den Takt (Spectral Flux, Tempo per Autokorrelation, Schläge per dynamischer
   Programmierung); jedes Foto steht mindestens die eingestellte Zeit und wechselt auf dem nächsten
   passenden Schlag – starke Schläge und Taktanfänge bevorzugt. Mit „Diashow endet mit der Musik“
@@ -561,8 +562,9 @@ und Ort erscheinen.
   Route.
 - **Abspielen** zeigt die Diashow im Vollbild. Leertaste hält an, die Pfeiltasten springen, Esc
   beendet.
-- **Als Video speichern** schreibt eine MP4-Datei (H.264 mit AAC-Ton, 720p, 1080p oder 1440p, 30
-  Bilder pro Sekunde). Kodiert wird mit den Encodern von Windows bzw. der Grafikkarte über
+- **Als Video speichern** schreibt eine MP4-Datei (H.264, H.265, AV1 oder VP9 mit AAC-Ton, 720p,
+  1080p oder 1440p, 30 Bilder pro Sekunde). H.264 spielt fast überall, H.265 und AV1 sind bei
+  gleicher Qualität kleiner. Codecs, die das System nicht kodieren kann, sind ausgegraut. Kodiert wird mit den Encodern von Windows bzw. der Grafikkarte über
   WebView2, es muss nichts heruntergeladen werden. Die Diashow bleibt erhalten und lässt sich
   später weiter bearbeiten.
 
