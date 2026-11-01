@@ -11,7 +11,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
   folder with the same rules as the album (sharpness, exposure, theme, no bursts or duplicates,
   spread over all days) and makes a slideshow from them. It starts with the best photo and the
   title, then crossfade, slide or hard cut, slow zoom and pan towards faces, date and place where
-  a new day or place begins. Full screen and video use the photos in full resolution. Portrait photos are shown whole on a blurred copy of themselves. Photos can be
+  a new day or place begins. Full screen and video use the photos in full resolution. Texts use
+  any font, as in the photo album, with alignment, position, size, colour and bold for the
+  captions, the title and single texts. Portrait photos are shown whole on a blurred copy of
+  themselves. Photos can be
   reordered by dragging, swapped, removed, added, and get their own duration and text. Plays
   full screen; space pauses, the arrow keys skip.
 - Slideshow music: add one or more MP3, M4A, WAV, FLAC or Ogg files, played one after another

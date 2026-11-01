@@ -544,6 +544,10 @@ und Ort erscheinen.
   Fotos zoomen und schwenken langsam, zu Gesichtern hin, wenn welche darauf sind. Hochformate
   erscheinen ganz vor einer unscharfen Kopie ihrer selbst. Datum und Ort werden eingeblendet, wo
   ein neuer Tag bzw. Ort beginnt. Vollbild und Video zeigen die Fotos in voller Auflösung.
+- **Texte:** wie im Fotoalbum in Instrument Sans, Lora oder jeder auf dem System installierten
+  Schrift. Beschriftungen und Titel haben je Ausrichtung (links, mittig, rechts), Lage (oben,
+  Mitte, unten), Größe, helle oder dunkle Farbe und Fett; einzelne Texte können einen eigenen Stil
+  bekommen.
 - Ziehen ändert die Reihenfolge. Ein Klick auf ein Foto erlaubt eine eigene Dauer, einen eigenen
   Text, das ganze Foto ohne Beschnitt oder den Tausch gegen ein anderes (aus derselben Serie
   zuerst). Rechts spielt die Vorschau das gewählte Foto ab.

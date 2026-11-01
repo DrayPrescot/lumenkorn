@@ -225,6 +225,9 @@ transition (crossfade, slide or hard cut) and whether to show date and place.
   zoom and pan, towards faces when there are any. Portrait photos are shown whole on a blurred
   copy of themselves. Date and place fade in where a new day or place begins. Full screen and
   video use the photos in full resolution.
+- **Texts:** as in the photo album, Instrument Sans, Lora or any font installed on the system.
+  Captions and the title each have alignment (left, centre, right), position (top, middle,
+  bottom), size, light or dark colour and bold; single texts can get their own style.
 - Drag photos to change the order. Click one to give it its own duration or text, to show it
   whole, or to swap it for another photo (shots from the same burst come first). The preview on
   the right plays the selected photo.
