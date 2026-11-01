@@ -535,6 +535,8 @@ A3 oder eigene Maße in mm), die Anzahl der Fotos und Seiten und ob mit Rand ode
 
 ## Diashow
 
+<img src="screenshots/slideshow-map-de.webp" alt="Schlusskarte einer Diashow: eine Italienreise von Venedig bis Neapel mit Route und einer Stecknadel für jeden Ort" width="900">
+
 Über **Diashow** neben **Fotoalbum** wählt Lumenkorn die besten Fotos genauso aus wie für das
 Fotoalbum und macht daraus eine Diashow. Man wählt das Thema, die Anzahl der Fotos, wie lange
 jedes zu sehen ist, den Übergang (weich überblenden, schieben oder harter Schnitt) und ob Datum

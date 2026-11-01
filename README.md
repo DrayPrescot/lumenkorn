@@ -217,6 +217,8 @@ photos and pages, with or without margins.
 
 ### Slideshow
 
+<img src="docs/screenshots/slideshow-map-en.webp" alt="Closing map of a slideshow: a trip through Italy from Venice to Naples with the route and a pin for every place" width="900">
+
 **Diashow** next to **Fotoalbum** picks the best photos in the same way as the photo album and
 makes a slideshow from them. Pick a theme, the number of photos, how long each one stays, the
 transition (crossfade, slide or hard cut) and whether to show date and place.
