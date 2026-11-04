@@ -86,6 +86,8 @@ export default {
   "A3 quer (42 × 29,7 cm)": "A3 landscape (42 × 29.7 cm)",
   "Das Speichern des Albums ist nur in der App verfügbar.": "Saving the album is only available in the app.",
   "Bearbeitete und JPEGs": "Edited and JPEGs",
+  "Das Album ließ sich nicht öffnen: {error}": "Could not open the album: {error}",
+  "Das Album ließ sich nicht speichern: {error}": "Could not save the album: {error}",
   "JPEGs: auch unbearbeitete fertige Bilddateien (JPEG, PNG, TIFF …), aber keine unbearbeiteten RAW-Dateien": "JPEGs: also unedited finished image files (JPEG, PNG, TIFF …), but no unedited RAW files",
   "Hier gibt es keine bearbeiteten Fotos. Bearbeite zuerst ein paar Fotos oder nimm JPEGs bzw. alle Fotos dazu.": "There are no edited photos here. Edit a few photos first or include JPEGs or all photos.",
   "Hier gibt es keine bearbeiteten Fotos oder JPEGs. Bearbeite zuerst ein paar Fotos oder nimm unbearbeitete RAW-Dateien dazu.": "There are no edited photos or JPEGs here. Edit a few photos first or include unedited RAW files.",

@@ -49,8 +49,27 @@ pub fn handle<R: tauri::Runtime>(
             return;
         }
         let state = app.state::<AppState>();
-        responder.respond(serve(&state, &path));
+        match serve(&state, &path) {
+            Served::Now(response) => responder.respond(response),
+            Served::Develop(variant, job) => {
+                let app = app.clone();
+                DEVELOP_POOL.submit(Box::new(move |dropped| {
+                    if dropped {
+                        responder.respond(status(StatusCode::SERVICE_UNAVAILABLE));
+                        return;
+                    }
+                    responder.respond(serve_developed(&app.state::<AppState>(), variant, &job));
+                }));
+            }
+        }
     }));
+}
+
+/// Antwort einer Bildanfrage
+enum Served {
+    Now(Response<Vec<u8>>),
+    /// Das Foto muss dafür entwickelt werden: weiter in [`DEVELOP_POOL`]
+    Develop(Variant, lumenkorn_core::catalog::ThumbJob),
 }
 
 /// Aufgabe; der Parameter ist `true`, wenn sie aus der Warteschlange verdrängt
@@ -119,10 +138,25 @@ impl Pool {
 }
 
 static POOL: Pool = Pool::new(|| {
+    let max = if lumenkorn_develop::low_memory() {
+        4
+    } else {
+        8
+    };
     std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
-        .clamp(2, 8)
+        .clamp(2, max)
+});
+/// Thumbnails und Vorschauen, die entwickelt werden müssen: Ein RAW belegt dabei
+/// bis ~1,5 GB, im allgemeinen Pool wären es bis zu 8 gleichzeitig. Eigener Pool
+/// statt einer Sperre, damit wartende Fotos fertige Vorschauen nicht aufhalten.
+static DEVELOP_POOL: Pool = Pool::new(|| {
+    if lumenkorn_develop::low_memory() {
+        1
+    } else {
+        2
+    }
 });
 // Speicher-Sparmodus: ein großes Bild nach dem anderen (ein RAW in voller
 // Auflösung belegt beim Entwickeln bis ~1,5 GB). Gilt ab dem ersten Bild.
@@ -203,23 +237,25 @@ fn serve_full(state: &AppState, id: i64) -> Response<Vec<u8>> {
     }
 }
 
-fn serve(state: &AppState, path: &str) -> Response<Vec<u8>> {
+fn serve(state: &AppState, path: &str) -> Served {
     let mut parts = path.trim_start_matches('/').split('/');
     let first = parts.next();
     if first == Some("face") {
-        return match parts
-            .next()
-            .and_then(|s| s.parse::<i64>().ok())
-            .and_then(|id| crate::people::face_thumb(state, id))
-        {
-            Some(b) => jpeg(b),
-            None => status(StatusCode::NOT_FOUND),
-        };
+        return Served::Now(
+            match parts
+                .next()
+                .and_then(|s| s.parse::<i64>().ok())
+                .and_then(|id| crate::people::face_thumb(state, id))
+            {
+                Some(b) => jpeg(b),
+                None => status(StatusCode::NOT_FOUND),
+            },
+        );
     }
     if first == Some("tile") {
         let mut n = || -> Option<u32> { parts.next()?.trim_end_matches(".png").parse().ok() };
         let (z, x, y) = (n(), n(), n());
-        return match (z, x, y) {
+        return Served::Now(match (z, x, y) {
             (Some(z), Some(x), Some(y)) => match crate::geo::tile(state, z, x, y) {
                 Some(b) => Response::builder()
                     .header(header::CONTENT_TYPE, "image/png")
@@ -230,41 +266,52 @@ fn serve(state: &AppState, path: &str) -> Response<Vec<u8>> {
                 None => status(StatusCode::NOT_FOUND),
             },
             _ => status(StatusCode::BAD_REQUEST),
-        };
+        });
     }
     if first == Some("full") {
-        return match parts.next().and_then(|s| s.parse::<i64>().ok()) {
+        return Served::Now(match parts.next().and_then(|s| s.parse::<i64>().ok()) {
             Some(id) => serve_full(state, id),
             None => status(StatusCode::BAD_REQUEST),
-        };
+        });
     }
     let variant = match first {
         Some("thumb") => Variant::Thumb,
         Some("preview") => Variant::Preview,
-        _ => return status(StatusCode::NOT_FOUND),
+        _ => return Served::Now(status(StatusCode::NOT_FOUND)),
     };
     let Some(id) = parts.next().and_then(|s| s.parse::<i64>().ok()) else {
-        return status(StatusCode::BAD_REQUEST);
+        return Served::Now(status(StatusCode::BAD_REQUEST));
     };
 
     // Schnellweg: liegt im Cache
     if let Some(bytes) = state.cache.read(variant, id) {
-        return jpeg(bytes);
+        return Served::Now(jpeg(bytes));
     }
 
     let job = match state.catalog.locked().thumb_job(id) {
         Ok(j) => j,
-        Err(_) => return status(StatusCode::NOT_FOUND),
+        Err(_) => return Served::Now(status(StatusCode::NOT_FOUND)),
     };
-    match state.cache.get_or_render(variant, &job) {
-        Ok(bytes) => {
-            if variant == Variant::Thumb {
-                let _ = state.catalog.locked().set_thumb_state(id, true);
-            }
-            jpeg(bytes)
-        }
+    match state.cache.get_light(&state.catalog, variant, &job) {
+        Ok(Some(bytes)) => Served::Now(jpeg(bytes)),
+        Ok(None) => Served::Develop(variant, job),
         Err(e) => {
             log::warn!("Vorschau {id}: {e}");
+            Served::Now(status(StatusCode::UNPROCESSABLE_ENTITY))
+        }
+    }
+}
+
+/// Vorschau, die entwickelt werden muss (siehe [`DEVELOP_POOL`])
+fn serve_developed(
+    state: &AppState,
+    variant: Variant,
+    job: &lumenkorn_core::catalog::ThumbJob,
+) -> Response<Vec<u8>> {
+    match state.cache.get_or_render(&state.catalog, variant, job) {
+        Ok(bytes) => jpeg(bytes),
+        Err(e) => {
+            log::warn!("Vorschau {}: {e}", job.id);
             status(StatusCode::UNPROCESSABLE_ENTITY)
         }
     }

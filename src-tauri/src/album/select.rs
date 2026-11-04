@@ -830,7 +830,10 @@ fn suggest(state: &AppState, app: &AppHandle, req: AlbumRequest) -> Result<Album
                 }
                 let r = (|| -> Option<Features> {
                     let job = state.catalog.locked().thumb_job(img.id).ok()?;
-                    let bytes = state.cache.get_or_render(Variant::Preview, &job).ok()?;
+                    let bytes = state
+                        .cache
+                        .get_or_render(&state.catalog, Variant::Preview, &job)
+                        .ok()?;
                     let dyn_img = image::load_from_memory(&bytes).ok()?;
                     let small = dyn_img.thumbnail(MEASURE_EDGE, MEASURE_EDGE);
                     let gray = small.to_luma8();

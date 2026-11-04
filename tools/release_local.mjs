@@ -1,6 +1,11 @@
 // Baut die Windows-Installer lokal, signiert für den Updater und legt die
 // passende latest.json daneben – für Releases ohne GitHub Actions.
 //
+// Gebaut wird OHNE den Signaturschlüssel, signiert erst danach: Beim Bauen laufen
+// die Build-Skripte aller Abhängigkeiten mit den Umgebungsvariablen dieses
+// Prozesses. Eine kompromittierte Bibliothek könnte den Schlüssel sonst lesen
+// und signierte Updates an alle Nutzer ausliefern.
+//
 //   node tools/release_local.mjs <Pfad zur lumenkorn-updater.key>
 //
 // In VS Code: Terminal → Aufgabe ausführen → „Lumenkorn: Release bauen“.
@@ -8,7 +13,7 @@
 // (das Skript zeigt die Dateien am Ende an).
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -27,8 +32,7 @@ const keyPath =
   [join(homedir(), KEY), join(homedir(), ".tauri", KEY), join(homedir(), "Downloads", KEY)].find(existsSync);
 if (!keyPath) fail(`Signaturschlüssel nicht gefunden – Pfad angeben oder ${KEY} in den Benutzerordner oder nach Downloads legen.`);
 if (!existsSync(keyPath)) fail(`Schlüssel nicht gefunden: ${keyPath}`);
-const key = readFileSync(keyPath, "utf8").trim();
-if (!key) fail(`Schlüsseldatei ist leer: ${keyPath}`);
+if (statSync(keyPath).size === 0) fail(`Schlüsseldatei ist leer: ${keyPath}`);
 
 // --- Version und Notizen ----------------------------------------------------
 const conf = JSON.parse(readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8"));
@@ -50,21 +54,28 @@ console.log(`Lumenkorn ${version} wird gebaut …\n`);
 // bleibt das JSON von --config unverändert)
 const cli = join(root, "node_modules", "@tauri-apps", "cli", "tauri.js");
 if (!existsSync(cli)) fail("Tauri-CLI fehlt – zuerst „npm ci“ ausführen.");
-const res = spawnSync(
-  process.execPath,
-  [cli, "build", "--bundles", "msi", "--config", JSON.stringify({ bundle: { createUpdaterArtifacts: true } })],
-  {
-    cwd: root,
-    stdio: "inherit",
-    env: { ...process.env, TAURI_SIGNING_PRIVATE_KEY: key, TAURI_SIGNING_PRIVATE_KEY_PASSWORD: process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ?? "" },
-  },
-);
+const password = process.env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD ?? "";
+const buildEnv = { ...process.env };
+for (const name of ["TAURI_SIGNING_PRIVATE_KEY", "TAURI_SIGNING_PRIVATE_KEY_PATH", "TAURI_SIGNING_PRIVATE_KEY_PASSWORD", "LUMENKORN_UPDATER_KEY"]) {
+  delete buildEnv[name];
+}
+const res = spawnSync(process.execPath, [cli, "build", "--bundles", "msi"], { cwd: root, stdio: "inherit", env: buildEnv });
 if (res.status !== 0) fail("Der Build ist fehlgeschlagen (Meldungen oben).");
 
 // --- latest.json --------------------------------------------------------------
 const dir = join(root, "target", "release", "bundle", "msi");
 const msis = readdirSync(dir).filter((f) => f.endsWith(".msi") && f.includes(`_${version}_`));
 if (!msis.length) fail(`Keine MSI für ${version} in ${dir}.`);
+
+// --- Signieren -------------------------------------------------------------------
+for (const msi of msis) {
+  const signed = spawnSync(process.execPath, [cli, "signer", "sign", "--private-key-path", keyPath, "--app-version", version, join(dir, msi)], {
+    cwd: root,
+    stdio: "inherit",
+    env: { ...buildEnv, TAURI_SIGNING_PRIVATE_KEY_PASSWORD: password },
+  });
+  if (signed.status !== 0) fail(`Signieren von ${msi} fehlgeschlagen – war der Schlüssel richtig?`);
+}
 // Der Updater lädt das deutsche Installationsprogramm (die App selbst folgt
 // der Systemsprache); ohne es das erste vorhandene
 const main = msis.find((f) => f.includes("de-DE")) ?? msis[0];

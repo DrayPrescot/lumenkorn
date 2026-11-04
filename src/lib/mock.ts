@@ -496,6 +496,25 @@ export const mock = {
             ],
           },
         });
+      case "doc_get":
+        return out(localStorage.getItem(`mock.doc.${a.kind}.${JSON.stringify(a.scope)}`));
+      case "doc_put":
+        localStorage.setItem(`mock.doc.${a.kind}.${JSON.stringify(a.scope)}`, a.json);
+        return out(null);
+      case "doc_delete":
+        localStorage.removeItem(`mock.doc.${a.kind}.${JSON.stringify(a.scope)}`);
+        return out(null);
+      case "doc_projects": {
+        const prefix = `mock.doc.${a.kind}.`;
+        const ids: number[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (!k?.startsWith(prefix)) continue;
+          const scope = JSON.parse(k.slice(prefix.length));
+          if (scope.type === "project") ids.push(scope.id);
+        }
+        return out(ids);
+      }
       case "app_settings":
         return out({ mapEnabled: mockMapEnabled, exportSubfolder: mockExportSubfolder, includeSubfolders: mockIncludeSubfolders, previewCacheGb: mockPreviewCacheGb, memorySaver: mockMemorySaver });
       case "memory_status":

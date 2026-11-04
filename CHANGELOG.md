@@ -21,6 +21,22 @@ and the project uses [Semantic Versioning](https://semver.org/).
   request many GB. Such blocks are now skipped.
 - A PNG with a highly compressed color profile could request many GB. Extra PNG data is now capped
   at 64 MB; large images still open.
+- Previews that need developing could run up to eight at a time in the library, with up to 1.5 GB
+  each per RAW. They now take turns (two at a time, one with the memory saver), and waiting for
+  them no longer holds up previews that are ready.
+- A preview rendered while the photo was being edited could replace the newer one and stay. Such a
+  result is now dropped.
+
+### Changed
+- Before a catalog upgrade, Lumenkorn saves a copy as `katalog.db.v<old version>.bak` in the data
+  folder and keeps the last two.
+- Albums and slideshows are now stored in the data folder (`dokumente`) instead of the web view's
+  storage, which is small and lost work without a message when full. Existing ones move over on the
+  first start, and a failed save now shows an error.
+
+### Security
+- Local releases are built without the updater key and signed afterwards, so build scripts of
+  dependencies never see it. Updates must carry their signed version.
 
 ## [1.2.1] – 2026-11-01
 

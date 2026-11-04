@@ -7,6 +7,7 @@ mod commands;
 mod cull;
 mod cull_assist;
 mod develop;
+mod docs;
 mod exit;
 mod fonts;
 mod geo;
@@ -46,11 +47,14 @@ pub(crate) mod dirs {
     pub const DENOISED: &str = "entrauscht";
     pub const REPAIRS: &str = "reparaturen";
     pub const FACES: &str = "gesichter";
+    /// Alben und Diashows
+    pub const DOCS: &str = "dokumente";
     /// Zusatzdateien von Bearbeitungen; Dateinamen beginnen mit `<Bild-ID>-`.
     pub const EDIT_FILES: [&str; 3] = [MASKS, DENOISED, REPAIRS];
 }
 
 pub struct AppState {
+    pub docs: lumenkorn_core::docstore::DocStore,
     pub catalog: Arc<Mutex<Catalog>>,
     pub cache: ThumbCache,
     pub worker: Worker,
@@ -194,6 +198,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let ai_state = ai::AiState::new(&data_dir);
     let style_state = style::StyleState::new(&data_dir);
     app.manage(AppState {
+        docs: lumenkorn_core::docstore::DocStore::new(data_dir.join(dirs::DOCS)),
         catalog,
         cache,
         worker,
@@ -255,6 +260,10 @@ pub fn run() {
             slideshow::slideshow_video_write,
             slideshow::slideshow_video_close,
             style::style_status,
+            docs::doc_get,
+            docs::doc_put,
+            docs::doc_delete,
+            docs::doc_projects,
             settings::app_settings,
             settings::app_set_settings,
             settings::preview_cache_usage,

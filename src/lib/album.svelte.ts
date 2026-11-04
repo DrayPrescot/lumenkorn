@@ -1,6 +1,6 @@
 // Zustand des Fotoalbums: Erstellen (Auswahl im Backend), Bearbeiten in der
-// Vorschau, Speichern als PDF. Das Album eines Projekts bleibt im Speicher der
-// WebView erhalten und lässt sich später weiterbearbeiten.
+// Vorschau, Speichern als PDF. Das Album eines Projekts liegt im Datenordner
+// (`lib/docs.ts`) und lässt sich später weiterbearbeiten.
 
 import { api, listen, pickPdfTarget, type AlbumExportProgress, type Scope } from "./api";
 import {
@@ -24,12 +24,12 @@ import {
   withDefaults,
 } from "./album";
 import { renderOverlay } from "./albumDraw";
+import { deleteDoc, docsWritten, loadDoc, saveDoc } from "./docs";
 import { lib } from "./store.svelte";
 import { prefs } from "./prefs.svelte";
 import { t } from "./i18n";
 
 const SETTINGS_KEY = "lumenkorn.album.settings";
-const albumKey = (scope: Scope) => `lumenkorn.album.${JSON.stringify(scope)}`;
 
 function load<T>(key: string): T | null {
   try {
@@ -40,29 +40,13 @@ function load<T>(key: string): T | null {
   }
 }
 
-function store(key: string, value: unknown) {
+/** Zuletzt benutzte Einstellungen; gehen sie verloren, gelten die Vorgaben. */
+function storeSettings(settings: AlbumSettings) {
   try {
-    if (value === null) localStorage.removeItem(key);
-    else localStorage.setItem(key, JSON.stringify(value));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch {
-    // Speicher voll oder gesperrt: dann eben nur für diese Sitzung
+    // dann eben nur für diese Sitzung
   }
-}
-
-/** Projekte mit gespeichertem Album (aus den Schlüsseln im Speicher) */
-function savedAlbumProjects(): Record<number, true> {
-  const out: Record<number, true> = {};
-  try {
-    const prefix = albumKey({ type: "project", id: 0 }).replace(/0\}$/, "");
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      const id = k?.startsWith(prefix) ? Number(k.slice(prefix.length, -1)) : NaN;
-      if (Number.isInteger(id)) out[id] = true;
-    }
-  } catch {
-    // ohne Speicher keine Symbole
-  }
-  return out;
 }
 
 /** Gewählt: ein Foto (`id`), ein Text (`text`) oder nur die Seite */
@@ -71,7 +55,12 @@ export type AlbumSelection = { page: number; id: number | null; text?: string };
 class AlbumStore {
   state = $state<AlbumState | null>(null);
   /** Projekte, für die ein Album gespeichert ist (Symbol in der Seitenleiste) */
-  projects = $state<Record<number, true>>(savedAlbumProjects());
+  projects = $state<Record<number, true>>({});
+
+  async loadProjects() {
+    const ids = await api.docProjects("album").catch(() => [] as number[]);
+    this.projects = Object.fromEntries(ids.map((id) => [id, true as const]));
+  }
 
   /** Symbol des Projekts nachführen, wenn sein Album gespeichert bzw. verworfen wird */
   #markProject(scope: Scope, has: boolean) {
@@ -139,9 +128,19 @@ class AlbumStore {
   }
 
   /** Album des Bereichs öffnen; gibt es noch keins, die Einstellungen zeigen. */
-  open(scope: Scope, title: string) {
+  async open(scope: Scope, title: string) {
     this.#listen();
-    const saved = load<unknown>(albumKey(scope));
+    const token = ++this.#openToken;
+    await this.flush();
+    let saved: unknown;
+    try {
+      saved = await loadDoc("album", scope);
+    } catch (e) {
+      // Nicht die Einstellungen zeigen: Ein neues Album ersetzte das gespeicherte
+      lib.notify(t("Das Album ließ sich nicht öffnen: {error}", { error: String(e) }), "error");
+      return;
+    }
+    if (token !== this.#openToken) return;
     if (validAlbum(saved)) {
       // Ältere Fassungen kennen Schrift, Beschriftung und Karte noch nicht
       saved.settings = withDefaults(saved.settings);
@@ -154,7 +153,7 @@ class AlbumStore {
 
   async create(settings: AlbumSettings, scope: Scope, title: string): Promise<boolean> {
     this.#listen();
-    store(SETTINGS_KEY, settings);
+    storeSettings(settings);
     this.progress = { done: 0, total: 0 };
     try {
       const s = await api.albumSuggest({
@@ -197,8 +196,9 @@ class AlbumStore {
   /** Album verwerfen (gespeicherte Fassung löschen) */
   discard() {
     clearTimeout(this.#saveTimer);
+    this.#saveTimer = undefined;
     if (this.state) {
-      store(albumKey(this.state.scope), null);
+      deleteDoc("album", this.state.scope).catch((e) => lib.notify(String(e), "error"));
       this.#markProject(this.state.scope, false);
     }
     this.state = null;
@@ -215,10 +215,27 @@ class AlbumStore {
   #saveNow() {
     clearTimeout(this.#saveTimer);
     this.#saveTimer = undefined;
-    if (this.state) {
-      store(albumKey(this.state.scope), $state.snapshot(this.state));
-      this.#markProject(this.state.scope, true);
-    }
+    if (!this.state) return;
+    const scope = this.state.scope;
+    saveDoc("album", scope, $state.snapshot(this.state)).then(
+      () => {
+        this.#saveFailed = false;
+        this.#markProject(scope, true);
+      },
+      (e) => {
+        // Einmal melden, nicht bei jeder Änderung
+        if (!this.#saveFailed) lib.notify(t("Das Album ließ sich nicht speichern: {error}", { error: String(e) }), "error");
+        this.#saveFailed = true;
+      },
+    );
+  }
+  #saveFailed = false;
+  #openToken = 0;
+
+  /** Ausstehendes speichern und warten, bis es auf der Platte liegt */
+  async flush() {
+    if (this.#saveTimer !== undefined) this.#saveNow();
+    await docsWritten();
   }
 
   #edit(f: (a: AlbumState) => void) {

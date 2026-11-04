@@ -27,11 +27,11 @@ import {
   type Transition,
 } from "./slideshow";
 import type { AlbumCandidate } from "./album";
+import { deleteDoc, docsWritten, loadDoc, saveDoc } from "./docs";
 import { lib } from "./store.svelte";
 import { t } from "./i18n";
 
 const SETTINGS_KEY = "lumenkorn.slideshow.settings";
-const showKey = (scope: Scope) => `lumenkorn.slideshow.${JSON.stringify(scope)}`;
 
 function load<T>(key: string): T | null {
   try {
@@ -42,35 +42,24 @@ function load<T>(key: string): T | null {
   }
 }
 
-function store(key: string, value: unknown) {
+/** Zuletzt benutzte Einstellungen; gehen sie verloren, gelten die Vorgaben. */
+function storeSettings(settings: SlideshowSettings) {
   try {
-    if (value === null) localStorage.removeItem(key);
-    else localStorage.setItem(key, JSON.stringify(value));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch {
-    // Speicher voll oder gesperrt: dann eben nur für diese Sitzung
+    // dann eben nur für diese Sitzung
   }
-}
-
-/** Projekte mit gespeicherter Diashow (aus den Schlüsseln im Speicher) */
-function savedProjects(): Record<number, true> {
-  const out: Record<number, true> = {};
-  try {
-    const prefix = showKey({ type: "project", id: 0 }).replace(/0\}$/, "");
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      const id = k?.startsWith(prefix) ? Number(k.slice(prefix.length, -1)) : NaN;
-      if (Number.isInteger(id)) out[id] = true;
-    }
-  } catch {
-    // ohne Speicher keine Symbole
-  }
-  return out;
 }
 
 class SlideshowStore {
   state = $state<SlideshowState | null>(null);
   /** Projekte, für die eine Diashow gespeichert ist (Symbol in der Seitenleiste) */
-  projects = $state<Record<number, true>>(savedProjects());
+  projects = $state<Record<number, true>>({});
+
+  async loadProjects() {
+    const ids = await api.docProjects("slideshow").catch(() => [] as number[]);
+    this.projects = Object.fromEntries(ids.map((id) => [id, true as const]));
+  }
   /** Einstellungsdialog offen (mit dem Bereich, für den erstellt wird) */
   dialog = $state<{ scope: Scope; title: string } | null>(null);
   /** Fortschritt beim Auswählen (Vorschauen messen) */
@@ -119,9 +108,20 @@ class SlideshowStore {
   }
 
   /** Diashow des Bereichs öffnen; gibt es noch keine, die Einstellungen zeigen. */
-  open(scope: Scope, title: string) {
+  async open(scope: Scope, title: string) {
     this.#listen();
-    const saved = upgradeSlideshow(load<unknown>(showKey(scope)));
+    const token = ++this.#openToken;
+    await this.flush();
+    let doc: unknown;
+    try {
+      doc = await loadDoc("slideshow", scope);
+    } catch (e) {
+      // Nicht die Einstellungen zeigen: Eine neue Diashow ersetzte die gespeicherte
+      lib.notify(t("Die Diashow ließ sich nicht öffnen: {error}", { error: String(e) }), "error");
+      return;
+    }
+    if (token !== this.#openToken) return;
+    const saved = upgradeSlideshow(doc);
     if (validSlideshow(saved)) {
       saved.settings = slideshowDefaults(saved.settings);
       this.state = saved;
@@ -134,7 +134,7 @@ class SlideshowStore {
 
   async create(settings: SlideshowSettings, scope: Scope, title: string): Promise<boolean> {
     this.#listen();
-    store(SETTINGS_KEY, settings);
+    storeSettings(settings);
     this.progress = { done: 0, total: 0 };
     try {
       const s = await api.albumSuggest({
@@ -182,8 +182,9 @@ class SlideshowStore {
   /** Diashow verwerfen (gespeicherte Fassung löschen) */
   discard() {
     clearTimeout(this.#saveTimer);
+    this.#saveTimer = undefined;
     if (this.state) {
-      store(showKey(this.state.scope), null);
+      deleteDoc("slideshow", this.state.scope).catch((e) => lib.notify(String(e), "error"));
       this.#markProject(this.state.scope, false);
     }
     this.state = null;
@@ -207,10 +208,27 @@ class SlideshowStore {
   #saveNow() {
     clearTimeout(this.#saveTimer);
     this.#saveTimer = undefined;
-    if (this.state) {
-      store(showKey(this.state.scope), $state.snapshot(this.state));
-      this.#markProject(this.state.scope, true);
-    }
+    if (!this.state) return;
+    const scope = this.state.scope;
+    saveDoc("slideshow", scope, $state.snapshot(this.state)).then(
+      () => {
+        this.#saveFailed = false;
+        this.#markProject(scope, true);
+      },
+      (e) => {
+        // Einmal melden, nicht bei jeder Änderung
+        if (!this.#saveFailed) lib.notify(t("Die Diashow ließ sich nicht speichern: {error}", { error: String(e) }), "error");
+        this.#saveFailed = true;
+      },
+    );
+  }
+  #saveFailed = false;
+  #openToken = 0;
+
+  /** Ausstehendes speichern und warten, bis es auf der Platte liegt */
+  async flush() {
+    if (this.#saveTimer !== undefined) this.#saveNow();
+    await docsWritten();
   }
 
   #edit(f: (a: SlideshowState) => void) {

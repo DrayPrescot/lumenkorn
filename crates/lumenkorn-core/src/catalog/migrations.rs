@@ -634,6 +634,9 @@ impl Catalog {
                 known: MIGRATIONS.len(),
             });
         }
+        if version > 0 && version < MIGRATIONS.len() as i64 {
+            self.backup_before_migration(version);
+        }
         for (i, sql) in MIGRATIONS.iter().enumerate().skip(version as usize) {
             let tx = self.conn.transaction()?;
             tx.execute_batch(sql)?;
@@ -641,5 +644,60 @@ impl Catalog {
             tx.commit()?;
         }
         Ok(())
+    }
+
+    /// Sicherung vor einer Änderung des Schemas: `katalog.db.v<Stand>.bak`. Jede
+    /// Migration läuft zwar in einer Transaktion, aber eine inhaltlich falsche
+    /// gäbe es sonst nicht rückgängig zu machen, und eine ältere Version von
+    /// Lumenkorn lehnt den neuen Katalog ab. Scheitert sie (Platte voll), wird
+    /// trotzdem migriert: Sonst startete Lumenkorn gar nicht mehr.
+    fn backup_before_migration(&self, version: i64) {
+        let Some(db) = self.conn.path().filter(|p| !p.is_empty()) else {
+            return; // im Arbeitsspeicher
+        };
+        let db = std::path::Path::new(db);
+        let target = format!("{}.v{version}.bak", db.display());
+        // Erst unter einem anderen Namen: Eine halbe Sicherung gilt nie als fertig
+        let tmp = format!("{target}.tmp");
+        let _ = std::fs::remove_file(&tmp);
+        let done = self
+            .conn
+            .execute("VACUUM INTO ?1", [&tmp])
+            .map_err(|e| e.to_string())
+            .and_then(|_| std::fs::rename(&tmp, &target).map_err(|e| e.to_string()));
+        match done {
+            Ok(()) => log::info!("Katalog vor der Migration gesichert: {target}"),
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp);
+                log::warn!("Katalog nicht gesichert ({target}): {e}");
+            }
+        }
+        remove_old_backups(db);
+    }
+}
+
+/// Sicherungen behalten; ältere belegen nur Platz.
+const KEEP_BACKUPS: usize = 2;
+
+pub(super) fn remove_old_backups(db: &std::path::Path) {
+    let (Some(dir), Some(name)) = (db.parent(), db.file_name().and_then(|n| n.to_str())) else {
+        return;
+    };
+    let prefix = format!("{name}.v");
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut backups: Vec<(std::time::SystemTime, std::path::PathBuf)> = entries
+        .flatten()
+        .filter(|e| {
+            let n = e.file_name();
+            n.to_str()
+                .is_some_and(|n| n.starts_with(&prefix) && n.ends_with(".bak"))
+        })
+        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+        .collect();
+    backups.sort_by_key(|(t, _)| std::cmp::Reverse(*t));
+    for (_, old) in backups.into_iter().skip(KEEP_BACKUPS) {
+        let _ = std::fs::remove_file(old);
     }
 }

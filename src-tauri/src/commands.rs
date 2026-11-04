@@ -235,6 +235,7 @@ pub fn update_project(
 
 #[tauri::command(async)]
 pub fn delete_project(state: State<AppState>, id: i64) -> CmdResult<()> {
+    state.docs.delete_project(id);
     state.catalog.locked().delete_project(id)
 }
 

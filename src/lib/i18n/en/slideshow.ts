@@ -101,4 +101,6 @@ export default {
   "Oben": "Top",
   "Unten": "Bottom",
   "Prozent der Bildhöhe": "Percent of the picture height",
+  "Die Diashow ließ sich nicht öffnen: {error}": "Could not open the slideshow: {error}",
+  "Die Diashow ließ sich nicht speichern: {error}": "Could not save the slideshow: {error}",
 };

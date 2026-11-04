@@ -29,6 +29,7 @@
   import SlideshowPlayer from "./components/SlideshowPlayer.svelte";
   import StatsView from "./components/StatsView.svelte";
   import { album } from "./lib/album.svelte";
+  import { migrateLocalDocs } from "./lib/docs";
   import { slideshow } from "./lib/slideshow.svelte";
   import { api, isTauri, type ImageSummary } from "./lib/api";
   import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -80,7 +81,7 @@
     getCurrentWindow()
       .onCloseRequested(async () => {
         try {
-          await Promise.race([dev.flushForClose(), new Promise((r) => setTimeout(r, 5000))]);
+          await Promise.race([Promise.all([dev.flushForClose(), album.flush(), slideshow.flush()]), new Promise((r) => setTimeout(r, 5000))]);
         } catch (e) {
           console.error("Speichern beim Schließen fehlgeschlagen", e);
         }
@@ -96,7 +97,10 @@
   onMount(async () => {
     const info = await api.appInfo().catch(() => null);
     if (info?.catalogTooNew) tooNew = info.catalogTooNew;
-    else lib.init();
+    else {
+      lib.init();
+      void migrateLocalDocs().then(() => Promise.all([album.loadProjects(), slideshow.loadProjects()]));
+    }
   });
 
   // Tastenkürzel wie in gängigen Fotoverwaltungen

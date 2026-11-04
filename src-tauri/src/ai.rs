@@ -851,7 +851,12 @@ fn animal_backfill(app: &AppHandle, state: &AppState) -> Result<bool, Error> {
     for (id, e) in picked {
         let img = jobs
             .get(&id)
-            .and_then(|j| state.cache.get_or_render(Variant::Thumb, j).ok())
+            .and_then(|j| {
+                state
+                    .cache
+                    .get_or_render(&state.catalog, Variant::Thumb, j)
+                    .ok()
+            })
             .and_then(|b| image::load_from_memory(&b).ok());
         if let Some(img) = img {
             images.push(img);
@@ -937,9 +942,13 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
         use rayon::prelude::*;
         jobs.into_par_iter()
             .map(|job| {
-                job.and_then(|j| state.cache.get_or_render(Variant::Thumb, &j))
-                    .ok()
-                    .and_then(|bytes| image::load_from_memory(&bytes).ok())
+                job.and_then(|j| {
+                    state
+                        .cache
+                        .get_or_render(&state.catalog, Variant::Thumb, &j)
+                })
+                .ok()
+                .and_then(|bytes| image::load_from_memory(&bytes).ok())
             })
             .collect()
     };

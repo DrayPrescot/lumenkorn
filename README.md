@@ -516,10 +516,12 @@ RANSAC.
   the sharpest detail.
 
 ### Your data
-- Catalog, edits, AI models and AI results live in the app data folder:
+- Catalog, edits, albums, slideshows, AI models and AI results live in the app data folder:
   - Windows: `%APPDATA%\io.github.drayprescot.lumenkorn\`
   - Linux: `~/.local/share/io.github.drayprescot.lumenkorn/`
 - Thumbnails are in the system cache folder.
+- Before a catalog upgrade, a copy is saved as `katalog.db.v<old version>.bak` in the data folder (the
+  last two are kept). To go back: close Lumenkorn, remove `katalog.db` and rename the copy to it.
 - Lumenkorn writes to your photo folders only when you ask it to: deleting rejected photos,
   saving merge results, or exporting.
 - Network access: downloading the AI runtime and models when you click the button for it

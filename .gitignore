@@ -4,6 +4,10 @@ dist/
 target/
 src-tauri/gen/
 
+# Secrets never belong in the repository
+*.key
+*.pem
+
 # Local catalogs and test output
 *.db
 *.db-*

@@ -623,6 +623,85 @@ mod migration_tests {
         assert_eq!((v, tables), (newer, 0));
     }
 
+    /// Katalog auf dem Stand `version` anlegen
+    fn old_catalog(db: &std::path::Path, version: usize) {
+        let conn = Connection::open(db).unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        for sql in &MIGRATIONS[..version] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", version as i64)
+            .unwrap();
+        conn.execute_batch("INSERT INTO roots (id, path, added_at) VALUES (1, '/alt', 0);")
+            .unwrap();
+    }
+
+    /// Vor einer Änderung des Schemas liegt eine Sicherung mit dem alten Stand da.
+    #[test]
+    fn migration_keeps_a_backup_of_the_old_catalog() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = tmp.path().join("katalog.db");
+        let old = MIGRATIONS.len() - 1;
+        old_catalog(&db, old);
+        drop(Catalog::open(&db).unwrap());
+
+        let bak = tmp.path().join(format!("katalog.db.v{old}.bak"));
+        let conn = Connection::open(&bak).unwrap();
+        let version: i64 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, old as i64);
+        let path: String = conn
+            .query_row("SELECT path FROM roots WHERE id = 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(path, "/alt");
+        drop(conn);
+        assert!(
+            !tmp.path()
+                .join(format!("katalog.db.v{old}.bak.tmp"))
+                .exists()
+        );
+
+        // Aktueller Katalog: nichts zu tun, keine neue Sicherung
+        std::fs::remove_file(&bak).unwrap();
+        drop(Catalog::open(&db).unwrap());
+        assert!(!bak.exists());
+    }
+
+    #[test]
+    fn new_catalog_needs_no_backup() {
+        let tmp = tempfile::tempdir().unwrap();
+        drop(Catalog::open(&tmp.path().join("katalog.db")).unwrap());
+        let backups = std::fs::read_dir(tmp.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().contains(".bak"))
+            .count();
+        assert_eq!(backups, 0);
+    }
+
+    #[test]
+    fn only_the_newest_backups_stay() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = tmp.path().join("katalog.db");
+        for v in 1..=4 {
+            let p = tmp.path().join(format!("katalog.db.v{v}.bak"));
+            std::fs::write(&p, b"x").unwrap();
+            let t = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1000 * v);
+            std::fs::File::options()
+                .write(true)
+                .open(&p)
+                .unwrap()
+                .set_modified(t)
+                .unwrap();
+        }
+        std::fs::write(tmp.path().join("katalog.db.txt"), b"x").unwrap();
+        super::super::migrations::remove_old_backups(&db);
+        let left = |v: u64| tmp.path().join(format!("katalog.db.v{v}.bak")).exists();
+        assert!(!left(1) && !left(2) && left(3) && left(4));
+        assert!(tmp.path().join("katalog.db.txt").exists());
+    }
+
     /// v11: Ein Katalog von v10 (alte Trigger) behält seinen Suchindex, die
     /// neuen Trigger und Indizes greifen.
     #[test]

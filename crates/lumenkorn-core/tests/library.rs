@@ -25,6 +25,85 @@ fn names(cat: &Catalog, scope: Scope) -> Vec<String> {
         .collect()
 }
 
+/// Während des Renderns bearbeitet: Das Ergebnis zeigt einen alten Stand und
+/// darf weder im Cache landen noch das Vorschaubild als fertig markieren.
+#[test]
+fn stale_render_does_not_replace_the_thumbnail() {
+    let d = tempfile::tempdir().unwrap();
+    let library = d.path().join("Bilder");
+    std::fs::create_dir_all(&library).unwrap();
+    write_jpeg(&library.join("a.jpg"), 32, 32, 1);
+    let cat = Mutex::new(Catalog::open_in_memory().unwrap());
+    let root = cat.lock().unwrap().add_root(&library).unwrap();
+    scan_root(&cat, root.id, &no_progress).unwrap();
+    let cache = ThumbCache::new(d.path().join("cache"));
+    let id = cat
+        .lock()
+        .unwrap()
+        .query_images(&ImageQuery::new(Scope::All))
+        .unwrap()[0]
+        .id;
+    let before = cat.lock().unwrap().thumb_job(id).unwrap();
+
+    // Bearbeitung kommt dazu, während der alte Auftrag noch rechnet
+    let params = lumenkorn_develop::DevelopParams {
+        exposure: 1.0,
+        ..Default::default()
+    };
+    cat.lock().unwrap().save_develop(&[id], &params).unwrap();
+    let old = cache.get_or_render(&cat, Variant::Thumb, &before).unwrap();
+    assert!(!old.is_empty(), "die Anfrage bekommt trotzdem eine Antwort");
+    assert!(
+        cache.read(Variant::Thumb, id).is_none(),
+        "nicht gespeichert"
+    );
+
+    // Mit dem aktuellen Auftrag wird abgelegt
+    let now = cat.lock().unwrap().thumb_job(id).unwrap();
+    cache.get_or_render(&cat, Variant::Thumb, &now).unwrap();
+    assert!(cache.read(Variant::Thumb, id).is_some());
+}
+
+/// Unbearbeitet geht ohne Entwicklung, bearbeitet muss in die kleine Warteschlange.
+#[test]
+fn only_edited_photos_need_the_develop_queue() {
+    let d = tempfile::tempdir().unwrap();
+    let library = d.path().join("Bilder");
+    std::fs::create_dir_all(&library).unwrap();
+    write_jpeg(&library.join("a.jpg"), 32, 32, 1);
+    let cat = Mutex::new(Catalog::open_in_memory().unwrap());
+    let root = cat.lock().unwrap().add_root(&library).unwrap();
+    scan_root(&cat, root.id, &no_progress).unwrap();
+    let cache = ThumbCache::new(d.path().join("cache"));
+    let id = cat
+        .lock()
+        .unwrap()
+        .query_images(&ImageQuery::new(Scope::All))
+        .unwrap()[0]
+        .id;
+    let job = cat.lock().unwrap().thumb_job(id).unwrap();
+    assert!(
+        cache
+            .get_light(&cat, Variant::Preview, &job)
+            .unwrap()
+            .is_some()
+    );
+
+    let params = lumenkorn_develop::DevelopParams {
+        exposure: 1.0,
+        ..Default::default()
+    };
+    cat.lock().unwrap().save_develop(&[id], &params).unwrap();
+    cache.remove(id);
+    let job = cat.lock().unwrap().thumb_job(id).unwrap();
+    assert!(
+        cache
+            .get_light(&cat, Variant::Thumb, &job)
+            .unwrap()
+            .is_none()
+    );
+}
+
 /// „Schon importiert“ verleitet dazu, die Karte zu formatieren: Es darf nur
 /// gelten, solange die Datei wirklich noch da ist.
 #[test]

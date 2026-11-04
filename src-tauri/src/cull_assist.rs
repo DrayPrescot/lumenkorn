@@ -543,7 +543,10 @@ fn suggest(state: &AppState, app: &AppHandle, scope: Scope) -> Result<CullResult
                 }
                 let r = (|| -> Option<Photo> {
                     let job = state.catalog.locked().thumb_job(img.id).ok()?;
-                    let bytes = state.cache.get_or_render(Variant::Preview, &job).ok()?;
+                    let bytes = state
+                        .cache
+                        .get_or_render(&state.catalog, Variant::Preview, &job)
+                        .ok()?;
                     let full = image::load_from_memory(&bytes).ok()?;
                     let small = full.thumbnail(MEASURE_EDGE, MEASURE_EDGE);
                     let (sharp, clip_hi, clip_lo, mean, hash) = measure(&small.to_luma8());

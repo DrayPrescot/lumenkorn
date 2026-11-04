@@ -729,12 +729,15 @@ zerlegt jedes Bild in eine Laplace-Pyramide und behält je Stufe das schärfste 
 
 ### Daten und Arbeitsspeicher
 
-- **Datenordner:** Katalog, Bearbeitungen, KI-Modelle und KI-Ergebnisse. Windows
+- **Datenordner:** Katalog, Bearbeitungen, Alben, Diashows, KI-Modelle und KI-Ergebnisse. Windows
   `%APPDATA%\io.github.drayprescot.lumenkorn\`, Linux `~/.local/share/io.github.drayprescot.lumenkorn/`.
   Thumbnails liegen im Cache-Ordner des Systems; die großen Vorschauen dort sind auf 5 GB begrenzt
   (Einstellungen → Allgemein), darüber gehen die am längsten nicht angesehenen. Daten der früheren
   Fassung „Lichtwerk“ werden beim
   ersten Start übernommen.
+- **Sicherung des Katalogs:** Vor jeder Änderung des Katalogformats legt Lumenkorn eine Kopie
+  `katalog.db.v<alter Stand>.bak` im Datenordner an und behält die letzten zwei. Zurück geht es so:
+  Lumenkorn schließen, `katalog.db` entfernen und die Kopie so umbenennen.
 - **Fotoordner** werden nur beschrieben, wenn du es auslöst: abgelehnte Fotos löschen,
   Zusammenfügen, Export.
 - **Nextcloud:** Verbindungen erst, wenn du unter Einstellungen → Nextcloud verbindest, und nur

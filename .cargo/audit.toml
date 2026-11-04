@@ -1,0 +1,13 @@
+# Geprüfte Meldungen von `cargo audit`, die bewusst hingenommen werden. Jede braucht
+# eine Begründung; fällt der Grund weg, gehört der Eintrag entfernt.
+[advisories]
+ignore = [
+    # zip 4.6.1 kommt nur über tauri-plugin-updater 2.14 (dort festgelegt, die App
+    # selbst nutzt zip 9). Das Plugin entpackt erst nach geprüfter Signatur, also nur
+    # Dateien aus dem eigenen Release; Windows-Updates sind MSI und gehen gar nicht
+    # über zip. Entfällt mit einer neueren Fassung des Plugins.
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
+    "RUSTSEC-2026-0429",
+]

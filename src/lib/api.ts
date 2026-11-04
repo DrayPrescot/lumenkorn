@@ -987,6 +987,9 @@ export interface AiStatus {
   settings: AiSettings;
 }
 
+/** Art eines gespeicherten Dokuments (siehe `lib/docs.ts`) */
+export type DocKind = "album" | "slideshow";
+
 export type AiComponent = "clip" | "masks" | "denoise" | "faces" | "repair" | "animals" | Backend;
 
 export interface AiDownloadEvent {
@@ -1126,6 +1129,10 @@ export const api = {
   exportConflicts: (ids: number[], dir: string | null, options: ExportOptions) =>
     call<string[]>("export_conflicts", { ids, dir, options }),
 
+  docGet: (kind: DocKind, scope: Scope) => call<string | null>("doc_get", { kind, scope }),
+  docPut: (kind: DocKind, scope: Scope, json: string) => call<void>("doc_put", { kind, scope, json }),
+  docDelete: (kind: DocKind, scope: Scope) => call<void>("doc_delete", { kind, scope }),
+  docProjects: (kind: DocKind) => call<number[]>("doc_projects", { kind }),
   aiStatus: () => call<AiStatus>("ai_status"),
   aiSetSettings: (settings: AiSettings) => call<void>("ai_set_settings", { settings }),
   aiBenchmark: () => call<Benchmark>("ai_benchmark"),

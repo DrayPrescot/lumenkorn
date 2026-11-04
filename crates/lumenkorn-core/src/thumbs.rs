@@ -166,7 +166,12 @@ impl ThumbCache {
     }
 
     /// Liefert die Vorschau aus dem Cache oder erzeugt sie bei Bedarf.
-    pub fn get_or_render(&self, variant: Variant, job: &ThumbJob) -> Result<Vec<u8>> {
+    pub fn get_or_render(
+        &self,
+        catalog: &Mutex<Catalog>,
+        variant: Variant,
+        job: &ThumbJob,
+    ) -> Result<Vec<u8>> {
         if let Some(bytes) = self.read(variant, job.id) {
             return Ok(bytes);
         }
@@ -177,8 +182,65 @@ impl ThumbCache {
             self.denoise_dir.as_deref(),
             self.repair_source(),
         )?;
-        self.write(variant, job.id, &bytes)?;
+        self.store_if_current(catalog, variant, job, &bytes);
         Ok(bytes)
+    }
+
+    /// Wie [`Self::get_or_render`], aber nur, was ohne Entwicklung geht. `None`:
+    /// Das Foto muss entwickelt werden – ein RAW belegt dabei bis ~1,5 GB, das
+    /// gehört in eine Warteschlange mit wenigen Plätzen.
+    pub fn get_light(
+        &self,
+        catalog: &Mutex<Catalog>,
+        variant: Variant,
+        job: &ThumbJob,
+    ) -> Result<Option<Vec<u8>>> {
+        if let Some(bytes) = self.read(variant, job.id) {
+            return Ok(Some(bytes));
+        }
+        let Some(bytes) = render_light(job, variant.max_size())? else {
+            return Ok(None);
+        };
+        self.store_if_current(catalog, variant, job, &bytes);
+        Ok(Some(bytes))
+    }
+
+    /// Ablegen, sofern das Foto noch so ist wie beim Rendern. Wurde es
+    /// inzwischen bearbeitet, zeigt das Ergebnis einen alten Stand: Es darf das
+    /// neue Vorschaubild nicht überschreiben und nicht als fertig gelten, sonst
+    /// bliebe der alte Stand bis zur nächsten Bearbeitung stehen. Prüfen und
+    /// Umbenennen unter derselben Sperre (siehe [`generate_some`]).
+    fn store_if_current(
+        &self,
+        catalog: &Mutex<Catalog>,
+        variant: Variant,
+        job: &ThumbJob,
+        bytes: &[u8],
+    ) {
+        let tmp = match self.stage(variant, job.id, bytes) {
+            Ok(tmp) => tmp,
+            Err(e) => {
+                log::warn!("Vorschau für {} nicht gespeichert: {e}", job.path);
+                return;
+            }
+        };
+        {
+            let cat = catalog.locked();
+            let current = cat
+                .thumb_job(job.id)
+                .is_ok_and(|c| c.edit == job.edit && c.path == job.path);
+            if current {
+                match self.commit_staged(variant, job.id, &tmp) {
+                    Ok(()) if variant == Variant::Thumb => {
+                        let _ = cat.set_thumb_state(job.id, true);
+                    }
+                    Ok(()) => {}
+                    Err(e) => log::warn!("Vorschau für {} nicht gespeichert: {e}", job.path),
+                }
+            }
+        }
+        // Nach dem Umbenennen gibt es die Datei nicht mehr, dann wirkungslos
+        Self::discard_staged(&tmp);
     }
 
     /// Ganzes Bild in voller Auflösung (Zoom in Bibliothek und Vergleich).
@@ -326,6 +388,25 @@ fn render_job(
     }
 }
 
+/// JPEG eines Fotos, soweit das ohne Entwicklung geht (`None`: nicht ohne).
+fn render_light(job: &ThumbJob, max: u32) -> Result<Option<Vec<u8>>> {
+    let edited = job
+        .edit
+        .as_ref()
+        .map(DevelopParams::from_json)
+        .is_some_and(|p| !p.is_default());
+    if edited {
+        return Ok(None);
+    }
+    match decode_light(Path::new(&job.path), job.kind, job.orientation, max) {
+        Ok(Some(img)) => encode_jpeg(&img, 82).map(Some),
+        Ok(None) => Ok(None),
+        // Eingebettete Vorschau kaputt: Das Entwickeln kann trotzdem gelingen
+        Err(_) if job.kind == ImageKind::Raw => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
 fn render_developed(
     job: &ThumbJob,
     params: &DevelopParams,
@@ -386,23 +467,34 @@ fn decode_unedited(
     orientation: Option<i64>,
     max: u32,
 ) -> Result<DynamicImage> {
-    // Lineares EXR (Ergebnis von HDR/Panorama/Focus Stacking): wie ein RAW
-    // mit Standardeinstellungen entwickeln
+    if let Some(img) = decode_light(path, kind, orientation, max)? {
+        return Ok(img);
+    }
+    // Lineares EXR (Ergebnis von HDR/Panorama/Focus Stacking) und RAW ohne
+    // eingebettete Vorschau (z. B. DNGs aus Entrauschungsprogrammen): mit
+    // Standardeinstellungen entwickeln, statt bei jedem Start erneut zu scheitern
+    develop_default(path, kind == ImageKind::Raw, orientation, max)
+}
+
+/// [`decode_unedited`], soweit es ohne Entwicklung geht (`None`: nicht ohne).
+fn decode_light(
+    path: &Path,
+    kind: ImageKind,
+    orientation: Option<i64>,
+    max: u32,
+) -> Result<Option<DynamicImage>> {
     if lumenkorn_develop::exr_io::is_exr(path) {
-        return develop_default(path, false, orientation, max);
+        return Ok(None);
     }
     let img = match kind {
         ImageKind::Raster => lumenkorn_develop::raster::open(path)?,
         ImageKind::Raw => match decode_embedded_preview(path, max) {
             Ok(img) => img,
-            // Ohne eingebettete Vorschau (z. B. DNGs aus Entrauschungs-
-            // programmen): mit Standardeinstellungen entwickeln, statt bei
-            // jedem Start erneut zu scheitern
-            Err(Error::NoPreview(_)) => return develop_default(path, true, orientation, max),
+            Err(Error::NoPreview(_)) => return Ok(None),
             Err(e) => return Err(e),
         },
     };
-    Ok(fit(img, orientation, max))
+    Ok(Some(fit(img, orientation, max)))
 }
 
 /// Mit Standardeinstellungen entwickeln (RAW ohne Vorschau, EXR).
@@ -752,8 +844,17 @@ pub fn generate_some(
         // Decoder laufen auf beliebigen Dateien: Ein Absturz darin wird zum
         // Fehler dieses Fotos. Sonst ginge die ganze Portion verloren, das Foto
         // bliebe ausstehend und bräche jeden weiteren Durchlauf erneut ab.
+        fn guarded<T>(job: &ThumbJob, f: impl FnOnce() -> Result<T>) -> Result<T> {
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|_| {
+                let path = &job.path;
+                Err(Error::Invalid(lumenkorn_develop::tr!(
+                    "{path}: Absturz beim Dekodieren",
+                    "{path}: crashed while decoding"
+                )))
+            })
+        }
         let one = |job: &ThumbJob| -> Result<Vec<u8>> {
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            guarded(job, || {
                 render_job(
                     job,
                     THUMB_SIZE,
@@ -761,30 +862,33 @@ pub fn generate_some(
                     cache.denoise_dir.as_deref(),
                     cache.repair_source(),
                 )
-            }))
-            .unwrap_or_else(|_| {
-                let path = &job.path;
-                Err(Error::Invalid(lumenkorn_develop::tr!(
-                    "{path}: Absturz beim Dekodieren",
-                    "{path}: crashed while decoding"
-                )))
             })
         };
         // Unbearbeitete Bilder (eingebettete Vorschau, klein) voll parallel.
-        // Bearbeitete werden ganz entwickelt – ein RAW belegt dabei bis ~1,5 GB.
-        // Deshalb höchstens zwei gleichzeitig; die Pipeline selbst nutzt
-        // ohnehin alle Kerne.
-        let (edited, plain): (Vec<&ThumbJob>, Vec<&ThumbJob>) =
+        // Was entwickelt werden muss, belegt bei einem RAW bis ~1,5 GB. Deshalb
+        // höchstens zwei gleichzeitig – auch RAWs ohne brauchbare Vorschau; die
+        // Pipeline selbst nutzt ohnehin alle Kerne.
+        let (mut heavy, plain): (Vec<&ThumbJob>, Vec<&ThumbJob>) =
             jobs.iter().partition(|j| j.edit.is_some());
-        let mut results: Vec<(&ThumbJob, Result<Vec<u8>>)> =
-            plain.par_iter().map(|j| (*j, one(j))).collect();
+        let light: Vec<(&ThumbJob, Result<Option<Vec<u8>>>)> = plain
+            .par_iter()
+            .map(|j| (*j, guarded(j, || render_light(j, THUMB_SIZE))))
+            .collect();
+        let mut results: Vec<(&ThumbJob, Result<Vec<u8>>)> = Vec::with_capacity(jobs.len());
+        for (job, res) in light {
+            match res {
+                Ok(Some(bytes)) => results.push((job, Ok(bytes))),
+                Ok(None) => heavy.push(job),
+                Err(e) => results.push((job, Err(e))),
+            }
+        }
         // Speicher-Sparmodus: eins nach dem anderen
         let parallel = if lumenkorn_develop::low_memory() {
             1
         } else {
             EDITED_PARALLEL
         };
-        for pair in edited.chunks(parallel) {
+        for pair in heavy.chunks(parallel) {
             results.extend(pair.par_iter().map(|j| (*j, one(j))).collect::<Vec<_>>());
         }
 

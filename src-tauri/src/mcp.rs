@@ -645,7 +645,11 @@ async fn view_photo(app: &AppHandle, a: &Value) -> ToolResult {
     let job = state.catalog.locked().thumb_job(id).map_err(e)?;
     let bytes = state
         .cache
-        .get_or_render(lumenkorn_core::thumbs::Variant::Preview, &job)
+        .get_or_render(
+            &state.catalog,
+            lumenkorn_core::thumbs::Variant::Preview,
+            &job,
+        )
         .map_err(e)?;
     let img = image::load_from_memory(&bytes).map_err(|x| x.to_string())?;
     let img = if img.width().max(img.height()) > size {

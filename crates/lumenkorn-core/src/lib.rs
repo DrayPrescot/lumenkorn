@@ -7,6 +7,7 @@
 //! ohne GUI testen.
 
 pub mod catalog;
+pub mod docstore;
 pub mod error;
 mod exif_guard;
 pub mod exports;

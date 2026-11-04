@@ -63,6 +63,7 @@
       "endpoints": [
         "https://github.com/DrayPrescot/lumenkorn/releases/latest/download/latest.json"
       ],
+      "requireSignedVersion": true,
       "windows": {
         "installMode": "passive"
       }
