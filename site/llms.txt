@@ -29,7 +29,7 @@ catalog and never changes the original files. Interface in English and German.
   several songs, also per place), animated maps between places and a closing map; saved as MP4
   (H.264, H.265, AV1 or VP9).
 - HDR, panorama and focus stacking.
-- Nextcloud (optional): upload a project's exports to the user's own Nextcloud and share them
+- Nextcloud (optional): upload a project's exports or originals to the user's own Nextcloud and share them
   as a link (password, expiry date); later uploads only send new and changed files.
 - Built-in MCP server so AI agents can operate the app (off by default, local only).
 

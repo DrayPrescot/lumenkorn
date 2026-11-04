@@ -14,10 +14,10 @@
   <meta property="og:description" content="Install Lumenkorn, add your photos, set up the AI features and learn the keyboard shortcuts.">
   <meta property="og:url" content="https://lumenkorn.com/guide">
   <meta property="og:locale" content="en_US">
-  <meta property="og:image" content="https://lumenkorn.com/img/og.jpg">
+  <meta property="og:image" content="https://lumenkorn.com/img/og-v2.jpg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Lumenkorn: photo library and RAW developer, Develop view with a sunset">
+  <meta property="og:image:alt" content="Lumenkorn: photo library and RAW developer, green northern lights over Iceland">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/img/icon-192.png" type="image/png" sizes="192x192">
@@ -33,80 +33,69 @@
     <a class="brand" href="/"><img src="/img/icon-128.png" alt="" width="28" height="28">Lumenkorn</a>
     <nav class="nav" aria-label="Main">
       <a href="/features">Features</a>
-      <a href="/guide" aria-current="page">Guide</a>
+      <a href="/guide" aria-current="page">Getting started</a>
       <a href="/privacy">Privacy</a>
-      <a class="lang push" href="/de/anleitung" hreflang="de" lang="de" title="Deutsch">DE</a>
-      <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
-      <a class="btn primary small" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Download</a>
+      <a class="nav-credits" href="/credits">Credits</a>
+      <div class="nav-right">
+        <a href="/de/anleitung" hreflang="de" lang="de" title="Deutsch">DE</a>
+        <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
+        <a class="btn primary small" href="/guide">Download</a>
+      </div>
     </nav>
   </div>
 </header>
 
 <main id="main" class="page">
-  <div class="wrap narrow">
-    <h1>Getting started</h1>
-    <ul class="toc">
-      <li><a href="#install">Install</a></li>
-      <li><a href="#first-steps">First steps</a></li>
-      <li><a href="#ai">Set up AI</a></li>
-      <li><a href="#updates">Updates</a></li>
-      <li><a href="#keys">Keyboard shortcuts</a></li>
-      <li><a href="#data">Your data and backups</a></li>
-      <li><a href="#help">Help</a></li>
-    </ul>
-
-    <h2 id="install">Install</h2>
-    <ol>
-      <li>Open the <a href="https://github.com/DrayPrescot/lumenkorn/releases/latest">latest release on GitHub</a>.</li>
-      <li>Download one of the two <code>.msi</code> files. They differ only in the language of the
-        installer (<code>en-US</code> or <code>de-DE</code>); the app itself follows your system
-        language and can be switched later.</li>
-      <li>Run the file. The installers are not code-signed yet, so Windows SmartScreen asks once:
-        click <strong>More info</strong>, then <strong>Run anyway</strong>.</li>
+  <div class="wrap">
+    <div id="install" class="page-head">
+      <h1>Download and first steps</h1>
+      <p class="lead">Lumenkorn runs on 64-bit Windows 10 and 11. A graphics card is not required but makes editing and the AI much faster. On Linux, Lumenkorn can be <a href="https://github.com/DrayPrescot/lumenkorn#building-from-source">built from source</a>.</p>
+      <div class="actions">
+        <a class="btn primary" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Open the latest release on GitHub</a>
+      </div>
+      <p class="note-line">The download is hosted on GitHub. If you follow the link, the GitHub privacy statement applies.</p>
+    </div>
+    <ol id="first-steps" class="steps">
+<li><span class="step-label">1 / 6</span><span class="title">Download one of the two <code>.msi</code> files.</span><span class="text">They differ only in the language of the installer (<code>en-US</code> or <code>de-DE</code>); the app itself follows your system language and can be switched later.</span></li>
+<li><span class="step-label">2 / 6</span><span class="title">Run the file.</span><span class="text">The installers are not code-signed yet, so Windows SmartScreen asks once: click <strong>More info</strong>, then <strong>Run anyway</strong>.</span></li>
+<li><span class="step-label">3 / 6</span><span class="title">Add a folder.</span><span class="text">Click <strong>+</strong> next to <em>Folders</em> in the sidebar and choose a folder with photos. Lumenkorn reads it in place and builds previews in the background.</span></li>
+<li><span class="step-label">4 / 6</span><span class="title">Rate your photos.</span><span class="text">Browse with the arrow keys, rate with <kbd>1</kbd>–<kbd>5</kbd>, pick with <kbd>P</kbd> and reject with <kbd>X</kbd>.</span></li>
+<li><span class="step-label">5 / 6</span><span class="title">Develop a photo.</span><span class="text">Press <kbd>D</kbd> to develop the selected photo. <kbd>Ctrl</kbd>+<kbd>U</kbd> applies Auto, a good starting point.</span></li>
+<li><span class="step-label">6 / 6</span><span class="title">Export it.</span><span class="text">Export with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>. By default the files go into an <code>Export</code> folder next to the originals.</span></li>
     </ol>
-    <p>Lumenkorn runs on 64-bit Windows 10 and 11. A graphics card is not required but makes editing
-      and the AI much faster. On Linux, Lumenkorn can be
-      <a href="https://github.com/DrayPrescot/lumenkorn#building-from-source">built from source</a>.</p>
-
-    <h2 id="first-steps">First steps</h2>
-    <figure class="wide-figure shot">
-      <img src="/img/library-winter.webp" srcset="/img/library-winter-900.webp 900w, /img/library-winter.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1045" loading="lazy" alt="Library with winter photos of a river, in the English interface">
-    </figure>
-    <ol>
-      <li>Click <strong>+</strong> next to <em>Folders</em> in the sidebar and choose a folder with photos.
-        Lumenkorn reads it in place and builds previews in the background.</li>
-      <li>Browse with the arrow keys, rate with <kbd>1</kbd>–<kbd>5</kbd>, pick with <kbd>P</kbd> and
-        reject with <kbd>X</kbd>.</li>
-      <li>Press <kbd>D</kbd> to develop the selected photo. <kbd>Ctrl</kbd>+<kbd>U</kbd> applies Auto, a good
-        starting point.</li>
-      <li>Export with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>. By default the files go into an
-        <code>Export</code> folder next to the originals.</li>
-    </ol>
-    <p>To copy photos from a memory card, use <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>I</kbd> or the arrow
-      next to <em>Folders</em>. Projects (above the folders) gather folders that belong together, such
-      as all days of a trip.</p>
-    <p><strong>File type</strong> in the toolbar shows only certain formats, for example only RAW
-      files. <strong>Statistics</strong> above the grid shows which cameras, lenses and settings the
-      photos on screen were taken with.</p>
-
-    <h2 id="ai">Set up AI</h2>
-    <p>Open <strong>Settings → AI</strong> at the bottom left and download the models you want. Each
+<section id="start" class="block">
+  <h2>More to get started</h2>
+  <div class="block-body">
+<p>To copy photos from a memory card, use <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>I</kbd> or the arrow next to <em>Folders</em>. Projects (above the folders) gather folders that belong together, such as all days of a trip.</p>
+<p><strong>File type</strong> in the toolbar shows only certain formats, for example only RAW files. <strong>Statistics</strong> above the grid shows which cameras, lenses and settings the photos on screen were taken with.</p>
+  </div>
+</section>
+<section id="ai" class="block">
+  <h2>Set up AI</h2>
+  <div class="block-body">
+<p>Open <strong>Settings → AI</strong> at the bottom left and download the models you want. Each
       feature can be set up on its own: keywords and search, AI masks, noise reduction and face
       recognition. After that Lumenkorn analyzes your photos in the background; the progress is shown
       next to the Settings button.</p>
     <p>Under <strong>Settings → Graphics card</strong> you choose whether editing and AI use the GPU.
       For the AI on the GPU, Windows needs the Microsoft Visual C++ Redistributable; Lumenkorn tells
       you if it is missing.</p>
-
-    <h2 id="updates">Updates</h2>
-    <p>Shortly after starting, Lumenkorn checks once whether a new version is out. If there is one, it
+  </div>
+</section>
+<section id="updates" class="block">
+  <h2>Updates</h2>
+  <div class="block-body">
+<p>Shortly after starting, Lumenkorn checks once whether a new version is out. If there is one, it
       shows what changed and asks. <strong>Install now</strong> downloads it, checks its signature,
       installs it and restarts. Your catalog and edits are kept.</p>
-
-    <h2 id="keys">Keyboard shortcuts</h2>
-    <p>The most important defaults. Under <strong>Settings → Keyboard shortcuts</strong> every command
+  </div>
+</section>
+<section id="keys" class="block">
+  <h2>Keyboard shortcuts</h2>
+  <div class="block-body">
+<p>The most important defaults. Under <strong>Settings → Keyboard shortcuts</strong> every command
       can get a different or an additional key.</p>
-    <table>
+    <div class="table-scroll"><table>
       <thead><tr><th>Key</th><th>Action</th></tr></thead>
       <tbody>
         <tr><td><kbd>0</kbd>–<kbd>5</kbd></td><td>Rating</td></tr>
@@ -126,10 +115,13 @@
         <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>I</kbd></td><td>Import from a memory card</td></tr>
         <tr><td><kbd>Ctrl</kbd>+<kbd>H</kbd> / <kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>HDR / panorama</td></tr>
       </tbody>
-    </table>
-
-    <h2 id="data">Your data and backups</h2>
-    <p>Lumenkorn never changes your original photos. Your ratings, keywords and edits live in the
+    </table></div>
+  </div>
+</section>
+<section id="data" class="block">
+  <h2>Your data and backups</h2>
+  <div class="block-body">
+<p>Lumenkorn never changes your original photos. Your ratings, keywords and edits live in the
       catalog in the data folder:</p>
     <p><code>%APPDATA%\io.github.drayprescot.lumenkorn\</code></p>
     <p>Back up this folder together with your photos. The folder also holds the AI models and AI
@@ -140,12 +132,18 @@
         and every release is tried on real photos before it goes out. Bugs can still slip through,
         so keep a backup of your photos and the catalog.</p>
     </div>
-
-    <h2 id="help">Help</h2>
-    <p>Found a bug or missing something? Please open an
+  </div>
+</section>
+<section id="help" class="block">
+  <h2>Help</h2>
+  <div class="block-body">
+<p>Found a bug or missing something? Please open an
       <a href="https://github.com/DrayPrescot/lumenkorn/issues">issue on GitHub</a>. The
       <a href="https://github.com/DrayPrescot/lumenkorn/blob/main/CHANGELOG.md">changelog</a> lists
       what changed in each version.</p>
+  </div>
+  </div>
+</section>
   </div>
 </main>
 

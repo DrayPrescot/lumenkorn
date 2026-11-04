@@ -14,10 +14,10 @@
   <meta property="og:description" content="Library, RAW development, AI masks, noise reduction, search by content, statistics, map, photo album, slideshow, HDR and panorama: what Lumenkorn can do.">
   <meta property="og:url" content="https://lumenkorn.com/features">
   <meta property="og:locale" content="en_US">
-  <meta property="og:image" content="https://lumenkorn.com/img/og.jpg">
+  <meta property="og:image" content="https://lumenkorn.com/img/og-v2.jpg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Lumenkorn: photo library and RAW developer, Develop view with a sunset">
+  <meta property="og:image:alt" content="Lumenkorn: photo library and RAW developer, green northern lights over Iceland">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/img/icon-192.png" type="image/png" sizes="192x192">
@@ -33,84 +33,75 @@
     <a class="brand" href="/"><img src="/img/icon-128.png" alt="" width="28" height="28">Lumenkorn</a>
     <nav class="nav" aria-label="Main">
       <a href="/features" aria-current="page">Features</a>
-      <a href="/guide">Guide</a>
+      <a href="/guide">Getting started</a>
       <a href="/privacy">Privacy</a>
-      <a class="lang push" href="/de/funktionen" hreflang="de" lang="de" title="Deutsch">DE</a>
-      <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
-      <a class="btn primary small" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Download</a>
+      <a class="nav-credits" href="/credits">Credits</a>
+      <div class="nav-right">
+        <a href="/de/funktionen" hreflang="de" lang="de" title="Deutsch">DE</a>
+        <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
+        <a class="btn primary small" href="/guide">Download</a>
+      </div>
     </nav>
   </div>
 </header>
 
 <main id="main" class="page">
-  <div class="wrap narrow">
-    <h1>Features</h1>
-    <p class="lead">Lumenkorn runs entirely on your computer. The AI features are optional and work
-      offline once you have downloaded the models.</p>
-    <ul class="toc">
-      <li><a href="#library">Library</a></li>
-      <li><a href="#develop">RAW development</a></li>
-      <li><a href="#auto">Auto in your style</a></li>
-      <li><a href="#ai">AI</a></li>
-      <li><a href="#statistics">Statistics</a></li>
-      <li><a href="#map">Map</a></li>
-      <li><a href="#album">Photo album</a></li>
-      <li><a href="#slideshow">Slideshow</a></li>
-      <li><a href="#more">More</a></li>
-    </ul>
-
-    <h2 id="library">Library</h2>
-    <figure class="wide-figure shot">
-      <img src="/img/library.webp" srcset="/img/library-900.webp 900w, /img/library.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1043" loading="lazy" alt="Library with animal photos from a zoo, a penguin selected, its camera data on the right">
-    </figure>
-    <p>Lumenkorn keeps your folder structure. You add folders and the photos stay exactly where
-      they are. Files are only copied when you import from a memory card.</p>
-    <ul>
-      <li>When importing from a card, Lumenkorn sorts the photos into dated folders
-        (<code>2025\2025.10.03_Occasion</code>) and names them by capture time. Every copy is checked
-        byte by byte before the card can be cleared. If the camera clock was wrong, you can correct
-        it during the import.</li>
-      <li>New, changed and moved files are picked up automatically. Moved photos are recognized by
-        their content, so ratings and edits stay with them.</li>
-      <li>Projects group several folders, even from different drives.</li>
-      <li>Rate with stars, pick or reject, and add keywords. The search covers file names, folders,
-        camera, lens, keywords, people and places.</li>
-      <li>The file type filter in the toolbar shows only certain formats, such as only ARW or only
-        JPEG, or all RAW files at once. It also applies in Develop.</li>
-      <li>For culling, reject a photo with one key and move straight on to the next. Rejected photos
-        can then go to the trash in one go.</li>
-      <li>The culling assistant suggests what to reject: the weaker shots of a burst (the best 3 to
-        5 stay), blurry photos, closed eyes, badly exposed photos and photos taken by accident. You
-        check the suggestions, and only what you tick is rejected. It learns from your decisions,
-        and you can reset what it learned.</li>
-      <li>Compare up to 12 photos side by side with synchronized zoom.</li>
-      <li>Lumenkorn reads JPEG, PNG, TIFF, WebP, OpenEXR and RAW files from Canon, Nikon, Sony,
-        Fujifilm, Panasonic, OM System, Pentax, DNG and more.</li>
-    </ul>
-
-    <h2 id="develop">RAW development</h2>
-    <figure class="wide-figure shot">
-      <img src="/img/develop.webp" srcset="/img/develop-900.webp 900w, /img/develop.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1043" loading="lazy" alt="Develop view with a sunset over a lake and the sliders on the right">
-    </figure>
-    <p>Editing is non-destructive, the way you know it from other programs. Only your settings are
-      saved and the original file stays as it is. For RAW files Lumenkorn follows darktable's
-      scene-referred workflow, which was translated to Rust for this.</p>
-    <ul>
-      <li>White balance, exposure, contrast, highlights, shadows, whites, blacks, clarity, dehaze,
-        vibrance, saturation and sharpening.</li>
-      <li>HSL for eight color ranges with an eyedropper, color grading with color wheels, and a tone
-        curve for RGB and each channel.</li>
-      <li>Black and white with its own gray mix.</li>
-      <li>Lens correction for distortion, color fringes and vignetting, either from the camera's own
-        data or from the Lensfun profiles for about 1,500 lenses.</li>
-      <li>Crop and rotate, with automatic horizon leveling.</li>
-      <li>Local adjustments with gradients, brush, color range and AI masks.</li>
-      <li>History with undo, snapshots, and settings you can copy to many photos.</li>
-      <li>Export to JPEG, 16-bit TIFF or PNG.</li>
-      <li>With a graphics card (DirectX 12 or Vulkan) the sliders respond right away. Without a
-        suitable card, the processor takes over.</li>
-    </ul>
-    <figure class="wide-figure">
+  <div class="wrap">
+    <div class="page-head">
+      <h1>Features</h1>
+      <p class="lead">Lumenkorn runs entirely on your computer. The AI features are optional and work offline once you have downloaded the models.</p>
+    </div>
+    <div class="layout">
+      <nav class="side-nav" aria-label="Contents">
+        <ul>
+<li><a href="#add"><span>1</span>Add</a></li>
+<li><a href="#cull"><span>2</span>Cull</a></li>
+<li><a href="#develop"><span>3</span>Develop</a></li>
+<li><a href="#find"><span>4</span>Find</a></li>
+<li><a href="#share"><span>5</span>Share</a></li>
+<li><a href="#more"><span></span>More</a></li>
+        </ul>
+      </nav>
+      <div class="layout-main">
+<section id="add" class="chapter">
+<p class="step-label">1 / 5</p>
+<h2 id="library">Add</h2>
+<figure class="shot"><img src="/img/library-v2.webp" srcset="/img/library-v2-900.webp 900w, /img/library-v2.webp 1526w" sizes="(max-width: 900px) calc(100vw - 32px), 820px" width="1526" height="1043" loading="lazy" alt="Library with animal photos from a zoo, a penguin selected, its camera data on the right"></figure>
+<p>Lumenkorn keeps your folder structure. You add folders and the photos stay exactly where they are. Files are only copied when you import from a memory card.</p>
+<ul class="facts columns">
+  <li>When importing from a card, Lumenkorn sorts the photos into dated folders (<code>2025\2025.10.03_Occasion</code>) and names them by capture time. Every copy is checked byte by byte before the card can be cleared. If the camera clock was wrong, you can correct it during the import.</li>
+  <li>New, changed and moved files are picked up automatically. Moved photos are recognized by their content, so ratings and edits stay with them.</li>
+  <li>Projects group several folders, even from different drives.</li>
+  <li>The file type filter in the toolbar shows only certain formats, such as only ARW or only JPEG, or all RAW files at once. It also applies in Develop.</li>
+  <li>Lumenkorn reads JPEG, PNG, TIFF, WebP, OpenEXR and RAW files from Canon, Nikon, Sony, Fujifilm, Panasonic, OM System, Pentax, DNG and more.</li>
+</ul>
+</section>
+<section id="cull" class="chapter">
+<p class="step-label">2 / 5</p>
+<h2>Cull</h2>
+<ul class="facts columns">
+  <li>Rate with stars, pick or reject, and add keywords. The search covers file names, folders, camera, lens, keywords, people and places.</li>
+  <li>For culling, reject a photo with one key and move straight on to the next. Rejected photos can then go to the trash in one go.</li>
+  <li>The culling assistant suggests what to reject: the weaker shots of a burst (the best 3 to 5 stay), blurry photos, closed eyes, badly exposed photos and photos taken by accident. You check the suggestions, and only what you tick is rejected. It learns from your decisions, and you can reset what it learned.</li>
+  <li>Compare up to 12 photos side by side with synchronized zoom.</li>
+</ul>
+</section>
+<section id="develop" class="chapter">
+<p class="step-label">3 / 5</p>
+<h2>Develop</h2>
+<p>Editing is non-destructive, the way you know it from other programs. Only your settings are saved and the original file stays as it is. For RAW files Lumenkorn follows darktable's scene-referred workflow, which was translated to Rust for this.</p>
+<ul class="facts columns">
+  <li>White balance, exposure, contrast, highlights, shadows, whites, blacks, clarity, dehaze, vibrance, saturation and sharpening.</li>
+  <li>HSL for eight color ranges with an eyedropper, color grading with color wheels, and a tone curve for RGB and each channel.</li>
+  <li>Black and white with its own gray mix.</li>
+  <li>Lens correction for distortion, color fringes and vignetting, either from the camera's own data or from the Lensfun profiles for about 1,500 lenses.</li>
+  <li>Crop and rotate, with automatic horizon leveling.</li>
+  <li>Local adjustments with gradients, brush, color range and AI masks.</li>
+  <li>History with undo, snapshots, and settings you can copy to many photos.</li>
+  <li>Export to JPEG, 16-bit TIFF or PNG.</li>
+  <li>With a graphics card (DirectX 12 or Vulkan) the sliders respond right away. Without a suitable card, the processor takes over.</li>
+</ul>
+<figure>
       <div class="shot compare">
         <img src="/img/after.webp" srcset="/img/after-900.webp 900w, /img/after.webp 1600w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1600" height="1067" loading="lazy" alt="Kingfisher on a branch, after editing">
         <div class="over"><img src="/img/before.webp" srcset="/img/before-900.webp 900w, /img/before.webp 1600w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1600" height="1067" loading="lazy" alt="The same photo before editing"></div>
@@ -120,34 +111,17 @@
       </div>
       <figcaption>The same RAW file before and after editing. Drag the slider to compare.</figcaption>
     </figure>
-
-    <h2 id="auto">Auto in your style</h2>
-    <p>Clicking <strong>Auto</strong> sets the tone so the photo looks balanced. If you keep editing
-      afterwards, Lumenkorn notes where you differ from that suggestion. It does this separately for
-      each camera and for RAW and JPEG:</p>
-    <ol>
-      <li>From about 10 to 20 edits with one camera, it applies a fixed correction, such as
-        “blacks −12”.</li>
-      <li>From about 50, the correction depends on how bright the photo is.</li>
-      <li>From about 300, it also takes into account what the photo shows.</li>
-    </ol>
-    <p>A slider is only adjusted when that demonstrably brings Auto closer to your own results. In
-      the settings you can see what has been learned, switch it off or reset it. None of this leaves
-      your computer.</p>
-
-    <h2 id="ai">AI</h2>
-    <p>For the AI features, Lumenkorn downloads open models when you ask it to. After that they run
-      offline on the processor or the graphics card (AMD, NVIDIA and Intel). If you don't want AI,
-      everything else still works.</p>
-    <h3>Masking</h3>
-    <figure class="wide-figure shot">
-      <img src="/img/ai-mask.webp" srcset="/img/ai-mask-900.webp 900w, /img/ai-mask.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1046" loading="lazy" alt="Kingfisher selected with an AI mask, shown in red">
-    </figure>
-    <p>Lumenkorn finds the main subject, the sky, people and animals. For people it can be more
-      precise, for example only the hair, eyes, lips or skin. Click on any other object and it
-      becomes a mask too. Masks can be added to and subtracted from each other.</p>
-    <h3>Noise reduction</h3>
-    <figure class="wide-figure">
+<h3 id="auto">Auto in your style</h3>
+<p>Clicking <strong>Auto</strong> sets the tone so the photo looks balanced. If you keep editing afterwards, Lumenkorn notes where you differ from that suggestion. It does this separately for each camera and for RAW and JPEG:</p>
+<ol><li>From about 10 to 20 edits with one camera, it applies a fixed correction, such as “blacks −12”.</li><li>From about 50, the correction depends on how bright the photo is.</li><li>From about 300, it also takes into account what the photo shows.</li></ol>
+<p>A slider is only adjusted when that demonstrably brings Auto closer to your own results. In the settings you can see what has been learned, switch it off or reset it. None of this leaves your computer.</p>
+<h3 id="ai">AI</h3>
+<p>For the AI features, Lumenkorn downloads open models when you ask it to. After that they run offline on the processor or the graphics card (AMD, NVIDIA and Intel). If you don't want AI, everything else still works.</p>
+<h3>Masking</h3>
+<figure class="shot"><img src="/img/mask-v2.webp" srcset="/img/mask-v2-900.webp 900w, /img/mask-v2.webp 1480w" sizes="(max-width: 900px) calc(100vw - 32px), 820px" width="1480" height="1046" loading="lazy" alt="Kingfisher selected with an AI mask, shown in red"></figure>
+<p>Lumenkorn finds the main subject, the sky, people and animals. For people it can be more precise, for example only the hair, eyes, lips or skin. Click on any other object and it becomes a mask too. Masks can be added to and subtracted from each other.</p>
+<h3>Noise reduction</h3>
+<figure>
       <div class="shot compare">
         <img src="/img/denoise-after.webp" srcset="/img/denoise-after-900.webp 900w, /img/denoise-after.webp 1400w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1400" height="985" loading="lazy" alt="Kingfisher at 100 percent after AI noise reduction">
         <div class="over"><img src="/img/denoise-before.webp" srcset="/img/denoise-before-900.webp 900w, /img/denoise-before.webp 1400w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1400" height="985" loading="lazy" alt="The same detail before, with strong noise"></div>
@@ -157,109 +131,68 @@
       </div>
       <figcaption>A high-ISO photo at 117 %, before and after AI noise reduction.</figcaption>
     </figure>
-    <p>The noise reduction removes noise and keeps fine structures such as feathers. Color noise
-      gets a pass of its own. With AI repair, dust spots, power lines, signs or people disappear
-      from the picture.</p>
-    <h3>Keywords and search</h3>
-    <figure class="wide-figure shot">
-      <img src="/img/ai-search.webp" srcset="/img/ai-search-900.webp 900w, /img/ai-search.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1253" loading="lazy" alt="Search for “mountains” finds photos of Mount Fuji at sunset">
-    </figure>
-    <p>Lumenkorn suggests keywords for place, subject, light, weather and style, and names animals
-      from coarse to fine, such as Mammal → Monkey → Gorilla. When you search, you
-      can use your own words: type “mountains” and you get mountains, even if nobody ever tagged
-      those photos.</p>
-    <h3>People</h3>
-    <p>Faces are found and grouped in the background. Once you have named a few people, Lumenkorn
-      suggests names for other photos. People can be sorted into your own groups such as family or
-      friends.</p>
+<p>The noise reduction removes noise and keeps fine structures such as feathers. Color noise gets a pass of its own. With AI repair, dust spots, power lines, signs or people disappear from the picture.</p>
+</section>
+<section id="find" class="chapter">
+<p class="step-label">4 / 5</p>
+<h2>Find</h2>
+<h3>Keywords and search</h3>
+<figure class="shot"><img src="/img/search-v2.webp" srcset="/img/search-v2-900.webp 900w, /img/search-v2.webp 1469w" sizes="(max-width: 900px) calc(100vw - 32px), 820px" width="1469" height="1253" loading="lazy" alt="Search for “mountains” finds photos of Mount Fuji at sunset"></figure>
+<p>Lumenkorn suggests keywords for place, subject, light, weather and style, and names animals from coarse to fine, such as Mammal → Monkey → Gorilla. When you search, you can use your own words: type “mountains” and you get mountains, even if nobody ever tagged those photos.</p>
+<h3>People</h3>
+<p>Faces are found and grouped in the background. Once you have named a few people, Lumenkorn suggests names for other photos. People can be sorted into your own groups such as family or friends.</p>
+<h3 id="statistics">Statistics</h3>
+<p>Which lens do you use most, and which focal lengths do you actually shoot at? The statistics cover the photos currently shown, so a folder, a project or a search result. You see cameras, lenses, focal lengths, apertures, shutter speeds, ISO values, keywords, people, countries, file types and ratings, plus the months and times of day the photos were taken.</p>
+<p>Click an entry to filter by it. That way you can see, for example, which focal lengths you use with a particular lens.</p>
+<h3 id="map">Map</h3>
+<figure class="shot"><img src="/img/map-v2.webp" srcset="/img/map-v2-900.webp 900w, /img/map-v2.webp 1445w" sizes="(max-width: 900px) calc(100vw - 32px), 820px" width="1445" height="1163" loading="lazy" alt="Map of Japan with clustered markers for the photos of a trip"></figure>
+<ul class="facts columns">
+  <li>The map shows the photos of the current folder, project or search result on an OpenStreetMap map.</li>
+  <li>GPS data from camera or phone is read automatically. Photos without a location can get one through the place search, by dragging them onto the map, or from a phone photo taken a few minutes earlier.</li>
+  <li>Every location gets a place name you can search for.</li>
+  <li>The map needs the internet, and you can switch it off completely (see <a href="/privacy">Privacy</a>).</li>
+</ul>
+</section>
+<section id="share" class="chapter">
+<p class="step-label">5 / 5</p>
+<h2>Share</h2>
+<h3 id="album">Photo album</h3>
+<figure class="shot"><img src="/img/album-en.webp" srcset="/img/album-en-900.webp 900w, /img/album-en.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 820px" width="1800" height="938" loading="lazy" alt="Photo album with birds from Costa Rica, one double page"></figure>
+<p>A few clicks turn a project or folder into a print-ready photo album. Choose a theme (travel, wedding, family, nature and others, or describe your own), a page size and how many photos it should have.</p>
+<ul class="facts columns">
+  <li>Lumenkorn picks sharp, well-exposed photos. Bursts and near-identical shots count once, unless different people are in them. Photos with four or five stars always go in.</li>
+  <li>Pages are filled in the order the photos were taken, using the layout that crops the least.</li>
+  <li>Date and place appear where a new day or place begins. You can add your own text anywhere.</li>
+  <li>If you like, a map page shows the countries you visited and a pin for every place, along with cities, mountains, rivers and lakes. It is built into the program and needs no internet.</li>
+  <li>Swap, move or remove photos with a click. At the end Lumenkorn saves a 300 dpi PDF with bleed and every page as a JPG.</li>
+</ul>
+<h3 id="slideshow">Slideshow</h3>
+<figure class="shot"><img src="/img/slideshow-map-en.webp" srcset="/img/slideshow-map-en-900.webp 900w, /img/slideshow-map-en.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 820px" width="1800" height="1045" loading="lazy" alt="Closing map of a slideshow: a trip through Italy from Venice to Naples with the route and a pin for every place"></figure>
+<p><strong>Diashow</strong> next to the photo album button picks the best photos of a project or folder in the same way as the album and turns them into a slideshow. It opens with the best rated photo and the title.</p>
+<ul class="facts columns">
+  <li>Crossfade, slide or hard cut. Photos zoom and pan slowly, towards faces if there are any. Portrait photos are shown whole in front of a blurred copy. Full screen and video use the photos in full resolution.</li>
+  <li>Date and place fade in where a new day or place begins. As in the album, texts can use any font, with alignment, position, size, colour and bold for each text.</li>
+  <li>Add one or more songs (MP3, M4A, WAV, FLAC, Ogg). Lumenkorn finds the beat: every photo stays at least the time you set and changes on the next fitting beat. The songs play one after another with crossfades, or you assign songs to each place of the trip.</li>
+  <li>When the next photo was taken somewhere else, a map flies there and draws the route. At the end, a map can show every place of the trip. Like the album map, it is built in and needs no internet.</li>
+  <li>Drag photos to change the order, swap them, or give a photo its own duration and text.</li>
+  <li>Save as an MP4 video in 720p, 1080p or 1440p with H.264, H.265, AV1 or VP9, encoded by Windows or the graphics card.</li>
+</ul>
+</section>
+<section id="more" class="chapter">
 
-    <h2 id="statistics">Statistics</h2>
-    <p>Which lens do you use most, and which focal lengths do you actually shoot at? The statistics
-      cover the photos currently shown, so a folder, a project or a search result. You see cameras,
-      lenses, focal lengths, apertures, shutter speeds, ISO values, keywords, people, countries,
-      file types and ratings, plus the months and times of day the photos were taken.</p>
-    <p>Click an entry to filter by it. That way you can see, for example, which focal lengths you
-      use with a particular lens.</p>
-
-    <h2 id="map">Map</h2>
-    <figure class="wide-figure shot">
-      <img src="/img/map.webp" srcset="/img/map-900.webp 900w, /img/map.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1163" loading="lazy" alt="Map of Japan with clustered markers for the photos of a trip">
-    </figure>
-    <ul>
-      <li>The map shows the photos of the current folder, project or search result on an
-        OpenStreetMap map.</li>
-      <li>GPS data from camera or phone is read automatically. Photos without a location can get one
-        through the place search, by dragging them onto the map, or from a phone photo taken a few
-        minutes earlier.</li>
-      <li>Every location gets a place name you can search for.</li>
-      <li>The map needs the internet, and you can switch it off completely
-        (see <a href="/privacy">Privacy</a>).</li>
-    </ul>
-
-    <h2 id="album">Photo album</h2>
-    <figure class="wide-figure shot">
-      <img src="/img/album.webp" srcset="/img/album-900.webp 900w, /img/album.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1045" loading="lazy" alt="Photo album with autumn photos from Japan and the text options on the right">
-    </figure>
-    <p>A few clicks turn a project or folder into a print-ready photo album. Choose a theme (travel,
-      wedding, family, nature and others, or describe your own), a page size and how many photos it
-      should have.</p>
-    <ul>
-      <li>Lumenkorn picks sharp, well-exposed photos. Bursts and near-identical shots count once,
-        unless different people are in them. Photos with four or five stars always go in.</li>
-      <li>Pages are filled in the order the photos were taken, using the layout that crops the least.</li>
-      <li>Date and place appear where a new day or place begins. You can add your own text
-        anywhere.</li>
-      <li>If you like, a map page shows the countries you visited and a pin for every place, along
-        with cities, mountains, rivers and lakes. It is built into the program and needs no
-        internet.</li>
-      <li>Swap, move or remove photos with a click. At the end Lumenkorn saves a 300 dpi PDF with
-        bleed and every page as a JPG.</li>
-    </ul>
-
-    <h2 id="slideshow">Slideshow</h2>
-    <figure class="wide-figure shot">
-      <img src="/img/slideshow-map-en.webp" srcset="/img/slideshow-map-en-900.webp 900w, /img/slideshow-map-en.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1045" loading="lazy" alt="Closing map of a slideshow: a trip through Italy from Venice to Naples with the route and a pin for every place">
-    </figure>
-    <p><strong>Diashow</strong> next to the photo album button picks the best photos of a project
-      or folder in the same way as the album and turns them into a slideshow. It opens with the
-      best rated photo and the title.</p>
-    <ul>
-      <li>Crossfade, slide or hard cut. Photos zoom and pan slowly, towards faces if there are any.
-        Portrait photos are shown whole in front of a blurred copy. Full screen and video use the
-        photos in full resolution.</li>
-      <li>Date and place fade in where a new day or place begins. As in the album, texts can use any
-        font, with alignment, position, size, colour and bold for each text.</li>
-      <li>Add one or more songs (MP3, M4A, WAV, FLAC, Ogg). Lumenkorn finds the beat: every photo
-        stays at least the time you set and changes on the next fitting beat. The songs play one
-        after another with crossfades, or you assign songs to each place of the trip.</li>
-      <li>When the next photo was taken somewhere else, a map flies there and draws the route. At the
-        end, a map can show every place of the trip. Like the album map, it is built in and needs
-        no internet.</li>
-      <li>Drag photos to change the order, swap them, or give a photo its own duration and text.</li>
-      <li>Save as an MP4 video in 720p, 1080p or 1440p with H.264, H.265, AV1 or VP9, encoded by
-        Windows or the graphics card.</li>
-    </ul>
-
-    <h2 id="more">More</h2>
-    <ul>
-      <li><strong>HDR, panorama and focus stacking</strong> from several photos, also handheld. The
-        result is a 16-bit file you keep editing like a RAW.</li>
-      <li><strong>Nextcloud:</strong> right-click a project to upload its exported photos, or all
-        of its photos as originals, to a folder in your own Nextcloud and share it as a link, with a password and expiry date if you
-        like. Uploading again only sends new and changed photos, and the link stays the same.
-        Shared projects get a cloud icon in the sidebar. You log in through the browser, and
-        Lumenkorn gets its own app password that you can revoke in Nextcloud at any time.</li>
-      <li><strong>Keyboard shortcuts</strong> for almost everything, and you can change them in the
-        settings.</li>
-      <li><strong>AI agents</strong> such as Claude or ChatGPT can operate Lumenkorn through a built-in
-        MCP interface if you switch it on. They can search, rate, develop and export, but not
-        delete anything.</li>
-      <li><strong>Updates</strong> are offered by Lumenkorn itself, and each new version is checked by
-        its signature before it is installed.</li>
-      <li>The interface is available in <strong>English and German</strong>.</li>
-    </ul>
-    <p>The <a href="https://github.com/DrayPrescot/lumenkorn#readme">README on GitHub</a> describes
-      every feature in more detail, including how it works under the hood.</p>
+<h2>More</h2>
+<ul class="facts columns">
+  <li><strong>HDR, panorama and focus stacking</strong> from several photos, also handheld. The result is a 16-bit file you keep editing like a RAW.</li>
+  <li><strong>Nextcloud:</strong> right-click a project to upload its exported photos, or all of its photos as originals, to a folder in your own Nextcloud and share it as a link, with a password and expiry date if you like. Uploading again only sends new and changed photos, and the link stays the same. Shared projects get a cloud icon in the sidebar. You log in through the browser, and Lumenkorn gets its own app password that you can revoke in Nextcloud at any time.</li>
+  <li><strong>Keyboard shortcuts</strong> for almost everything, and you can change them in the settings.</li>
+  <li><strong>AI agents</strong> such as Claude or ChatGPT can operate Lumenkorn through a built-in MCP interface if you switch it on. They can search, rate, develop and export, but not delete anything.</li>
+  <li><strong>Updates</strong> are offered by Lumenkorn itself, and each new version is checked by its signature before it is installed.</li>
+  <li>The interface is available in <strong>English and German</strong>.</li>
+</ul>
+<p>The <a href="https://github.com/DrayPrescot/lumenkorn#readme">README on GitHub</a> describes every feature in more detail, including how it works under the hood.</p>
+</section>
+      </div>
+    </div>
   </div>
 </main>
 

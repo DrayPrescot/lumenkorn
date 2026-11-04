@@ -15,10 +15,10 @@
   <meta property="og:description" content="Free photo library and RAW developer that runs entirely on your own computer. AI for keywords, masks and noise reduction, offline. No account, no cloud, no subscription.">
   <meta property="og:url" content="https://lumenkorn.com/">
   <meta property="og:locale" content="en_US">
-  <meta property="og:image" content="https://lumenkorn.com/img/og.jpg">
+  <meta property="og:image" content="https://lumenkorn.com/img/og-v2.jpg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Lumenkorn: photo library and RAW developer, Develop view with a sunset">
+  <meta property="og:image:alt" content="Lumenkorn: photo library and RAW developer, green northern lights over Iceland">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/img/icon-192.png" type="image/png" sizes="192x192">
@@ -35,149 +35,208 @@
     <a class="brand" href="/"><img src="/img/icon-128.png" alt="" width="28" height="28">Lumenkorn</a>
     <nav class="nav" aria-label="Main">
       <a href="/features">Features</a>
-      <a href="/guide">Guide</a>
+      <a href="/guide">Getting started</a>
       <a href="/privacy">Privacy</a>
-      <a class="lang push" href="/de/" hreflang="de" lang="de" title="Deutsch">DE</a>
-      <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
-      <a class="btn primary small" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Download</a>
+      <a class="nav-credits" href="/credits">Credits</a>
+      <div class="nav-right">
+        <a href="/de/" hreflang="de" lang="de" title="Deutsch">DE</a>
+        <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
+        <a class="btn primary small" href="/guide">Download</a>
+      </div>
     </nav>
   </div>
 </header>
 
 <main id="main">
-  <section class="hero">
-    <div class="wrap">
-      <h1>Your photos. On your own computer.</h1>
-      <p class="lead">Lumenkorn manages your photo collection and develops RAW files. It runs
-        entirely on your computer, so there is no account and no subscription. The AI features run on
-        your machine too, not in someone else's cloud.</p>
-      <div class="actions">
-        <a class="btn primary" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Download for Windows</a>
-        <a class="btn" href="/features">See the features</a>
+  <section class="photo hero">
+    <img src="/img/hero.webp" srcset="/img/hero-1200.webp 1200w, /img/hero.webp 2048w" sizes="100vw" width="2048" height="1365" fetchpriority="high" alt="Green northern lights in the night sky over Iceland">
+    <div class="photo-inner">
+      <div class="wrap">
+        <div class="photo-text">
+          <h1>Your photos.<br>On your PC.</h1>
+          <p class="lead">Lumenkorn manages your photo collection and develops RAW files. Everything runs on your computer, including the AI. You need no account and no subscription.</p>
+          <div class="actions">
+            <a class="btn primary" href="/guide">Download for Windows</a>
+            <a class="btn ghost" href="#trailer">Watch the trailer · 1:14</a>
+          </div>
+          <p class="meta"><strong>Tested with over 80,000 of our own photos</strong> · Free and open source (GPL-3.0) · Windows 10 and 11 · Linux from source</p>
+        </div>
+        <p class="exif">DSC08794.ARW · ISO 3200 · 28 mm · f/2.8 · 2.5 s<br>Iceland · Developed in Lumenkorn</p>
       </div>
-      <p class="meta">Windows installer (.msi), in English or German · Free and open source (GPL-3.0) · Linux from source</p>
-      <figure class="shot video">
-        <video controls preload="none" playsinline width="1920" height="1080" poster="/img/trailer-en.webp" aria-label="Trailer: Lumenkorn in just over a minute">
+    </div>
+  </section>
+
+  <section id="trailer" class="trailer">
+    <div class="wrap">
+      <figure>
+        <video controls preload="none" playsinline width="1920" height="1080" poster="/img/poster-en.webp" aria-label="Trailer: Lumenkorn in just over a minute">
           <source src="/video/lumenkorn-trailer-v5-en.mp4" type="video/mp4">
         </video>
+        <figcaption>Lumenkorn in just over a minute. The video comes from this website and only loads when you start it.</figcaption>
       </figure>
     </div>
   </section>
 
-  <section class="wrap points" aria-label="In short">
-    <div class="point">
-      <h3>Your files stay where they are</h3>
-      <p>Lumenkorn reads your folders directly and never changes the originals. Ratings and edits go
-        into a catalog file on your computer.</p>
-    </div>
-    <div class="point">
-      <h3>RAW development</h3>
-      <p>The processing follows darktable. With a graphics card the sliders respond without a
-        noticeable delay; without one, the processor does the work.</p>
-    </div>
-    <div class="point">
-      <h3>AI without a cloud</h3>
-      <p>Keywords, search by content, masks and noise reduction use open models. You download them
-        once and everything works offline after that.</p>
-    </div>
-  </section>
-
-  <section class="block">
-    <div class="wrap row">
-      <div class="text">
-        <span class="eyebrow">Library</span>
-        <h2>Your folder structure stays</h2>
-        <p>Add your photo folders and Lumenkorn builds a catalog from them. Rate, flag and tag your
-          photos the way you are used to. Folders that belong together can be grouped into projects,
-          even if they are on different drives.</p>
-        <p>If you rename or move files, Lumenkorn recognizes them by their content, so ratings and
-          edits are not lost. The file type filter shows, for example, only your RAW files or only
-          the JPEGs.</p>
-      </div>
-      <figure class="shot">
-        <img src="/img/library.webp" srcset="/img/library-900.webp 900w, /img/library.webp 1800w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1800" height="1043" loading="lazy" alt="Library with animal photos from a zoo, a penguin selected, its camera data on the right">
-      </figure>
-    </div>
-  </section>
-
-  <section class="block">
-    <div class="wrap row flip">
-      <div class="text">
-        <span class="eyebrow">RAW development</span>
-        <h2>Non-destructive, the way you know it</h2>
-        <p>White balance, exposure, highlights and shadows, dehaze, HSL, color grading and a tone
-          curve. Every change can be undone later, and the original file is never touched.</p>
-        <p><strong>Auto</strong> gives you a first suggestion. Over time it picks up how you like to edit
-          and adjusts to that. Drag the slider in the picture to compare before and after.</p>
-      </div>
-      <div class="shot compare">
-        <img src="/img/after.webp" srcset="/img/after-900.webp 900w, /img/after.webp 1600w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1600" height="1067" loading="lazy" alt="Kingfisher on a branch, after editing: warm, clear colors">
-        <div class="over"><img src="/img/before.webp" srcset="/img/before-900.webp 900w, /img/before.webp 1600w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1600" height="1067" loading="lazy" alt="The same photo before editing: flat and dull"></div>
-        <input type="range" min="0" max="100" value="50" aria-label="Compare before and after">
-        <div class="handle"></div>
-        <span class="tag l">Before</span><span class="tag r">After</span>
-      </div>
-    </div>
-  </section>
-
-  <section class="block">
-    <div class="wrap row">
-      <div class="text">
-        <span class="eyebrow">Masking</span>
-        <h2>Masks with one click</h2>
-        <p>Lumenkorn finds the sky, the main subject, people and animals. For people you can also
-          select just the hair, eyes or skin. Masks can be combined, for example the sky without the
-          church tower in front of it.</p>
-        <p>Gradients, brush and color range are there as well, for anything you would rather draw
-          yourself.</p>
-      </div>
-      <figure class="shot">
-        <img src="/img/ai-mask.webp" srcset="/img/ai-mask-900.webp 900w, /img/ai-mask.webp 1800w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1800" height="1046" loading="lazy" alt="Kingfisher selected with an AI mask, shown in red">
-      </figure>
-    </div>
-  </section>
-
-  <section class="block">
-    <div class="wrap row flip">
-      <div class="text">
-        <span class="eyebrow">Photo album</span>
-        <h2>From a trip to a photo book</h2>
-        <p>Pick a theme and a page size. Lumenkorn chooses the photos and lays them out in the order
-          they were taken. Blurry shots and near-duplicates are left out, and photos with four or
-          five stars are always included. If you like, a map page shows every place of the trip.</p>
-        <p>Then change whatever you don't like and save a print-ready PDF.</p>
-      </div>
-      <figure class="shot">
-        <img src="/img/album.webp" srcset="/img/album-900.webp 900w, /img/album.webp 1800w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1800" height="1045" loading="lazy" alt="Photo album with autumn photos from Japan, two double pages and the text options">
-      </figure>
-    </div>
-  </section>
-
-  <section class="block">
-    <div class="wrap row">
-      <div class="text">
-        <span class="eyebrow">Slideshow</span>
-        <h2>A slideshow that keeps the beat</h2>
-        <p>The same selection as for the photo album, played full screen: it opens with your best
-          photo and the title, zooms slowly towards faces and shows date and place where a new day
-          begins. Add your own music, and the photos change on the beat.</p>
-        <p>When the trip moves on, a map flies to the next place. At the end, one map shows the whole
-          route. Save it all as an MP4 video for the TV.</p>
-      </div>
-      <figure class="shot">
-        <img src="/img/slideshow-map-en.webp" srcset="/img/slideshow-map-en-900.webp 900w, /img/slideshow-map-en.webp 1800w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1800" height="1045" loading="lazy" alt="Closing map of a slideshow: a trip through Italy from Venice to Naples with the route and a pin for every place">
-      </figure>
-    </div>
-  </section>
-
-  <section class="cta">
+  <section class="ledger">
     <div class="wrap">
-      <h2>Try it yourself</h2>
-      <p>Lumenkorn is free and the source code is on GitHub. You only download the AI models if you
-        need them.</p>
-      <div class="actions">
-        <a class="btn primary" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Download for Windows</a>
-        <a class="btn" href="/guide">Getting started</a>
+      <div class="ledger-head">
+        <h2 class="big">Four cases in which Lumenkorn goes online.</h2>
+        <p>That is all of them. Your photos, the catalog, your edits and all AI results stay on your computer. There is no account, no cloud and no usage statistics.</p>
+      </div>
+      <ul class="ledger-rows">
+    <li><h3>Update check</h3><span class="ledger-where">GitHub</span><span class="ledger-what">Shortly after starting, Lumenkorn asks once whether a new version is out. This tells GitHub your IP address.</span></li>
+    <li><h3>AI downloads</h3><span class="ledger-where">GitHub, Hugging Face, OpenCV</span><span class="ledger-what">Only when you click the button for it. Nothing about your photos is sent.</span></li>
+    <li><h3>Map and place names</h3><span class="ledger-where">tile.openstreetmap.org<br>nominatim.openstreetmap.org</span><span class="ledger-what">To find place names, the coordinates of your photos are sent, rounded to about 100 m and bundled per town. Settings → General → Map and place names switches this off completely.</span></li>
+    <li><h3>Nextcloud</h3><span class="ledger-where">Your own server</span><span class="ledger-what">Only when you connect it yourself and upload a project's exports or originals. The data only goes to the server you enter.</span></li>
+      </ul>
+      <div class="ledger-foot">
+        <p>This website also sets no cookies, uses no tracking and loads nothing from other servers.</p>
+        <a class="more-link" href="/privacy">Read all the details: Privacy</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="flow">
+    <div class="wrap">
+      <div class="flow-head">
+        <h2 class="big">From the memory card to the photo book.</h2>
+        <nav class="flow-nav" aria-label="Steps">
+        <a href="#add"><span>1</span>Add</a>
+        <a href="#cull"><span>2</span>Cull</a>
+        <a href="#develop"><span>3</span>Develop</a>
+        <a href="#find"><span>4</span>Find</a>
+        <a href="#share"><span>5</span>Share</a>
+        </nav>
+      </div>
+
+      <section id="add" class="step">
+        <div class="step-text">
+          <p class="step-label">1 / 5 Add</p>
+          <h3>Your folders stay as they are.</h3>
+          <p>You add folders, Lumenkorn reads them in place and builds a catalog from them. Files are only copied when you import from a memory card.</p>
+          <ul class="facts">
+  <li>If you rename or move files, Lumenkorn recognizes them by their content.</li>
+  <li>Projects group folders, even from different drives.</li>
+  <li>Every copy from the memory card is checked byte by byte.</li>
+</ul>
+        </div>
+        <div class="step-side">
+          <figure class="shot"><img src="/img/library-v2.webp" srcset="/img/library-v2-900.webp 900w, /img/library-v2.webp 1526w" sizes="(max-width: 1000px) calc(100vw - 48px), 860px" width="1526" height="1043" loading="lazy" alt="Library with animal photos from a zoo, a penguin selected, its camera data on the right"></figure>
+        </div>
+      </section>
+
+      <section id="cull" class="step wide">
+        <div class="step-body">
+          <div class="step-text">
+            <p class="step-label">2 / 5 Cull</p>
+            <h3>Get to the photos worth keeping.</h3>
+          </div>
+          <div class="step-side">
+            <p>The culling assistant suggests what to reject: the weaker shots of a burst, blurry photos, closed eyes, badly exposed photos and photos taken by accident.</p>
+            <ul class="facts">
+  <li>You check the suggestions, and only what you tick is rejected.</li>
+  <li>Reject a photo with one key and move straight on to the next.</li>
+  <li>Compare up to 12 photos side by side with synchronized zoom.</li>
+</ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="develop" class="step">
+        <div class="step-text">
+          <p class="step-label">3 / 5 Develop</p>
+          <h3>The original stays untouched.</h3>
+          <p>Only your settings are saved and the original file stays as it is. For RAW files Lumenkorn follows darktable's scene-referred workflow. Drag the slider in the picture to compare before and after.</p>
+          <ul class="facts">
+  <li>White balance, exposure, HSL, color grading and tone curve.</li>
+  <li>Auto notes where you differ from its suggestion, separately for each camera.</li>
+  <li>Lumenkorn finds the sky, the main subject, people and animals as masks.</li>
+  <li>The noise reduction removes noise and keeps fine structures such as feathers.</li>
+  <li>With AI repair, dust spots, power lines and signs disappear from the picture.</li>
+</ul>
+        </div>
+        <div class="step-side">
+          <div class="shot compare">
+  <img src="/img/after.webp" srcset="/img/after-900.webp 900w, /img/after.webp 1600w" sizes="(max-width: 900px) calc(100vw - 32px), 820px" width="1600" height="1067" loading="lazy" alt="Kingfisher on a branch, after editing: warm, clear colors">
+  <div class="over"><img src="/img/before.webp" srcset="/img/before-900.webp 900w, /img/before.webp 1600w" sizes="(max-width: 900px) calc(100vw - 32px), 820px" width="1600" height="1067" loading="lazy" alt="The same photo before editing: flat and dull"></div>
+  <input type="range" min="0" max="100" value="50" aria-label="Compare before and after">
+  <div class="handle"></div>
+  <span class="tag l">Before</span><span class="tag r">After</span>
+</div>
+          <figure class="shot"><img src="/img/mask-v2.webp" srcset="/img/mask-v2-900.webp 900w, /img/mask-v2.webp 1480w" sizes="(max-width: 1000px) calc(100vw - 48px), 860px" width="1480" height="1046" loading="lazy" alt="Kingfisher selected with an AI mask, shown in red, the mask's sliders on the right"></figure>
+        </div>
+      </section>
+
+      <section id="find" class="step wide">
+        <div class="pair">
+          <img src="/img/search-v2.webp" srcset="/img/search-v2-900.webp 900w, /img/search-v2.webp 1469w" sizes="(max-width: 900px) calc(100vw - 32px), 620px" width="1469" height="1253" loading="lazy" alt="Search for “mountains” finds photos of Mount Fuji at sunset">
+          <img src="/img/map-v2.webp" srcset="/img/map-v2-900.webp 900w, /img/map-v2.webp 1445w" sizes="(max-width: 900px) calc(100vw - 32px), 620px" width="1445" height="1163" loading="lazy" alt="Map of Japan with clustered markers for the photos of a trip">
+        </div>
+        <div class="step-body">
+          <div class="step-text">
+            <p class="step-label">4 / 5 Find</p>
+            <h3>Search for what is in the photo.</h3>
+          </div>
+          <div class="step-side">
+            <p>Type “mountains” and you get mountains, even if nobody ever tagged those photos. You download the models for this once, and after that they run offline.</p>
+            <ul class="facts">
+  <li>Keywords from coarse to fine, such as Mammal → Monkey → Gorilla.</li>
+  <li>Faces are found and grouped in the background.</li>
+  <li>The map shows where your photos were taken and can be switched off completely.</li>
+  <li>The statistics show which lenses and focal lengths you actually use.</li>
+</ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="share" class="step wide">
+        <div class="pair">
+          <img src="/img/album-en.webp" srcset="/img/album-en-900.webp 900w, /img/album-en.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 620px" width="1800" height="938" loading="lazy" alt="Photo album with birds from Costa Rica, one double page">
+          <img src="/img/slideshow-map-en.webp" srcset="/img/slideshow-map-en-900.webp 900w, /img/slideshow-map-en.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 620px" width="1800" height="1045" loading="lazy" alt="Closing map of a slideshow: a trip through Italy from Venice to Naples with the route and a pin for every place">
+        </div>
+        <div class="step-body">
+          <div class="step-text">
+            <p class="step-label">5 / 5 Share</p>
+            <h3>From a trip to a photo book.</h3>
+          </div>
+          <div class="step-side">
+            <p>Pick a theme and a page size. Lumenkorn chooses the photos and lays them out in the order they were taken. Then change whatever you don't like and save a print-ready PDF.</p>
+            <ul class="facts">
+  <li>A 300 dpi PDF with bleed, plus every page as a JPG.</li>
+  <li>The slideshow changes photos on the beat of your music and can be saved as an MP4 video.</li>
+  <li>Export to JPEG, 16-bit TIFF or PNG.</li>
+  <li>If you like, upload a project's exports or originals to your own Nextcloud and share them as a link.</li>
+</ul>
+          </div>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <section class="also">
+    <div class="wrap">
+      <div class="also-grid">
+        <p><strong>HDR, panorama and focus stacking</strong> from several photos, also handheld.</p>
+        <p><strong>Keyboard shortcuts</strong> for almost everything, changeable in the settings.</p>
+        <p><strong>AI agents</strong> such as Claude or ChatGPT through a built-in MCP interface, if you switch it on.</p>
+        <p><strong>English and German</strong> throughout the interface.</p>
+      </div>
+      <a class="more-link start" href="/features">See all features</a>
+    </div>
+  </section>
+
+  <section class="photo closing">
+    <img src="/img/closing.webp" srcset="/img/closing-1200.webp 1200w, /img/closing.webp 2048w" sizes="100vw" width="2048" height="1365" loading="lazy" alt="Waterfalls in a river in Iceland, surrounded by autumn colors">
+    <div class="photo-inner">
+      <div class="wrap">
+        <div class="photo-text">
+          <h2>Try it yourself.</h2>
+          <p>Lumenkorn is free and the source code is on GitHub. You only download the AI models if you need them.</p>
+          <div class="actions">
+            <a class="btn primary" href="/guide">Download for Windows</a>
+          </div>
+        </div>
+        <p class="exif">DSC08972 · ISO 100 · 44 mm · f/6.3 · 1/160 s<br>Iceland</p>
       </div>
     </div>
   </section>

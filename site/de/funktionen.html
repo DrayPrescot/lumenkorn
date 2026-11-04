@@ -14,10 +14,10 @@
   <meta property="og:description" content="Bibliothek, RAW-Entwicklung, KI-Masken, Rauschreduzierung, Suche nach Bildinhalt, Statistik, Karte, Fotoalbum, Diashow, HDR und Panorama: was Lumenkorn kann.">
   <meta property="og:url" content="https://lumenkorn.com/de/funktionen">
   <meta property="og:locale" content="de_DE">
-  <meta property="og:image" content="https://lumenkorn.com/img/og.jpg">
+  <meta property="og:image" content="https://lumenkorn.com/img/og-v2.jpg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Lumenkorn: Fotoverwaltung und RAW-Entwicklung, Entwickeln-Ansicht mit Sonnenuntergang">
+  <meta property="og:image:alt" content="Lumenkorn: Fotoverwaltung und RAW-Entwicklung, grünes Polarlicht über Island">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/img/icon-192.png" type="image/png" sizes="192x192">
@@ -33,85 +33,75 @@
     <a class="brand" href="/de/"><img src="/img/icon-128.png" alt="" width="28" height="28">Lumenkorn</a>
     <nav class="nav" aria-label="Hauptmenü">
       <a href="/de/funktionen" aria-current="page">Funktionen</a>
-      <a href="/de/anleitung">Anleitung</a>
+      <a href="/de/anleitung">Erste Schritte</a>
       <a href="/de/datenschutz">Datenschutz</a>
-      <a class="lang push" href="/features" hreflang="en" lang="en" title="English">EN</a>
-      <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
-      <a class="btn primary small" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Download</a>
+      <a class="nav-credits" href="/de/danksagung">Danksagung</a>
+      <div class="nav-right">
+        <a href="/features" hreflang="en" lang="en" title="English">EN</a>
+        <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
+        <a class="btn primary small" href="/de/anleitung">Download</a>
+      </div>
     </nav>
   </div>
 </header>
 
 <main id="main" class="page">
-  <div class="wrap narrow">
-    <h1>Funktionen</h1>
-    <p class="lead">Lumenkorn läuft vollständig auf deinem Rechner. Die KI-Funktionen sind
-      freiwillig und arbeiten offline, sobald du die Modelle einmal geladen hast.</p>
-    <ul class="toc">
-      <li><a href="#bibliothek">Bibliothek</a></li>
-      <li><a href="#entwickeln">RAW-Entwicklung</a></li>
-      <li><a href="#auto">Auto nach deinem Stil</a></li>
-      <li><a href="#ki">KI</a></li>
-      <li><a href="#statistik">Statistik</a></li>
-      <li><a href="#karte">Karte</a></li>
-      <li><a href="#fotoalbum">Fotoalbum</a></li>
-      <li><a href="#diashow">Diashow</a></li>
-      <li><a href="#mehr">Weiteres</a></li>
-    </ul>
-
-    <h2 id="bibliothek">Bibliothek</h2>
-    <figure class="wide-figure shot">
-      <img src="/img/library.webp" srcset="/img/library-900.webp 900w, /img/library.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1043" loading="lazy" alt="Bibliothek mit Tierfotos aus einem Zoo, ausgewählt ist ein Pinguin, rechts seine Aufnahmedaten">
-    </figure>
-    <p>Lumenkorn übernimmt deine Ordnerstruktur. Du fügst Ordner hinzu, und die Fotos bleiben genau
-      dort liegen. Kopiert wird nur, wenn du von einer Speicherkarte importierst.</p>
-    <ul>
-      <li>Beim Import von der Speicherkarte sortiert Lumenkorn die Fotos in Ordner nach Datum
-        (<code>2025\2025.10.03_Anlass</code>) und benennt sie nach der Aufnahmezeit. Jede Kopie wird
-        Byte für Byte geprüft, bevor du die Karte leeren kannst. Ging die Kamerauhr falsch, lässt
-        sich das beim Import korrigieren.</li>
-      <li>Neue, geänderte und verschobene Dateien bemerkt Lumenkorn von selbst. Verschobene Fotos
-        erkennt es am Inhalt, Bewertungen und Bearbeitungen bleiben also erhalten.</li>
-      <li>Projekte fassen mehrere Ordner zusammen, auch von verschiedenen Laufwerken.</li>
-      <li>Du vergibst Sterne, markierst oder lehnst ab und vergibst Schlagworte. Die Suche findet
-        Dateinamen, Ordner, Kamera, Objektiv, Schlagworte, Personen und Orte.</li>
-      <li>Der Dateityp-Filter in der Werkzeugleiste zeigt nur bestimmte Formate an, etwa nur ARW
-        oder nur JPEG, oder alle RAW-Dateien auf einmal. Er gilt auch beim Entwickeln.</li>
-      <li>Zum Aussortieren lehnst du mit einer Taste ab und springst gleich zum nächsten Foto.
-        Abgelehnte Fotos wandern danach gesammelt in den Papierkorb.</li>
-      <li>Der Aussortier-Assistent schlägt vor, was weg kann: aus Serien die schwächeren Fotos (die
-        besten 3 bis 5 bleiben), unscharfe Fotos, geschlossene Augen, stark falsch belichtete und
-        versehentlich ausgelöste Fotos. Du prüfst die Vorschläge, abgelehnt wird nur, was du
-        anhakst. Er lernt aus deinen Entscheidungen, und das Gelernte lässt sich zurücksetzen.</li>
-      <li>Bis zu 12 Fotos lassen sich nebeneinander vergleichen, der Zoom läuft dabei synchron.</li>
-      <li>Lumenkorn liest JPEG, PNG, TIFF, WebP, OpenEXR und RAW-Dateien von Canon, Nikon, Sony,
-        Fujifilm, Panasonic, OM System, Pentax, DNG und weiteren Herstellern.</li>
-    </ul>
-
-    <h2 id="entwickeln">RAW-Entwicklung</h2>
-    <figure class="wide-figure shot">
-      <img src="/img/develop.webp" srcset="/img/develop-900.webp 900w, /img/develop.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1043" loading="lazy" alt="Entwickeln-Ansicht mit einem Sonnenuntergang über einem See und den Reglern rechts">
-    </figure>
-    <p>Die Bearbeitung ist nichtdestruktiv, wie du es von anderen Programmen kennst. Gespeichert
-      werden nur deine Einstellungen, die Originaldatei bleibt unverändert. Für RAW-Dateien folgt
-      Lumenkorn dem szenenbezogenen Ablauf von darktable, der dafür nach Rust übertragen wurde.</p>
-    <ul>
-      <li>Weißabgleich, Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz, Klarheit, Dunst
-        entfernen, Dynamik, Sättigung und Schärfen.</li>
-      <li>HSL für acht Farbbereiche mit Pipette, Color Grading mit Farbrädern und eine
-        Gradationskurve für RGB und die einzelnen Kanäle.</li>
-      <li>Schwarzweiß mit eigener Graumischung.</li>
-      <li>Objektivkorrektur für Verzeichnung, Farbsäume und Vignettierung, entweder aus den Daten der
-        Kamera oder aus den Lensfun-Profilen für rund 1.500 Objektive.</li>
-      <li>Zuschneiden und Drehen, der Horizont lässt sich automatisch ausrichten.</li>
-      <li>Lokale Anpassungen mit Verläufen, Pinsel, Farbbereich und KI-Masken.</li>
-      <li>Verlauf mit Rückgängig, Schnappschüsse und Einstellungen, die du auf viele Fotos
-        überträgst.</li>
-      <li>Export als JPEG, 16-Bit-TIFF oder PNG.</li>
-      <li>Mit Grafikkarte (DirectX 12 oder Vulkan) reagieren die Regler sofort. Ohne passende
-        Grafikkarte übernimmt der Prozessor.</li>
-    </ul>
-    <figure class="wide-figure">
+  <div class="wrap">
+    <div class="page-head">
+      <h1>Funktionen</h1>
+      <p class="lead">Lumenkorn läuft vollständig auf deinem Rechner. Die KI-Funktionen sind freiwillig und arbeiten offline, sobald du die Modelle einmal geladen hast.</p>
+    </div>
+    <div class="layout">
+      <nav class="side-nav" aria-label="Inhalt">
+        <ul>
+<li><a href="#einlesen"><span>1</span>Einlesen</a></li>
+<li><a href="#aussortieren"><span>2</span>Aussortieren</a></li>
+<li><a href="#entwickeln"><span>3</span>Entwickeln</a></li>
+<li><a href="#finden"><span>4</span>Finden</a></li>
+<li><a href="#zeigen"><span>5</span>Zeigen</a></li>
+<li><a href="#mehr"><span></span>Weiteres</a></li>
+        </ul>
+      </nav>
+      <div class="layout-main">
+<section id="einlesen" class="chapter">
+<p class="step-label">1 / 5</p>
+<h2 id="bibliothek">Einlesen</h2>
+<figure class="shot"><img src="/img/library-v2.webp" srcset="/img/library-v2-900.webp 900w, /img/library-v2.webp 1526w" sizes="(max-width: 900px) calc(100vw - 32px), 820px" width="1526" height="1043" loading="lazy" alt="Bibliothek mit Tierfotos aus einem Zoo, ausgewählt ist ein Pinguin, rechts seine Aufnahmedaten"></figure>
+<p>Lumenkorn übernimmt deine Ordnerstruktur. Du fügst Ordner hinzu, und die Fotos bleiben genau dort liegen. Kopiert wird nur, wenn du von einer Speicherkarte importierst.</p>
+<ul class="facts columns">
+  <li>Beim Import von der Speicherkarte sortiert Lumenkorn die Fotos in Ordner nach Datum (<code>2025\2025.10.03_Anlass</code>) und benennt sie nach der Aufnahmezeit. Jede Kopie wird Byte für Byte geprüft, bevor du die Karte leeren kannst. Ging die Kamerauhr falsch, lässt sich das beim Import korrigieren.</li>
+  <li>Neue, geänderte und verschobene Dateien bemerkt Lumenkorn von selbst. Verschobene Fotos erkennt es am Inhalt, Bewertungen und Bearbeitungen bleiben also erhalten.</li>
+  <li>Projekte fassen mehrere Ordner zusammen, auch von verschiedenen Laufwerken.</li>
+  <li>Der Dateityp-Filter in der Werkzeugleiste zeigt nur bestimmte Formate an, etwa nur ARW oder nur JPEG, oder alle RAW-Dateien auf einmal. Er gilt auch beim Entwickeln.</li>
+  <li>Lumenkorn liest JPEG, PNG, TIFF, WebP, OpenEXR und RAW-Dateien von Canon, Nikon, Sony, Fujifilm, Panasonic, OM System, Pentax, DNG und weiteren Herstellern.</li>
+</ul>
+</section>
+<section id="aussortieren" class="chapter">
+<p class="step-label">2 / 5</p>
+<h2>Aussortieren</h2>
+<ul class="facts columns">
+  <li>Du vergibst Sterne, markierst oder lehnst ab und vergibst Schlagworte. Die Suche findet Dateinamen, Ordner, Kamera, Objektiv, Schlagworte, Personen und Orte.</li>
+  <li>Zum Aussortieren lehnst du mit einer Taste ab und springst gleich zum nächsten Foto. Abgelehnte Fotos wandern danach gesammelt in den Papierkorb.</li>
+  <li>Der Aussortier-Assistent schlägt vor, was weg kann: aus Serien die schwächeren Fotos (die besten 3 bis 5 bleiben), unscharfe Fotos, geschlossene Augen, stark falsch belichtete und versehentlich ausgelöste Fotos. Du prüfst die Vorschläge, abgelehnt wird nur, was du anhakst. Er lernt aus deinen Entscheidungen, und das Gelernte lässt sich zurücksetzen.</li>
+  <li>Bis zu 12 Fotos lassen sich nebeneinander vergleichen, der Zoom läuft dabei synchron.</li>
+</ul>
+</section>
+<section id="entwickeln" class="chapter">
+<p class="step-label">3 / 5</p>
+<h2>Entwickeln</h2>
+<p>Die Bearbeitung ist nichtdestruktiv, wie du es von anderen Programmen kennst. Gespeichert werden nur deine Einstellungen, die Originaldatei bleibt unverändert. Für RAW-Dateien folgt Lumenkorn dem szenenbezogenen Ablauf von darktable, der dafür nach Rust übertragen wurde.</p>
+<ul class="facts columns">
+  <li>Weißabgleich, Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz, Klarheit, Dunst entfernen, Dynamik, Sättigung und Schärfen.</li>
+  <li>HSL für acht Farbbereiche mit Pipette, Color Grading mit Farbrädern und eine Gradationskurve für RGB und die einzelnen Kanäle.</li>
+  <li>Schwarzweiß mit eigener Graumischung.</li>
+  <li>Objektivkorrektur für Verzeichnung, Farbsäume und Vignettierung, entweder aus den Daten der Kamera oder aus den Lensfun-Profilen für rund 1.500 Objektive.</li>
+  <li>Zuschneiden und Drehen, der Horizont lässt sich automatisch ausrichten.</li>
+  <li>Lokale Anpassungen mit Verläufen, Pinsel, Farbbereich und KI-Masken.</li>
+  <li>Verlauf mit Rückgängig, Schnappschüsse und Einstellungen, die du auf viele Fotos überträgst.</li>
+  <li>Export als JPEG, 16-Bit-TIFF oder PNG.</li>
+  <li>Mit Grafikkarte (DirectX 12 oder Vulkan) reagieren die Regler sofort. Ohne passende Grafikkarte übernimmt der Prozessor.</li>
+</ul>
+<figure>
       <div class="shot compare">
         <img src="/img/after.webp" srcset="/img/after-900.webp 900w, /img/after.webp 1600w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1600" height="1067" loading="lazy" alt="Eisvogel auf einem Ast nach der Bearbeitung">
         <div class="over"><img src="/img/before.webp" srcset="/img/before-900.webp 900w, /img/before.webp 1600w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1600" height="1067" loading="lazy" alt="Dasselbe Foto vor der Bearbeitung"></div>
@@ -121,34 +111,17 @@
       </div>
       <figcaption>Dieselbe RAW-Datei vor und nach der Bearbeitung. Zieh den Regler zum Vergleichen.</figcaption>
     </figure>
-
-    <h2 id="auto">Auto nach deinem Stil</h2>
-    <p>Ein Klick auf <strong>Auto</strong> stellt die Tonwerte so ein, dass das Foto ausgewogen
-      aussieht. Bearbeitest du danach weiter, merkt sich Lumenkorn, wo du von diesem Vorschlag
-      abweichst. Das passiert getrennt für jede Kamera und für RAW und JPEG:</p>
-    <ol>
-      <li>Ab etwa 10 bis 20 Bearbeitungen mit einer Kamera gibt es eine feste Korrektur, zum
-        Beispiel „Schwarz −12“.</li>
-      <li>Ab etwa 50 hängt die Korrektur davon ab, wie hell das Foto ist.</li>
-      <li>Ab etwa 300 berücksichtigt sie auch, was auf dem Foto zu sehen ist.</li>
-    </ol>
-    <p>Ein Regler wird nur dann angepasst, wenn Auto damit nachweislich näher an deine eigenen
-      Ergebnisse kommt. In den Einstellungen siehst du, was gelernt wurde, und kannst es abschalten
-      oder zurücksetzen. Diese Daten verlassen deinen Rechner nicht.</p>
-
-    <h2 id="ki">KI</h2>
-    <p>Für die KI-Funktionen lädt Lumenkorn auf Wunsch offene Modelle herunter. Danach rechnen sie
-      offline auf dem Prozessor oder der Grafikkarte (AMD, NVIDIA und Intel). Wer keine KI möchte,
-      kann alle anderen Funktionen trotzdem nutzen.</p>
-    <h3>Maskierung</h3>
-    <figure class="wide-figure shot">
-      <img src="/img/ai-mask.webp" srcset="/img/ai-mask-900.webp 900w, /img/ai-mask.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1046" loading="lazy" alt="Eisvogel mit einer KI-Maske ausgewählt, rot angezeigt">
-    </figure>
-    <p>Lumenkorn erkennt das Hauptmotiv, den Himmel, Personen und Tiere. Bei Personen geht es auch
-      genauer, etwa nur Haare, Augen, Lippen oder Haut. Klickst du ein beliebiges Objekt an, wird
-      daraus ebenfalls eine Maske. Masken lassen sich addieren und voneinander abziehen.</p>
-    <h3>Rauschreduzierung</h3>
-    <figure class="wide-figure">
+<h3 id="auto">Auto nach deinem Stil</h3>
+<p>Ein Klick auf <strong>Auto</strong> stellt die Tonwerte so ein, dass das Foto ausgewogen aussieht. Bearbeitest du danach weiter, merkt sich Lumenkorn, wo du von diesem Vorschlag abweichst. Das passiert getrennt für jede Kamera und für RAW und JPEG:</p>
+<ol><li>Ab etwa 10 bis 20 Bearbeitungen mit einer Kamera gibt es eine feste Korrektur, zum Beispiel „Schwarz −12“.</li><li>Ab etwa 50 hängt die Korrektur davon ab, wie hell das Foto ist.</li><li>Ab etwa 300 berücksichtigt sie auch, was auf dem Foto zu sehen ist.</li></ol>
+<p>Ein Regler wird nur dann angepasst, wenn Auto damit nachweislich näher an deine eigenen Ergebnisse kommt. In den Einstellungen siehst du, was gelernt wurde, und kannst es abschalten oder zurücksetzen. Diese Daten verlassen deinen Rechner nicht.</p>
+<h3 id="ki">KI</h3>
+<p>Für die KI-Funktionen lädt Lumenkorn auf Wunsch offene Modelle herunter. Danach rechnen sie offline auf dem Prozessor oder der Grafikkarte (AMD, NVIDIA und Intel). Wer keine KI möchte, kann alle anderen Funktionen trotzdem nutzen.</p>
+<h3>Maskierung</h3>
+<figure class="shot"><img src="/img/mask-v2.webp" srcset="/img/mask-v2-900.webp 900w, /img/mask-v2.webp 1480w" sizes="(max-width: 900px) calc(100vw - 32px), 820px" width="1480" height="1046" loading="lazy" alt="Eisvogel mit einer KI-Maske ausgewählt, rot angezeigt"></figure>
+<p>Lumenkorn erkennt das Hauptmotiv, den Himmel, Personen und Tiere. Bei Personen geht es auch genauer, etwa nur Haare, Augen, Lippen oder Haut. Klickst du ein beliebiges Objekt an, wird daraus ebenfalls eine Maske. Masken lassen sich addieren und voneinander abziehen.</p>
+<h3>Rauschreduzierung</h3>
+<figure>
       <div class="shot compare">
         <img src="/img/denoise-after.webp" srcset="/img/denoise-after-900.webp 900w, /img/denoise-after.webp 1400w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1400" height="985" loading="lazy" alt="Eisvogel in 100-Prozent-Ansicht nach der KI-Rauschreduzierung">
         <div class="over"><img src="/img/denoise-before.webp" srcset="/img/denoise-before-900.webp 900w, /img/denoise-before.webp 1400w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1400" height="985" loading="lazy" alt="Derselbe Ausschnitt vorher, mit starkem Rauschen"></div>
@@ -158,115 +131,68 @@
       </div>
       <figcaption>Ein Foto mit hoher ISO in 117 %, vor und nach der KI-Rauschreduzierung.</figcaption>
     </figure>
-    <p>Die Rauschreduzierung entfernt Rauschen und lässt feine Strukturen wie Federn stehen.
-      Farbrauschen bekommt einen eigenen Durchgang. Mit der KI-Reparatur verschwinden Staubflecken,
-      Stromleitungen, Schilder oder Personen aus dem Bild.</p>
-    <h3>Schlagworte und Suche</h3>
-    <figure class="wide-figure shot">
-      <img src="/img/ai-search.webp" srcset="/img/ai-search-900.webp 900w, /img/ai-search.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1253" loading="lazy" alt="Die Suche nach „Berge“ findet Fotos vom Fuji im Abendlicht">
-    </figure>
-    <p>Lumenkorn schlägt Schlagworte zu Ort, Motiv, Licht, Wetter und Stil vor und benennt Tiere von
-      grob nach fein, etwa Säugetier → Affe → Gorilla. Bei der Suche
-      kannst du deine eigenen Worte benutzen: Wer „Berge“ eingibt, bekommt Berge, auch wenn die
-      Fotos nie verschlagwortet wurden.</p>
-    <h3>Personen</h3>
-    <p>Gesichter werden im Hintergrund gefunden und gruppiert. Hast du ein paar Personen benannt,
-      schlägt Lumenkorn für weitere Fotos Namen vor. Personen lassen sich in eigene Gruppen wie
-      Familie oder Freunde sortieren.</p>
+<p>Die Rauschreduzierung entfernt Rauschen und lässt feine Strukturen wie Federn stehen. Farbrauschen bekommt einen eigenen Durchgang. Mit der KI-Reparatur verschwinden Staubflecken, Stromleitungen, Schilder oder Personen aus dem Bild.</p>
+</section>
+<section id="finden" class="chapter">
+<p class="step-label">4 / 5</p>
+<h2>Finden</h2>
+<h3>Schlagworte und Suche</h3>
+<figure class="shot"><img src="/img/search-v2.webp" srcset="/img/search-v2-900.webp 900w, /img/search-v2.webp 1469w" sizes="(max-width: 900px) calc(100vw - 32px), 820px" width="1469" height="1253" loading="lazy" alt="Die Suche nach „Berge“ findet Fotos vom Fuji im Abendlicht"></figure>
+<p>Lumenkorn schlägt Schlagworte zu Ort, Motiv, Licht, Wetter und Stil vor und benennt Tiere von grob nach fein, etwa Säugetier → Affe → Gorilla. Bei der Suche kannst du deine eigenen Worte benutzen: Wer „Berge“ eingibt, bekommt Berge, auch wenn die Fotos nie verschlagwortet wurden.</p>
+<h3>Personen</h3>
+<p>Gesichter werden im Hintergrund gefunden und gruppiert. Hast du ein paar Personen benannt, schlägt Lumenkorn für weitere Fotos Namen vor. Personen lassen sich in eigene Gruppen wie Familie oder Freunde sortieren.</p>
+<h3 id="statistik">Statistik</h3>
+<p>Mit welchem Objektiv fotografierst du am meisten, und welche Brennweite benutzt du wirklich? Die Statistik wertet die Fotos aus, die gerade angezeigt werden, also einen Ordner, ein Projekt oder ein Suchergebnis. Du siehst Kameras, Objektive, Brennweiten, Blenden, Belichtungszeiten, ISO-Werte, Schlagworte, Personen, Länder, Dateitypen und Bewertungen. Dazu kommt, in welchen Monaten und zu welcher Tageszeit die Fotos entstanden sind.</p>
+<p>Ein Klick auf einen Eintrag filtert danach. So siehst du zum Beispiel, welche Brennweiten du mit einem bestimmten Objektiv nutzt.</p>
+<h3 id="karte">Karte</h3>
+<figure class="shot"><img src="/img/map-v2.webp" srcset="/img/map-v2-900.webp 900w, /img/map-v2.webp 1445w" sizes="(max-width: 900px) calc(100vw - 32px), 820px" width="1445" height="1163" loading="lazy" alt="Karte von Japan mit gebündelten Markierungen für die Fotos einer Reise"></figure>
+<ul class="facts columns">
+  <li>Die Karte zeigt die Fotos des aktuellen Ordners, Projekts oder Suchergebnisses auf einer OpenStreetMap-Karte.</li>
+  <li>GPS-Daten von Kamera oder Handy liest Lumenkorn automatisch. Fotos ohne Ort bekommen einen über die Ortssuche, per Ziehen auf die Karte oder von einem Handyfoto, das ein paar Minuten früher entstanden ist.</li>
+  <li>Jeder Ort bekommt einen Namen, nach dem du suchen kannst.</li>
+  <li>Die Karte braucht Internet. Du kannst sie komplett abschalten (siehe <a href="/de/datenschutz">Datenschutz</a>).</li>
+</ul>
+</section>
+<section id="zeigen" class="chapter">
+<p class="step-label">5 / 5</p>
+<h2>Zeigen</h2>
+<h3 id="fotoalbum">Fotoalbum</h3>
+<figure class="shot"><img src="/img/album-de.webp" srcset="/img/album-de-900.webp 900w, /img/album-de.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 820px" width="1800" height="938" loading="lazy" alt="Fotoalbum mit Vögeln aus Costa Rica, eine Doppelseite"></figure>
+<p>Mit wenigen Klicks wird aus einem Projekt oder Ordner ein druckfertiges Fotoalbum. Du wählst ein Thema (Reise, Hochzeit, Familie, Natur und andere, oder du beschreibst selbst eines), ein Format und wie viele Fotos es werden sollen.</p>
+<ul class="facts columns">
+  <li>Lumenkorn nimmt scharfe, gut belichtete Fotos. Serien und fast gleiche Aufnahmen zählen nur einmal, außer es sind verschiedene Personen darauf. Fotos mit vier oder fünf Sternen kommen immer ins Album.</li>
+  <li>Die Seiten werden in zeitlicher Reihenfolge gefüllt, mit der Anordnung, die am wenigsten vom Bild abschneidet.</li>
+  <li>Datum und Ort stehen dort, wo ein neuer Tag oder Ort beginnt. Eigene Texte kannst du überall einfügen.</li>
+  <li>Eine Kartenseite zeigt auf Wunsch die bereisten Länder und eine Stecknadel für jeden Ort, dazu Städte, Berge, Flüsse und Seen. Sie ist im Programm enthalten und braucht kein Internet.</li>
+  <li>Fotos tauschst, verschiebst oder entfernst du per Klick. Am Ende speichert Lumenkorn ein PDF mit 300 dpi und Beschnittzugabe sowie jede Seite als JPG.</li>
+</ul>
+<h3 id="diashow">Diashow</h3>
+<figure class="shot"><img src="/img/slideshow-map-de.webp" srcset="/img/slideshow-map-de-900.webp 900w, /img/slideshow-map-de.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 820px" width="1800" height="1045" loading="lazy" alt="Schlusskarte einer Diashow: eine Italienreise von Venedig bis Neapel mit Route und einer Stecknadel für jeden Ort"></figure>
+<p><strong>Diashow</strong> neben dem Fotoalbum wählt die besten Fotos eines Projekts oder Ordners genauso aus wie das Album und macht daraus eine Diashow. Sie beginnt mit dem am besten bewerteten Foto und dem Titel.</p>
+<ul class="facts columns">
+  <li>Weich überblenden, schieben oder harter Schnitt. Die Fotos zoomen und schwenken langsam, zu Gesichtern hin, wenn welche darauf sind. Hochformate erscheinen ganz vor einer unscharfen Kopie. Vollbild und Video zeigen die Fotos in voller Auflösung.</li>
+  <li>Datum und Ort werden eingeblendet, wo ein neuer Tag oder Ort beginnt. Wie im Album gibt es jede Schrift, dazu Ausrichtung, Lage, Größe, Farbe und Fett für jeden Text.</li>
+  <li>Du legst ein oder mehrere Lieder darunter (MP3, M4A, WAV, FLAC, Ogg). Lumenkorn erkennt den Takt: Jedes Foto steht mindestens die eingestellte Zeit und wechselt auf dem nächsten passenden Schlag. Die Lieder laufen hintereinander mit Überblenden, oder du ordnest jedem Ort der Reise eigene Lieder zu.</li>
+  <li>Wurde das nächste Foto woanders aufgenommen, fliegt eine Karte dorthin und zeichnet die Route. Am Ende kann eine Karte alle Orte der Reise zeigen. Wie die Albumkarte ist sie im Programm enthalten und braucht kein Internet.</li>
+  <li>Ziehen ändert die Reihenfolge, ein Klick tauscht ein Foto oder gibt ihm eine eigene Dauer und einen eigenen Text.</li>
+  <li>Speichern als MP4-Video in 720p, 1080p oder 1440p mit H.264, H.265, AV1 oder VP9, kodiert von Windows bzw. der Grafikkarte.</li>
+</ul>
+</section>
+<section id="mehr" class="chapter">
 
-    <h2 id="statistik">Statistik</h2>
-    <p>Mit welchem Objektiv fotografierst du am meisten, und welche Brennweite benutzt du wirklich?
-      Die Statistik wertet die Fotos aus, die gerade angezeigt werden, also einen Ordner, ein
-      Projekt oder ein Suchergebnis. Du siehst Kameras, Objektive, Brennweiten, Blenden,
-      Belichtungszeiten, ISO-Werte, Schlagworte, Personen, Länder, Dateitypen und Bewertungen. Dazu
-      kommt, in welchen Monaten und zu welcher Tageszeit die Fotos entstanden sind.</p>
-    <p>Ein Klick auf einen Eintrag filtert danach. So siehst du zum Beispiel, welche Brennweiten
-      du mit einem bestimmten Objektiv nutzt.</p>
-
-    <h2 id="karte">Karte</h2>
-    <figure class="wide-figure shot">
-      <img src="/img/map.webp" srcset="/img/map-900.webp 900w, /img/map.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1163" loading="lazy" alt="Karte von Japan mit gebündelten Markierungen für die Fotos einer Reise">
-    </figure>
-    <ul>
-      <li>Die Karte zeigt die Fotos des aktuellen Ordners, Projekts oder Suchergebnisses auf einer
-        OpenStreetMap-Karte.</li>
-      <li>GPS-Daten von Kamera oder Handy liest Lumenkorn automatisch. Fotos ohne Ort bekommen einen
-        über die Ortssuche, per Ziehen auf die Karte oder von einem Handyfoto, das ein paar Minuten
-        früher entstanden ist.</li>
-      <li>Jeder Ort bekommt einen Namen, nach dem du suchen kannst.</li>
-      <li>Die Karte braucht Internet. Du kannst sie komplett
-        abschalten (siehe <a href="/de/datenschutz">Datenschutz</a>).</li>
-    </ul>
-
-    <h2 id="fotoalbum">Fotoalbum</h2>
-    <figure class="wide-figure shot">
-      <img src="/img/album.webp" srcset="/img/album-900.webp 900w, /img/album.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1045" loading="lazy" alt="Fotoalbum mit Herbstfotos aus Japan und den Schriftoptionen rechts">
-    </figure>
-    <p>Mit wenigen Klicks wird aus einem Projekt oder Ordner ein druckfertiges Fotoalbum. Du wählst
-      ein Thema (Reise, Hochzeit, Familie, Natur und andere, oder du beschreibst selbst eines), ein
-      Format und wie viele Fotos es werden sollen.</p>
-    <ul>
-      <li>Lumenkorn nimmt scharfe, gut belichtete Fotos. Serien und fast gleiche Aufnahmen zählen
-        nur einmal, außer es sind verschiedene Personen darauf. Fotos mit vier oder fünf Sternen
-        kommen immer ins Album.</li>
-      <li>Die Seiten werden in zeitlicher Reihenfolge gefüllt, mit der Anordnung, die am wenigsten
-        vom Bild abschneidet.</li>
-      <li>Datum und Ort stehen dort, wo ein neuer Tag oder Ort beginnt. Eigene Texte kannst du
-        überall einfügen.</li>
-      <li>Eine Kartenseite zeigt auf Wunsch die bereisten Länder und eine Stecknadel für jeden Ort,
-        dazu Städte, Berge, Flüsse und Seen. Sie ist im Programm enthalten und braucht kein
-        Internet.</li>
-      <li>Fotos tauschst, verschiebst oder entfernst du per Klick. Am Ende speichert Lumenkorn ein
-        PDF mit 300 dpi und Beschnittzugabe sowie jede Seite als JPG.</li>
-    </ul>
-
-    <h2 id="diashow">Diashow</h2>
-    <figure class="wide-figure shot">
-      <img src="/img/slideshow-map-de.webp" srcset="/img/slideshow-map-de-900.webp 900w, /img/slideshow-map-de.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1045" loading="lazy" alt="Schlusskarte einer Diashow: eine Italienreise von Venedig bis Neapel mit Route und einer Stecknadel für jeden Ort">
-    </figure>
-    <p><strong>Diashow</strong> neben dem Fotoalbum wählt die besten Fotos eines Projekts oder
-      Ordners genauso aus wie das Album und macht daraus eine Diashow. Sie beginnt mit dem am
-      besten bewerteten Foto und dem Titel.</p>
-    <ul>
-      <li>Weich überblenden, schieben oder harter Schnitt. Die Fotos zoomen und schwenken langsam,
-        zu Gesichtern hin, wenn welche darauf sind. Hochformate erscheinen ganz vor einer
-        unscharfen Kopie. Vollbild und Video zeigen die Fotos in voller Auflösung.</li>
-      <li>Datum und Ort werden eingeblendet, wo ein neuer Tag oder Ort beginnt. Wie im Album gibt es
-        jede Schrift, dazu Ausrichtung, Lage, Größe, Farbe und Fett für jeden Text.</li>
-      <li>Du legst ein oder mehrere Lieder darunter (MP3, M4A, WAV, FLAC, Ogg). Lumenkorn erkennt den
-        Takt: Jedes Foto steht mindestens die eingestellte Zeit und wechselt auf dem nächsten
-        passenden Schlag. Die Lieder laufen hintereinander mit Überblenden, oder du ordnest jedem
-        Ort der Reise eigene Lieder zu.</li>
-      <li>Wurde das nächste Foto woanders aufgenommen, fliegt eine Karte dorthin und zeichnet die
-        Route. Am Ende kann eine Karte alle Orte der Reise zeigen. Wie die Albumkarte ist sie im
-        Programm enthalten und braucht kein Internet.</li>
-      <li>Ziehen ändert die Reihenfolge, ein Klick tauscht ein Foto oder gibt ihm eine eigene Dauer
-        und einen eigenen Text.</li>
-      <li>Speichern als MP4-Video in 720p, 1080p oder 1440p mit H.264, H.265, AV1 oder VP9, kodiert
-        von Windows bzw. der Grafikkarte.</li>
-    </ul>
-
-    <h2 id="mehr">Weiteres</h2>
-    <ul>
-      <li><strong>HDR, Panorama und Focus Stacking</strong> aus mehreren Fotos, auch aus der Hand
-        fotografiert. Das Ergebnis ist eine 16-Bit-Datei, die du wie ein RAW weiterbearbeitest.</li>
-      <li><strong>Nextcloud:</strong> Per Rechtsklick auf ein Projekt lädst du seine exportierten
-        Fotos oder alle seine Fotos als Originale in einen Ordner deiner eigenen Nextcloud und teilst ihn als Link, auf Wunsch mit
-        Passwort und Ablaufdatum. Beim nächsten Hochladen gehen nur neue und geänderte Fotos
-        hinaus, der Link bleibt gleich. Geteilte Projekte bekommen in der Seitenleiste ein
-        Wolkensymbol. Du meldest dich im Browser an, und Lumenkorn bekommt ein eigenes
-        App-Passwort, das du in Nextcloud jederzeit widerrufen kannst.</li>
-      <li><strong>Tastenkürzel</strong> für fast alles. Du kannst sie in den Einstellungen ändern.</li>
-      <li><strong>KI-Agenten</strong> wie Claude oder ChatGPT können Lumenkorn über eine eingebaute
-        MCP-Schnittstelle bedienen, wenn du sie einschaltest. Sie dürfen suchen, bewerten,
-        entwickeln und exportieren, aber nichts löschen.</li>
-      <li><strong>Updates</strong> bietet Lumenkorn selbst an. Jede neue Version wird vor der
-        Installation anhand ihrer Signatur geprüft.</li>
-      <li>Die Oberfläche gibt es auf <strong>Deutsch und Englisch</strong>.</li>
-    </ul>
-    <p>Die <a href="https://github.com/DrayPrescot/lumenkorn/blob/main/docs/README.de.md">ausführliche
-      Beschreibung auf GitHub</a> erklärt jede Funktion genauer und auch, wie sie technisch
-      umgesetzt ist.</p>
+<h2>Weiteres</h2>
+<ul class="facts columns">
+  <li><strong>HDR, Panorama und Focus Stacking</strong> aus mehreren Fotos, auch aus der Hand fotografiert. Das Ergebnis ist eine 16-Bit-Datei, die du wie ein RAW weiterbearbeitest.</li>
+  <li><strong>Nextcloud:</strong> Per Rechtsklick auf ein Projekt lädst du seine exportierten Fotos oder alle seine Fotos als Originale in einen Ordner deiner eigenen Nextcloud und teilst ihn als Link, auf Wunsch mit Passwort und Ablaufdatum. Beim nächsten Hochladen gehen nur neue und geänderte Fotos hinaus, der Link bleibt gleich. Geteilte Projekte bekommen in der Seitenleiste ein Wolkensymbol. Du meldest dich im Browser an, und Lumenkorn bekommt ein eigenes App-Passwort, das du in Nextcloud jederzeit widerrufen kannst.</li>
+  <li><strong>Tastenkürzel</strong> für fast alles. Du kannst sie in den Einstellungen ändern.</li>
+  <li><strong>KI-Agenten</strong> wie Claude oder ChatGPT können Lumenkorn über eine eingebaute MCP-Schnittstelle bedienen, wenn du sie einschaltest. Sie dürfen suchen, bewerten, entwickeln und exportieren, aber nichts löschen.</li>
+  <li><strong>Updates</strong> bietet Lumenkorn selbst an. Jede neue Version wird vor der Installation anhand ihrer Signatur geprüft.</li>
+  <li>Die Oberfläche gibt es auf <strong>Deutsch und Englisch</strong>.</li>
+</ul>
+<p>Die <a href="https://github.com/DrayPrescot/lumenkorn/blob/main/docs/README.de.md">ausführliche Beschreibung auf GitHub</a> erklärt jede Funktion genauer und auch, wie sie technisch umgesetzt ist.</p>
+</section>
+      </div>
+    </div>
   </div>
 </main>
 

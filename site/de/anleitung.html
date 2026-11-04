@@ -14,10 +14,10 @@
   <meta property="og:description" content="Lumenkorn installieren, Fotos hinzufügen, KI einrichten und die wichtigsten Tastenkürzel.">
   <meta property="og:url" content="https://lumenkorn.com/de/anleitung">
   <meta property="og:locale" content="de_DE">
-  <meta property="og:image" content="https://lumenkorn.com/img/og.jpg">
+  <meta property="og:image" content="https://lumenkorn.com/img/og-v2.jpg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Lumenkorn: Fotoverwaltung und RAW-Entwicklung, Entwickeln-Ansicht mit Sonnenuntergang">
+  <meta property="og:image:alt" content="Lumenkorn: Fotoverwaltung und RAW-Entwicklung, grünes Polarlicht über Island">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/img/icon-192.png" type="image/png" sizes="192x192">
@@ -33,80 +33,69 @@
     <a class="brand" href="/de/"><img src="/img/icon-128.png" alt="" width="28" height="28">Lumenkorn</a>
     <nav class="nav" aria-label="Hauptmenü">
       <a href="/de/funktionen">Funktionen</a>
-      <a href="/de/anleitung" aria-current="page">Anleitung</a>
+      <a href="/de/anleitung" aria-current="page">Erste Schritte</a>
       <a href="/de/datenschutz">Datenschutz</a>
-      <a class="lang push" href="/guide" hreflang="en" lang="en" title="English">EN</a>
-      <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
-      <a class="btn primary small" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Download</a>
+      <a class="nav-credits" href="/de/danksagung">Danksagung</a>
+      <div class="nav-right">
+        <a href="/guide" hreflang="en" lang="en" title="English">EN</a>
+        <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
+        <a class="btn primary small" href="/de/anleitung">Download</a>
+      </div>
     </nav>
   </div>
 </header>
 
 <main id="main" class="page">
-  <div class="wrap narrow">
-    <h1>Erste Schritte</h1>
-    <ul class="toc">
-      <li><a href="#installieren">Installieren</a></li>
-      <li><a href="#erste-schritte">Loslegen</a></li>
-      <li><a href="#ki">KI einrichten</a></li>
-      <li><a href="#updates">Updates</a></li>
-      <li><a href="#tasten">Tastenkürzel</a></li>
-      <li><a href="#daten">Deine Daten und Sicherungen</a></li>
-      <li><a href="#hilfe">Hilfe</a></li>
-    </ul>
-
-    <h2 id="installieren">Installieren</h2>
-    <ol>
-      <li>Öffne die <a href="https://github.com/DrayPrescot/lumenkorn/releases/latest">neueste Version auf GitHub</a>.</li>
-      <li>Lade eine der beiden <code>.msi</code>-Dateien herunter. Sie unterscheiden sich nur in der
-        Sprache des Installationsprogramms (<code>de-DE</code> oder <code>en-US</code>); die App selbst
-        folgt der Systemsprache und lässt sich später umstellen.</li>
-      <li>Starte die Datei. Die Installer sind noch nicht signiert, deshalb fragt Windows SmartScreen
-        einmal nach: <strong>Weitere Informationen</strong>, dann <strong>Trotzdem ausführen</strong>.</li>
+  <div class="wrap">
+    <div id="installieren" class="page-head">
+      <h1>Download und erste Schritte</h1>
+      <p class="lead">Lumenkorn läuft unter Windows 10 und 11 (64 Bit). Eine Grafikkarte ist nicht nötig, macht Bearbeitung und KI aber deutlich schneller. Unter Linux lässt sich Lumenkorn <a href="https://github.com/DrayPrescot/lumenkorn/blob/main/docs/README.de.md#entwickeln-am-code">aus dem Quellcode bauen</a>.</p>
+      <div class="actions">
+        <a class="btn primary" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Neueste Version auf GitHub öffnen</a>
+      </div>
+      <p class="note-line">Der Download liegt bei GitHub. Wenn du dem Link folgst, gilt dort die Datenschutzerklärung von GitHub.</p>
+    </div>
+    <ol id="erste-schritte" class="steps">
+<li><span class="step-label">1 / 6</span><span class="title">Lade eine der beiden <code>.msi</code>-Dateien herunter.</span><span class="text">Sie unterscheiden sich nur in der Sprache des Installationsprogramms (<code>de-DE</code> oder <code>en-US</code>); die App selbst folgt der Systemsprache und lässt sich später umstellen.</span></li>
+<li><span class="step-label">2 / 6</span><span class="title">Starte die Datei.</span><span class="text">Die Installer sind noch nicht signiert, deshalb fragt Windows SmartScreen einmal nach: <strong>Weitere Informationen</strong>, dann <strong>Trotzdem ausführen</strong>.</span></li>
+<li><span class="step-label">3 / 6</span><span class="title">Füge einen Ordner hinzu.</span><span class="text">Klicke in der Seitenleiste auf <strong>+</strong> neben <em>Ordner</em> und wähle einen Ordner mit Fotos. Lumenkorn liest ihn an Ort und Stelle und erzeugt die Vorschauen im Hintergrund.</span></li>
+<li><span class="step-label">4 / 6</span><span class="title">Bewerte deine Fotos.</span><span class="text">Blättere mit den Pfeiltasten, bewerte mit <kbd>1</kbd>–<kbd>5</kbd>, markiere mit <kbd>P</kbd> und lehne mit <kbd>X</kbd> ab.</span></li>
+<li><span class="step-label">5 / 6</span><span class="title">Entwickle ein Foto.</span><span class="text">Mit <kbd>D</kbd> entwickelst du das ausgewählte Foto. <kbd>Strg</kbd>+<kbd>U</kbd> wendet Auto an, ein guter Ausgangspunkt.</span></li>
+<li><span class="step-label">6 / 6</span><span class="title">Exportiere es.</span><span class="text">Exportiere mit <kbd>Strg</kbd>+<kbd>Umschalt</kbd>+<kbd>E</kbd>. Die Dateien landen standardmäßig im Ordner <code>Export</code> neben den Originalen.</span></li>
     </ol>
-    <p>Lumenkorn läuft unter Windows 10 und 11 (64 Bit). Eine Grafikkarte ist nicht nötig, macht
-      Bearbeitung und KI aber deutlich schneller. Unter Linux lässt sich Lumenkorn
-      <a href="https://github.com/DrayPrescot/lumenkorn/blob/main/docs/README.de.md#entwickeln-am-code">aus dem Quellcode bauen</a>.</p>
-
-    <h2 id="erste-schritte">Loslegen</h2>
-    <figure class="wide-figure shot">
-      <img src="/img/library-winter.webp" srcset="/img/library-winter-900.webp 900w, /img/library-winter.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 920px" width="1800" height="1045" loading="lazy" alt="Bibliothek mit Winterfotos eines Flusses, englische Oberfläche">
-    </figure>
-    <ol>
-      <li>Klicke in der Seitenleiste auf <strong>+</strong> neben <em>Ordner</em> und wähle einen Ordner mit
-        Fotos. Lumenkorn liest ihn an Ort und Stelle und erzeugt die Vorschauen im Hintergrund.</li>
-      <li>Blättere mit den Pfeiltasten, bewerte mit <kbd>1</kbd>–<kbd>5</kbd>, markiere mit <kbd>P</kbd> und
-        lehne mit <kbd>X</kbd> ab.</li>
-      <li>Mit <kbd>D</kbd> entwickelst du das ausgewählte Foto. <kbd>Strg</kbd>+<kbd>U</kbd> wendet Auto an,
-        ein guter Ausgangspunkt.</li>
-      <li>Exportiere mit <kbd>Strg</kbd>+<kbd>Umschalt</kbd>+<kbd>E</kbd>. Die Dateien landen
-        standardmäßig im Ordner <code>Export</code> neben den Originalen.</li>
-    </ol>
-    <p>Fotos von einer Speicherkarte kopierst du mit <kbd>Strg</kbd>+<kbd>Umschalt</kbd>+<kbd>I</kbd> oder
-      über den Pfeil neben <em>Ordner</em>. Projekte (über den Ordnern) fassen Ordner zusammen, die
-      zusammengehören, etwa alle Tage einer Reise.</p>
-    <p>Über <strong>Dateityp</strong> in der Werkzeugleiste zeigst du nur bestimmte Formate an, zum
-      Beispiel nur RAW-Dateien. <strong>Statistik</strong> über dem Raster zeigt, mit welchen Kameras,
-      Objektiven und Einstellungen die angezeigten Fotos entstanden sind.</p>
-
-    <h2 id="ki">KI einrichten</h2>
-    <p>Öffne unten links <strong>Einstellungen → KI</strong> und lade die Modelle, die du möchtest. Jede
+<section id="start" class="block">
+  <h2>Mehr zum Start</h2>
+  <div class="block-body">
+<p>Fotos von einer Speicherkarte kopierst du mit <kbd>Strg</kbd>+<kbd>Umschalt</kbd>+<kbd>I</kbd> oder über den Pfeil neben <em>Ordner</em>. Projekte (über den Ordnern) fassen Ordner zusammen, die zusammengehören, etwa alle Tage einer Reise.</p>
+<p>Über <strong>Dateityp</strong> in der Werkzeugleiste zeigst du nur bestimmte Formate an, zum Beispiel nur RAW-Dateien. <strong>Statistik</strong> über dem Raster zeigt, mit welchen Kameras, Objektiven und Einstellungen die angezeigten Fotos entstanden sind.</p>
+  </div>
+</section>
+<section id="ki" class="block">
+  <h2>KI einrichten</h2>
+  <div class="block-body">
+<p>Öffne unten links <strong>Einstellungen → KI</strong> und lade die Modelle, die du möchtest. Jede
       Funktion lässt sich einzeln einrichten: Schlagworte und Suche, KI-Masken, Rauschreduzierung und
       Personenerkennung. Danach analysiert Lumenkorn deine Fotos im Hintergrund; der Fortschritt
       steht neben dem Knopf Einstellungen.</p>
     <p>Unter <strong>Einstellungen → Grafikkarte</strong> legst du fest, ob Bearbeitung und KI die
       Grafikkarte nutzen. Für die KI auf der Grafikkarte braucht Windows das Microsoft Visual C++
       Redistributable; Lumenkorn sagt Bescheid, wenn es fehlt.</p>
-
-    <h2 id="updates">Updates</h2>
-    <p>Kurz nach dem Start prüft Lumenkorn einmal, ob es eine neue Version gibt. Wenn ja, zeigt es,
+  </div>
+</section>
+<section id="updates" class="block">
+  <h2>Updates</h2>
+  <div class="block-body">
+<p>Kurz nach dem Start prüft Lumenkorn einmal, ob es eine neue Version gibt. Wenn ja, zeigt es,
       was sich geändert hat, und fragt nach. <strong>Jetzt installieren</strong> lädt sie, prüft die
       Signatur, installiert und startet neu. Katalog und Bearbeitungen bleiben erhalten.</p>
-
-    <h2 id="tasten">Tastenkürzel</h2>
-    <p>Die wichtigsten Vorgaben. Unter <strong>Einstellungen → Tastenkürzel</strong> lässt sich jeder
+  </div>
+</section>
+<section id="tasten" class="block">
+  <h2>Tastenkürzel</h2>
+  <div class="block-body">
+<p>Die wichtigsten Vorgaben. Unter <strong>Einstellungen → Tastenkürzel</strong> lässt sich jeder
       Befehl mit einer anderen oder weiteren Taste belegen.</p>
-    <table>
+    <div class="table-scroll"><table>
       <thead><tr><th>Taste</th><th>Aktion</th></tr></thead>
       <tbody>
         <tr><td><kbd>0</kbd>–<kbd>5</kbd></td><td>Bewertung</td></tr>
@@ -126,10 +115,13 @@
         <tr><td><kbd>Strg</kbd>+<kbd>Umschalt</kbd>+<kbd>I</kbd></td><td>Von der Speicherkarte importieren</td></tr>
         <tr><td><kbd>Strg</kbd>+<kbd>H</kbd> / <kbd>Strg</kbd>+<kbd>M</kbd></td><td>HDR / Panorama</td></tr>
       </tbody>
-    </table>
-
-    <h2 id="daten">Deine Daten und Sicherungen</h2>
-    <p>Lumenkorn verändert deine Originalfotos nie. Bewertungen, Schlagworte und Bearbeitungen stehen
+    </table></div>
+  </div>
+</section>
+<section id="daten" class="block">
+  <h2>Deine Daten und Sicherungen</h2>
+  <div class="block-body">
+<p>Lumenkorn verändert deine Originalfotos nie. Bewertungen, Schlagworte und Bearbeitungen stehen
       im Katalog im Datenordner:</p>
     <p><code>%APPDATA%\io.github.drayprescot.lumenkorn\</code></p>
     <p>Sichere diesen Ordner zusammen mit deinen Fotos. Darin liegen auch die KI-Modelle und
@@ -140,12 +132,18 @@
         genug ist, und jede Version wird vor der Veröffentlichung mit echten Fotos ausprobiert.
         Fehler können trotzdem durchrutschen, also sichere deine Fotos und den Katalog.</p>
     </div>
-
-    <h2 id="hilfe">Hilfe</h2>
-    <p>Einen Fehler gefunden oder fehlt dir etwas? Schreib bitte ein
+  </div>
+</section>
+<section id="hilfe" class="block">
+  <h2>Hilfe</h2>
+  <div class="block-body">
+<p>Einen Fehler gefunden oder fehlt dir etwas? Schreib bitte ein
       <a href="https://github.com/DrayPrescot/lumenkorn/issues">Issue auf GitHub</a>. Die
       <a href="https://github.com/DrayPrescot/lumenkorn/blob/main/CHANGELOG.md">Änderungsliste</a>
       zeigt, was sich in jeder Version geändert hat (auf Englisch).</p>
+  </div>
+  </div>
+</section>
   </div>
 </main>
 

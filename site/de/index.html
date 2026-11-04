@@ -15,10 +15,10 @@
   <meta property="og:description" content="Kostenlose Fotoverwaltung und RAW-Entwicklung, die ganz auf deinem Rechner läuft. KI für Schlagworte, Masken und Rauschreduzierung, offline. Ohne Konto, Cloud und Abo.">
   <meta property="og:url" content="https://lumenkorn.com/de/">
   <meta property="og:locale" content="de_DE">
-  <meta property="og:image" content="https://lumenkorn.com/img/og.jpg">
+  <meta property="og:image" content="https://lumenkorn.com/img/og-v2.jpg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Lumenkorn: Fotoverwaltung und RAW-Entwicklung, Entwickeln-Ansicht mit Sonnenuntergang">
+  <meta property="og:image:alt" content="Lumenkorn: Fotoverwaltung und RAW-Entwicklung, grünes Polarlicht über Island">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/img/icon-192.png" type="image/png" sizes="192x192">
@@ -34,151 +34,208 @@
     <a class="brand" href="/de/"><img src="/img/icon-128.png" alt="" width="28" height="28">Lumenkorn</a>
     <nav class="nav" aria-label="Hauptmenü">
       <a href="/de/funktionen">Funktionen</a>
-      <a href="/de/anleitung">Anleitung</a>
+      <a href="/de/anleitung">Erste Schritte</a>
       <a href="/de/datenschutz">Datenschutz</a>
-      <a class="lang push" href="/" hreflang="en" lang="en" title="English">EN</a>
-      <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
-      <a class="btn primary small" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Download</a>
+      <a class="nav-credits" href="/de/danksagung">Danksagung</a>
+      <div class="nav-right">
+        <a href="/" hreflang="en" lang="en" title="English">EN</a>
+        <a href="https://github.com/DrayPrescot/lumenkorn">GitHub</a>
+        <a class="btn primary small" href="/de/anleitung">Download</a>
+      </div>
     </nav>
   </div>
 </header>
 
 <main id="main">
-  <section class="hero">
-    <div class="wrap">
-      <h1>Deine Fotos. Lokal auf deinem Rechner.</h1>
-      <p class="lead">Lumenkorn verwaltet deine Fotosammlung und entwickelt RAW-Dateien. Das Programm
-        läuft komplett auf deinem Computer, du brauchst kein Konto und kein Abo. Auch die
-        KI-Funktionen rechnen bei dir und nicht in einer Cloud.</p>
-      <div class="actions">
-        <a class="btn primary" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Für Windows herunterladen</a>
-        <a class="btn" href="/de/funktionen">Funktionen ansehen</a>
+  <section class="photo hero">
+    <img src="/img/hero.webp" srcset="/img/hero-1200.webp 1200w, /img/hero.webp 2048w" sizes="100vw" width="2048" height="1365" fetchpriority="high" alt="Grünes Polarlicht am Nachthimmel über Island">
+    <div class="photo-inner">
+      <div class="wrap">
+        <div class="photo-text">
+          <h1>Deine Fotos.<br>Auf deinem PC.</h1>
+          <p class="lead">Lumenkorn verwaltet deine Fotosammlung und entwickelt RAW-Dateien. Alles läuft auf deinem Computer, auch die KI. Du brauchst kein Konto und kein Abo.</p>
+          <div class="actions">
+            <a class="btn primary" href="/de/anleitung">Für Windows herunterladen</a>
+            <a class="btn ghost" href="#trailer">Trailer ansehen · 1:14</a>
+          </div>
+          <p class="meta"><strong>Getestet mit über 80.000 eigenen Fotos</strong> · Kostenlos und quelloffen (GPL-3.0) · Windows 10 und 11 · Linux aus dem Quellcode</p>
+        </div>
+        <p class="exif">DSC08794.ARW · ISO 3200 · 28 mm · f/2,8 · 2,5 s<br>Island · Entwickelt in Lumenkorn</p>
       </div>
-      <p class="meta">Windows-Installer (.msi), deutsch oder englisch · Kostenlos und quelloffen (GPL-3.0) · Linux aus dem Quellcode</p>
-      <figure class="shot video">
-        <video controls preload="none" playsinline width="1920" height="1080" poster="/img/trailer-de.webp" aria-label="Trailer: Lumenkorn in gut einer Minute">
+    </div>
+  </section>
+
+  <section id="trailer" class="trailer">
+    <div class="wrap">
+      <figure>
+        <video controls preload="none" playsinline width="1920" height="1080" poster="/img/poster-de.webp" aria-label="Trailer: Lumenkorn in gut einer Minute">
           <source src="/video/lumenkorn-trailer-v5-de.mp4" type="video/mp4">
         </video>
+        <figcaption>Lumenkorn in gut einer Minute. Das Video kommt von dieser Website und lädt erst, wenn du es startest.</figcaption>
       </figure>
     </div>
   </section>
 
-  <section class="wrap points" aria-label="Kurz gesagt">
-    <div class="point">
-      <h3>Deine Dateien bleiben, wo sie sind</h3>
-      <p>Lumenkorn liest deine Ordner direkt und ändert an den Originalen nichts. Bewertungen und
-        Bearbeitungen landen in einer Katalogdatei auf deinem Rechner.</p>
-    </div>
-    <div class="point">
-      <h3>RAW-Entwicklung</h3>
-      <p>Die Verarbeitung orientiert sich an darktable. Mit Grafikkarte reagieren die Regler ohne
-        spürbare Verzögerung, ohne Grafikkarte rechnet der Prozessor.</p>
-    </div>
-    <div class="point">
-      <h3>KI ohne Cloud</h3>
-      <p>Schlagworte, Suche nach Bildinhalt, Masken und Rauschreduzierung nutzen offene Modelle. Du
-        lädst sie einmal herunter, danach funktioniert alles offline.</p>
-    </div>
-  </section>
-
-  <section class="block">
-    <div class="wrap row">
-      <div class="text">
-        <span class="eyebrow">Bibliothek</span>
-        <h2>Deine Ordnerstruktur bleibt</h2>
-        <p>Du fügst deine Fotoordner hinzu und Lumenkorn baut daraus einen Katalog. Sterne,
-          Markierungen und Schlagworte vergibst du wie gewohnt. Ordner, die zusammengehören, fasst du
-          zu Projekten zusammen, auch wenn sie auf verschiedenen Laufwerken liegen.</p>
-        <p>Benennst du Dateien um oder verschiebst sie, erkennt Lumenkorn sie am Inhalt wieder.
-          Bewertungen und Bearbeitungen gehen dabei nicht verloren. Über den Dateityp-Filter zeigst du
-          zum Beispiel nur die RAW-Dateien oder nur die JPEGs an.</p>
-      </div>
-      <figure class="shot">
-        <img src="/img/library.webp" srcset="/img/library-900.webp 900w, /img/library.webp 1800w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1800" height="1043" loading="lazy" alt="Bibliothek mit Tierfotos aus einem Zoo, ausgewählt ist ein Pinguin, rechts seine Aufnahmedaten">
-      </figure>
-    </div>
-  </section>
-
-  <section class="block">
-    <div class="wrap row flip">
-      <div class="text">
-        <span class="eyebrow">RAW-Entwicklung</span>
-        <h2>Nichtdestruktiv, wie du es kennst</h2>
-        <p>Weißabgleich, Belichtung, Lichter und Tiefen, Dunst, HSL, Color Grading und eine
-          Gradationskurve. Alles bleibt jederzeit änderbar, die Originaldatei wird nie angefasst.</p>
-        <p><strong>Auto</strong> macht einen ersten Vorschlag. Mit der Zeit merkt es sich, wie du deine
-          Fotos bearbeitest, und passt sich daran an. Zieh den Regler im Bild, um vorher und nachher
-          zu vergleichen.</p>
-      </div>
-      <div class="shot compare">
-        <img src="/img/after.webp" srcset="/img/after-900.webp 900w, /img/after.webp 1600w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1600" height="1067" loading="lazy" alt="Eisvogel auf einem Ast nach der Bearbeitung: warme, klare Farben">
-        <div class="over"><img src="/img/before.webp" srcset="/img/before-900.webp 900w, /img/before.webp 1600w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1600" height="1067" loading="lazy" alt="Dasselbe Foto vor der Bearbeitung: flau und matt"></div>
-        <input type="range" min="0" max="100" value="50" aria-label="Vorher und nachher vergleichen">
-        <div class="handle"></div>
-        <span class="tag l">Vorher</span><span class="tag r">Nachher</span>
-      </div>
-    </div>
-  </section>
-
-  <section class="block">
-    <div class="wrap row">
-      <div class="text">
-        <span class="eyebrow">Maskierung</span>
-        <h2>Masken per Klick</h2>
-        <p>Lumenkorn erkennt Himmel, Hauptmotiv, Personen und Tiere. Bei Personen kannst du auch nur
-          Haare, Augen oder Haut auswählen. Masken lassen sich kombinieren, etwa der Himmel ohne den
-          Kirchturm davor.</p>
-        <p>Verläufe, Pinsel und Farbbereich gibt es natürlich auch, für alles, was du lieber selbst
-          einzeichnest.</p>
-      </div>
-      <figure class="shot">
-        <img src="/img/ai-mask.webp" srcset="/img/ai-mask-900.webp 900w, /img/ai-mask.webp 1800w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1800" height="1046" loading="lazy" alt="Eisvogel mit einer KI-Maske ausgewählt, rot angezeigt">
-      </figure>
-    </div>
-  </section>
-
-  <section class="block">
-    <div class="wrap row flip">
-      <div class="text">
-        <span class="eyebrow">Fotoalbum</span>
-        <h2>Vom Urlaub zum Fotobuch</h2>
-        <p>Du wählst ein Thema und ein Format, Lumenkorn sucht die Fotos aus und verteilt sie in
-          zeitlicher Reihenfolge auf die Seiten. Unscharfe Bilder und fast gleiche Aufnahmen bleiben
-          draußen, Fotos mit vier oder fünf Sternen sind immer dabei. Auf Wunsch gibt es eine
-          Kartenseite mit allen Orten der Reise.</p>
-        <p>Danach änderst du, was dir nicht gefällt, und speicherst ein druckfertiges PDF.</p>
-      </div>
-      <figure class="shot">
-        <img src="/img/album.webp" srcset="/img/album-900.webp 900w, /img/album.webp 1800w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1800" height="1045" loading="lazy" alt="Fotoalbum mit Herbstfotos aus Japan, zwei Doppelseiten und die Schriftoptionen">
-      </figure>
-    </div>
-  </section>
-
-  <section class="block">
-    <div class="wrap row">
-      <div class="text">
-        <span class="eyebrow">Diashow</span>
-        <h2>Eine Diashow im Takt der Musik</h2>
-        <p>Dieselbe Auswahl wie beim Fotoalbum, abgespielt im Vollbild: Sie beginnt mit deinem
-          besten Foto und dem Titel, zoomt langsam zu Gesichtern hin und blendet Datum und Ort ein,
-          wo ein neuer Tag beginnt. Leg eigene Musik darunter, dann wechseln die Fotos im Takt.</p>
-        <p>Geht die Reise weiter, fliegt eine Karte zum nächsten Ort. Am Ende zeigt eine Karte die
-          ganze Route. Alles lässt sich als MP4-Video für den Fernseher speichern.</p>
-      </div>
-      <figure class="shot">
-        <img src="/img/slideshow-map-de.webp" srcset="/img/slideshow-map-de-900.webp 900w, /img/slideshow-map-de.webp 1800w" sizes="(max-width: 900px) calc(100vw - 48px), 680px" width="1800" height="1045" loading="lazy" alt="Schlusskarte einer Diashow: eine Italienreise von Venedig bis Neapel mit Route und einer Stecknadel für jeden Ort">
-      </figure>
-    </div>
-  </section>
-
-  <section class="cta">
+  <section class="ledger">
     <div class="wrap">
-      <h2>Selbst ausprobieren</h2>
-      <p>Lumenkorn kostet nichts, der Quellcode liegt offen auf GitHub. Die KI-Modelle lädst du nur
-        herunter, wenn du sie brauchst.</p>
-      <div class="actions">
-        <a class="btn primary" href="https://github.com/DrayPrescot/lumenkorn/releases/latest">Für Windows herunterladen</a>
-        <a class="btn" href="/de/anleitung">Erste Schritte</a>
+      <div class="ledger-head">
+        <h2 class="big">Vier Fälle, in denen Lumenkorn ins Internet geht.</h2>
+        <p>Mehr gibt es nicht. Deine Fotos, der Katalog, deine Bearbeitungen und alle KI-Ergebnisse bleiben auf deinem Rechner. Konto, Cloud und Nutzungsstatistik gibt es nicht.</p>
+      </div>
+      <ul class="ledger-rows">
+    <li><h3>Update-Prüfung</h3><span class="ledger-where">GitHub</span><span class="ledger-what">Kurz nach dem Start fragt Lumenkorn einmal, ob es eine neue Version gibt. GitHub erfährt dabei deine IP-Adresse.</span></li>
+    <li><h3>KI-Downloads</h3><span class="ledger-where">GitHub, Hugging Face, OpenCV</span><span class="ledger-what">Nur wenn du auf den Knopf dafür klickst. Über deine Fotos wird dabei nichts gesendet.</span></li>
+    <li><h3>Karte und Ortsnamen</h3><span class="ledger-where">tile.openstreetmap.org<br>nominatim.openstreetmap.org</span><span class="ledger-what">Für die Ortsnamen werden die Koordinaten deiner Fotos gesendet, auf etwa 100 m gerundet und je Ort gebündelt. Einstellungen → Allgemein → Karte und Ortsnamen schaltet das vollständig ab.</span></li>
+    <li><h3>Nextcloud</h3><span class="ledger-where">Dein eigener Server</span><span class="ledger-what">Nur wenn du sie selbst verbindest und die Exporte oder Originale eines Projekts hochlädst. Die Daten gehen nur an den Server, den du einträgst.</span></li>
+      </ul>
+      <div class="ledger-foot">
+        <p>Auch diese Website setzt keine Cookies, nutzt kein Tracking und lädt nichts von fremden Servern.</p>
+        <a class="more-link" href="/de/datenschutz">Alles genau nachlesen: Datenschutz</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="flow">
+    <div class="wrap">
+      <div class="flow-head">
+        <h2 class="big">Von der Speicherkarte bis zum Fotobuch.</h2>
+        <nav class="flow-nav" aria-label="Schritte">
+        <a href="#einlesen"><span>1</span>Einlesen</a>
+        <a href="#aussortieren"><span>2</span>Aussortieren</a>
+        <a href="#entwickeln"><span>3</span>Entwickeln</a>
+        <a href="#finden"><span>4</span>Finden</a>
+        <a href="#zeigen"><span>5</span>Zeigen</a>
+        </nav>
+      </div>
+
+      <section id="einlesen" class="step">
+        <div class="step-text">
+          <p class="step-label">1 / 5 Einlesen</p>
+          <h3>Deine Ordner bleiben, wie sie sind.</h3>
+          <p>Du fügst Ordner hinzu, Lumenkorn liest sie an Ort und Stelle und baut daraus einen Katalog. Kopiert wird nur, wenn du von einer Speicherkarte importierst.</p>
+          <ul class="facts">
+  <li>Benennst du Dateien um oder verschiebst sie, erkennt Lumenkorn sie am Inhalt wieder.</li>
+  <li>Projekte fassen Ordner zusammen, auch von verschiedenen Laufwerken.</li>
+  <li>Jede Kopie von der Speicherkarte wird Byte für Byte geprüft.</li>
+</ul>
+        </div>
+        <div class="step-side">
+          <figure class="shot"><img src="/img/library-v2.webp" srcset="/img/library-v2-900.webp 900w, /img/library-v2.webp 1526w" sizes="(max-width: 1000px) calc(100vw - 48px), 860px" width="1526" height="1043" loading="lazy" alt="Bibliothek mit Tierfotos aus einem Zoo, ausgewählt ist ein Pinguin, rechts seine Aufnahmedaten"></figure>
+        </div>
+      </section>
+
+      <section id="aussortieren" class="step wide">
+        <div class="step-body">
+          <div class="step-text">
+            <p class="step-label">2 / 5 Aussortieren</p>
+            <h3>Schnell zu den Fotos, die bleiben.</h3>
+          </div>
+          <div class="step-side">
+            <p>Der Aussortier-Assistent schlägt vor, was weg kann: aus Serien die schwächeren Fotos, unscharfe Fotos, geschlossene Augen, stark falsch belichtete und versehentlich ausgelöste Fotos.</p>
+            <ul class="facts">
+  <li>Du prüfst die Vorschläge, abgelehnt wird nur, was du anhakst.</li>
+  <li>Mit einer Taste ablehnen und gleich zum nächsten Foto springen.</li>
+  <li>Bis zu 12 Fotos nebeneinander vergleichen, der Zoom läuft synchron.</li>
+</ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="entwickeln" class="step">
+        <div class="step-text">
+          <p class="step-label">3 / 5 Entwickeln</p>
+          <h3>Das Original bleibt unberührt.</h3>
+          <p>Gespeichert werden nur deine Einstellungen, die Originaldatei bleibt unverändert. Für RAW-Dateien folgt Lumenkorn dem szenenbezogenen Ablauf von darktable. Zieh den Regler im Bild, um vorher und nachher zu vergleichen.</p>
+          <ul class="facts">
+  <li>Weißabgleich, Belichtung, HSL, Color Grading und Gradationskurve.</li>
+  <li>Auto merkt sich, wo du von seinem Vorschlag abweichst, getrennt für jede Kamera.</li>
+  <li>Lumenkorn erkennt Himmel, Hauptmotiv, Personen und Tiere als Masken.</li>
+  <li>Die Rauschreduzierung entfernt Rauschen und lässt feine Strukturen wie Federn stehen.</li>
+  <li>Mit der KI-Reparatur verschwinden Staubflecken, Stromleitungen und Schilder aus dem Bild.</li>
+</ul>
+        </div>
+        <div class="step-side">
+          <div class="shot compare">
+  <img src="/img/after.webp" srcset="/img/after-900.webp 900w, /img/after.webp 1600w" sizes="(max-width: 900px) calc(100vw - 32px), 820px" width="1600" height="1067" loading="lazy" alt="Eisvogel auf einem Ast nach der Bearbeitung: warme, klare Farben">
+  <div class="over"><img src="/img/before.webp" srcset="/img/before-900.webp 900w, /img/before.webp 1600w" sizes="(max-width: 900px) calc(100vw - 32px), 820px" width="1600" height="1067" loading="lazy" alt="Dasselbe Foto vor der Bearbeitung: flau und matt"></div>
+  <input type="range" min="0" max="100" value="50" aria-label="Vorher und nachher vergleichen">
+  <div class="handle"></div>
+  <span class="tag l">Vorher</span><span class="tag r">Nachher</span>
+</div>
+          <figure class="shot"><img src="/img/mask-v2.webp" srcset="/img/mask-v2-900.webp 900w, /img/mask-v2.webp 1480w" sizes="(max-width: 1000px) calc(100vw - 48px), 860px" width="1480" height="1046" loading="lazy" alt="Eisvogel mit einer KI-Maske ausgewählt, rot angezeigt, rechts die Regler der Maske"></figure>
+        </div>
+      </section>
+
+      <section id="finden" class="step wide">
+        <div class="pair">
+          <img src="/img/search-v2.webp" srcset="/img/search-v2-900.webp 900w, /img/search-v2.webp 1469w" sizes="(max-width: 900px) calc(100vw - 32px), 620px" width="1469" height="1253" loading="lazy" alt="Die Suche nach „Berge“ findet Fotos vom Fuji im Abendlicht">
+          <img src="/img/map-v2.webp" srcset="/img/map-v2-900.webp 900w, /img/map-v2.webp 1445w" sizes="(max-width: 900px) calc(100vw - 32px), 620px" width="1445" height="1163" loading="lazy" alt="Karte von Japan mit gebündelten Markierungen für die Fotos einer Reise">
+        </div>
+        <div class="step-body">
+          <div class="step-text">
+            <p class="step-label">4 / 5 Finden</p>
+            <h3>Such nach dem, was zu sehen ist.</h3>
+          </div>
+          <div class="step-side">
+            <p>Wer „Berge“ eingibt, bekommt Berge, auch wenn die Fotos nie verschlagwortet wurden. Die Modelle dafür lädst du einmal herunter, danach rechnen sie offline.</p>
+            <ul class="facts">
+  <li>Schlagworte von grob nach fein, etwa Säugetier → Affe → Gorilla.</li>
+  <li>Gesichter werden im Hintergrund gefunden und gruppiert.</li>
+  <li>Die Karte zeigt deine Aufnahmeorte und lässt sich komplett abschalten.</li>
+  <li>Die Statistik zeigt, welche Objektive und Brennweiten du wirklich benutzt.</li>
+</ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="zeigen" class="step wide">
+        <div class="pair">
+          <img src="/img/album-de.webp" srcset="/img/album-de-900.webp 900w, /img/album-de.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 620px" width="1800" height="938" loading="lazy" alt="Fotoalbum mit Vögeln aus Costa Rica, eine Doppelseite">
+          <img src="/img/slideshow-map-de.webp" srcset="/img/slideshow-map-de-900.webp 900w, /img/slideshow-map-de.webp 1800w" sizes="(max-width: 900px) calc(100vw - 32px), 620px" width="1800" height="1045" loading="lazy" alt="Schlusskarte einer Diashow: eine Italienreise von Venedig bis Neapel mit Route und einer Stecknadel für jeden Ort">
+        </div>
+        <div class="step-body">
+          <div class="step-text">
+            <p class="step-label">5 / 5 Zeigen</p>
+            <h3>Vom Urlaub zum Fotobuch.</h3>
+          </div>
+          <div class="step-side">
+            <p>Du wählst ein Thema und ein Format, Lumenkorn sucht die Fotos aus und verteilt sie in zeitlicher Reihenfolge auf die Seiten. Danach änderst du, was dir nicht gefällt, und speicherst ein druckfertiges PDF.</p>
+            <ul class="facts">
+  <li>PDF mit 300 dpi und Beschnittzugabe, dazu jede Seite als JPG.</li>
+  <li>Die Diashow wechselt die Fotos im Takt deiner Musik und lässt sich als MP4-Video speichern.</li>
+  <li>Export als JPEG, 16-Bit-TIFF oder PNG.</li>
+  <li>Auf Wunsch lädst du die Exporte oder Originale eines Projekts in deine eigene Nextcloud und teilst sie als Link.</li>
+</ul>
+          </div>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <section class="also">
+    <div class="wrap">
+      <div class="also-grid">
+        <p><strong>HDR, Panorama und Focus Stacking</strong> aus mehreren Fotos, auch aus der Hand fotografiert.</p>
+        <p><strong>Tastenkürzel</strong> für fast alles, in den Einstellungen änderbar.</p>
+        <p><strong>KI-Agenten</strong> wie Claude oder ChatGPT über eine eingebaute MCP-Schnittstelle, wenn du sie einschaltest.</p>
+        <p><strong>Deutsch und Englisch</strong> in der ganzen Oberfläche.</p>
+      </div>
+      <a class="more-link start" href="/de/funktionen">Alle Funktionen ansehen</a>
+    </div>
+  </section>
+
+  <section class="photo closing">
+    <img src="/img/closing.webp" srcset="/img/closing-1200.webp 1200w, /img/closing.webp 2048w" sizes="100vw" width="2048" height="1365" loading="lazy" alt="Wasserfälle in einem Fluss in Island, umgeben von Herbstfarben">
+    <div class="photo-inner">
+      <div class="wrap">
+        <div class="photo-text">
+          <h2>Selbst ausprobieren.</h2>
+          <p>Lumenkorn kostet nichts, der Quellcode liegt offen auf GitHub. Die KI-Modelle lädst du nur herunter, wenn du sie brauchst.</p>
+          <div class="actions">
+            <a class="btn primary" href="/de/anleitung">Für Windows herunterladen</a>
+          </div>
+        </div>
+        <p class="exif">DSC08972 · ISO 100 · 44 mm · f/6,3 · 1/160 s<br>Island</p>
       </div>
     </div>
   </section>
