@@ -9,6 +9,10 @@ tag = f"v{version}"
 REPO = "DrayPrescot/lumenkorn"
 API = f"https://api.github.com/repos/{REPO}"
 
+# Nichts veröffentlichen, was nicht nachweislich richtig signiert ist
+if subprocess.run(["node", "tools/release_local.mjs", "verify"], cwd=repo_dir).returncode != 0:
+    sys.exit("Nichts veröffentlicht: Die Prüfung ist fehlgeschlagen.")
+
 cred = subprocess.run(["git", "credential", "fill"], input="protocol=https\nhost=github.com\n\n",
                       capture_output=True, text=True, cwd=repo_dir, check=True).stdout
 token = next(l.split("=", 1)[1] for l in cred.splitlines() if l.startswith("password="))

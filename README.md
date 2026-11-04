@@ -697,9 +697,10 @@ release. Its text is the version's section of the CHANGELOG. With the secret
 the draft is published, installed copies offer the update.
 
 Without GitHub Actions, the VS Code task **Lumenkorn: Release bauen** (or
-`node tools/release_local.mjs <path to lumenkorn-updater.key>`) builds the Windows installers,
-signs them and writes `latest.json`; upload both MSI files and `latest.json` to a published
-release tagged `v<version>`.
+`node tools/release_local.mjs`) builds the Windows installers, asks for the signing key's password
+in a separate window, signs them, writes `latest.json` and checks the signatures. The key is looked
+up in `~/.tauri`, or the window lets you pick it. The steps also run on their own (`build`, `sign`,
+`verify`). Upload both MSI files and `latest.json` to a published release tagged `v<version>`.
 
 ## Open-source projects used by Lumenkorn
 

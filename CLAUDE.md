@@ -18,7 +18,7 @@ Rust + Tauri 2 im Backend, Svelte 5 im Frontend. Ausführliche Beschreibung in
   committen ist in Ordnung. „Committen“ bzw. „zu GitHub committen“ meint meist
   den Push – im Zweifel kurz nachfragen.
 - **GitHub-Actions-Minuten sind knapp.** Reine Doku-Commits mit `[skip ci]` in
-  der Nachricht, damit kein MSI gebaut wird. Releases baut der Nutzer lokal
+  der Nachricht, damit kein MSI gebaut wird. Releases entstehen lokal
   (siehe „Release“).
 - **Commit-Autor:** `DrayPrescot <DrayPrescot@users.noreply.github.com>`, z. B.
   `git -c user.name=DrayPrescot -c user.email=DrayPrescot@users.noreply.github.com commit …`.
@@ -49,7 +49,7 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 npm run check     # svelte-check
-npm test          # Frontend-Tests (vitest, *.test.ts neben dem Code)
+npm test          # Tests für Frontend und tools/ (vitest, *.test.* neben dem Code)
 npm run i18n      # jeder deutsche Text braucht eine englische Übersetzung
 npm run build
 ```
@@ -151,6 +151,15 @@ auch, wenn eine Änderung gerade anders einfacher wäre. Bevor du etwas in diese
 - Der Signaturschlüssel darf nie in der Umgebung eines Builds stehen: Build-Skripte aller
   Abhängigkeiten könnten ihn lesen. `tools/release_local.mjs` baut ohne ihn und signiert
   danach, mit `--app-version`, sonst lehnt der Updater die Datei ab.
+- Ein Fenster, das ein Kindprozess öffnet, nie mit `windowsHide` starten: Das gilt unter
+  Windows auch für das Fenster selbst. Das Passwortfenster war so unsichtbar, und der Lauf
+  hing ohne jede Meldung. Der Prozess lief, also am Fenster prüfen, nicht am Exit-Code.
+- Meldet der Build `os error 225`, hat Windows Defender eine Datei aus
+  `tauri-codegen-assets` in Quarantäne geschoben (`Get-MpThreatDetection` zeigt sie). Im
+  November 2026 war das `Trojan:Script/ObfusScript.A!ml` auf dem komprimierten Haupt-Bundle,
+  nach Änderung eines einzigen Satzes, sehr wahrscheinlich ein Fehlalarm. Nie selbst umgehen:
+  keine Ausnahmen setzen, nichts wiederherstellen, Dateien nicht so lange ändern, bis der
+  Alarm verschwindet. Prüfen, was sich geändert hat, und dem Nutzer melden. Er entscheidet.
 - `cargo audit` vor jedem Release. Ausnahmen nur in `.cargo/audit.toml`, mit Begründung.
 - Kein `{@html}`, SQL nur mit Parametern, fremde Adressen nur geprüft an
   `commands::launch_browser`.
@@ -201,20 +210,44 @@ einen Ordner im Scratchpad setzen (eigener Katalog, Cache darin).
    `package-lock.json` und `src-tauri/tauri.conf.json` erhöhen,
    `cargo update -w`, im CHANGELOG unter `## [Unreleased]` den Abschnitt
    `## [x.y.z] – Datum` beginnen.
-2. Bauen und signieren: `node tools/release_local.mjs [Pfad zu lumenkorn-updater.key]`
-   (VS Code: Aufgabe „Lumenkorn: Release bauen“). Ohne Pfad wird der Schlüssel
-   im Benutzerordner und unter Downloads gesucht. Ergebnis in
-   `target/release/bundle/msi/`: beide `.msi` und `latest.json`.
-3. Auf GitHub ein **veröffentlichtes** Release (kein Entwurf, keine
+2. Bauen: `node tools/release_local.mjs build`. Braucht weder Schlüssel noch
+   Passwort und dauert Minuten, also im Hintergrund starten. Ergebnis in
+   `target/release/bundle/msi/`.
+3. Signieren: `node tools/release_local.mjs sign`. **Vorher im Chat ankündigen**,
+   dass gleich ein Fenster „Lumenkorn x.y.z signieren“ erscheint und der Nutzer erst
+   hineinklicken soll: Es liegt oben, hat aber nicht immer die Tastatur, und ein
+   eingefügtes Passwort landete sonst woanders. Im Hintergrund starten: Das Skript wartet, bis der Nutzer das Passwort eingegeben hat, höchstens
+   30 Minuten. Ein falsches Passwort fragt das Fenster bis zu dreimal ab, ohne neu zu
+   bauen. Danach schreibt das Skript `latest.json` und prüft alles. Bei Abbruch,
+   Zeitablauf oder dreimal falschem Passwort nicht von selbst neu starten, sondern
+   dem Nutzer sagen, was passiert ist.
+4. Auf GitHub ein **veröffentlichtes** Release (kein Entwurf, keine
    Vorabversion) mit Tag `vx.y.z` anlegen und die drei Dateien hochladen – der
    Updater liest `releases/latest/download/latest.json`.
    Das erledigt `python tools/publish_release.py . x.y.z` (nach dem Commit und
-   `git push origin main`): legt das Release an, lädt die Dateien hoch,
-   veröffentlicht und bricht den dadurch gestarteten `release.yml`-Lauf ab.
+   `git push origin main`, beides erst nach Freigabe): prüft zuerst mit `verify`, legt
+   das Release an, lädt die Dateien hoch, veröffentlicht und bricht den dadurch
+   gestarteten `release.yml`-Lauf ab. Schlägt die Prüfung fehl, passiert nichts.
    Den Tag **nicht** selbst pushen – das Skript legt ihn beim Veröffentlichen
    an. Zugang über `git credential fill` (wird nicht ausgegeben).
 
-Der private Signaturschlüssel gehört nie ins Repository und nie in die Umgebung
-eines Builds (siehe „Fehler, die hier schon passiert sind“). Mit GitHub Actions
-(`release.yml`) übernimmt das Secret `TAURI_SIGNING_PRIVATE_KEY` die
-Signierung.
+Ohne Agent macht `node tools/release_local.mjs` (VS Code: Aufgabe „Lumenkorn: Release
+bauen“) die Schritte 2 und 3 nacheinander. `node tools/release_local.mjs verify` prüft
+jederzeit Signaturen, Version und `latest.json`, ganz ohne Schlüssel und Passwort.
+
+**Schlüssel und Passwort gehören allein dem Nutzer.** Der Schlüssel liegt mit Passwort
+geschützt in `~/.tauri/lumenkorn-updater.key`.
+
+- Die Schlüsseldatei nie lesen, ausgeben oder kopieren, auch keine alte Kopie. Sie gehört
+  nie ins Repository und nie in die Umgebung eines Builds (siehe „Fehler, die hier schon
+  passiert sind“).
+- Das Passwort nie im Chat erfragen, nie in eine Datei, ein Argument oder eine
+  Umgebungsvariable schreiben und das Passwortfenster nie fernsteuern. Zum Testen des
+  Fensters nur einen eigens erzeugten Wegwerfschlüssel in einer Kopie im Scratchpad nehmen.
+- Nennt der Nutzer das Passwort doch im Chat: darauf hinweisen, dass es damit als bekannt
+  gilt und geändert werden sollte.
+- Das GitHub-Secret `TAURI_SIGNING_PRIVATE_KEY` ist bewusst gelöscht und wird nicht wieder
+  angelegt: `release.yml` baut nur noch Installer ohne Update-Daten, signiert wird allein
+  lokal. Ein neues Schlüsselpaar nur auf ausdrücklichen Wunsch: Installierte Versionen
+  vertrauen nur dem alten Schlüssel, und wer die Übergangsversion auslässt, müsste von Hand
+  neu installieren.

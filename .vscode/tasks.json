@@ -4,9 +4,9 @@
   "tasks": [
     {
       "label": "Lumenkorn: Release bauen",
-      "detail": "Windows-Installer bauen, für den Updater signieren und latest.json erzeugen (tools/release_local.mjs)",
+      "detail": "Windows-Installer bauen, nach dem Passwort fragen, signieren, latest.json erzeugen und prüfen (tools/release_local.mjs)",
       "type": "shell",
-      "command": "npm ci; node tools/release_local.mjs '${input:updaterKey}'",
+      "command": "npm ci; node tools/release_local.mjs",
       "windows": {
         "options": { "shell": { "executable": "powershell.exe", "args": ["-NoProfile", "-Command"] } }
       },
@@ -20,14 +20,6 @@
       "command": "npm run tauri dev",
       "problemMatcher": [],
       "isBackground": true
-    }
-  ],
-  "inputs": [
-    {
-      "id": "updaterKey",
-      "type": "promptString",
-      "description": "Pfad zu lumenkorn-updater.key (leer lassen: Benutzerordner oder Downloads)",
-      "default": ""
     }
   ]
 }

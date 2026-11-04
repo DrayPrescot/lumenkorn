@@ -1001,9 +1001,11 @@ Installer für den Updater signiert und `latest.json` angehängt. Sobald der Ent
 ist, bieten installierte Programme das Update an.
 
 **Release ohne GitHub Actions:** In VS Code **Terminal → Aufgabe ausführen → „Lumenkorn: Release
-bauen“** (oder `node tools/release_local.mjs <Pfad zu lumenkorn-updater.key>`) baut die
-Windows-Installer, signiert sie und erzeugt `latest.json`. Die beiden MSI und `latest.json` dann
-in ein veröffentlichtes Release mit dem Tag `v<Version>` hochladen.
+bauen“** (oder `node tools/release_local.mjs`) baut die Windows-Installer, fragt in einem eigenen
+Fenster nach dem Passwort des Signaturschlüssels, signiert, erzeugt `latest.json` und prüft die
+Signaturen. Der Schlüssel wird in `~/.tauri` gesucht, sonst lässt er sich im Fenster auswählen. Die
+Schritte laufen auch einzeln (`build`, `sign`, `verify`). Die beiden MSI und `latest.json` dann in
+ein veröffentlichtes Release mit dem Tag `v<Version>` hochladen.
 
 ## Android
 
