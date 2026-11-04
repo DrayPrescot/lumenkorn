@@ -29,7 +29,7 @@ export default {
   "Hochladen": "Upload",
   "Mit Nextcloud verbunden": "Connected to Nextcloud",
   "Verbindung zu Nextcloud trennen? Lumenkorns App-Passwort wird dort widerrufen; hochgeladene Dateien und geteilte Links bleiben.": "Disconnect from Nextcloud? Lumenkorn's app password is revoked there; uploaded files and shared links stay.",
-  "Lädt die exportierten Bilder eines Projekts in einen Ordner deiner Nextcloud und teilt ihn auf Wunsch als Link. Rechtsklick auf ein Projekt → „Zu Nextcloud hochladen …“.": "Uploads a project's exported photos to a folder in your Nextcloud and shares it as a link if you like. Right-click a project → “Upload to Nextcloud…”.",
+  "Lädt die exportierten Bilder oder die Originale eines Projekts in einen Ordner deiner Nextcloud und teilt ihn auf Wunsch als Link. Rechtsklick auf ein Projekt → „Zu Nextcloud hochladen …“.": "Uploads a project's exported photos or originals to a folder in your Nextcloud and shares it as a link if you like. Right-click a project → “Upload to Nextcloud…”.",
   "Verbunden": "Connected",
   "{user} auf {server}": "{user} on {server}",
   "Trennen": "Disconnect",

@@ -7,7 +7,7 @@ Gedacht ist es als Ersatz für Lightroom Classic: Fotos und Bearbeitungen bleibe
 Platte, es gibt kein Konto, keine Cloud und kein Abo. Die KI-Funktionen nutzen offene Modelle,
 die einmal heruntergeladen werden und danach offline auf Prozessor oder Grafikkarte rechnen. Nur
 die Kartenansicht braucht das Internet (siehe [Karte](#karte)). Zum Teilen kann Lumenkorn die
-Exporte eines Projekts in deine eigene Nextcloud hochladen und einen Freigabelink anlegen, aber
+Exporte oder Originale eines Projekts in deine eigene Nextcloud hochladen und einen Freigabelink anlegen, aber
 erst, wenn du sie selbst verbindest.
 
 <img src="screenshots/develop.webp" alt="Entwickeln-Ansicht mit einem Sonnenuntergang über einem See und den Reglern rechts" width="900">

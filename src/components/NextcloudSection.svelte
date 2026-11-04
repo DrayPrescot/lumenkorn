@@ -75,7 +75,7 @@
 </script>
 
 <p class="muted small">
-  {t("Lädt die exportierten Bilder eines Projekts in einen Ordner deiner Nextcloud und teilt ihn auf Wunsch als Link. Rechtsklick auf ein Projekt → „Zu Nextcloud hochladen …“.")}
+  {t("Lädt die exportierten Bilder oder die Originale eines Projekts in einen Ordner deiner Nextcloud und teilt ihn auf Wunsch als Link. Rechtsklick auf ein Projekt → „Zu Nextcloud hochladen …“.")}
 </p>
 
 {#if !loaded}

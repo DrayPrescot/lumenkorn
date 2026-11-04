@@ -1,4 +1,4 @@
-//! Nextcloud: die Exporte eines Projekts in einen Ordner hochladen und als
+//! Nextcloud: die Exporte oder Originale eines Projekts in einen Ordner hochladen und als
 //! Link teilen.
 //!
 //! - **Anmeldung:** Login Flow v2. Der Browser zeigt die Anmeldeseite der

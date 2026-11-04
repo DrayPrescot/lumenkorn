@@ -23,7 +23,7 @@ catalog, and you rate, sort, develop and export from there. The originals are ne
 There is no account, no cloud and no subscription. The AI features (keywords, search by image
 content, masks, noise reduction, object removal, face recognition) use open models that are
 downloaded once and then run offline on your CPU or GPU. Only the map view needs the internet
-(see [Map](#map)). If you want to share photos, Lumenkorn can upload a project's exports to your
+(see [Map](#map)). If you want to share photos, Lumenkorn can upload a project's exports or originals to your
 own Nextcloud and create a share link, but only once you connect it yourself.
 
 Lumenkorn has reached version 1.0. It is mainly used on Windows and is also built and tested
@@ -293,14 +293,13 @@ The current state of `main` is always available as a Windows installer (German a
 MSI) under the [nightly](https://github.com/DrayPrescot/lumenkorn/releases/tag/nightly)
 pre-release. It is rebuilt after every push that passes CI, and a new version installs over
 the old one. Tagged versions on the [Releases](https://github.com/DrayPrescot/lumenkorn/releases)
-page also include Linux packages (`.deb`, `.rpm`, `.AppImage`).
+page contain the same Windows installers; on Linux, [build Lumenkorn from source](#building-from-source).
 
 ### Updates
 Shortly after starting, Lumenkorn checks once whether a newer version has been released on
 GitHub. If there is one, it shows what changed and asks; **Install now** downloads it, checks
 its signature, installs it and restarts, **Later** asks again at the next start. Catalog and
-edits are kept. Updates follow the versioned releases (not *nightly*); the AppImage updates
-itself on Linux, `.deb` and `.rpm` are updated by the package manager.
+edits are kept. Updates follow the versioned releases (not *nightly*).
 
 The installers are not code-signed yet. Windows SmartScreen will ask once
 ("More info" → "Run anyway").
