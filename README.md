@@ -612,6 +612,7 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 npm run check
+npm test
 npm run i18n               # every UI text has an English translation
 ```
 
@@ -729,7 +730,7 @@ license only allows non-commercial use.
 
 ### Development and testing
 [TypeScript](https://github.com/microsoft/TypeScript), [Vite](https://github.com/vitejs/vite),
-[svelte-check](https://github.com/sveltejs/language-tools), the
+[svelte-check](https://github.com/sveltejs/language-tools), [Vitest](https://github.com/vitest-dev/vitest), the
 [Tauri CLI](https://github.com/tauri-apps/tauri), [Mesa](https://www.mesa3d.org) (lavapipe for
 GPU tests in CI), [tempfile](https://github.com/Stebalien/tempfile), and the RAW samples from
 [OpenImageIO-images](https://github.com/AcademySoftwareFoundation/OpenImageIO-images) that CI uses

@@ -864,6 +864,7 @@ Hartley-Normierung zum Ausrichten, Laplace-Pyramiden (Burt und Adelson) für Foc
 
 **Zum Entwickeln und Testen:** [TypeScript](https://github.com/microsoft/TypeScript),
 [Vite](https://github.com/vitejs/vite), [svelte-check](https://github.com/sveltejs/language-tools),
+[Vitest](https://github.com/vitest-dev/vitest),
 die [Tauri-CLI](https://github.com/tauri-apps/tauri), [Mesa](https://www.mesa3d.org) (lavapipe für
 GPU-Tests in der CI), [tempfile](https://github.com/Stebalien/tempfile) und die RAW-Beispiele aus
 [OpenImageIO-images](https://github.com/AcademySoftwareFoundation/OpenImageIO-images), mit denen die
@@ -904,7 +905,7 @@ LUMENKORN_TEST_ORT_GPU=/pfad/runtime-webgpu/libonnxruntime.so LUMENKORN_TEST_DEN
 ```
 
 Vor einem Pull Request: `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
-`cargo test --workspace`, `npm run check` und `npm run i18n`.
+`cargo test --workspace`, `npm run check`, `npm test` und `npm run i18n`.
 
 **Übersetzungen:** Die Texte der Oberfläche stehen im Quelltext auf Deutsch und sind zugleich der
 Schlüssel: `t("Ordner hinzufügen")` ergibt auf Englisch „Add folder“. Die englischen Texte liegen in

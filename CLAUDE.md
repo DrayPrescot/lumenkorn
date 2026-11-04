@@ -49,9 +49,13 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 npm run check     # svelte-check
+npm test          # Frontend-Tests (vitest, *.test.ts neben dem Code)
 npm run i18n      # jeder deutsche Text braucht eine englische Übersetzung
 npm run build
 ```
+
+Prüfungen mit `&&` an den Commit ketten und ihre Ausgabe lesen: Ein `grep` oder `tail`
+dazwischen schluckt den Fehlercode, und der Commit geht trotz rotem clippy durch.
 
 - Linux/CI ohne Grafikkarte: `LUMENKORN_GPU_SOFTWARE=1` (Software-Vulkan).
   `LUMENKORN_TEST_RAW=<Ordner>` aktiviert Tests mit echten RAW-Dateien.
@@ -62,6 +66,94 @@ npm run build
   entfernen (das Skript meldet sie).
 - PowerShell verschluckt `--`: `npm run tauri build '--' --bundles msi`
   bzw. die Skripte unten verwenden.
+
+## Fehler, die hier schon passiert sind
+
+Aus dem Audit vom November 2026. Jeder Punkt war ein echter Fehler; die Regeln gelten
+auch, wenn eine Änderung gerade anders einfacher wäre. Bevor du etwas in diesen Bereichen
+änderst, lies den passenden Absatz.
+
+**Was du geprüft hast, ehrlich sagen**
+
+- Die Browser-Vorschau beweist nichts über die App: `mock.ts` liefert, was jemand
+  hineingeschrieben hat. Hängt Logik an einem Feld aus dem Backend, im Rust-Code jeden
+  `#[cfg]`-Zweig ansehen, was dort wirklich ankommt. (Die GPU-Frage verlangte eine
+  Geräteliste, die unter Windows immer leer war. Sie erschien dort nie, die Vorschau
+  zeigte sie.)
+- Solche Logik als reine Funktion in `src/lib` mit `*.test.ts` schreiben, mit dem Status
+  jeder Plattform als Testfall (Vorbild: `gpuPrompt.ts`).
+- Was nur im fertigen Programm gilt (CSP, Dateipfade, Treiber), in der App ansehen, nicht
+  nur in der Vorschau. Reicht das nicht, sagen, was nicht geprüft wurde. Funde von
+  Subagents am Code nachprüfen, bevor du sie weitergibst.
+
+**Fotos und Arbeit der Nutzer**
+
+- Vor jedem Löschen klären, ob die „Kopie“ wirklich eine andere Datei ist. `same_content`
+  vergleicht nur den Inhalt und ist für eine Datei und sich selbst wahr. (Der Import mit
+  „Danach löschen“ entfernte so die einzige Kopie, wenn die Quelle im Ziel lag.) Für
+  alles, was Dateien löscht, einen Test mit Quelle im Ziel.
+- Ein Katalogeintrag beweist nicht, dass die Datei da ist. Aussagen, auf die der Nutzer
+  hin handelt („schon importiert“), am Dateisystem prüfen.
+- Dateien nie unter Namen zurücklassen, die der Scanner übergeht. Lässt sich ein
+  Zwischenname nicht vermeiden, muss er den alten Namen enthalten und ein Weg zurück
+  bestehen (`rename::recover_leftover`). Was nicht abbrechen darf, läuft unter
+  `exit::critical()`: Das Beenden beendet den Prozess sonst sofort.
+- Arbeit der Nutzer gehört in den Datenordner (`lib/docs.ts`, Katalog), nicht in den
+  `localStorage`. Speicherfehler nie verschlucken, und „gespeichert“ erst nach dem Erfolg
+  anzeigen. Ein gescheitertes Speichern darf beim Weiterblättern nicht verloren gehen.
+- Einstellungen und Dokumente über `fsutil::save_json` bzw. `write_atomic`, nie
+  `std::fs::write`. `write_atomic_cache` nur für Dateien, die sich neu erzeugen lassen.
+
+**Dateien von außen (Fotos, Sidecars, Modelle)**
+
+- Jede Größenangabe in einer Datei ist ein Angriff. Eine fehlgeschlagene Anforderung und
+  ein Stapelüberlauf beenden den Prozess, `catch_unwind` hilft dagegen nicht, und weil der
+  Scan bei jedem Start läuft, wird daraus eine Absturzschleife.
+- EXIF nur über `exif_guard`, nie direkt über `exif::Reader` (70 KB verlangten sonst 1 GB).
+- Bilder über `raster::open` und `raster::dimensions`. `Limits::no_limits()` nur mit eigener
+  Grenze (ein 1-MB-PNG verlangte 1 GB). Vor dem Anlegen prüfen, was wirklich gebraucht
+  wird: In Float sind es 12 B/Pixel, nicht die 3 B/Pixel des dekodierten Bildes.
+- Schleifen über Dateiinhalte brauchen eine Obergrenze, Rekursion eine Tiefengrenze.
+  Vorsicht bei „je Kandidat bis zum Dateiende“: Das ist quadratisch (1 MB dauerte 6 s,
+  16 MB 25 Minuten).
+- Für neue Leser einen Test mit präparierter Datei; `tests/limits.rs` misst, wie viel
+  wirklich angefordert wird. Echte Dateien nicht vergessen, zu strenge Grenzen treffen
+  sonst die Nutzer (`LUMENKORN_TEST_RAW`, `LUMENKORN_TEST_PTH`).
+
+**Speicher und Sperren**
+
+- Die Katalogsperre teilt sich die Oberfläche. Unter ihr nur SQL: kein `canonicalize`,
+  `is_file`, `WalkDir`, keine Dekodierung (auf einem schlafenden NAS sind das Sekunden).
+  `match x.locked().y() { … }` hält die Sperre über den ganzen `match`: erst binden.
+- Längere Leseabfragen über `Catalog::reader()`. Stapel in einer Abfrage (`json_each`)
+  oder einer Transaktion, nicht je Foto.
+- Keine Sperren oder Semaphoren um Rayon-Arbeit: Ein wartender Rayon-Thread nimmt andere
+  Aufgaben an und kann sich verklemmen. Begrenzen über eigene Pools (`protocol.rs`).
+- Ein RAW belegt beim Entwickeln bis ~1,5 GB. Alles, was entwickelt, braucht eine feste
+  Grenze und beachtet `low_memory()`. Das gilt auch für neue Pools und Caches: Der Sparmodus
+  wirkt nur, wo man ihn abfragt.
+
+**Oberfläche**
+
+- Die CSP steht in `tauri.conf.json`, die Vorschau sendet dieselbe. `fetch` auf Blob-URLs
+  geht nicht, also den Blob behalten. Bei neuen Browser-Funktionen (Audio, Worker, Netz)
+  die Konsole auf Verstöße prüfen.
+- Reihenfolge von Ereignis und Status nicht annehmen: Der Store meldet das Ende eines
+  Downloads, bevor der neue Status da ist. Nach jedem `await` prüfen, ob das Foto noch
+  dasselbe ist. Ereignisse abonnieren, bevor das erste Laden beginnt.
+- Einstellungen als Änderung schicken (`lib.setAiSettings({ faces: true })`), nicht den
+  ganzen alten Stand: Zwei schnelle Klicks nehmen sich sonst gegenseitig zurück.
+- Jeder Aufruf ans Backend braucht eine Fehlerbehandlung, Besetzt-Anzeigen ein `finally`.
+  Ein Schalter, dessen Speichern scheitert, muss zurückspringen.
+
+**Sicherheit und Release**
+
+- Der Signaturschlüssel darf nie in der Umgebung eines Builds stehen: Build-Skripte aller
+  Abhängigkeiten könnten ihn lesen. `tools/release_local.mjs` baut ohne ihn und signiert
+  danach, mit `--app-version`, sonst lehnt der Updater die Datei ab.
+- `cargo audit` vor jedem Release. Ausnahmen nur in `.cargo/audit.toml`, mit Begründung.
+- Kein `{@html}`, SQL nur mit Parametern, fremde Adressen nur geprüft an
+  `commands::launch_browser`.
 
 ## Aufbau
 
@@ -102,9 +194,9 @@ einen Ordner im Scratchpad setzen (eigener Katalog, Cache darin).
 
 0. **Vor jedem Release alle Prüfungen aus „Prüfen vor jedem Commit“ laufen
    lassen** (fmt, clippy, `cargo test --workspace` inklusive GPU-Test, check,
-   i18n, build). Schlägt etwas fehl, wird nicht gebaut und nichts
-   veröffentlicht – erst beheben. Ohne GitHub Actions gibt es keine zweite
-   Prüfung, diese hier ist die einzige.
+   test, i18n, build), dazu `cargo audit`. Schlägt etwas fehl, wird nicht gebaut
+   und nichts veröffentlicht – erst beheben. Ohne GitHub Actions gibt es keine
+   zweite Prüfung, diese hier ist die einzige.
 1. Version in `Cargo.toml` (`[workspace.package]`), `package.json`,
    `package-lock.json` und `src-tauri/tauri.conf.json` erhöhen,
    `cargo update -w`, im CHANGELOG unter `## [Unreleased]` den Abschnitt
@@ -122,6 +214,7 @@ einen Ordner im Scratchpad setzen (eigener Katalog, Cache darin).
    Den Tag **nicht** selbst pushen – das Skript legt ihn beim Veröffentlichen
    an. Zugang über `git credential fill` (wird nicht ausgegeben).
 
-Der private Signaturschlüssel gehört nie ins Repository. Mit GitHub Actions
+Der private Signaturschlüssel gehört nie ins Repository und nie in die Umgebung
+eines Builds (siehe „Fehler, die hier schon passiert sind“). Mit GitHub Actions
 (`release.yml`) übernimmt das Secret `TAURI_SIGNING_PRIVATE_KEY` die
 Signierung.
