@@ -1,30 +1,106 @@
 <div align="center">
 
-<img src="src-tauri/icons/128x128.png" width="96" alt="Lumenkorn icon">
+<img src="site/img/hero.webp" alt="Green northern lights in the night sky over Iceland" width="900">
+
+<sub><code>DSC08794.ARW · ISO 3200 · 28 mm · f/2.8 · 2.5 s · Iceland · Developed in Lumenkorn</code></sub>
+
+<br>
+
+<img src="src-tauri/icons/128x128.png" width="72" alt="Lumenkorn icon">
 
 # Lumenkorn
 
-**Photo library and RAW developer that runs entirely on your own computer.**
+## Your photos. On your PC.
+
+Lumenkorn manages your photo collection and develops RAW files. Everything runs on your computer,
+including the AI. You need no account and no subscription.
+
+**[Download for Windows](https://lumenkorn.com/guide)** · [Website](https://lumenkorn.com) · [Deutsch](docs/README.de.md)
+
+**Tested with over 80,000 of our own photos** · Free and open source (GPL-3.0) · Windows 10 and 11 · Linux from source
 
 [![CI](https://github.com/DrayPrescot/lumenkorn/actions/workflows/ci.yml/badge.svg)](https://github.com/DrayPrescot/lumenkorn/actions/workflows/ci.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](#license)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-lightgrey)
 
-[Website](https://lumenkorn.com) · [Features](#features) · [Getting started](#getting-started) · [How it works](#how-it-works) · [Tech stack](#tech-stack) · [Open-source credits](#open-source-projects-used-by-lumenkorn) · [Deutsch](docs/README.de.md)
+<a href="https://lumenkorn.com/#trailer"><img src="site/img/poster-en.webp" alt="Still from the trailer: a toucan with the background turned black and white by an AI mask. Opens the trailer on the website." width="900"></a>
 
-<img src="docs/screenshots/develop.webp" alt="Develop view with a sunset over a lake and the sliders on the right" width="900">
+<sub>Watch the trailer on the website · 1:14</sub>
 
 </div>
+
+## Four cases in which Lumenkorn goes online
+
+That is all of them. Your photos, the catalog, your edits and all AI results stay on your computer.
+There is no account, no cloud and no usage statistics.
+
+| Case | Where to | What happens |
+|---|---|---|
+| **Update check** | `GitHub` | Shortly after starting, Lumenkorn asks once whether a new version is out. This tells GitHub your IP address. |
+| **AI downloads** | `GitHub`, `Hugging Face`, `OpenCV` | Only when you click the button for it. Nothing about your photos is sent. |
+| **Map and place names** | `tile.openstreetmap.org`, `nominatim.openstreetmap.org` | To find place names, the coordinates of your photos are sent, rounded to about 100 m and bundled per town. Settings → General → Map and place names switches this off completely. |
+| **Nextcloud** | Your own server | Only when you connect it yourself and upload a project's exports or originals. The data only goes to the server you enter. |
+
+Read all the details on the [privacy page](https://lumenkorn.com/privacy).
+
+## From the memory card to the photo book
+
+[1 Add](#1--5-add) · [2 Cull](#2--5-cull) · [3 Develop](#3--5-develop) · [4 Find](#4--5-find) · [5 Share](#5--5-share)
+
+### 1 / 5 Add
+
+**Your folders stay as they are.** You add folders, Lumenkorn reads them in place and builds a
+catalog from them. Files are only copied when you import from a memory card, and every copy is
+checked byte by byte. If you rename or move files, Lumenkorn recognizes them by their content.
+[More](#library)
+
+<img src="site/img/library-v2.webp" alt="Library with animal photos from a zoo, a penguin selected, its camera data on the right" width="900">
+
+### 2 / 5 Cull
+
+**Get to the photos worth keeping.** The culling assistant suggests what to reject: the weaker
+shots of a burst, blurry photos, closed eyes, badly exposed photos and photos taken by accident.
+You check the suggestions, and only what you tick is rejected. [More](#library)
+
+### 3 / 5 Develop
+
+**The original stays untouched.** Only your settings are saved and the original file stays as it
+is. For RAW files Lumenkorn follows darktable's scene-referred workflow. Masks for the sky, the
+main subject, people and animals take one click. [More](#develop-non-destructive)
+
+<img src="site/img/before.webp" alt="Kingfisher on a branch before editing: flat and dull" width="49%"> <img src="site/img/after.webp" alt="The same photo after editing: warm, clear colors" width="49%">
+
+<sub>Before · After</sub>
+
+<img src="site/img/mask-v2.webp" alt="Kingfisher selected with an AI mask, shown in red, the mask's sliders on the right" width="900">
+
+### 4 / 5 Find
+
+**Search for what is in the photo.** Type “mountains” and you get mountains, even if nobody ever
+tagged those photos. You download the models for this once, and after that they run offline. The
+map shows where your photos were taken and can be switched off completely. [More](#map)
+
+<img src="site/img/search-v2.webp" alt="Search for “mountains” finds photos of Mount Fuji at sunset" width="49%"> <img src="site/img/map-v2.webp" alt="Map of Japan with clustered markers for the photos of a trip" width="49%">
+
+### 5 / 5 Share
+
+**From a trip to a photo book.** Pick a theme and a page size. Lumenkorn chooses the photos and
+lays them out in the order they were taken, and you save a print-ready PDF. The slideshow changes
+photos on the beat of your music and can be saved as an MP4 video. [Photo album](#photo-album) ·
+[Slideshow](#slideshow)
+
+<img src="site/img/album-en.webp" alt="Photo album with birds from Costa Rica, one double page" width="49%"> <img src="site/img/slideshow-map-en.webp" alt="Closing map of a slideshow: a trip through Italy from Venice to Naples with the route and a pin for every place" width="49%">
+
+## About Lumenkorn
+
+[Features](#features) · [Getting started](#getting-started) · [How it works](#how-it-works) · [Tech stack](#tech-stack) · [Open-source credits](#open-source-projects-used-by-lumenkorn)
 
 Lumenkorn is meant as a replacement for Lightroom Classic for people who want to keep their
 photos and their edits on their own disk. You point it at your photo folders, it builds a
 catalog, and you rate, sort, develop and export from there. The originals are never touched.
 
-There is no account, no cloud and no subscription. The AI features (keywords, search by image
-content, masks, noise reduction, object removal, face recognition) use open models that are
-downloaded once and then run offline on your CPU or GPU. Only the map view needs the internet
-(see [Map](#map)). If you want to share photos, Lumenkorn can upload a project's exports or originals to your
-own Nextcloud and create a share link, but only once you connect it yourself.
+The AI features (keywords, search by image content, masks, noise reduction, object removal, face
+recognition) use open models that are downloaded once and then run offline on your CPU or GPU.
 
 Lumenkorn has reached version 1.0. It is mainly used on Windows and is also built and tested
 on Linux. The interface is in German and English and follows
@@ -38,8 +114,6 @@ the catalog before you let Lumenkorn loose on your whole collection.
 ## Features
 
 ### Library
-
-<img src="docs/screenshots/library.webp" alt="Library with animal photos from a zoo, a penguin selected, its camera data on the right" width="900">
 
 - Folders are read in place. Nothing is copied or moved, unless you import from a card.
 - Import from a memory card (`Ctrl+Shift+I` or the arrow next to “Folders”): pick photos by day
@@ -98,8 +172,6 @@ the catalog before you let Lumenkorn loose on your whole collection.
   Nikon, Sony, Fujifilm, Panasonic, Olympus/OM System, Pentax, DNG and others supported by rawler.
 
 ### Develop (non-destructive)
-
-<img src="docs/screenshots/ai-mask.webp" alt="Kingfisher selected with an AI mask, shown in red" width="900">
 
 - White balance (in Kelvin for RAW files, with **Automatic**), exposure, contrast, highlights, shadows,
   whites, blacks, clarity, dehaze,
@@ -177,8 +249,6 @@ right away and is developed like a RAW file, so highlights above 1.0 can still b
 
 ### Photo album
 
-<img src="docs/screenshots/album.webp" alt="Photo album with autumn photos from Japan and the text options on the right" width="900">
-
 **Fotoalbum** above a project or folder makes a photo book from it. Pick a theme (vacation,
 travel, wedding, birthday, family, baby, nature, party, sports, animals, or describe your own),
 a page size (30×30, 20×20, A4 portrait or landscape, 28×21, A3 or your own in mm), the number of
@@ -216,8 +286,6 @@ photos and pages, with or without margins.
   can be opened and changed again later.
 
 ### Slideshow
-
-<img src="docs/screenshots/slideshow-map-en.webp" alt="Closing map of a slideshow: a trip through Italy from Venice to Naples with the route and a pin for every place" width="900">
 
 **Diashow** next to **Fotoalbum** picks the best photos in the same way as the photo album and
 makes a slideshow from them. Pick a theme, the number of photos, how long each one stays, the
@@ -259,8 +327,6 @@ people can be sorted into your own collapsible groups, such as family and friend
 listed under *Sonstige*, and faces not named yet under *Unbenannt*, so the overview stays short.
 
 ### Map
-
-<img src="docs/screenshots/map.webp" alt="Map of Japan with clustered markers for the photos of a trip" width="900">
 
 The **Map** tab (`M`, next to Library and Develop) shows the photos of the current view (folder,
 project, person, search, filters) as clustered markers on an OpenStreetMap world map. Click a
@@ -601,7 +667,7 @@ lumenkorn/
 ├── src-tauri/                  Tauri commands, background worker, lw:// protocol, crash guard
 ├── src/                        Svelte interface, translations in src/lib/i18n/
 ├── scripts/, tools/            translation check, test model generator
-└── docs/                       German documentation, screenshots
+└── docs/                       German documentation
 ```
 
 ## Contributing

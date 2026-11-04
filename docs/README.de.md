@@ -1,16 +1,99 @@
+<div align="center">
+
+<img src="../site/img/hero.webp" alt="Grünes Polarlicht am Nachthimmel über Island" width="900">
+
+<sub><code>DSC08794.ARW · ISO 3200 · 28 mm · f/2,8 · 2,5 s · Island · Entwickelt in Lumenkorn</code></sub>
+
+<br>
+
+<img src="../src-tauri/icons/128x128.png" width="72" alt="Lumenkorn-Symbol">
+
 # Lumenkorn
 
-*[English version](../README.md) · Website: [lumenkorn.com](https://lumenkorn.com/de/)*
+## Deine Fotos. Auf deinem PC.
 
-Lumenkorn ist eine Fotoverwaltung mit RAW-Entwicklung, die komplett auf dem eigenen Rechner läuft.
-Gedacht ist es als Ersatz für Lightroom Classic: Fotos und Bearbeitungen bleiben auf der eigenen
-Platte, es gibt kein Konto, keine Cloud und kein Abo. Die KI-Funktionen nutzen offene Modelle,
-die einmal heruntergeladen werden und danach offline auf Prozessor oder Grafikkarte rechnen. Nur
-die Kartenansicht braucht das Internet (siehe [Karte](#karte)). Zum Teilen kann Lumenkorn die
-Exporte oder Originale eines Projekts in deine eigene Nextcloud hochladen und einen Freigabelink anlegen, aber
-erst, wenn du sie selbst verbindest.
+Lumenkorn verwaltet deine Fotosammlung und entwickelt RAW-Dateien. Alles läuft auf deinem Computer,
+auch die KI. Du brauchst kein Konto und kein Abo.
 
-<img src="screenshots/develop.webp" alt="Entwickeln-Ansicht mit einem Sonnenuntergang über einem See und den Reglern rechts" width="900">
+**[Für Windows herunterladen](https://lumenkorn.com/de/anleitung)** · [Website](https://lumenkorn.com/de/) · [English](../README.md)
+
+**Getestet mit über 80.000 eigenen Fotos** · Kostenlos und quelloffen (GPL-3.0) · Windows 10 und 11 · Linux aus dem Quellcode
+
+<a href="https://lumenkorn.com/de/#trailer"><img src="../site/img/poster-de.webp" alt="Standbild aus dem Trailer: ein Tukan, der Hintergrund per KI-Maske in Schwarzweiß. Öffnet den Trailer auf der Website." width="900"></a>
+
+<sub>Trailer auf der Website ansehen · 1:14</sub>
+
+</div>
+
+## Vier Fälle, in denen Lumenkorn ins Internet geht
+
+Mehr gibt es nicht. Deine Fotos, der Katalog, deine Bearbeitungen und alle KI-Ergebnisse bleiben auf
+deinem Rechner. Konto, Cloud und Nutzungsstatistik gibt es nicht.
+
+| Fall | Wohin | Was passiert |
+|---|---|---|
+| **Update-Prüfung** | `GitHub` | Kurz nach dem Start fragt Lumenkorn einmal, ob es eine neue Version gibt. GitHub erfährt dabei deine IP-Adresse. |
+| **KI-Downloads** | `GitHub`, `Hugging Face`, `OpenCV` | Nur wenn du auf den Knopf dafür klickst. Über deine Fotos wird dabei nichts gesendet. |
+| **Karte und Ortsnamen** | `tile.openstreetmap.org`, `nominatim.openstreetmap.org` | Für die Ortsnamen werden die Koordinaten deiner Fotos gesendet, auf etwa 100 m gerundet und je Ort gebündelt. Einstellungen → Allgemein → Karte und Ortsnamen schaltet das vollständig ab. |
+| **Nextcloud** | Dein eigener Server | Nur wenn du sie selbst verbindest und die Exporte oder Originale eines Projekts hochlädst. Die Daten gehen nur an den Server, den du einträgst. |
+
+Alles genau nachlesen: [Datenschutz](https://lumenkorn.com/de/datenschutz).
+
+## Von der Speicherkarte bis zum Fotobuch
+
+[1 Einlesen](#1--5-einlesen) · [2 Aussortieren](#2--5-aussortieren) · [3 Entwickeln](#3--5-entwickeln) · [4 Finden](#4--5-finden) · [5 Zeigen](#5--5-zeigen)
+
+### 1 / 5 Einlesen
+
+**Deine Ordner bleiben, wie sie sind.** Du fügst Ordner hinzu, Lumenkorn liest sie an Ort und Stelle
+und baut daraus einen Katalog. Kopiert wird nur, wenn du von einer Speicherkarte importierst, und
+jede Kopie wird Byte für Byte geprüft. Benennst du Dateien um oder verschiebst sie, erkennt Lumenkorn
+sie am Inhalt wieder. [Mehr](#bibliothek)
+
+<img src="../site/img/library-v2.webp" alt="Bibliothek mit Tierfotos aus einem Zoo, ein Pinguin ausgewählt, rechts seine Aufnahmedaten" width="900">
+
+### 2 / 5 Aussortieren
+
+**Schnell zu den Fotos, die bleiben.** Der Aussortier-Assistent schlägt vor, was weg kann: aus Serien
+die schwächeren Fotos, unscharfe Fotos, geschlossene Augen, stark falsch belichtete und versehentlich
+ausgelöste Fotos. Du prüfst die Vorschläge, abgelehnt wird nur, was du anhakst. [Mehr](#aussortieren)
+
+### 3 / 5 Entwickeln
+
+**Das Original bleibt unberührt.** Gespeichert werden nur deine Einstellungen, die Originaldatei
+bleibt unverändert. Für RAW-Dateien folgt Lumenkorn dem szenenbezogenen Ablauf von darktable. Masken
+für Himmel, Hauptmotiv, Personen und Tiere brauchen nur einen Klick. [Mehr](#entwickeln-non-destruktiv) ·
+[Masken](#masken-lokale-anpassungen)
+
+<img src="../site/img/before.webp" alt="Eisvogel auf einem Ast vor der Bearbeitung: flau und matt" width="49%"> <img src="../site/img/after.webp" alt="Dasselbe Foto nach der Bearbeitung: warme, klare Farben" width="49%">
+
+<sub>Vorher · Nachher</sub>
+
+<img src="../site/img/mask-v2.webp" alt="Eisvogel mit einer KI-Maske ausgewählt, rot angezeigt, rechts die Regler der Maske" width="900">
+
+### 4 / 5 Finden
+
+**Such nach dem, was zu sehen ist.** Wer „Berge“ eingibt, bekommt Berge, auch wenn die Fotos nie
+verschlagwortet wurden. Die Modelle dafür lädst du einmal herunter, danach rechnen sie offline. Die
+Karte zeigt deine Aufnahmeorte und lässt sich komplett abschalten. [KI-Funktionen](#ki-funktionen) ·
+[Karte](#karte)
+
+<img src="../site/img/search-v2.webp" alt="Die Suche nach „Berge“ findet Fotos vom Fuji im Abendlicht" width="49%"> <img src="../site/img/map-v2.webp" alt="Karte von Japan mit gebündelten Markierungen für die Fotos einer Reise" width="49%">
+
+### 5 / 5 Zeigen
+
+**Vom Urlaub zum Fotobuch.** Du wählst ein Thema und ein Format, Lumenkorn sucht die Fotos aus und
+verteilt sie in zeitlicher Reihenfolge auf die Seiten, und du speicherst ein druckfertiges PDF. Die
+Diashow wechselt die Fotos im Takt deiner Musik und lässt sich als MP4-Video speichern.
+[Fotoalbum](#fotoalbum) · [Diashow](#diashow)
+
+<img src="../site/img/album-de.webp" alt="Fotoalbum mit Vögeln aus Costa Rica, eine Doppelseite" width="49%"> <img src="../site/img/slideshow-map-de.webp" alt="Schlusskarte einer Diashow: eine Italienreise von Venedig bis Neapel mit Route und einer Stecknadel für jeden Ort" width="49%">
+
+## Über Lumenkorn
+
+Lumenkorn ist gedacht als Ersatz für Lightroom Classic: Fotos und Bearbeitungen bleiben auf der
+eigenen Platte. Die KI-Funktionen nutzen offene Modelle, die einmal heruntergeladen werden und danach
+offline auf Prozessor oder Grafikkarte rechnen.
 
 Lumenkorn ist in Rust geschrieben, die Oberfläche in Svelte, zusammengehalten von Tauri 2. Es läuft
 unter Windows und Linux; für Android ist der Code vorbereitet. Bildbearbeitung und KI nutzen die
@@ -47,8 +130,6 @@ KI-Schlagworte folgen der Sprache. Schon vergebene Schlagworte bleiben, „Einst
 vergibt sie in der neuen Sprache neu.
 
 ## Bibliothek
-
-<img src="screenshots/library.webp" alt="Bibliothek mit Tierfotos aus einem Zoo, ein Pinguin ausgewählt, rechts seine Kameradaten" width="900">
 
 - **Ordner statt Import.** Du fügst einen Ordner hinzu, Lumenkorn liest ihn ein. Nichts wird
   kopiert, verschoben oder verändert.
@@ -157,8 +238,6 @@ vergibt sie in der neuen Sprache neu.
   (`aussortieren.json` im Datenordner, zurücksetzen unter Einstellungen → KI).
 
 ## Karte
-
-<img src="screenshots/map.webp" alt="Karte von Japan mit gruppierten Markierungen für die Fotos einer Reise" width="900">
 
 Der Reiter **Karte** (Taste M, neben Bibliothek und Entwickeln) zeigt die Fotos der aktuellen
 Ansicht (Ordner, Projekt, Person, Suche, Filter) als gruppierte Markierungen auf einer
@@ -299,8 +378,6 @@ Außerdem:
   KI-Schlagworte und der Ort bleiben draußen.
 
 ## Masken (lokale Anpassungen)
-
-<img src="screenshots/ai-mask.webp" alt="Eisvogel, mit einer KI-Maske ausgewählt und rot hervorgehoben" width="900">
 
 Jede Maskenebene hat eigene Regler (Belichtung, Kontrast, Lichter, Tiefen, Klarheit, Temperatur,
 Tönung, Sättigung) und besteht aus einer oder mehreren Formen, die hinzugefügt oder abgezogen werden,
@@ -492,8 +569,6 @@ unbearbeiteten Originale.
 
 ## Fotoalbum
 
-<img src="screenshots/album.webp" alt="Fotoalbum mit Herbstfotos aus Japan, rechts die Textoptionen" width="900">
-
 Über **Fotoalbum** oberhalb eines Projekts oder Ordners entsteht daraus ein Fotobuch. Man wählt
 das Thema (Urlaub, Reise, Hochzeit, Geburtstag, Familie, Baby und Kind, Natur, Feier, Sport,
 Tiere oder eine eigene Beschreibung), das Format (30 × 30, 20 × 20, A4 hoch oder quer, 28 × 21,
@@ -534,8 +609,6 @@ A3 oder eigene Maße in mm), die Anzahl der Fotos und Seiten und ob mit Rand ode
   bearbeiten.
 
 ## Diashow
-
-<img src="screenshots/slideshow-map-de.webp" alt="Schlusskarte einer Diashow: eine Italienreise von Venedig bis Neapel mit Route und einer Stecknadel für jeden Ort" width="900">
 
 Über **Diashow** neben **Fotoalbum** wählt Lumenkorn die besten Fotos genauso aus wie für das
 Fotoalbum und macht daraus eine Diashow. Man wählt das Thema, die Anzahl der Fotos, wie lange
