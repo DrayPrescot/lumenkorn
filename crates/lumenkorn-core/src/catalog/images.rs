@@ -245,19 +245,13 @@ impl Catalog {
     /// (ID, Pfad, Größe in Bytes). Andere IDs werden stillschweigend übergangen –
     /// gelöscht wird nur, was zum Zeitpunkt des Löschens wirklich abgelehnt ist.
     pub fn rejected_files(&self, ids: &[i64]) -> Result<Vec<(i64, String, i64)>> {
-        let mut st = self.conn.prepare(
-            "SELECT id, path, size FROM images WHERE id = ?1 AND flag = -1 AND missing = 0",
+        let list = serde_json::to_string(ids)?;
+        let mut st = self.conn.prepare_cached(
+            "SELECT id, path, size FROM images
+             WHERE id IN (SELECT value FROM json_each(?1)) AND flag = -1 AND missing = 0",
         )?;
-        let mut out = Vec::new();
-        for id in ids {
-            if let Some(r) = st
-                .query_row([id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
-                .optional()?
-            {
-                out.push(r);
-            }
-        }
-        Ok(out)
+        let rows = st.query_map([list], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
     /// Entfernt Bilder aus dem Katalog (samt Bearbeitungen, Schlagworten,

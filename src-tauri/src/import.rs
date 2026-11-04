@@ -67,7 +67,7 @@ fn load_settings(state: &AppState) -> ImportSettings {
 pub fn import_set_target(state: State<AppState>, target: Option<String>) -> Result<(), Error> {
     let mut s = load_settings(&state);
     s.target = target.filter(|t| !t.trim().is_empty());
-    std::fs::write(settings_path(&state), serde_json::to_string_pretty(&s)?)?;
+    lumenkorn_develop::fsutil::save_json(&settings_path(&state), &s)?;
     Ok(())
 }
 
@@ -313,8 +313,8 @@ pub async fn import_start(
         .or(settings.source);
     settings.target = Some(target.display().to_string());
     settings.delete_after = delete_after;
-    if let Ok(json) = serde_json::to_string_pretty(&settings) {
-        let _ = std::fs::write(settings_path(&state), json);
+    if let Err(e) = lumenkorn_develop::fsutil::save_json(&settings_path(&state), &settings) {
+        log::warn!("Import-Einstellungen nicht gespeichert: {e}");
     }
     let app2 = app.clone();
     std::thread::Builder::new()
@@ -392,7 +392,10 @@ fn register(state: &AppState, target: &Path, dirs: &[PathBuf]) -> (bool, bool) {
     if dirs.is_empty() {
         return (false, false);
     }
-    match state.catalog.locked().add_root(target) {
+    // Prüfen und Überwachung anmelden ohne Katalogsperre (Dateisystem)
+    let added = lumenkorn_core::Catalog::prepare_root(target)
+        .and_then(|norm| state.catalog.locked().add_root_normalized(&norm));
+    match added {
         Ok(root) => {
             if let Some(w) = state.watcher.locked().as_mut()
                 && let Err(e) = w.watch(Path::new(&root.path))

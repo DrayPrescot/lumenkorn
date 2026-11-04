@@ -101,9 +101,7 @@ fn decode_checked(decoder: impl ImageDecoder) -> ImageResult<DynamicImage> {
     let pixels = u64::from(w) * u64::from(h);
     let avail = crate::merge::available_bytes().map(|b| b as u64);
     if !decode_allowed(bytes, pixels, avail) {
-        return Err(ImageError::Limits(LimitError::from_kind(
-            LimitErrorKind::InsufficientMemory,
-        )));
+        return Err(insufficient_memory());
     }
     let _turn = (bytes > LARGE_BYTES).then(|| LARGE_TURN.lock().unwrap_or_else(|e| e.into_inner()));
     DynamicImage::from_decoder(decoder)
@@ -114,6 +112,35 @@ fn decode_checked(decoder: impl ImageDecoder) -> ImageResult<DynamicImage> {
 /// anzulegen (12 B/px – bei 400 MP fast 5 GB). Darunter bleibt alles exakt wie
 /// bisher (Linearisieren, Drehen, dann [`ImageF32::into_downscaled`]).
 const PRESHRINK_PIXELS: usize = 100_000_000;
+
+pub(crate) fn insufficient_memory() -> ImageError {
+    ImageError::Limits(LimitError::from_kind(LimitErrorKind::InsufficientMemory))
+}
+
+/// Ganzzahliger Vorverkleinerungsfaktor für [`to_linear`]; der Rest geht wie immer
+/// über `into_downscaled`, die Kante bleibt dafür ≥ `max_edge`.
+fn preshrink(w: usize, h: usize, max_edge: Option<usize>) -> usize {
+    match max_edge {
+        Some(m) if m > 0 && w.saturating_mul(h) > PRESHRINK_PIXELS => (w.max(h) / m).max(1),
+        _ => 1,
+    }
+}
+
+/// Reicht der Speicher für [`to_linear`]? [`open`] prüft nur das dekodierte Bild
+/// (3 B/Pixel); in Float sind es 12 B/Pixel zusätzlich. Ein PNG von wenigen MB mit
+/// 35 000 × 35 000 Pixeln verlangte in voller Auflösung so 15 GB, und eine
+/// fehlgeschlagene Anforderung beendet den Prozess.
+pub(crate) fn linear_fits(img: &DynamicImage, max_edge: Option<usize>) -> bool {
+    let (w, h) = (img.width() as usize, img.height() as usize);
+    let k = preshrink(w, h, max_edge);
+    let bytes = ((w / k) as u64 + 1) * ((h / k) as u64 + 1) * 12;
+    let avail = crate::merge::available_bytes().map(|b| b as u64);
+    linear_allowed(bytes, avail)
+}
+
+fn linear_allowed(bytes: u64, available: Option<u64>) -> bool {
+    bytes <= available.unwrap_or(FALLBACK_BYTES).max(MIN_BYTES_CAP)
+}
 
 /// Rasterbild → lineares Float-RGB. Sehr große Bilder werden, wenn nur eine
 /// Fassung bis `max_edge` gebraucht wird, dabei schon um einen ganzzahligen
@@ -130,12 +157,7 @@ pub(crate) fn to_linear(img: DynamicImage, max_edge: Option<usize>) -> ImageF32 
             | image::ColorType::La16
     );
     let (w, h) = (img.width() as usize, img.height() as usize);
-    // Ganzzahliger Vorverkleinerungsfaktor; der Rest geht wie immer über
-    // `into_downscaled`, die Kante bleibt dafür ≥ `max_edge`.
-    let k = match max_edge {
-        Some(m) if m > 0 && w * h > PRESHRINK_PIXELS => (w.max(h) / m).max(1),
-        _ => 1,
-    };
+    let k = preshrink(w, h, max_edge);
     if sixteen {
         let raw = img.into_rgb16().into_raw();
         convert(&raw, w, h, k, |v| lut[v as usize])
@@ -196,6 +218,21 @@ fn convert<T: Copy + Sync>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn float_copy_must_fit_the_memory() {
+        let gib = 1u64 << 30;
+        // 35 000 × 35 000 in Float, 10 GB frei: nein
+        assert!(!linear_allowed(35_000 * 35_000 * 12, Some(10 * gib)));
+        // 200-MP-Panorama, 4 GB frei: ja
+        assert!(linear_allowed(200_000_000 * 12, Some(4 * gib)));
+        // Kleine Bilder gehen immer, auch wenn gerade wenig frei ist
+        assert!(linear_allowed(24_000_000 * 12, Some(0)));
+        // Für eine kleine Fassung wird vorverkleinert
+        assert_eq!(preshrink(35_000, 35_000, Some(2048)), 17);
+        assert_eq!(preshrink(35_000, 35_000, None), 1);
+        assert_eq!(preshrink(6000, 4000, Some(2048)), 1);
+    }
 
     #[test]
     fn decode_limits() {

@@ -55,6 +55,7 @@ pub async fn rename_apply(
                 .into(),
             ));
         }
+        let _critical = crate::exit::critical();
         // Dateien ohne Katalogsperre umbenennen (Netzlaufwerke können dauern)
         rename::execute(&plan.moves).map_err(Error::Invalid)?;
         // Der Katalog folgt sofort, damit die Dateiüberwachung die Fotos

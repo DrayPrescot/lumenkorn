@@ -43,7 +43,16 @@ impl Catalog {
         path: &Path,
         recursive: bool,
     ) -> Result<Project> {
-        let p = paths::normalize_dir(path);
+        self.add_project_folder_normalized(project_id, &paths::normalize_dir(path), recursive)
+    }
+
+    /// Mit schon normiertem Pfad: greift nicht aufs Dateisystem zu
+    pub fn add_project_folder_normalized(
+        &self,
+        project_id: i64,
+        p: &str,
+        recursive: bool,
+    ) -> Result<Project> {
         self.project(project_id)?;
         self.conn.execute(
             "INSERT INTO project_folders (project_id, path, recursive) VALUES (?1, ?2, ?3)

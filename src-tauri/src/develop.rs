@@ -15,7 +15,7 @@ use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Längste Kante des Bearbeitungs-Proxys.
-pub const PROXY_EDGE: usize = 2048;
+pub const PROXY_EDGE: usize = lumenkorn_develop::exr_io::PROXY_EDGE;
 const CACHE_ENTRIES: usize = 4;
 
 /// Stand der Quelldatei beim Laden. Wird sie von außen geändert (in einer
@@ -809,13 +809,10 @@ pub fn develop_transfer(
     groups: lumenkorn_develop::TransferGroups,
 ) -> Result<(), Error> {
     let source = source.sanitized();
-    {
-        let mut cat = state.catalog.locked();
-        for id in &ids {
-            let merged = cat.develop_params(*id)?.transfer_from(&source, groups);
-            cat.save_develop(&[*id], &merged)?;
-        }
-    }
+    state
+        .catalog
+        .locked()
+        .transfer_develop(&ids, &source, groups)?;
     for id in &ids {
         state.cache.remove(*id);
     }

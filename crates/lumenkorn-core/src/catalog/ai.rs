@@ -167,6 +167,17 @@ impl Catalog {
         Ok(())
     }
 
+    /// Gespeicherte Vektoren einzelner Fotos
+    pub fn embeddings_of(&self, model: &str, ids: &[i64]) -> Result<Vec<(i64, Vec<u8>)>> {
+        let ids = serde_json::to_string(ids)?;
+        let mut st = self.conn.prepare_cached(
+            "SELECT image_id, vector FROM embeddings
+             WHERE model = ?1 AND image_id IN (SELECT value FROM json_each(?2))",
+        )?;
+        let rows = st.query_map(params![model, ids], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
     pub fn embeddings(&self, model: &str) -> Result<Vec<(i64, Vec<u8>)>> {
         let mut st = self.conn.prepare(
             "SELECT e.image_id, e.vector FROM embeddings e JOIN images i ON i.id = e.image_id

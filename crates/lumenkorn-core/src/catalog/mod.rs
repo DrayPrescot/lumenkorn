@@ -115,6 +115,25 @@ impl Catalog {
         Self::init(conn)
     }
 
+    /// Eigene Leseverbindung zur selben Datei: Dank WAL lesen längere Abfragen so,
+    /// ohne die Katalogsperre zu halten.
+    pub fn reader(&self) -> Result<Self> {
+        let path = self
+            .conn
+            .path()
+            .filter(|p| !p.is_empty())
+            .ok_or_else(|| Error::Invalid("Katalog im Arbeitsspeicher".into()))?;
+        let conn = Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        Ok(Catalog {
+            conn,
+            people_gen: Default::default(),
+        })
+    }
+
     /// Katalog im Arbeitsspeicher, für Tests.
     pub fn open_in_memory() -> Result<Self> {
         Self::init(Connection::open_in_memory()?)

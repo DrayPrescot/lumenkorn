@@ -49,6 +49,7 @@ pub mod raster;
 pub mod repair;
 pub mod source;
 pub mod style;
+pub mod tiff_dims;
 pub mod wb;
 
 pub use error::{Error, Result};

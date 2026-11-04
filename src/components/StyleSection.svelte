@@ -24,10 +24,9 @@
   });
 
   async function toggle(e: Event) {
-    const s = lib.ai;
-    if (!s) return;
-    await api.aiSetSettings({ ...s.settings, learnStyle: (e.currentTarget as HTMLInputElement).checked });
-    await lib.refreshAi();
+    const input = e.currentTarget as HTMLInputElement;
+    const on = input.checked;
+    if (!(await lib.setAiSettings({ learnStyle: on }))) input.checked = !on;
     await refresh();
   }
 

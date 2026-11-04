@@ -533,12 +533,64 @@ impl Walked {
     }
 }
 
+/// Neue Dateien, deren Inhalt es in einem anderen Quellordner gab und dort nicht
+/// mehr gibt: Sie wurden verschoben, Bewertung und Bearbeitung ziehen mit um. Sonst
+/// entstünde ein neues, leeres Foto und das alte bliebe für immer als fehlend zurück.
+/// Das Dateisystem wird ohne Katalogsperre befragt.
+fn moved_from_elsewhere(
+    catalog: &Mutex<Catalog>,
+    root_id: i64,
+    read: &[(NewImage, Action)],
+    vanished: &HashMap<(&str, i64), Vec<i64>>,
+) -> Result<HashMap<(String, i64), Vec<i64>>> {
+    let mut out: HashMap<(String, i64), Vec<i64>> = HashMap::new();
+    let wanted: Vec<(&str, i64)> = read
+        .iter()
+        .filter(|(_, action)| matches!(action, Action::New))
+        .map(|(img, _)| (img.quick_hash.as_str(), img.size))
+        .filter(|key| !vanished.contains_key(key))
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    if wanted.is_empty() || catalog.locked().roots()?.len() < 2 {
+        return Ok(out);
+    }
+    for chunk in wanted.chunks(500) {
+        let found: Vec<_> = {
+            let cat = catalog.locked();
+            chunk
+                .iter()
+                .map(|(hash, size)| cat.images_elsewhere(root_id, hash, *size))
+                .collect::<Result<_>>()?
+        };
+        for ((hash, size), rows) in chunk.iter().zip(found) {
+            for (id, path, root) in rows {
+                // Quellordner nicht erreichbar (Platte ab): Dann ist das Foto nur
+                // nicht zu sehen, und dies hier ist eine Kopie
+                if Path::new(&root).is_dir() && !Path::new(&path).exists() {
+                    out.entry(((*hash).to_string(), *size))
+                        .or_default()
+                        .push(id);
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// Sammelt alle Bilddateien und Unterordner unter `dir` ein.
 fn walk(dir: &Path, out: &mut Walked, progress: &dyn Fn(usize)) {
     for entry in WalkDir::new(dir)
         .follow_links(false)
         .into_iter()
-        .filter_entry(|e| !is_skipped(e))
+        .filter_entry(|e| {
+            // Nach einem Absturz beim Umbenennen: Die Datei kommt zurück und wird
+            // über die Dateiüberwachung oder den nächsten Scan wieder aufgenommen
+            if e.file_type().is_file() {
+                crate::rename::recover_leftover(e.path());
+            }
+            !is_skipped(e)
+        })
     {
         let entry = match entry {
             Ok(e) => e,
@@ -660,6 +712,8 @@ fn reconcile(
             .push(k.id);
     }
 
+    let mut elsewhere = moved_from_elsewhere(catalog, root_id, &read, &vanished)?;
+
     // 3. Schreiben – in Portionen zu je 1000 Fotos, jede in einer Transaktion.
     // Dazwischen wird die Katalogsperre freigegeben: Der erste Import von
     // 50 000 Fotos (jedes mit Suchindex-Eintrag) hielte die Oberfläche sonst
@@ -692,7 +746,12 @@ fn reconcile(
                     Action::New => {
                         let moved_from = vanished
                             .get_mut(&(img.quick_hash.as_str(), img.size))
-                            .and_then(|ids| ids.pop());
+                            .and_then(|ids| ids.pop())
+                            .or_else(|| {
+                                elsewhere
+                                    .get_mut(&(img.quick_hash.clone(), img.size))
+                                    .and_then(|ids| ids.pop())
+                            });
                         match moved_from {
                             Some(id) => {
                                 Catalog::move_image(tx, id, img)?;

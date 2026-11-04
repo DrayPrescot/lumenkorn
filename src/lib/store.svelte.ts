@@ -1,7 +1,7 @@
 // Zentraler Oberflächenzustand (Svelte-5-Runes).
 
 import { isCanceled, lang, num, t, tc } from "./i18n";
-import { api, listen, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type AiComponent, type MemorySaver, type DeleteReport, type RenameOptions, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress, type ImportProgress, type ImportDone, type ImageQuery, type LocationItem, type MetaPatch, type MetaReport } from "./api";
+import { api, listen, type AiSettings, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type AiComponent, type MemorySaver, type DeleteReport, type RenameOptions, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress, type ImportProgress, type ImportDone, type ImageQuery, type LocationItem, type MetaPatch, type MetaReport } from "./api";
 
 class Library {
   roots = $state<Root[]>([]);
@@ -108,15 +108,19 @@ class Library {
   async init() {
     // Meldungen aus dem Hintergrund in der Sprache der Oberfläche
     api.setLanguage(lang).catch(() => {});
-    // Ein Fehler beim ersten Laden darf die Ereignisse unten nicht verhindern –
-    // sonst bliebe die Oberfläche ohne Rückmeldung von Scans und Vorschauen
+    // Erst die Ereignisse abonnieren, dann laden: Der Scan beim Start läuft schon,
+    // was er während des ersten Ladens meldet, ginge sonst verloren. Ein Fehler beim
+    // Laden nimmt so auch nicht die Rückmeldung von Scans und Vorschauen.
+    this.#subscribe();
     try {
       await Promise.all([this.loadRoots(), this.loadProjects()]);
       await this.loadImages();
     } catch (e) {
       this.notify(String(e), "error");
     }
+  }
 
+  #subscribe() {
     listen("scan-progress", (p) => (this.scan = p));
     // GPS nachgetragen bzw. Ortsnamen ermittelt (Hintergrund): Liste gesammelt
     // neu laden – während des Nachtragens kommen die Meldungen in Stapeln
@@ -202,9 +206,12 @@ class Library {
       if (this.peopleStatus) this.peopleStatus = { ...this.peopleStatus, analyzed: done, total, faces };
       Library.#bump(this.#facesV, ids);
       this.#facesEpoch++;
-      // Personenliste gebündelt aktualisieren
-      clearTimeout(peopleTimer);
-      peopleTimer = setTimeout(() => this.refreshPeople(), 1500);
+      // Personenliste gebündelt aktualisieren. Nicht neu aufziehen: Kommen die
+      // Meldungen dichter, liefe der Zeitgeber sonst nie ab, solange die Analyse läuft
+      peopleTimer ??= setTimeout(() => {
+        peopleTimer = undefined;
+        void this.refreshPeople();
+      }, 1500);
     });
     listen("ai-progress", ({ done, total, ids }) => {
       if (this.ai) this.ai = { ...this.ai, analyzed: done, total };
@@ -1109,18 +1116,27 @@ class Library {
     return this.ai?.settings.enabled ?? true;
   }
 
-  async setAiEnabled(on: boolean) {
-    if (!this.ai) return;
+  /** Ändert die übergebenen KI-Einstellungen. `false`: Es hat nicht geklappt, die
+   *  Meldung ist schon gezeigt. */
+  async setAiSettings(patch: Partial<AiSettings>): Promise<boolean> {
     try {
-      await api.aiSetSettings({ ...this.ai.settings, enabled: on });
+      await api.aiSetSettings(patch);
+      return true;
     } catch (e) {
       this.notify(String(e), "error");
+      return false;
+    } finally {
+      await this.refreshAi();
     }
+  }
+
+  async setAiEnabled(on: boolean) {
+    await this.setAiSettings({ enabled: on });
     if (!on && this.semantic) {
       this.semantic = false;
       if (this.search.trim()) void this.loadImages();
     }
-    await Promise.all([this.refreshAi(), this.refreshPeople()]);
+    await this.refreshPeople();
   }
 
   async setMapEnabled(on: boolean) {
@@ -1149,8 +1165,10 @@ class Library {
         if (Object.keys(patch).length) parts.push(await api.metaSet(ids, patch));
         if (shiftSeconds) parts.push(await api.metaShiftTime(ids, shiftSeconds));
         for (const p of parts) {
-          report.changed.push(...p.changed.filter((id) => !report.changed.includes(id)));
-          report.failed.push(...p.failed);
+          // Große Auswahl: keine Suche je Foto und kein Ausbreiten als Argumente
+          const seen = new Set(report.changed);
+          for (const id of p.changed) if (!seen.has(id)) report.changed.push(id);
+          for (const f of p.failed) report.failed.push(f);
         }
       });
     } catch (e) {

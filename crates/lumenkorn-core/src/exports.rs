@@ -3,12 +3,14 @@
 //! vor dieser Liste finden sich über die markierten Export-Ordner
 //! ([`crate::scanner::EXPORT_MARKER`]) in den Ordnern des Projekts.
 
+use crate::LockExt;
 use crate::catalog::Catalog;
 use crate::error::Result;
-use crate::model::{ImageQuery, Scope};
+use crate::model::{ImageQuery, ProjectFolder, Scope};
 use rusqlite::params;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 /// Endungen, die als Export gelten (was Lumenkorn exportiert)
 const EXPORT_EXTS: [&str; 6] = ["jpg", "jpeg", "tif", "tiff", "png", "dng"];
@@ -49,52 +51,67 @@ impl Catalog {
         Ok(())
     }
 
-    /// Alle vorhandenen Export-Dateien eines Projekts, sortiert: die
-    /// eingetragenen Exporte seiner Fotos und die Dateien in markierten
-    /// Export-Ordnern innerhalb seiner Ordner.
-    pub fn project_exports(&self, project_id: i64) -> Result<Vec<PathBuf>> {
-        let mut out = BTreeSet::new();
+    /// Was [`project_exports`] aus dem Katalog braucht
+    fn project_export_rows(&self, project_id: i64) -> Result<(Vec<String>, Vec<ProjectFolder>)> {
         // Eine Abfrage für alle Fotos des Projekts statt einer je Foto
         let scope = ImageQuery::new(Scope::Project { id: project_id });
-        for p in self.paths_where(
+        let recorded = self.paths_where(
             "SELECT e.path FROM exports e JOIN images i ON i.id = e.image_id",
             "",
             &scope,
-        )? {
-            let p = PathBuf::from(p);
-            if p.is_file() {
-                out.insert(unique(&p));
-            }
-        }
-        for f in self.project(project_id)?.folders {
-            for dir in crate::scanner::export_dirs_in(Path::new(&f.path), f.recursive) {
-                if let Ok(rd) = std::fs::read_dir(&dir) {
-                    out.extend(
-                        rd.flatten()
-                            .map(|e| e.path())
-                            .filter(|p| p.is_file() && is_export_file(p))
-                            .map(|p| unique(&p)),
-                    );
-                }
-            }
-        }
-        Ok(out.into_iter().collect())
+        )?;
+        Ok((recorded, self.project(project_id)?.folders))
     }
 
-    /// Die Originale aller Fotos eines Projekts (ohne abgelehnte und ohne
-    /// fehlende Dateien), sortiert – zum Hochladen statt der Exporte.
-    pub fn project_originals(&self, project_id: i64) -> Result<Vec<PathBuf>> {
+    /// Was [`project_originals`] aus dem Katalog braucht (ohne abgelehnte)
+    fn project_original_rows(&self, project_id: i64) -> Result<Vec<String>> {
         // Nur Pfad und Markierung lesen, nicht die ganze Fotoliste
         let scope = ImageQuery::new(Scope::Project { id: project_id });
-        let out: BTreeSet<PathBuf> = self
-            .paths_where("SELECT i.path FROM images i", " AND i.flag != -1", &scope)?
-            .into_iter()
-            .map(PathBuf::from)
-            .filter(|p| p.is_file())
-            .map(|p| unique(&p))
-            .collect();
-        Ok(out.into_iter().collect())
+        self.paths_where("SELECT i.path FROM images i", " AND i.flag != -1", &scope)
     }
+}
+
+// Die Dateien werden ohne Katalogsperre geprüft: Bei 5000 Fotos auf einem
+// Netzlaufwerk sind das 10 000 Zugriffe, und die Oberfläche teilt sich die Sperre.
+
+/// Alle vorhandenen Export-Dateien eines Projekts, sortiert: die eingetragenen
+/// Exporte seiner Fotos und die Dateien in markierten Export-Ordnern innerhalb
+/// seiner Ordner.
+pub fn project_exports(catalog: &Mutex<Catalog>, project_id: i64) -> Result<Vec<PathBuf>> {
+    let (recorded, folders) = catalog.locked().project_export_rows(project_id)?;
+    let mut out = BTreeSet::new();
+    for p in recorded {
+        let p = PathBuf::from(p);
+        if p.is_file() {
+            out.insert(unique(&p));
+        }
+    }
+    for f in folders {
+        for dir in crate::scanner::export_dirs_in(Path::new(&f.path), f.recursive) {
+            if let Ok(rd) = std::fs::read_dir(&dir) {
+                out.extend(
+                    rd.flatten()
+                        .map(|e| e.path())
+                        .filter(|p| p.is_file() && is_export_file(p))
+                        .map(|p| unique(&p)),
+                );
+            }
+        }
+    }
+    Ok(out.into_iter().collect())
+}
+
+/// Die Originale aller Fotos eines Projekts (ohne abgelehnte und ohne fehlende
+/// Dateien), sortiert – zum Hochladen statt der Exporte.
+pub fn project_originals(catalog: &Mutex<Catalog>, project_id: i64) -> Result<Vec<PathBuf>> {
+    let rows = catalog.locked().project_original_rows(project_id)?;
+    let out: BTreeSet<PathBuf> = rows
+        .into_iter()
+        .map(PathBuf::from)
+        .filter(|p| p.is_file())
+        .map(|p| unique(&p))
+        .collect();
+    Ok(out.into_iter().collect())
 }
 
 #[cfg(test)]

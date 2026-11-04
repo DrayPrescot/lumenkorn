@@ -59,28 +59,62 @@ impl Catalog {
     /// Thumbnails neu erzeugen. Standardwerte entfernen die Bearbeitung, damit
     /// „bearbeitet“ im Raster wirklich etwas bedeutet. Snapshots bleiben erhalten.
     pub fn save_develop(&mut self, image_ids: &[i64], params: &DevelopParams) -> Result<()> {
-        let p = params.sanitized();
-        let json = serde_json::to_string(&p)?;
-        let default = p.is_default();
         let t = now();
         self.with_tx(|tx| {
             for id in image_ids {
-                if default {
-                    tx.execute("DELETE FROM edits WHERE image_id = ?1 AND is_current = 1", [id])?;
-                } else {
-                    let n = tx.execute(
-                        "UPDATE edits SET params = ?2, updated_at = ?3 WHERE image_id = ?1 AND is_current = 1",
-                        params![id, json, t],
-                    )?;
-                    if n == 0 {
-                        tx.execute(
-                            "INSERT INTO edits (image_id, name, params, is_current, created_at, updated_at)
-                             VALUES (?1, 'Aktuell', ?2, 1, ?3, ?3)",
-                            params![id, json, t],
-                        )?;
-                    }
-                }
-                tx.execute("UPDATE images SET thumb_state = 0 WHERE id = ?1", [id])?;
+                Self::write_develop(tx, *id, params, t)?;
+            }
+            Ok(())
+        })
+    }
+
+    fn write_develop(
+        tx: &rusqlite::Transaction,
+        id: i64,
+        params: &DevelopParams,
+        t: i64,
+    ) -> Result<()> {
+        let p = params.sanitized();
+        if p.is_default() {
+            tx.execute(
+                "DELETE FROM edits WHERE image_id = ?1 AND is_current = 1",
+                [id],
+            )?;
+        } else {
+            let json = serde_json::to_string(&p)?;
+            let n = tx.execute(
+                "UPDATE edits SET params = ?2, updated_at = ?3 WHERE image_id = ?1 AND is_current = 1",
+                params![id, json, t],
+            )?;
+            if n == 0 {
+                tx.execute(
+                    "INSERT INTO edits (image_id, name, params, is_current, created_at, updated_at)
+                     VALUES (?1, 'Aktuell', ?2, 1, ?3, ?3)",
+                    params![id, json, t],
+                )?;
+            }
+        }
+        tx.execute("UPDATE images SET thumb_state = 0 WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// Einstellungen eines anderen Fotos auf viele übertragen: je Foto mit dessen
+    /// eigenem Stand gemischt, aber in einer einzigen Transaktion. Beim Einfügen auf
+    /// tausende Fotos wartete die Oberfläche sonst auf ebenso viele Schreibvorgänge.
+    pub fn transfer_develop(
+        &mut self,
+        image_ids: &[i64],
+        source: &DevelopParams,
+        groups: lumenkorn_develop::TransferGroups,
+    ) -> Result<()> {
+        let merged: Vec<(i64, DevelopParams)> = image_ids
+            .iter()
+            .map(|id| Ok((*id, self.develop_params(*id)?.transfer_from(source, groups))))
+            .collect::<Result<_>>()?;
+        let t = now();
+        self.with_tx(|tx| {
+            for (id, params) in &merged {
+                Self::write_develop(tx, *id, params, t)?;
             }
             Ok(())
         })

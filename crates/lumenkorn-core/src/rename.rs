@@ -411,7 +411,11 @@ pub fn plan(photos: &[RenameInfo], opts: &Options) -> Plan {
 fn move_no_clobber(src: &Path, dst: &Path) -> std::io::Result<()> {
     // Ein harter Link schlägt fehl, wenn das Ziel existiert – atomar
     match std::fs::hard_link(src, dst) {
-        Ok(()) => std::fs::remove_file(src),
+        // Hält ein anderes Programm die Datei offen, darf der neue Name nicht bleiben:
+        // Er erschiene beim nächsten Scan als zweites Foto
+        Ok(()) => std::fs::remove_file(src).inspect_err(|_| {
+            let _ = std::fs::remove_file(dst);
+        }),
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(e),
         // Dateisysteme ohne harte Links (FAT32, exFAT): prüfen und umbenennen
         Err(_) => {
@@ -424,27 +428,119 @@ fn move_no_clobber(src: &Path, dst: &Path) -> std::io::Result<()> {
 }
 
 /// Führt die Umbenennungen aus. Liegt ein Ziel auf einem Namen, den eine
-/// andere Datei erst freigibt (Tausch, Kette), geht es über einen
-/// Zwischennamen im selben Ordner. Bei einem Fehler wird zurückgerollt.
+/// andere Datei erst freigibt, kommt diese zuerst dran; nur echte Kreise (Tausch)
+/// gehen über einen Zwischennamen im selben Ordner. Bei einem Fehler wird
+/// zurückgerollt.
 pub fn execute(moves: &[Move]) -> Result<(), String> {
     execute_with(moves, &mut move_no_clobber)
 }
 
 type RenameFn<'a> = &'a mut dyn FnMut(&Path, &Path) -> std::io::Result<()>;
 
-fn execute_with(moves: &[Move], rename: RenameFn) -> Result<(), String> {
+/// Beginn des Zwischennamens beim Umbenennen. Der alte Name steht mit darin: Bleibt
+/// die Datei durch einen Absturz so liegen, findet [`recover_leftover`] zurück.
+const TEMP_PREFIX: &str = ".lumenkorn-rename-";
+
+fn temp_name(m: &Move, i: usize) -> PathBuf {
+    let dir = m.src.parent().unwrap_or(Path::new("."));
+    let name = m.src.file_name().unwrap_or_default().to_string_lossy();
+    dir.join(format!(
+        "{TEMP_PREFIX}{}-{i}-{name}.tmp",
+        std::process::id()
+    ))
+}
+
+/// Datei, die ein abgestürztes Umbenennen unter einem Zwischennamen hinterlassen
+/// hat, wieder sichtbar machen. Ist der alte Name vergeben, bekommt sie einen
+/// neuen: Sie bleibt in jedem Fall erhalten. `true`, wenn es so eine Datei war.
+pub(crate) fn recover_leftover(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    let Some(rest) = name
+        .strip_prefix(TEMP_PREFIX)
+        .and_then(|n| n.strip_suffix(".tmp"))
+    else {
+        return false;
+    };
+    let mut parts = rest.splitn(3, '-');
+    let (Some(pid), Some(_), Some(original)) = (parts.next(), parts.next(), parts.next()) else {
+        return true; // Name aus einer früheren Version: nicht mehr zuzuordnen
+    };
+    // Läuft in diesem Prozess gerade: keine Reste
+    if pid.parse() == Ok(std::process::id()) || !path.is_file() {
+        return true;
+    }
+    let dir = path.parent().unwrap_or(Path::new("."));
+    let (stem, ext) = match original.rsplit_once('.') {
+        Some((s, e)) => (s.to_string(), format!(".{e}")),
+        None => (original.to_string(), String::new()),
+    };
+    let mut target = dir.join(original);
+    for n in 1..=100 {
+        if !exists(&target) {
+            match move_no_clobber(path, &target) {
+                Ok(()) => log::warn!(
+                    "Nach einem Abbruch beim Umbenennen wiederhergestellt: {}",
+                    target.display()
+                ),
+                Err(e) => log::warn!("{}: nicht wiederhergestellt: {e}", path.display()),
+            }
+            return true;
+        }
+        target = dir.join(format!("{stem}-recovered-{n}{ext}"));
+    }
+    true
+}
+
+/// Reihenfolge der Schritte (von, nach). Eine Kette a → b → c mit freiem c läuft
+/// von hinten: erst b → c, dann a → b. So liegt nie eine Datei unter einem
+/// versteckten Zwischennamen, wenn es sich vermeiden lässt.
+fn plan_steps(moves: &[Move]) -> Vec<(PathBuf, PathBuf)> {
     let sources: HashSet<String> = moves.iter().map(|m| key(&m.src)).collect();
-    let mut direct = Vec::new();
-    let mut staged = Vec::new();
+    let by_dst: std::collections::HashMap<String, usize> = moves
+        .iter()
+        .enumerate()
+        .map(|(i, m)| (key(&m.dst), i))
+        .collect();
+    let step = |m: &Move| (m.src.clone(), m.dst.clone());
+    let mut done = vec![false; moves.len()];
+    let mut steps = Vec::with_capacity(moves.len());
     for (i, m) in moves.iter().enumerate() {
         if sources.contains(&key(&m.dst)) {
-            let dir = m.src.parent().unwrap_or(Path::new("."));
-            let tmp = dir.join(format!(".lumenkorn-rename-{}-{i}.tmp", std::process::id()));
-            staged.push((m, tmp));
-        } else {
-            direct.push(m);
+            continue;
+        }
+        let mut cur = i;
+        loop {
+            done[cur] = true;
+            steps.push(step(&moves[cur]));
+            match by_dst.get(&key(&moves[cur].src)) {
+                Some(&prev) if !done[prev] => cur = prev,
+                _ => break,
+            }
         }
     }
+    // Übrig sind Kreise: ein Tausch, auch nur andere Schreibweise (a.jpg → A.jpg)
+    for (i, m) in moves.iter().enumerate() {
+        if done[i] {
+            continue;
+        }
+        done[i] = true;
+        let tmp = temp_name(m, i);
+        steps.push((m.src.clone(), tmp.clone()));
+        let mut prev = by_dst.get(&key(&m.src)).copied();
+        while let Some(cur) = prev.filter(|&p| !done[p]) {
+            done[cur] = true;
+            steps.push(step(&moves[cur]));
+            prev = by_dst.get(&key(&moves[cur].src)).copied();
+        }
+        steps.push((tmp, m.dst.clone()));
+    }
+    steps
+}
+
+fn execute_with(moves: &[Move], rename: RenameFn) -> Result<(), String> {
+    let steps = plan_steps(moves);
     // Schon ausgeführte Schritte (von, nach) für das Zurückrollen
     let mut done: Vec<(PathBuf, PathBuf)> = Vec::new();
     let mut step = |from: &Path, to: &Path| -> Result<(), String> {
@@ -459,19 +555,7 @@ fn execute_with(moves: &[Move], rename: RenameFn) -> Result<(), String> {
         done.push((from.to_path_buf(), to.to_path_buf()));
         Ok(())
     };
-    let mut run = || -> Result<(), String> {
-        for (m, tmp) in &staged {
-            step(&m.src, tmp)?;
-        }
-        for m in &direct {
-            step(&m.src, &m.dst)?;
-        }
-        for (m, tmp) in &staged {
-            step(tmp, &m.dst)?;
-        }
-        Ok(())
-    };
-    let result = run();
+    let result = steps.iter().try_for_each(|(from, to)| step(from, to));
     let Err(e) = result else { return Ok(()) };
     let mut stuck = Vec::new();
     for (from, to) in done.iter().rev() {
@@ -679,6 +763,92 @@ mod tests {
         assert_eq!(text(d.path(), "002.jpg"), "001.jpg");
         assert_eq!(text(d.path(), "003.jpg"), "002.jpg");
         assert_eq!(names(d.path()), ["002.jpg", "003.jpg"]);
+    }
+
+    /// Kette: kein Zwischenname, die letzte Datei zieht zuerst um.
+    #[test]
+    fn chain_runs_from_the_back_without_temp_names() {
+        let d = tempfile::tempdir().unwrap();
+        touch(d.path(), &["1.jpg", "2.jpg", "3.jpg"]);
+        let m = |a: &str, b: &str| Move {
+            src: d.path().join(a),
+            dst: d.path().join(b),
+        };
+        let moves = [
+            m("1.jpg", "2.jpg"),
+            m("2.jpg", "3.jpg"),
+            m("3.jpg", "4.jpg"),
+        ];
+        let mut seen = Vec::new();
+        execute_with(&moves, &mut |from, to| {
+            seen.push(to.file_name().unwrap().to_string_lossy().into_owned());
+            move_no_clobber(from, to)
+        })
+        .unwrap();
+        assert_eq!(seen, ["4.jpg", "3.jpg", "2.jpg"]);
+        assert_eq!(names(d.path()), ["2.jpg", "3.jpg", "4.jpg"]);
+        assert_eq!(text(d.path(), "4.jpg"), "3.jpg");
+    }
+
+    /// Kreis: genau ein Zwischenname, auch wenn eine Kette dazukommt.
+    #[test]
+    fn only_real_cycles_use_a_temp_name() {
+        let d = tempfile::tempdir().unwrap();
+        touch(d.path(), &["a.jpg", "b.jpg", "c.jpg", "x.jpg"]);
+        let m = |a: &str, b: &str| Move {
+            src: d.path().join(a),
+            dst: d.path().join(b),
+        };
+        let moves = [
+            m("a.jpg", "b.jpg"),
+            m("b.jpg", "c.jpg"),
+            m("c.jpg", "a.jpg"),
+            m("x.jpg", "y.jpg"),
+        ];
+        let mut temps = 0;
+        execute_with(&moves, &mut |from, to| {
+            let n = to.file_name().unwrap().to_string_lossy();
+            temps += usize::from(n.starts_with(TEMP_PREFIX));
+            move_no_clobber(from, to)
+        })
+        .unwrap();
+        assert_eq!(temps, 1);
+        assert_eq!(text(d.path(), "b.jpg"), "a.jpg");
+        assert_eq!(text(d.path(), "c.jpg"), "b.jpg");
+        assert_eq!(text(d.path(), "a.jpg"), "c.jpg");
+        assert_eq!(text(d.path(), "y.jpg"), "x.jpg");
+    }
+
+    /// Absturz mitten im Tausch: Die Datei kommt zurück und überschreibt nichts.
+    #[test]
+    fn leftover_temp_files_are_recovered() {
+        let d = tempfile::tempdir().unwrap();
+        let leftover = |name: &str| {
+            let p = d.path().join(format!("{TEMP_PREFIX}99999999-0-{name}.tmp"));
+            fs::write(&p, "gerettet").unwrap();
+            p
+        };
+        // Alter Name frei
+        let p = leftover("a.jpg");
+        assert!(recover_leftover(&p));
+        assert!(!p.exists());
+        assert_eq!(text(d.path(), "a.jpg"), "gerettet");
+        // Alter Name vergeben: unter neuem Namen, das Vorhandene bleibt
+        fs::write(d.path().join("b.jpg"), "anderes Foto").unwrap();
+        let p = leftover("b.jpg");
+        assert!(recover_leftover(&p));
+        assert!(!p.exists());
+        assert_eq!(text(d.path(), "b.jpg"), "anderes Foto");
+        assert_eq!(text(d.path(), "b-recovered-1.jpg"), "gerettet");
+        // Zwischenname des laufenden Prozesses: nicht anfassen
+        let own = d
+            .path()
+            .join(format!("{TEMP_PREFIX}{}-0-c.jpg.tmp", std::process::id()));
+        fs::write(&own, "läuft").unwrap();
+        assert!(recover_leftover(&own));
+        assert!(own.exists());
+        // Andere Dateien sind nicht gemeint
+        assert!(!recover_leftover(&d.path().join("a.jpg")));
     }
 
     #[test]

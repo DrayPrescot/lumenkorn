@@ -26,6 +26,35 @@ and the project uses [Semantic Versioning](https://semver.org/).
   them no longer holds up previews that are ready.
 - A preview rendered while the photo was being edited could replace the newer one and stay. Such a
   result is now dropped.
+- Renaming: chains of names no longer pass through hidden temporary names; only real swaps do.
+  If the app is closed during a rename, it finishes first, and after a crash the next scan brings
+  such a file back.
+- Moving a photo from one source folder to another keeps its rating, keywords and edits. It used to
+  arrive as a new photo, and the old entry stayed behind as missing.
+- Develop: when saving failed and you moved on to the next photo, the edits were lost. Lumenkorn now
+  tries again.
+- A very large image opened at full size could end the app when it did not fit the memory. It now
+  shows an error. The same goes for RAW files with absurd image sizes in their headers.
+- XMP sidecars saved as “UTF-8 with BOM” (e.g. by Windows Notepad) could not be edited.
+- Files that made reading slow on purpose: searching a RAW for its preview and reading a sidecar
+  took quadratic time.
+- Settings files are flushed to disk before they replace the old ones, also the AI, import and
+  language settings, so a power failure cannot leave them empty.
+- AI settings: two quick clicks could undo each other; a failed save left the switch in the wrong
+  position.
+- Photos found by the scan while the library was still loading at startup could stay hidden until
+  the next reload.
+- Turning AI off now also keeps the search index out of memory in the photo album and when culling.
+- The people list stayed out of date during a long face analysis; “Finding horizon …” could stay on
+  screen after moving to another photo; the Before view did not follow undone rotations.
+- Old map tiles are now deleted after 30 days; the folder used to grow without limit.
+
+### Performance
+- Statistics no longer block the rest of the app while they are computed.
+- Pasting settings onto many photos writes them in one go; large selections no longer slow down
+  renaming, deleting rejected photos and editing metadata.
+- With the catalog on a sleeping network drive, adding folders and opening the Nextcloud dialog no
+  longer freeze the app.
 
 ### Changed
 - Before a catalog upgrade, Lumenkorn saves a copy as `katalog.db.v<old version>.bak` in the data

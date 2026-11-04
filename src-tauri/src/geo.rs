@@ -694,7 +694,7 @@ pub fn tile(state: &AppState, z: u32, x: u32, y: u32) -> Option<Vec<u8>> {
                 let _ = std::fs::create_dir_all(dir);
                 // Erst in eine eigene Datei, dann umbenennen: Eine halbe Kachel
                 // darf nie unter dem echten Namen liegen
-                let _ = lumenkorn_develop::fsutil::write_atomic(&path, &bytes);
+                let _ = lumenkorn_develop::fsutil::write_atomic_cache(&path, &bytes);
             }
             Some(bytes)
         }
@@ -704,6 +704,73 @@ pub fn tile(state: &AppState, z: u32, x: u32, y: u32) -> Option<Vec<u8>> {
                 Some(Instant::now() + TILE_PAUSE);
             std::fs::read(&path).ok()
         }
+    }
+}
+
+/// So lange bleiben Kacheln auf der Platte. Älter als [`TILE_MAX_AGE`] werden sie
+/// neu geladen, helfen aber noch, wenn das Netz weg ist.
+const TILE_KEEP: Duration = Duration::from_secs(30 * 24 * 3600);
+
+/// Alte Kacheln löschen, sonst wächst der Ordner mit jedem Kartenausschnitt.
+/// Liefert die Zahl der gelöschten Dateien.
+pub fn trim_tiles(state: &AppState) -> usize {
+    trim_tile_dir(&state.cache.base().join("tiles"), TILE_KEEP)
+}
+
+fn trim_tile_dir(dir: &std::path::Path, keep: Duration) -> usize {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for e in entries.flatten() {
+        let path = e.path();
+        let Ok(meta) = e.metadata() else { continue };
+        if meta.is_dir() {
+            removed += trim_tile_dir(&path, keep);
+            // Schlägt fehl, solange noch Kacheln darin liegen
+            let _ = std::fs::remove_dir(&path);
+        } else if meta
+            .modified()
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age > keep)
+            && std::fs::remove_file(&path).is_ok()
+        {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+#[cfg(test)]
+mod tile_tests {
+    use super::*;
+
+    #[test]
+    fn old_tiles_are_removed_with_their_empty_folders() {
+        let d = tempfile::tempdir().unwrap();
+        let tile = |rel: &str, age_days: u64| {
+            let p = d.path().join(rel);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, b"x").unwrap();
+            let t = SystemTime::now() - Duration::from_secs(age_days * 24 * 3600);
+            std::fs::File::options()
+                .write(true)
+                .open(&p)
+                .unwrap()
+                .set_modified(t)
+                .unwrap();
+            p
+        };
+        let old = tile("12/1/1.png", 40);
+        let new = tile("12/2/1.png", 5);
+        assert_eq!(trim_tile_dir(d.path(), TILE_KEEP), 1);
+        assert!(!old.exists() && new.exists());
+        assert!(
+            !d.path().join("12/1").exists(),
+            "leerer Ordner bleibt nicht"
+        );
+        assert!(d.path().join("12/2").exists());
     }
 }
 

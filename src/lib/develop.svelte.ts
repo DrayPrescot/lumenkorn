@@ -268,13 +268,15 @@ class Develop {
       } else {
         // Inzwischen anderes Bild offen: direkt speichern
         try {
+          // Erst warten, dann lesen: Ein noch laufendes Speichern gehört zum Stand dazu
+          await this.#saving;
           // Nur die Einstellungen lesen – das RAW nicht dekodieren
           const saved = { ...clone(DEFAULT_PARAMS), ...(await api.developParams(e.imageId)) };
           const denoise = { id: e.denoiseId, amount: saved.denoise?.amount ?? 100 };
-          await this.#saving;
           await api.developSave([e.imageId], { ...saved, denoise });
         } catch (err) {
           lib.notify(String(err), "error");
+          return;
         }
       }
       lib.notify(t("Rauschreduzierung fertig."));
@@ -472,9 +474,16 @@ class Develop {
   }
 
   replace(p: DevelopParams) {
+    const old = this.params;
     this.params = clone(p);
     this.schedule();
     this.commit();
+    this.#refreshBefore(old);
+  }
+
+  /** Die Vorher-Ansicht zeigt Drehung und Spiegelung mit: nachziehen, wenn sie sich ändern */
+  #refreshBefore(old: DevelopParams) {
+    if (old.rotate !== this.params.rotate || old.flipHorizontal !== this.params.flipHorizontal) this.renderBefore();
   }
 
   reset() {
@@ -485,20 +494,24 @@ class Develop {
     const prev = this.#undo.pop();
     if (!prev) return;
     this.#redo.push(JSON.stringify($state.snapshot(this.params)));
+    const old = this.params;
     this.params = JSON.parse(prev) as DevelopParams;
     this.#setCommitted(prev);
     this.schedule();
     this.scheduleSave();
+    this.#refreshBefore(old);
   }
 
   redo() {
     const next = this.#redo.pop();
     if (!next) return;
     this.#undo.push(JSON.stringify($state.snapshot(this.params)));
+    const old = this.params;
     this.params = JSON.parse(next) as DevelopParams;
     this.#setCommitted(next);
     this.schedule();
     this.scheduleSave();
+    this.#refreshBefore(old);
   }
 
   rotate(dir: 1 | -1) {
@@ -720,7 +733,8 @@ class Develop {
   async autoStraighten() {
     const id = this.imageId;
     if (id === null) return;
-    this.maskBusy = t("Horizont wird gesucht …");
+    const busy = t("Horizont wird gesucht …");
+    this.maskBusy = busy;
     try {
       const fix = await api.developDetectTilt(id, this.params.rotate, this.params.flipHorizontal);
       // Inzwischen anderes Foto geöffnet: Ergebnis gehört nicht hierher
@@ -735,8 +749,8 @@ class Develop {
     } catch (e) {
       lib.notify(String(e), "error");
     } finally {
-      // Nur zurücksetzen, wenn es noch dieses Foto betrifft
-      if (this.imageId === id) this.maskBusy = null;
+      // Nur die eigene Anzeige zurücksetzen, auch wenn inzwischen ein anderes Foto offen ist
+      if (this.maskBusy === busy) this.maskBusy = null;
     }
   }
 
@@ -1025,8 +1039,31 @@ class Develop {
     await this.#saving;
   }
 
+  /** Speichern fehlgeschlagen: der Stand je Foto, beim nächsten Anlass neu versucht.
+   *  Sonst wäre er verloren, sobald ein anderes Foto geöffnet wird. */
+  #unsaved = new Map<number, DevelopParams>();
+
+  #retryUnsaved() {
+    for (const [id, p] of [...this.#unsaved]) {
+      // Das offene Foto speichert gleich seinen aktuellen Stand
+      if (id === this.imageId) {
+        this.#unsaved.delete(id);
+        continue;
+      }
+      const run = this.#saving.then(() => api.developSave([id], p));
+      this.#saving = run.catch(() => {});
+      run.then(
+        () => {
+          if (this.#unsaved.get(id) === p) this.#unsaved.delete(id);
+        },
+        (e) => console.error(`Foto ${id} weiter nicht gespeichert`, e),
+      );
+    }
+  }
+
   async flush() {
     clearTimeout(this.#saveTimer);
+    this.#retryUnsaved();
     const id = this.imageId;
     if (id === null || !this.ready) return;
     // Eine Preset-Vorschau wird nie gespeichert
@@ -1053,6 +1090,7 @@ class Develop {
     } catch (e) {
       // Beim nächsten Anlass erneut versuchen
       if (this.imageId === id) this.#savedJson = "";
+      this.#unsaved.set(id, p);
       lib.notify(t("Speichern fehlgeschlagen: {error}", { error: String(e) }), "error");
     }
   }

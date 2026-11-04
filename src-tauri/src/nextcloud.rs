@@ -63,13 +63,13 @@ pub enum Source {
 }
 
 fn source_files(
-    cat: &lumenkorn_core::Catalog,
+    catalog: &std::sync::Mutex<lumenkorn_core::Catalog>,
     project_id: i64,
     source: Source,
 ) -> Result<Vec<PathBuf>, Error> {
     match source {
-        Source::Exports => cat.project_exports(project_id),
-        Source::Originals => cat.project_originals(project_id),
+        Source::Exports => lumenkorn_core::exports::project_exports(catalog, project_id),
+        Source::Originals => lumenkorn_core::exports::project_originals(catalog, project_id),
     }
 }
 
@@ -775,14 +775,7 @@ fn open_browser(url: &str) -> Result<(), Error> {
     if !ok {
         return Err(Error::Invalid(url.into()));
     }
-    #[cfg(windows)]
-    std::process::Command::new("rundll32")
-        .args(["url.dll,FileProtocolHandler", url])
-        .spawn()?;
-    #[cfg(target_os = "macos")]
-    std::process::Command::new("open").arg(url).spawn()?;
-    #[cfg(not(any(windows, target_os = "macos")))]
-    std::process::Command::new("xdg-open").arg(url).spawn()?;
+    crate::commands::launch_browser(url)?;
     Ok(())
 }
 
@@ -879,14 +872,9 @@ pub struct ProjectInfo {
 #[tauri::command]
 pub async fn nc_project_info(app: AppHandle, project_id: i64) -> Result<ProjectInfo, Error> {
     crate::blocking(app, move |state| {
-        let (exports, originals, name) = {
-            let cat = state.catalog.locked();
-            (
-                cat.project_exports(project_id)?,
-                cat.project_originals(project_id)?,
-                cat.project(project_id)?.name,
-            )
-        };
+        let exports = lumenkorn_core::exports::project_exports(&state.catalog, project_id)?;
+        let originals = lumenkorn_core::exports::project_originals(&state.catalog, project_id)?;
+        let name = state.catalog.locked().project(project_id)?.name;
         let c = load(&state.data_dir);
         let link = c.projects.get(&project_id.to_string());
         Ok(ProjectInfo {
@@ -992,7 +980,7 @@ fn upload(
     p: &mut Progress,
 ) -> Result<(), Error> {
     let state = app.state::<AppState>();
-    let files = source_files(&state.catalog.locked(), project_id, o.source)?;
+    let files = source_files(&state.catalog, project_id, o.source)?;
     let c = load(&state.data_dir);
     let conn = Conn::new(&c)?;
     let names = unique_names(&files);

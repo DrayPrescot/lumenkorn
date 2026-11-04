@@ -9,7 +9,8 @@
 //! verloren: Der Katalog schreibt jede Transaktion vollständig (WAL),
 //! Einstellungen werden atomar gespeichert.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
 /// Ein Neustart ist angefordert: beim Beenden die App neu starten.
@@ -21,8 +22,32 @@ pub fn restart(app: &AppHandle) -> ! {
     app.restart()
 }
 
+/// Läuft gerade etwas, das Dateien nicht halb fertig zurücklassen darf?
+static CRITICAL: AtomicUsize = AtomicUsize::new(0);
+/// So lange wartet das Beenden darauf höchstens
+const CRITICAL_WAIT: Duration = Duration::from_secs(30);
+
+/// Solange der Wert lebt, wartet das Beenden (z. B. Umbenennen: Mittendrin
+/// abgebrochen, lägen Fotos unter Zwischennamen).
+pub struct Critical;
+
+pub fn critical() -> Critical {
+    CRITICAL.fetch_add(1, Ordering::SeqCst);
+    Critical
+}
+
+impl Drop for Critical {
+    fn drop(&mut self) {
+        CRITICAL.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 /// Letzter Schritt bei `RunEvent::Exit`, nach dem eigenen Aufräumen.
 pub fn finish(app: &AppHandle) {
+    let start = Instant::now();
+    while CRITICAL.load(Ordering::SeqCst) > 0 && start.elapsed() < CRITICAL_WAIT {
+        std::thread::sleep(Duration::from_millis(20));
+    }
     log::logger().flush();
     #[cfg(windows)]
     {

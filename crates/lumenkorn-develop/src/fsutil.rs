@@ -4,7 +4,10 @@
 //!
 //! Geschrieben wird immer erst in eine temporäre Datei daneben, die dann die
 //! Zieldatei ersetzt: Ein Absturz mitten im Schreiben hinterlässt die alte
-//! oder die neue Datei, nie eine halbe.
+//! oder die neue Datei, nie eine halbe. Vor dem Ersetzen wird auf die Platte
+//! gewartet: Sonst kann nach einem Stromausfall eine leere Datei übrig bleiben.
+//! Nur Zwischenspeicher, die sich neu erzeugen lassen, sparen sich das
+//! ([`write_atomic_cache`]).
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -32,7 +35,14 @@ pub fn write_atomic_with(
     write: impl FnOnce(&Path) -> io::Result<()>,
 ) -> io::Result<()> {
     let tmp = tmp_path(path);
-    let r = write(&tmp).and_then(|_| std::fs::rename(&tmp, path));
+    let r = write(&tmp)
+        .and_then(|_| {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(&tmp)?
+                .sync_all()
+        })
+        .and_then(|_| std::fs::rename(&tmp, path));
     if r.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
@@ -42,6 +52,18 @@ pub fn write_atomic_with(
 /// `bytes` nach `path` schreiben (atomar, siehe oben).
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     write_atomic_with(path, |tmp| std::fs::write(tmp, bytes))
+}
+
+/// Wie [`write_atomic`], aber ohne auf die Platte zu warten: für Zwischenspeicher
+/// (Vorschauen, Kartenkacheln), die in großer Zahl entstehen und sich neu erzeugen
+/// lassen.
+pub fn write_atomic_cache(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let tmp = tmp_path(path);
+    let r = std::fs::write(&tmp, bytes).and_then(|_| std::fs::rename(&tmp, path));
+    if r.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    r
 }
 
 /// JSON-Datei lesen. Fehlt sie, gilt der Standard. Ist sie unlesbar oder

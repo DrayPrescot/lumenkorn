@@ -22,10 +22,16 @@
   const pct = $derived(d && d.total ? Math.min(100, (d.done / d.total) * 100) : null);
 
   const ps = $derived(lib.peopleStatus);
+  /** Schalter: Scheitert das Speichern, zeigt er wieder den wirklichen Stand. */
+  async function toggle(e: Event, key: "faces" | "autoTag" | "developGpu") {
+    const input = e.currentTarget as HTMLInputElement;
+    const on = input.checked;
+    if (!(await lib.setAiSettings({ [key]: on }))) input.checked = !on;
+  }
+
   async function toggleFaces(e: Event) {
-    if (!s) return;
-    await api.aiSetSettings({ ...s.settings, faces: (e.currentTarget as HTMLInputElement).checked });
-    await Promise.all([lib.refreshAi(), lib.refreshPeople()]);
+    await toggle(e, "faces");
+    await lib.refreshPeople();
   }
 
   // Downloads laufen nacheinander; ein Klick während eines Downloads reiht ein
@@ -59,11 +65,7 @@
     for (const c of missingIdle) await download(c);
   }
 
-  async function toggleAuto(e: Event) {
-    if (!s) return;
-    await api.aiSetSettings({ ...s.settings, autoTag: (e.currentTarget as HTMLInputElement).checked });
-    await lib.refreshAi();
-  }
+  const toggleAuto = (e: Event) => toggle(e, "autoTag");
 
   // --- Grafikkarte ---------------------------------------------------------
   const gb = (b: number) => `${Math.round(b / 2 ** 30)} GB`;
@@ -89,9 +91,7 @@
   });
 
   async function toggleDevelopGpu(e: Event) {
-    if (!s) return;
-    await api.aiSetSettings({ ...s.settings, developGpu: (e.currentTarget as HTMLInputElement).checked });
-    await lib.refreshAi();
+    await toggle(e, "developGpu");
     // Erkennung läuft im Hintergrund – kurz danach erneut nachsehen
     setTimeout(() => void lib.refreshAi(), 1500);
   }
@@ -118,8 +118,9 @@
   async function setAccel(e: Event) {
     if (!s) return;
     bench = null;
-    await api.aiSetSettings({ ...s.settings, accel: (e.currentTarget as HTMLSelectElement).value as AccelPreference });
-    await lib.refreshAi();
+    const select = e.currentTarget as HTMLSelectElement;
+    const before = s.settings.accel;
+    if (!(await lib.setAiSettings({ accel: select.value as AccelPreference }))) select.value = before;
   }
 
   async function benchmark() {
@@ -141,9 +142,23 @@
     : `${Math.round(v / 60)} min`;
 
   async function retag() {
-    await api.aiRetagAll();
-    await lib.refreshAi();
-    lib.notify(t("Alle Fotos werden neu analysiert."));
+    try {
+      await api.aiRetagAll();
+      await lib.refreshAi();
+      lib.notify(t("Alle Fotos werden neu analysiert."));
+    } catch (e) {
+      lib.notify(String(e), "error");
+    }
+  }
+
+  async function rescanFaces() {
+    try {
+      await api.peopleRescan();
+      await lib.refreshPeople();
+      lib.notify(t("Alle Fotos werden erneut nach Gesichtern durchsucht. Namen bleiben erhalten."));
+    } catch (e) {
+      lib.notify(String(e), "error");
+    }
   }
 </script>
 
@@ -288,7 +303,7 @@
           {t("Gesichter in neuen Fotos suchen")}
         </label>
         <div class="actions">
-          <button class="btn" onclick={async () => { await api.peopleRescan(); await lib.refreshPeople(); lib.notify(t("Alle Fotos werden erneut nach Gesichtern durchsucht. Namen bleiben erhalten.")); }}>
+          <button class="btn" onclick={rescanFaces}>
             {t("Alle neu durchsuchen")}
           </button>
         </div>

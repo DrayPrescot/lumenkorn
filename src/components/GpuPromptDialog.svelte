@@ -56,7 +56,7 @@
     const s = lib.ai;
     if (!s || !runtime) return;
     try {
-      if (s.settings.accel === "cpu") await api.aiSetSettings({ ...s.settings, accel: "auto" });
+      if (s.settings.accel === "cpu") await api.aiSetSettings({ accel: "auto" });
       if (what === "download") {
         phase = "download";
         await api.aiDownload(runtime.backend);
@@ -90,7 +90,7 @@
     open = false;
     if (!lib.ai) return;
     try {
-      await api.aiSetSettings({ ...lib.ai.settings, gpuPromptDeclined: true });
+      await api.aiSetSettings({ gpuPromptDeclined: true });
       await lib.refreshAi();
     } catch (e) {
       lib.notify(String(e), "error");

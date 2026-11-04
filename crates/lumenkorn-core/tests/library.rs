@@ -25,6 +25,64 @@ fn names(cat: &Catalog, scope: Scope) -> Vec<String> {
         .collect()
 }
 
+/// Von einem Quellordner in einen anderen verschoben: Es bleibt dasselbe Foto.
+#[test]
+fn moving_between_source_folders_keeps_the_photo() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = (d.path().join("A"), d.path().join("B"));
+    std::fs::create_dir_all(&a).unwrap();
+    std::fs::create_dir_all(&b).unwrap();
+    write_jpeg(&a.join("foto.jpg"), 32, 32, 1);
+    let cat = Mutex::new(Catalog::open_in_memory().unwrap());
+    let (ra, rb) = {
+        let c = cat.lock().unwrap();
+        (c.add_root(&a).unwrap(), c.add_root(&b).unwrap())
+    };
+    scan_root(&cat, ra.id, &no_progress).unwrap();
+    let id = cat
+        .lock()
+        .unwrap()
+        .query_images(&ImageQuery::new(Scope::All))
+        .unwrap()[0]
+        .id;
+
+    std::fs::rename(a.join("foto.jpg"), b.join("foto.jpg")).unwrap();
+    let rep = scan_root(&cat, rb.id, &no_progress).unwrap();
+    assert_eq!((rep.added, rep.moved), (0, 1));
+    scan_root(&cat, ra.id, &no_progress).unwrap();
+    let all = cat
+        .lock()
+        .unwrap()
+        .query_images(&ImageQuery::new(Scope::All))
+        .unwrap();
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].id, id);
+    // Und zurück: Der Eintrag gehört jetzt wirklich zu B
+    std::fs::rename(b.join("foto.jpg"), a.join("foto.jpg")).unwrap();
+    let rep = scan_root(&cat, ra.id, &no_progress).unwrap();
+    assert_eq!((rep.added, rep.moved), (0, 1));
+}
+
+/// Ist der andere Quellordner nur gerade nicht erreichbar, ist die Datei eine Kopie.
+#[test]
+fn copy_of_a_photo_on_an_offline_drive_stays_a_new_photo() {
+    let d = tempfile::tempdir().unwrap();
+    let (a, b) = (d.path().join("A"), d.path().join("B"));
+    std::fs::create_dir_all(&a).unwrap();
+    std::fs::create_dir_all(&b).unwrap();
+    write_jpeg(&a.join("foto.jpg"), 32, 32, 1);
+    std::fs::copy(a.join("foto.jpg"), b.join("foto.jpg")).unwrap();
+    let cat = Mutex::new(Catalog::open_in_memory().unwrap());
+    let (ra, rb) = {
+        let c = cat.lock().unwrap();
+        (c.add_root(&a).unwrap(), c.add_root(&b).unwrap())
+    };
+    scan_root(&cat, ra.id, &no_progress).unwrap();
+    std::fs::rename(&a, d.path().join("A-abgezogen")).unwrap();
+    let rep = scan_root(&cat, rb.id, &no_progress).unwrap();
+    assert_eq!((rep.added, rep.moved), (1, 0));
+}
+
 /// Während des Renderns bearbeitet: Das Ergebnis zeigt einen alten Stand und
 /// darf weder im Cache landen noch das Vorschaubild als fertig markieren.
 #[test]
@@ -892,7 +950,8 @@ fn project_exports_combine_recorded_and_marked_folders() {
 
     // Originale: nur die Fotos des Projekts, abgelehnte nicht
     cat.set_flag(&[id("drei.jpg")], -1).unwrap();
-    let originals = cat.project_originals(p.id).unwrap();
+    let cat = Mutex::new(cat);
+    let originals = lumenkorn_core::exports::project_originals(&cat, p.id).unwrap();
     assert_eq!(
         originals,
         vec![std::path::PathBuf::from(
@@ -900,7 +959,7 @@ fn project_exports_combine_recorded_and_marked_folders() {
         )]
     );
 
-    let mut got = cat.project_exports(p.id).unwrap();
+    let mut got = lumenkorn_core::exports::project_exports(&cat, p.id).unwrap();
     got.sort();
     // Erwartet in eindeutiger Schreibweise (der Runner liefert kurze 8.3-Namen)
     let norm =

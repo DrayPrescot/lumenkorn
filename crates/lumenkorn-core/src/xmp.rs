@@ -311,9 +311,12 @@ struct Scan {
 fn scan(src: &str, names: &[PropName]) -> Result<Scan> {
     let ours = |ns: &str, local: &str| names.iter().any(|n| n.ns == ns && n.local == local);
     let mut reader = Reader::from_str(src);
-    // Kind, eigene Namensräume, Index in `descs`
-    #[allow(clippy::type_complexity)]
-    let mut stack: Vec<(Kind, Vec<(String, String)>, usize)> = Vec::new();
+    // Kind, Länge von `scope` vor dem Element, Index in `descs`
+    let mut stack: Vec<(Kind, usize, usize)> = Vec::new();
+    // Namensräume aller offenen Elemente. Eine Liste, die mit den Elementen wächst
+    // und schrumpft: Sie je Element neu aufzubauen, kostete bei präparierten Dateien
+    // quadratisch viel Zeit (600 KB: Minuten).
+    let mut scope: Vec<(String, String)> = Vec::new();
     let mut out = Scan {
         rdf: None,
         descs: Vec::new(),
@@ -335,17 +338,14 @@ fn scan(src: &str, names: &[PropName]) -> Result<Scan> {
                     .find(|c: char| c.is_ascii_whitespace() || c == '/' || c == '>')
                     .map_or(tag.len(), |p| p + 1);
                 let qname = tag[1..qname_end].to_string();
-                let mut scope: Vec<(String, String)> =
-                    stack.iter().flat_map(|(_, s, _)| s.clone()).collect();
-                let mut own = Vec::new();
+                let scope_before = scope.len();
                 for a in &attrs {
                     if a.name == "xmlns" {
-                        own.push((String::new(), a.value.clone()));
+                        scope.push((String::new(), a.value.clone()));
                     } else if let Some(p) = a.name.strip_prefix("xmlns:") {
-                        own.push((p.to_string(), a.value.clone()));
+                        scope.push((p.to_string(), a.value.clone()));
                     }
                 }
-                scope.extend(own.iter().cloned());
                 let (prefix, local) = split_qname(&qname);
                 let ns = lookup(&scope, prefix).unwrap_or("");
                 let parent = stack.last().map(|s| s.0);
@@ -359,7 +359,8 @@ fn scan(src: &str, names: &[PropName]) -> Result<Scan> {
                 if stack.is_empty() {
                     seen_root = true;
                 }
-                let elem = Elem {
+                // Nur für rdf:RDF und rdf:Description gebraucht
+                let elem = || Elem {
                     qname: qname.clone(),
                     tag_start: before,
                     tag_end: after,
@@ -385,9 +386,9 @@ fn scan(src: &str, names: &[PropName]) -> Result<Scan> {
                             out.removals.push(a.span);
                         }
                     }
-                    out.descs.push(elem.clone());
+                    out.descs.push(elem());
                 } else if kind == Kind::Rdf && out.rdf.is_none() {
-                    out.rdf = Some(elem.clone());
+                    out.rdf = Some(elem());
                 }
                 if !empty {
                     let idx = if kind == Kind::Desc {
@@ -395,11 +396,14 @@ fn scan(src: &str, names: &[PropName]) -> Result<Scan> {
                     } else {
                         0
                     };
-                    stack.push((kind, own, idx));
+                    stack.push((kind, scope_before, idx));
+                } else {
+                    scope.truncate(scope_before);
                 }
             }
             Event::End(_) => {
-                let (kind, _, idx) = stack.pop().ok_or_else(|| xmp_err("end"))?;
+                let (kind, scope_before, idx) = stack.pop().ok_or_else(|| xmp_err("end"))?;
+                scope.truncate(scope_before);
                 match kind {
                     Kind::Desc => out.descs[idx].close_start = before,
                     Kind::Rdf => {
@@ -497,6 +501,15 @@ fn append_children(
 /// sie einen Wert haben, in der ersten `rdf:Description` neu geschrieben.
 /// Alles andere bleibt Byte für Byte erhalten.
 pub fn merge(existing: Option<&str>, changes: &[XmpChange]) -> Result<String> {
+    // Byte-Order-Mark (etwa aus dem Windows-Editor): Der XML-Leser überspringt sie,
+    // ohne sie mitzuzählen, alle Positionen lägen sonst um 3 Bytes daneben.
+    if let Some(rest) = existing.and_then(|s| s.strip_prefix('\u{feff}')) {
+        return Ok(format!("\u{feff}{}", merge_plain(Some(rest), changes)?));
+    }
+    merge_plain(existing, changes)
+}
+
+fn merge_plain(existing: Option<&str>, changes: &[XmpChange]) -> Result<String> {
     let src = existing.unwrap_or(TEMPLATE);
     let names: Vec<PropName> = changes.iter().map(|c| c.name).collect();
     let sc = scan(src, &names)?;
@@ -689,6 +702,36 @@ mod tests {
         assert_eq!(again.matches("<dc:title>").count(), 1);
         assert!(again.contains(">Neu<"));
         assert!(!again.contains("mehr"));
+    }
+
+    /// Sidecar aus dem Windows-Editor, „UTF-8 mit BOM“
+    #[test]
+    fn merges_into_a_file_with_byte_order_mark() {
+        let with_bom = format!("\u{feff}{LIGHTROOM}");
+        let out = merge(Some(&with_bom), &[title("Sonnenuntergang")]).unwrap();
+        assert!(out.starts_with('\u{feff}'), "Marke bleibt");
+        assert_eq!(
+            out.trim_start_matches('\u{feff}'),
+            merge(Some(LIGHTROOM), &[title("Sonnenuntergang")]).unwrap()
+        );
+        assert!(out.contains("Sonnenuntergang"));
+    }
+
+    /// Viele Namensräume und Elemente: früher quadratisch (Minuten bei 600 KB).
+    #[test]
+    fn many_namespaces_stay_fast() {
+        let mut attrs = String::new();
+        let mut children = String::new();
+        for i in 0..20_000 {
+            attrs.push_str(&format!(" xmlns:a{i}=\"u\""));
+            children.push_str("<x/>");
+        }
+        let src = format!(
+            "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"><rdf:Description rdf:about=\"\"{attrs}>{children}</rdf:Description></rdf:RDF></x:xmpmeta>"
+        );
+        let start = std::time::Instant::now();
+        scan(&src, &[]).unwrap();
+        assert!(start.elapsed().as_secs() < 20, "{:?}", start.elapsed());
     }
 
     #[test]

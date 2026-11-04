@@ -764,6 +764,24 @@ mod migration_tests {
         assert!(body(2).contains("Ada"));
     }
 
+    /// Die Leseverbindung sieht denselben Stand, kann aber nichts ändern.
+    #[test]
+    fn reader_sees_the_catalog_and_cannot_write() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut cat = Catalog::open(&tmp.path().join("k.db")).unwrap();
+        tests_support::insert_dummy_images(&mut cat, 3);
+        let q = ImageQuery::new(Scope::All);
+        let want = cat.photo_stats(&q).unwrap();
+        let reader = cat.reader().unwrap();
+        let got = reader.photo_stats(&q).unwrap();
+        assert_eq!(
+            serde_json::to_string(&got).unwrap(),
+            serde_json::to_string(&want).unwrap()
+        );
+        assert!(reader.conn.execute("DELETE FROM images", []).is_err());
+        assert!(Catalog::open_in_memory().unwrap().reader().is_err());
+    }
+
     /// Fehlende Fotos zählen nicht als „schon importiert“.
     #[test]
     fn content_paths_skips_missing_photos() {

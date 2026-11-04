@@ -159,42 +159,66 @@ impl Catalog {
     /// Bearbeitungen bleiben erhalten.
     pub(crate) fn move_image(tx: &rusqlite::Transaction, id: i64, img: &NewImage) -> Result<()> {
         tx.execute(
-            "UPDATE images SET path = ?2, dir = ?3, file_name = ?4, ext = ?5, mtime = ?6, missing = 0
+            "UPDATE images SET root_id = ?7, path = ?2, dir = ?3, file_name = ?4, ext = ?5,
+                               mtime = ?6, missing = 0
              WHERE id = ?1",
-            params![id, img.path, img.dir, img.file_name, img.ext, img.mtime],
+            params![
+                id,
+                img.path,
+                img.dir,
+                img.file_name,
+                img.ext,
+                img.mtime,
+                img.root_id
+            ],
         )?;
         Ok(())
+    }
+
+    /// Fotos mit diesem Inhalt in anderen Quellordnern: (ID, Pfad, Quellordner).
+    /// Für die Erkennung von Dateien, die zwischen Quellordnern verschoben wurden.
+    pub(crate) fn images_elsewhere(
+        &self,
+        root_id: i64,
+        quick_hash: &str,
+        size: i64,
+    ) -> Result<Vec<(i64, String, String)>> {
+        let mut st = self.conn.prepare_cached(
+            "SELECT i.id, i.path, r.path FROM images i JOIN roots r ON r.id = i.root_id
+             WHERE i.quick_hash = ?1 AND i.size = ?2 AND i.root_id != ?3",
+        )?;
+        let rows = st.query_map(params![quick_hash, size, root_id], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
     /// Angaben zu Fotos, die umbenannt werden sollen (in der Reihenfolge von
     /// `ids`; unbekannte IDs fehlen im Ergebnis).
     pub fn rename_infos(&self, ids: &[i64]) -> Result<Vec<RenameInfo>> {
+        // Eine Abfrage statt einer je Foto: Das läuft bei jeder Änderung des Musters
+        let list = serde_json::to_string(ids)?;
         let mut st = self.conn.prepare_cached(
             "SELECT id, path, dir, file_name, captured_at, camera, lens, mtime, missing
-             FROM images WHERE id = ?1",
+             FROM images WHERE id IN (SELECT value FROM json_each(?1))",
         )?;
-        let mut out = Vec::new();
-        for id in ids {
-            if let Some(r) = st
-                .query_row([id], |r| {
-                    Ok(RenameInfo {
-                        id: r.get(0)?,
-                        path: r.get(1)?,
-                        dir: r.get(2)?,
-                        file_name: r.get(3)?,
-                        captured_at: r.get(4)?,
-                        camera: r.get(5)?,
-                        lens: r.get(6)?,
-                        mtime: r.get(7)?,
-                        missing: r.get(8)?,
-                    })
-                })
-                .optional()?
-            {
-                out.push(r);
-            }
-        }
-        Ok(out)
+        let rows = st.query_map([list], |r| {
+            Ok(RenameInfo {
+                id: r.get(0)?,
+                path: r.get(1)?,
+                dir: r.get(2)?,
+                file_name: r.get(3)?,
+                captured_at: r.get(4)?,
+                camera: r.get(5)?,
+                lens: r.get(6)?,
+                mtime: r.get(7)?,
+                missing: r.get(8)?,
+            })
+        })?;
+        let mut found: std::collections::HashMap<i64, RenameInfo> = rows
+            .map(|r| r.map(|info| (info.id, info)))
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(ids.iter().filter_map(|id| found.remove(id)).collect())
     }
 
     /// Nach dem Umbenennen der Dateien: neuer Pfad und Dateiname je Foto

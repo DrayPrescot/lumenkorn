@@ -192,9 +192,14 @@ static ACTIVE: Mutex<Active> = Mutex::new(Active {
     },
 });
 
+/// Reiner Status: Auch nach einer Panik anderswo weiter benutzbar
+fn active_lock() -> std::sync::MutexGuard<'static, Active> {
+    ACTIVE.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Wird von [`crate::runtime::init`] aufgerufen.
 pub(crate) fn set_library(backend: Backend, lib: &Path) {
-    let mut a = ACTIVE.lock().unwrap();
+    let mut a = active_lock();
     a.library = backend;
     let runtime = std::fs::metadata(lib).map(|m| m.len()).unwrap_or(0);
     let file = lib.with_file_name(CPU_ONLY_FILE);
@@ -213,7 +218,7 @@ pub(crate) fn set_library(backend: Backend, lib: &Path) {
 
 /// Schaltet die GPU-Nutzung für künftig geladene Modelle ein oder aus.
 pub fn set_use_gpu(on: bool) {
-    let mut a = ACTIVE.lock().unwrap();
+    let mut a = active_lock();
     a.use_gpu = on;
     a.gpu_error = None;
     a.placements.clear();
@@ -240,7 +245,7 @@ pub struct Placement {
 }
 
 pub fn active() -> ActiveInfo {
-    let a = ACTIVE.lock().unwrap();
+    let a = active_lock();
     let loaded = crate::runtime::is_loaded();
     ActiveInfo {
         library: loaded.then_some(a.library),
@@ -435,7 +440,7 @@ pub fn session(path: &Path) -> Result<Model> {
 fn session_placed(path: &Path) -> Result<(Session, bool)> {
     let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
     let (backend, want_gpu) = {
-        let a = ACTIVE.lock().unwrap();
+        let a = active_lock();
         // Steht das Modell schon als „nicht GPU-fähig“ fest, den teuren
         // Versuch (Shader-Übersetzung, Kopieren der Gewichte) überspringen
         let name = file_name(path);
@@ -492,13 +497,13 @@ fn session_placed(path: &Path) -> Result<(Session, bool)> {
                     }
                     Err(e) => {
                         log::warn!("GPU nicht nutzbar für {}: {e}", file_name(path));
-                        ACTIVE.lock().unwrap().gpu_error = Some(e.to_string());
+                        active_lock().gpu_error = Some(e.to_string());
                     }
                 }
             }
             Err(e) => {
                 log::warn!("GPU nicht nutzbar für {}: {e}", file_name(path));
-                ACTIVE.lock().unwrap().gpu_error = Some(e.to_string());
+                active_lock().gpu_error = Some(e.to_string());
             }
         }
     }
@@ -540,7 +545,7 @@ fn session_mixed(path: &Path, backend: Backend) -> Result<std::result::Result<Se
 }
 
 fn remember_cpu_only(path: &Path, size: u64) {
-    let mut a = ACTIVE.lock().unwrap();
+    let mut a = active_lock();
     a.cpu_only.push((path.to_path_buf(), size));
     a.cpu_only_saved.models.push((file_name(path), size));
     if let Some(file) = &a.cpu_only_file
@@ -552,16 +557,14 @@ fn remember_cpu_only(path: &Path, size: u64) {
 
 fn record(path: &Path, gpu: bool) {
     let name = file_name(path);
-    let mut a = ACTIVE.lock().unwrap();
+    let mut a = active_lock();
     a.placements.retain(|(m, _)| *m != name);
     a.placements.push((name, gpu));
 }
 
 /// Ob ein Modell (Dateiname) zuletzt auf der GPU geladen wurde.
 pub fn on_gpu(model_file: &str) -> bool {
-    ACTIVE
-        .lock()
-        .unwrap()
+    active_lock()
         .placements
         .iter()
         .any(|(m, g)| m == model_file && *g)

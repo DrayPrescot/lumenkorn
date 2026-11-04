@@ -126,7 +126,7 @@ impl ThumbCache {
         }
         // Atomar mit eindeutigem Temp-Namen: Worker und Bildprotokoll können
         // dasselbe Bild gleichzeitig schreiben, im Cache liegen nie halbe Dateien
-        lumenkorn_develop::fsutil::write_atomic(&p, jpeg)?;
+        lumenkorn_develop::fsutil::write_atomic_cache(&p, jpeg)?;
         Ok(())
     }
 
@@ -751,10 +751,15 @@ fn find_ff(d: &[u8]) -> Option<usize> {
         .map(|k| base + k)
 }
 
+/// So viele Segmente hat kein echtes JPEG. Ohne Grenze läuft jeder Kandidat bis
+/// zum Dateiende: Eine präparierte RAW-Datei brauchte quadratisch lange (1 MB 6 s,
+/// 16 MB rund 25 Minuten) und hielt den ganzen Thumbnail-Stapel auf.
+const MAX_JPEG_SEGMENTS: usize = 1024;
+
 /// Länge eines JPEG-Streams anhand seiner Marker-Struktur.
 fn jpeg_len(d: &[u8]) -> Option<usize> {
     let mut pos = 2; // nach SOI
-    loop {
+    for _ in 0..MAX_JPEG_SEGMENTS {
         // Füllbytes 0xFF überspringen
         while pos < d.len() && d[pos] == 0xFF && d.get(pos + 1) == Some(&0xFF) {
             pos += 1;
@@ -801,6 +806,7 @@ fn jpeg_len(d: &[u8]) -> Option<usize> {
             return None;
         }
     }
+    None
 }
 
 /// Bearbeitete Bilder, die gleichzeitig für Thumbnails entwickelt werden
@@ -976,6 +982,23 @@ mod tests {
     fn sample_jpeg(w: u32, h: u32) -> Vec<u8> {
         let img = RgbImage::from_fn(w, h, |x, y| Rgb([(x % 256) as u8, (y % 256) as u8, 128]));
         encode_jpeg(&DynamicImage::ImageRgb8(img), 90).unwrap()
+    }
+
+    /// Marker-Kette ohne Ende: Die Suche gibt auf, statt bis zum Dateiende zu laufen.
+    #[test]
+    fn jpeg_search_gives_up_after_too_many_segments() {
+        let chain = |n: usize| {
+            let mut d = vec![0xFF, 0xD8];
+            for _ in 0..n {
+                d.extend_from_slice(&[0xFF, 0xE0, 0x00, 0x02]);
+            }
+            d.extend_from_slice(&[0xFF, 0xD9]);
+            d
+        };
+        // Ein JPEG mit vielen, aber nicht unmöglich vielen Segmenten
+        let ok = chain(MAX_JPEG_SEGMENTS - 1);
+        assert_eq!(jpeg_len(&ok), Some(ok.len()));
+        assert_eq!(jpeg_len(&chain(MAX_JPEG_SEGMENTS * 4)), None);
     }
 
     #[test]

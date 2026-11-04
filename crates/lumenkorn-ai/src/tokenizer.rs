@@ -113,8 +113,15 @@ impl ClipTokenizer {
         (ids, mask)
     }
 
+    /// Nur ein Zwischenspeicher: Auch nach einer Panik anderswo weiter benutzbar
+    fn lock_cache(
+        &self,
+    ) -> std::sync::MutexGuard<'_, std::collections::HashMap<String, Vec<String>>> {
+        self.cache.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     fn bpe(&self, token: &str) -> Vec<String> {
-        if let Some(hit) = self.cache.lock().unwrap().get(token) {
+        if let Some(hit) = self.lock_cache().get(token) {
             return hit.clone();
         }
         let chars: Vec<char> = token.chars().collect();
@@ -151,7 +158,7 @@ impl ClipTokenizer {
             }
             word = merged;
         }
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = self.lock_cache();
         // Nicht unbegrenzt wachsen lassen (Suchanfragen mit vielen Fantasiewörtern)
         if cache.len() >= 50_000 {
             cache.clear();

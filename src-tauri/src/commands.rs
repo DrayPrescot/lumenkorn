@@ -52,14 +52,21 @@ pub fn open_url(url: String) -> CmdResult<()> {
     if !ok {
         return Err(Error::Invalid(url));
     }
+    launch_browser(&url)?;
+    Ok(())
+}
+
+/// Startet den Standardbrowser. Die Adresse muss der Aufrufer geprüft haben
+/// (nur http/https, keine Leer- und Steuerzeichen).
+pub(crate) fn launch_browser(url: &str) -> std::io::Result<()> {
     #[cfg(windows)]
     std::process::Command::new("rundll32")
-        .args(["url.dll,FileProtocolHandler", &url])
+        .args(["url.dll,FileProtocolHandler", url])
         .spawn()?;
     #[cfg(target_os = "macos")]
-    std::process::Command::new("open").arg(&url).spawn()?;
+    std::process::Command::new("open").arg(url).spawn()?;
     #[cfg(not(any(windows, target_os = "macos")))]
-    std::process::Command::new("xdg-open").arg(&url).spawn()?;
+    std::process::Command::new("xdg-open").arg(url).spawn()?;
     Ok(())
 }
 
@@ -70,9 +77,9 @@ pub fn open_url(url: String) -> CmdResult<()> {
 pub fn set_language(state: State<AppState>, lang: String) {
     let en = lang == "en";
     lumenkorn_develop::i18n::set_english(en);
-    if let Err(e) = std::fs::write(
-        crate::language_file(&state.data_dir),
-        if en { "en" } else { "de" },
+    if let Err(e) = lumenkorn_develop::fsutil::write_atomic(
+        &crate::language_file(&state.data_dir),
+        if en { b"en" } else { b"de" },
     ) {
         log::warn!("Sprache nicht gespeichert: {e}");
     }
@@ -87,8 +94,9 @@ pub fn list_roots(state: State<AppState>) -> CmdResult<Vec<Root>> {
 
 #[tauri::command(async)]
 pub fn add_root(state: State<AppState>, path: String) -> CmdResult<Root> {
-    let path = PathBuf::from(path);
-    let root = state.catalog.locked().add_root(&path)?;
+    // Prüfen ohne Katalogsperre: Ein schlafendes Netzlaufwerk braucht Sekunden
+    let norm = Catalog::prepare_root(&PathBuf::from(path))?;
+    let root = state.catalog.locked().add_root_normalized(&norm)?;
     if let Some(w) = state.watcher.locked().as_mut()
         && let Err(e) = w.watch(Path::new(&root.path))
     {
@@ -129,11 +137,11 @@ pub fn folder_options(state: State<AppState>) -> CmdResult<Vec<(String, bool)>> 
 /// zurück.
 #[tauri::command(async)]
 pub fn folder_set_subfolders(state: State<AppState>, path: String, include: bool) -> CmdResult<()> {
+    let norm = lumenkorn_core::paths::normalize_dir(std::path::Path::new(&path));
     let root = {
         let cat = state.catalog.locked();
-        cat.set_folder_subfolders(std::path::Path::new(&path), include)?;
+        cat.set_folder_subfolders_normalized(&norm, include)?;
         crate::settings::apply_folder_rules(&state.data_dir, &cat);
-        let norm = lumenkorn_core::paths::normalize_dir(std::path::Path::new(&path));
         cat.roots()?
             .into_iter()
             .filter(|r| lumenkorn_core::paths::is_within(&norm, &r.path))
@@ -163,7 +171,16 @@ pub fn photo_stats(
     state: State<AppState>,
     query: ImageQuery,
 ) -> CmdResult<lumenkorn_core::stats::PhotoStats> {
-    state.catalog.locked().photo_stats(&query)
+    // Viele volle Abfragen hintereinander: über eine eigene Leseverbindung, damit
+    // Raster und Bewertung nicht auf die Katalogsperre warten
+    let reader = state.catalog.locked().reader();
+    match reader {
+        Ok(r) => r.photo_stats(&query),
+        Err(e) => {
+            log::warn!("Leseverbindung nicht geöffnet: {e}");
+            state.catalog.locked().photo_stats(&query)
+        }
+    }
 }
 
 /// Vorhandene Dateitypen einer Ansicht (für den Dateityp-Filter)
@@ -246,10 +263,11 @@ pub fn add_project_folder(
     path: String,
     recursive: bool,
 ) -> CmdResult<Project> {
+    let norm = lumenkorn_core::paths::normalize_dir(Path::new(&path));
     state
         .catalog
         .locked()
-        .add_project_folder(project_id, Path::new(&path), recursive)
+        .add_project_folder_normalized(project_id, &norm, recursive)
 }
 
 #[tauri::command(async)]

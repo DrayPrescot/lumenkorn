@@ -1134,7 +1134,8 @@ export const api = {
   docDelete: (kind: DocKind, scope: Scope) => call<void>("doc_delete", { kind, scope }),
   docProjects: (kind: DocKind) => call<number[]>("doc_projects", { kind }),
   aiStatus: () => call<AiStatus>("ai_status"),
-  aiSetSettings: (settings: AiSettings) => call<void>("ai_set_settings", { settings }),
+  /** Ändert nur die übergebenen Einstellungen */
+  aiSetSettings: (settings: Partial<AiSettings>) => call<void>("ai_set_settings", { settings }),
   aiBenchmark: () => call<Benchmark>("ai_benchmark"),
   appRestart: () => call<void>("app_restart"),
   updateCheck: () => call<UpdateInfo | null>("update_check"),

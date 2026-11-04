@@ -8,6 +8,13 @@ impl Catalog {
     // ------------------------------------------------------------------
 
     pub fn add_root(&self, path: &Path) -> Result<Root> {
+        self.add_root_normalized(&Self::prepare_root(path)?)
+    }
+
+    /// Prüft einen neuen Quellordner und liefert den normierten Pfad. Greift aufs
+    /// Dateisystem zu (auf einem schlafenden Netzlaufwerk Sekunden): nicht unter
+    /// der Katalogsperre aufrufen.
+    pub fn prepare_root(path: &Path) -> Result<String> {
         if !path.is_dir() {
             return Err(Error::Invalid(tr!(
                 "{} ist kein Ordner",
@@ -15,18 +22,21 @@ impl Catalog {
                 path.display()
             )));
         }
-        let p = paths::normalize_dir(path);
+        Ok(paths::normalize_dir(path))
+    }
 
+    /// [`Self::add_root`] mit dem Ergebnis von [`Self::prepare_root`]
+    pub fn add_root_normalized(&self, p: &str) -> Result<Root> {
         // Verschachtelte Quellordner würden Bilder doppelt erfassen.
         for r in self.roots()? {
-            if paths::is_within(&p, &r.path) {
+            if paths::is_within(p, &r.path) {
                 return Err(Error::Invalid(tr!(
                     "{p} liegt bereits in Quellordner {}",
                     "{p} is already inside source folder {}",
                     r.path
                 )));
             }
-            if paths::is_within(&r.path, &p) {
+            if paths::is_within(&r.path, p) {
                 return Err(Error::Invalid(tr!(
                     "{p} enthält den bestehenden Quellordner {}. Bitte diesen zuerst entfernen.",
                     "{p} contains the existing source folder {}. Please remove it first.",
@@ -91,10 +101,15 @@ impl Catalog {
 
     /// „Unterordner einbeziehen“ für einen Ordner setzen
     pub fn set_folder_subfolders(&self, path: &Path, include: bool) -> Result<()> {
+        self.set_folder_subfolders_normalized(&paths::normalize_dir(path), include)
+    }
+
+    /// Mit schon normiertem Pfad: greift nicht aufs Dateisystem zu
+    pub fn set_folder_subfolders_normalized(&self, path: &str, include: bool) -> Result<()> {
         self.conn.execute(
             "INSERT INTO folder_options (path, subfolders) VALUES (?1, ?2)
              ON CONFLICT(path) DO UPDATE SET subfolders = ?2",
-            params![paths::normalize_dir(path), include],
+            params![path, include],
         )?;
         Ok(())
     }

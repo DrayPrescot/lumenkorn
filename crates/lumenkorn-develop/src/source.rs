@@ -96,6 +96,9 @@ impl Source {
             let o = orientation.unwrap_or(1);
             let (w, h) = (img.width() as usize, img.height() as usize);
             full = Some(if (5..=8).contains(&o) { (h, w) } else { (w, h) });
+            if !crate::raster::linear_fits(&img, max_edge) {
+                return Err(Error::Image(crate::raster::insufficient_memory()));
+            }
             let img = crate::raster::to_linear(img, max_edge);
             (SourceKind::Raster, apply_exif_orientation(img, o))
         };
@@ -154,6 +157,15 @@ fn decode_raw(path: &Path) -> Result<(ImageF32, u16, Opened)> {
     use rawler::decoders::RawDecodeParams;
     // Eine Öffnung und ein Lesen der Metadaten für Entwicklung und Objektivprofil
     let file = rawler::rawsource::RawSource::new(path)?;
+    if !crate::tiff_dims::raw_size_plausible(file.buf()) {
+        return Err(Error::Raw(
+            tr_s(
+                "Die Bildmaße in der Datei passen nicht zu ihrer Größe oder zum freien Speicher",
+                "The image size in the file does not fit its file size or the free memory",
+            )
+            .into(),
+        ));
+    }
     let raw = rawler::decode(&file, &RawDecodeParams::default())?;
     let meta = rawler::get_decoder(&file)
         .ok()

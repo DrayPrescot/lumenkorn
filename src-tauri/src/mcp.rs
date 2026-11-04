@@ -72,6 +72,16 @@ fn save(data_dir: &Path, c: &McpConfig) {
     if let Err(e) = lumenkorn_develop::fsutil::save_json(&config_path(data_dir), c) {
         log::warn!("MCP-Einstellungen nicht gespeichert: {e}");
     }
+    // Enthält den Schlüssel: Andere Benutzer des Rechners sollen ihn nicht lesen.
+    // Unter Windows schützt das Benutzerprofil (%APPDATA%) die Datei schon.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let only_owner = std::fs::Permissions::from_mode(0o600);
+        if let Err(e) = std::fs::set_permissions(config_path(data_dir), only_owner) {
+            log::warn!("Rechte von {FILE} nicht gesetzt: {e}");
+        }
+    }
 }
 
 /// Zufälliger Schlüssel: 256 Bit vom Zufallsgenerator des Betriebssystems, hex.

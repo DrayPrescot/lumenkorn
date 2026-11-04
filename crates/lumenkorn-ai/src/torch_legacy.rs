@@ -50,10 +50,64 @@ fn bad(msg: impl Into<String>) -> Error {
     ))
 }
 
+/// Grenzen gegen präparierte Dateien (Modelle aus eigenen Quellen haben nicht immer
+/// eine Prüfsumme). Echte Gewichte sind wenige Ebenen tief und kopieren wenig.
+///
+/// Verschachtelung kostet je Ebene ein Byte; `Drop` und `Clone` arbeiten rekursiv, und
+/// ein Stapelüberlauf beendet den Prozess. Merken und Holen (`q`, `h`) kopieren den
+/// Wert, doppelt so groß je Runde: 200 Bytes genügten für viele GB.
+const MAX_DEPTH: usize = 64;
+const MAX_COPIED: usize = 1 << 22;
+
+/// Ist `v` tiefer als `limit`? Die Rekursion endet spätestens bei `limit`.
+fn deeper_than(v: &V, limit: usize) -> bool {
+    if limit == 0 {
+        return true;
+    }
+    match v {
+        V::Tuple(l) | V::List(l) => l.iter().any(|x| deeper_than(x, limit - 1)),
+        V::Dict(d) => d
+            .iter()
+            .any(|(k, x)| deeper_than(k, limit - 1) || deeper_than(x, limit - 1)),
+        _ => false,
+    }
+}
+
+fn check_depth(v: &V) -> Result<()> {
+    if deeper_than(v, MAX_DEPTH) {
+        return Err(bad(tr_s("zu tief verschachtelt", "nested too deeply")));
+    }
+    Ok(())
+}
+
+/// Bucht die Kosten einer Kopie von `v`, bevor sie entsteht.
+fn charge_copy(copied: &mut usize, v: &V) -> Result<()> {
+    let mut todo = vec![v];
+    while let Some(x) = todo.pop() {
+        *copied += 1;
+        if *copied > MAX_COPIED {
+            return Err(bad(tr_s("zu viele Kopien", "too many copies")));
+        }
+        match x {
+            V::Tuple(l) | V::List(l) => todo.extend(l),
+            V::Dict(d) => {
+                for (k, e) in d {
+                    todo.push(k);
+                    todo.push(e);
+                }
+            }
+            V::Str(s) | V::Global(s) => *copied += s.len() / 64,
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 struct Pickle<'r, 'b> {
     r: &'r mut Cursor<&'b [u8]>,
     stack: Vec<V>,
     memo: HashMap<u32, V>,
+    copied: usize,
 }
 
 impl<'r, 'b> Pickle<'r, 'b> {
@@ -123,6 +177,7 @@ impl<'r, 'b> Pickle<'r, 'b> {
             r,
             stack: Vec::new(),
             memo: HashMap::new(),
+            copied: 0,
         };
         loop {
             let op = p.u8()?;
@@ -187,6 +242,7 @@ impl<'r, 'b> Pickle<'r, 'b> {
                 b')' => p.stack.push(V::Tuple(vec![])),
                 b't' => {
                     let items = p.pop_mark()?;
+                    items.iter().try_for_each(check_depth)?;
                     p.stack.push(V::Tuple(items));
                 }
                 0x85..=0x87 => {
@@ -197,18 +253,21 @@ impl<'r, 'b> Pickle<'r, 'b> {
                         .checked_sub(n)
                         .ok_or_else(|| bad(tr_s("Tupel", "tuple")))?;
                     let items = p.stack.split_off(at);
+                    items.iter().try_for_each(check_depth)?;
                     p.stack.push(V::Tuple(items));
                 }
                 b']' => p.stack.push(V::List(vec![])),
                 b'}' => p.stack.push(V::Dict(vec![])),
                 b'a' => {
                     let v = p.pop()?;
+                    check_depth(&v)?;
                     if let V::List(l) = p.top_mut()? {
                         l.push(v);
                     }
                 }
                 b'e' => {
                     let items = p.pop_mark()?;
+                    items.iter().try_for_each(check_depth)?;
                     if let V::List(l) = p.top_mut()? {
                         l.extend(items);
                     }
@@ -216,12 +275,15 @@ impl<'r, 'b> Pickle<'r, 'b> {
                 b's' => {
                     let v = p.pop()?;
                     let k = p.pop()?;
+                    check_depth(&v)?;
+                    check_depth(&k)?;
                     if let V::Dict(d) = p.top_mut()? {
                         d.push((k, v));
                     }
                 }
                 b'u' => {
                     let items = p.pop_mark()?;
+                    items.iter().try_for_each(check_depth)?;
                     if let V::Dict(d) = p.top_mut()? {
                         let mut it = items.into_iter();
                         while let (Some(k), Some(v)) = (it.next(), it.next()) {
@@ -231,22 +293,30 @@ impl<'r, 'b> Pickle<'r, 'b> {
                 }
                 b'q' => {
                     let i = p.u8()? as u32;
-                    let v = p.stack.last().cloned().ok_or_else(|| bad("BINPUT"))?;
+                    let top = p.stack.last().ok_or_else(|| bad("BINPUT"))?;
+                    charge_copy(&mut p.copied, top)?;
+                    let v = top.clone();
                     p.memo.insert(i, v);
                 }
                 b'r' => {
                     let i = p.u32()?;
-                    let v = p.stack.last().cloned().ok_or_else(|| bad("LONG_BINPUT"))?;
+                    let top = p.stack.last().ok_or_else(|| bad("LONG_BINPUT"))?;
+                    charge_copy(&mut p.copied, top)?;
+                    let v = top.clone();
                     p.memo.insert(i, v);
                 }
                 b'h' => {
                     let i = p.u8()? as u32;
-                    let v = p.memo.get(&i).cloned().ok_or_else(|| bad("BINGET"))?;
+                    let found = p.memo.get(&i).ok_or_else(|| bad("BINGET"))?;
+                    charge_copy(&mut p.copied, found)?;
+                    let v = found.clone();
                     p.stack.push(v);
                 }
                 b'j' => {
                     let i = p.u32()?;
-                    let v = p.memo.get(&i).cloned().ok_or_else(|| bad("LONG_BINGET"))?;
+                    let found = p.memo.get(&i).ok_or_else(|| bad("LONG_BINGET"))?;
+                    charge_copy(&mut p.copied, found)?;
+                    let v = found.clone();
                     p.stack.push(v);
                 }
                 b'Q' => {
@@ -409,6 +479,13 @@ pub fn load_state_dict(bytes: &[u8]) -> Result<Vec<(String, Tensor)>> {
     let V::Dict(entries) = obj else {
         return Err(bad(tr_s("kein Wörterbuch", "not a dictionary")));
     };
+    // Tensoren dürfen sich einen Speicher teilen, aber nicht beliebig oft: 8000
+    // Einträge, die auf denselben Block zeigen, ergäben aus 100 KB viele GB
+    let mut budget = storages
+        .values()
+        .map(Vec::len)
+        .sum::<usize>()
+        .saturating_mul(2);
     let mut out = Vec::with_capacity(entries.len());
     for (k, v) in entries {
         let (
@@ -431,8 +508,11 @@ pub fn load_state_dict(bytes: &[u8]) -> Result<Vec<(String, Tensor)>> {
         let n = shape
             .iter()
             .try_fold(1usize, |a, d| a.checked_mul(*d))
-            .filter(|n| *n <= st.len())
+            .filter(|n| *n <= st.len() && shape.len() <= 8)
             .ok_or_else(|| bad(tr_s("Form", "shape")))?;
+        budget = budget
+            .checked_sub(n)
+            .ok_or_else(|| bad(tr_s("zu viele Tensoren", "too many tensors")))?;
         let mut data = Vec::with_capacity(n);
         let mut idx = vec![0usize; shape.len()];
         for _ in 0..n {
@@ -468,6 +548,47 @@ mod tests {
         b.extend_from_slice(b"}."); // leeres Wörterbuch
         b.extend_from_slice(&[b']', b'(', 0x8c, 1, b'k', b'e', b'.']); // Schlüssel „k“
         b
+    }
+
+    /// Echte Gewichte (`LUMENKORN_TEST_PTH`): Die Grenzen dürfen sie nicht treffen.
+    #[test]
+    fn real_weights_pass_the_limits() {
+        let Ok(path) = std::env::var("LUMENKORN_TEST_PTH") else {
+            return;
+        };
+        let tensors = load_state_dict(&std::fs::read(path).unwrap()).unwrap();
+        eprintln!("{} Tensoren", tensors.len());
+        assert!(tensors.len() > 50);
+    }
+
+    #[test]
+    fn deep_nesting_is_refused_without_overflowing_the_stack() {
+        // Ohne Grenze liefe das Aufräumen der 200 000 Ebenen in einen Stapelüberlauf
+        let mut b = vec![b'N'];
+        b.extend(std::iter::repeat_n(0x85u8, 200_000));
+        b.push(b'.');
+        assert!(Pickle::run(&mut Cursor::new(b.as_slice())).is_err());
+        // Listen in Listen, von innen nach außen gebaut
+        let mut b = vec![b']'; 200_000];
+        b.extend(std::iter::repeat_n(b'a', 199_999));
+        b.push(b'.');
+        assert!(Pickle::run(&mut Cursor::new(b.as_slice())).is_err());
+        // Normale Tiefe geht
+        let mut b = vec![b'N'];
+        b.extend(std::iter::repeat_n(0x85u8, 8));
+        b.push(b'.');
+        assert!(Pickle::run(&mut Cursor::new(b.as_slice())).is_ok());
+    }
+
+    /// Jede Runde verdoppelt den Wert: 40 Runden wären ohne Grenze Terabytes.
+    #[test]
+    fn doubling_copies_are_refused() {
+        let mut b = vec![b'N', b'q', 0];
+        for i in 0..40u8 {
+            b.extend_from_slice(&[b'h', i, b'h', i, 0x86, b'q', i + 1]);
+        }
+        b.push(b'.');
+        assert!(Pickle::run(&mut Cursor::new(b.as_slice())).is_err());
     }
 
     #[test]

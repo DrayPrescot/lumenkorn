@@ -112,75 +112,10 @@ pub(crate) fn tiff_raw_dims(path: &Path) -> Option<(u32, u32)> {
 }
 
 fn tiff_raw_dims_in(d: &[u8]) -> Option<(u32, u32)> {
-    let le = match d.get(0..4)? {
-        [b'I', b'I', 42, 0] | [b'I', b'I', 0x52, 0x4F] | [b'I', b'I', 0x55, 0] => true, // TIFF, ORF, RW2
-        [b'M', b'M', 0, 42] => false,
-        _ => return None,
-    };
-    let u16_at = |o: usize| -> Option<u32> {
-        let b = d.get(o..o + 2)?;
-        Some(if le {
-            u16::from_le_bytes([b[0], b[1]])
-        } else {
-            u16::from_be_bytes([b[0], b[1]])
-        } as u32)
-    };
-    let u32_at = |o: usize| -> Option<u32> {
-        let b: [u8; 4] = d.get(o..o + 4)?.try_into().ok()?;
-        Some(if le {
-            u32::from_le_bytes(b)
-        } else {
-            u32::from_be_bytes(b)
-        })
-    };
-    // Wert eines Eintrags (SHORT oder LONG, erster Wert)
-    let value = |e: usize| -> Option<u32> {
-        match u16_at(e + 2)? {
-            3 => u16_at(e + 8),
-            4 => u32_at(e + 8),
-            _ => None,
-        }
-    };
     let mut best: Option<(u32, u32)> = None;
-    let mut queue = vec![u32_at(4)? as usize];
-    // Grenzen hier und unten: Schutz vor kaputten oder zyklischen IFDs (echte
-    // RAWs haben nur wenige IFDs mit höchstens einigen Dutzend Einträgen)
-    let mut seen = std::collections::HashSet::new();
-    while let Some(ifd) = queue.pop() {
-        if ifd == 0 || !seen.insert(ifd) || seen.len() > 64 {
-            continue;
-        }
-        let Some(n) = u16_at(ifd) else { continue };
-        let (mut w, mut h, mut sub) = (None, None, 0);
-        for i in 0..n.min(500) as usize {
-            let e = ifd + 2 + i * 12;
-            match u16_at(e) {
-                Some(0x00FE) => sub = value(e).unwrap_or(0),
-                Some(0x0100) => w = value(e),
-                Some(0x0101) => h = value(e),
-                Some(0x014A) => {
-                    // SubIFDs: ein Offset direkt oder eine Liste von Offsets
-                    let count = u32_at(e + 4).unwrap_or(0) as usize;
-                    if count == 1 {
-                        queue.extend(u32_at(e + 8).map(|o| o as usize));
-                    } else if let Some(list) = u32_at(e + 8) {
-                        for k in 0..count.min(16) {
-                            queue.extend(u32_at(list as usize + 4 * k).map(|o| o as usize));
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        if sub == 0
-            && let (Some(w), Some(h)) = (w, h)
-            && w.max(h) > best.map_or(0, |(a, b)| a.max(b))
-        {
-            best = Some((w, h));
-        }
-        // nächstes IFD in der Kette
-        if let Some(next) = u32_at(ifd + 2 + n as usize * 12) {
-            queue.push(next as usize);
+    for f in lumenkorn_develop::tiff_dims::frames(d) {
+        if f.subfile == 0 && f.width.max(f.height) > best.map_or(0, |(a, b)| a.max(b)) {
+            best = Some((f.width, f.height));
         }
     }
     // Kleiner sind nur EXIF-Thumbnails (160 × 120), nie das Sensorbild

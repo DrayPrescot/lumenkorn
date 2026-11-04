@@ -75,6 +75,8 @@ pub struct AiState {
     cancel: AtomicBool,
     settings_path: PathBuf,
     pub(crate) settings: Mutex<AiSettings>,
+    /// Hält, wer die Einstellungen ändert (lesen, ergänzen, speichern)
+    settings_write: Mutex<()>,
     subject: Mutex<Option<Arc<SubjectModel>>>,
     sam: Mutex<Option<Arc<Sam>>>,
     sky: Mutex<Option<Arc<SkyModel>>>,
@@ -318,6 +320,7 @@ impl AiState {
             cancel: AtomicBool::new(false),
             settings_path,
             settings: Mutex::new(settings),
+            settings_write: Mutex::new(()),
             subject: Mutex::new(None),
             sam: Mutex::new(None),
             sky: Mutex::new(None),
@@ -1075,15 +1078,20 @@ pub fn ai_status(state: State<AppState>) -> Result<AiStatus, Error> {
     })
 }
 
+/// Ändert die übergebenen Einstellungen; nicht genannte bleiben, wie sie sind.
+/// Die Oberfläche schickt nur, was sich geändert hat: Zwei schnelle Klicks könnten
+/// mit dem ganzen Stand die jeweils andere Änderung zurücknehmen.
 #[tauri::command(async)]
-pub fn ai_set_settings(state: State<AppState>, settings: AiSettings) -> Result<(), Error> {
-    if let Some(dir) = state.ai.settings_path.parent() {
-        std::fs::create_dir_all(dir)?;
+pub fn ai_set_settings(state: State<AppState>, settings: serde_json::Value) -> Result<(), Error> {
+    let _writing = state.ai.settings_write.locked();
+    let mut merged = serde_json::to_value(&*state.ai.settings.locked())?;
+    if let (Some(m), Some(patch)) = (merged.as_object_mut(), settings.as_object()) {
+        for (k, v) in patch {
+            m.insert(k.clone(), v.clone());
+        }
     }
-    std::fs::write(
-        &state.ai.settings_path,
-        serde_json::to_string_pretty(&settings)?,
-    )?;
+    let settings: AiSettings = serde_json::from_value(merged)?;
+    lumenkorn_develop::fsutil::save_json(&state.ai.settings_path, &settings)?;
     let auto = settings.enabled && settings.auto_tag;
     let was_enabled = enabled(&state);
     let now_enabled = settings.enabled;
@@ -1415,12 +1423,27 @@ pub(crate) fn embeddings_for(
     state: &AppState,
     ids: &[i64],
 ) -> std::collections::HashMap<i64, Vec<f32>> {
-    with_index(state, |idx| {
-        ids.iter()
-            .filter_map(|id| Some((*id, idx.get(*id)?.to_vec())))
-            .collect()
-    })
-    .unwrap_or_default()
+    {
+        let guard = state
+            .ai
+            .index
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(idx) = guard.as_ref() {
+            return ids
+                .iter()
+                .filter_map(|id| Some((*id, idx.get(*id)?.to_vec())))
+                .collect();
+        }
+    }
+    // Index nicht geladen: Nur die gefragten Vektoren lesen, nicht alle (bis ~200 MB
+    // bei 100 000 Fotos). Das gilt auch bei ausgeschalteter KI, die Vektoren liegen
+    // schon im Katalog.
+    let rows = state.catalog.locked().embeddings_of(MODEL_KEY, ids);
+    rows.unwrap_or_default()
+        .into_iter()
+        .map(|(id, bytes)| (id, from_bytes(&bytes)))
+        .collect()
 }
 
 /// CLIP-Werte für das Fotoalbum (siehe `album::select`).
@@ -1444,7 +1467,8 @@ pub(crate) fn theme_scores(
     negatives: &[&str],
     ids: &[i64],
 ) -> Result<Option<ThemeScores>, Error> {
-    if ids.is_empty() || !models::status(&state.data_dir).model_ready {
+    // KI aus: nicht erst den Suchindex aufbauen, um dann am Modell zu scheitern
+    if ids.is_empty() || !enabled(state) || !models::status(&state.data_dir).model_ready {
         return Ok(None);
     }
     let vectors: std::collections::HashMap<i64, Vec<f32>> = with_index(state, |idx| {

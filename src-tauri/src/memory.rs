@@ -198,6 +198,10 @@ pub fn sweep_data(state: &AppState) -> Result<(Swept, bool), lumenkorn_core::Err
     });
     swept += housekeeping::sweep_image_cache(state.cache.base(), &live.images, DERIVED);
     crate::settings::trim_previews(state);
+    let tiles = crate::geo::trim_tiles(state);
+    if tiles > 0 {
+        log::info!("{tiles} alte Kartenkacheln gelöscht");
+    }
     state.catalog.locked().optimize()?;
     if swept.files > 0 {
         log::info!(
