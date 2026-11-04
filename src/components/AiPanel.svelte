@@ -2,6 +2,7 @@
   // KI und Grafikkarte im Einstellungsmenü (SettingsDialog): `part` wählt den
   // Abschnitt.
   import { api, type AccelPreference, type AiComponent, type Benchmark } from "../lib/api";
+  import { gpuLabel } from "../lib/gpuPrompt";
   import { lib } from "../lib/store.svelte";
   import Icon from "./Icon.svelte";
   import { onMount } from "svelte";
@@ -73,7 +74,7 @@
   // Name aus dem Betriebssystem (mit Speicher) bevorzugt, sonst vom Grafiktreiber
   const deviceLabel = $derived(
     device
-      ? `${device.vendor} ${device.name}${device.memory ? ` · ${t("{size} Grafikspeicher", { size: gb(device.memory) })}` : ""}`
+      ? `${gpuLabel(device)}${device.memory ? ` · ${t("{size} Grafikspeicher", { size: gb(device.memory) })}` : ""}`
       : dev?.info && dev.info.kind !== "software"
         ? dev.info.name
         : null,

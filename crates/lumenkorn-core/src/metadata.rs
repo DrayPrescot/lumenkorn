@@ -1,5 +1,6 @@
 //! Metadaten: EXIF lesen und einen schnellen Inhalts-Hash bilden.
 
+use crate::exif_guard;
 use crate::formats::ImageKind;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
@@ -74,7 +75,7 @@ pub fn read(path: &Path, kind: ImageKind) -> Metadata {
     }
     // Für Rasterbilder sind die echten Pixelmaße billig und verlässlicher als EXIF.
     if kind == ImageKind::Raster
-        && let Ok((w, h)) = image::image_dimensions(path)
+        && let Ok((w, h)) = lumenkorn_develop::raster::dimensions(path)
     {
         m.width = Some(w as i64);
         m.height = Some(h as i64);
@@ -219,12 +220,11 @@ fn exif_from<R: BufRead + Seek>(reader: &mut R) -> Option<Metadata> {
         _ => None,
     };
     if let Some(le) = le {
-        let mut buf = Vec::new();
-        reader.read_to_end(&mut buf).ok()?;
+        let mut buf = exif_guard::read_limited(reader)?;
         buf[2..4].copy_from_slice(if le { &[42, 0] } else { &[0, 42] });
         return exif_from_tiff(buf);
     }
-    let exif = exif::Reader::new().read_from_container(reader).ok()?;
+    let exif = exif_guard::read_container(reader)?;
     Some(exif_fields(&exif))
 }
 
@@ -232,8 +232,7 @@ fn exif_from<R: BufRead + Seek>(reader: &mut R) -> Option<Metadata> {
 /// in das eingebettete JPEG (Tag 0x002E) – daraus wird Fehlendes ergänzt.
 fn exif_from_tiff(buf: Vec<u8>) -> Option<Metadata> {
     use exif::{Context, In, Tag, Value};
-    let reader = exif::Reader::new();
-    let exif = reader.read_raw(buf).ok()?;
+    let exif = exif_guard::read_tiff(buf)?;
     let mut m = exif_fields(&exif);
     // RW2: Bildbereich steht in eigenen Tags (Ränder oben, links, unten, rechts)
     let border = |t: u16| {
@@ -257,11 +256,8 @@ fn exif_from_tiff(buf: Vec<u8>) -> Option<Metadata> {
         },
         None => None,
     };
-    if let Some(inner) = jpeg.and_then(|j| {
-        reader
-            .read_from_container(&mut std::io::Cursor::new(j))
-            .ok()
-    }) {
+    if let Some(inner) = jpeg.and_then(|j| exif_guard::read_container(&mut std::io::Cursor::new(j)))
+    {
         let j = exif_fields(&inner);
         m.orientation = m.orientation.or(j.orientation);
         m.captured_at = m.captured_at.or(j.captured_at);
@@ -393,9 +389,7 @@ fn gps(exif: &exif::Exif) -> Option<(f64, f64)> {
 /// GPS-Daten in den Katalog kamen).
 pub fn read_gps(path: &Path) -> Option<(f64, f64)> {
     let file = File::open(path).ok()?;
-    let exif = exif::Reader::new()
-        .read_from_container(&mut BufReader::new(file))
-        .ok()?;
+    let exif = exif_guard::read_container(&mut BufReader::new(file))?;
     gps(&exif)
 }
 

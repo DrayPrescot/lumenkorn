@@ -82,6 +82,11 @@ class SlideshowStore {
 
   /** Abspielbare Lieder (Pfad → Blob-URL) der Diashow im Speicher */
   musicUrls = $state<Record<string, string>>({});
+  /** Die Lieder selbst, für den Video-Export: Die CSP der App erlaubt `fetch`
+   *  auf Blob-URLs nicht, sie lassen sich also nicht zurücklesen. */
+  #musicBlobs = new Map<string, Blob>();
+  /** Lieder, die gerade geladen werden (nicht doppelt laden) */
+  #musicLoads = new Map<string, Promise<void>>();
   /** Musik wird geladen bzw. analysiert */
   musicBusy = $state(false);
   /** Video wird gespeichert */
@@ -315,9 +320,19 @@ class SlideshowStore {
     const next: Record<string, string> = {};
     for (const [path, url] of Object.entries(this.musicUrls)) {
       if (keep.includes(path)) next[path] = url;
-      else URL.revokeObjectURL(url);
+      else {
+        URL.revokeObjectURL(url);
+        this.#musicBlobs.delete(path);
+      }
     }
     this.musicUrls = next;
+  }
+
+  #setMusic(path: string, blob: Blob) {
+    const old = this.musicUrls[path];
+    if (old) URL.revokeObjectURL(old);
+    this.#musicBlobs.set(path, blob);
+    this.musicUrls = { ...this.musicUrls, [path]: URL.createObjectURL(blob) };
   }
 
   /** Lieder der Diashow laden (App: aus den Dateien), soweit noch nicht geschehen */
@@ -326,13 +341,21 @@ class SlideshowStore {
     if (!m || !isTauri) return;
     for (const tr of m.tracks) {
       if (this.musicUrls[tr.path]) continue;
-      try {
-        const blob = await api.slideshowMusic(tr.path);
-        if (!this.state?.music?.tracks.some((x) => x.path === tr.path)) continue;
-        this.musicUrls = { ...this.musicUrls, [tr.path]: URL.createObjectURL(blob) };
-      } catch (e) {
-        lib.notify(t("Die Musik „{name}“ ließ sich nicht laden: {error}", { name: tr.name, error: String(e) }), "error");
+      let load = this.#musicLoads.get(tr.path);
+      if (!load) {
+        load = this.#loadMusic(tr).finally(() => this.#musicLoads.delete(tr.path));
+        this.#musicLoads.set(tr.path, load);
       }
+      await load;
+    }
+  }
+
+  async #loadMusic(tr: MusicTrack) {
+    try {
+      const blob = await api.slideshowMusic(tr.path);
+      if (this.state?.music?.tracks.some((x) => x.path === tr.path)) this.#setMusic(tr.path, blob);
+    } catch (e) {
+      lib.notify(t("Die Musik „{name}“ ließ sich nicht laden: {error}", { name: tr.name, error: String(e) }), "error");
     }
   }
 
@@ -355,7 +378,7 @@ class SlideshowStore {
           const beats = await analyzeMusic(blob);
           if (!this.state) return;
           const track: MusicTrack = { path: it.path, name: it.name, beats };
-          this.musicUrls = { ...this.musicUrls, [it.path]: URL.createObjectURL(blob) };
+          this.#setMusic(it.path, blob);
           this.#edit((a) => {
             if (a.music) a.music.tracks.push(track);
             else a.music = { tracks: [track], mode: "sequence", sync: true, fit: true, volume: 0.8 };
@@ -438,10 +461,7 @@ class SlideshowStore {
     const music: (Blob | null)[] = [];
     if (a.music) {
       await this.ensureMusic();
-      for (const tr of a.music.tracks) {
-        const url = this.musicUrls[tr.path];
-        music.push(url ? await fetch(url).then((r) => r.blob()) : null);
-      }
+      for (const tr of a.music.tracks) music.push(this.#musicBlobs.get(tr.path) ?? null);
     }
     const abort = new AbortController();
     this.#exportAbort = abort;

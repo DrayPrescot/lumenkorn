@@ -52,7 +52,7 @@
     } catch {
       // nur für diese Sitzung
     }
-    slideshow.exportVideo(videoSize, videoCodec);
+    slideshow.exportVideo(videoSize, videoCodec).catch((e) => lib.notify(String(e), "error"));
   }
   const exportPct = $derived(slideshow.exporting ? Math.round((100 * slideshow.exporting.done) / Math.max(1, slideshow.exporting.total)) : 0);
 

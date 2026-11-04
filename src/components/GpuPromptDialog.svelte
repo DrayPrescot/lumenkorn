@@ -3,7 +3,8 @@
   // aber nicht geladen oder auf „Nur Prozessor“ gestellt, fragen, ob sie
   // geladen und eingeschaltet werden soll – sonst rechnet die KI unbemerkt
   // viel langsamer auf dem Prozessor. „Nein“ wird gemerkt, Escape nicht.
-  import { api, type AiStatus } from "../lib/api";
+  import { api } from "../lib/api";
+  import { gpuLabel, gpuPromptNeed } from "../lib/gpuPrompt";
   import { lib } from "../lib/store.svelte";
   import { num, t } from "../lib/i18n";
   import Icon from "./Icon.svelte";
@@ -12,44 +13,44 @@
   let phase = $state<"ask" | "download" | "restart">("ask");
   let checked = false;
 
-  /** Braucht es die Frage? `null`: nein, sonst was fehlt */
-  function need(s: AiStatus): "download" | "enable" | null {
-    const st = s.settings;
-    if (!st.enabled || st.gpuPromptDeclined) return null;
-    // Keine GPU-Laufzeit für diese Plattform oder keine Grafikkarte erkannt
-    if (!s.gpuRuntimes.length || !s.accel.devices.length) return null;
-    if (!s.gpuRuntimes.some((g) => g.installed)) return "download";
-    return st.accel === "cpu" ? "enable" : null;
-  }
-
-  const what = $derived(lib.ai ? need(lib.ai) : null);
+  const what = $derived(lib.ai ? gpuPromptNeed(lib.ai) : null);
   const runtime = $derived(lib.ai?.gpuRuntimes[0]);
   const device = $derived(lib.ai?.accel.devices[0]);
   const mb = (b: number) => `${num(Math.round(b / 1e6))} MB`;
 
-  // Nur beim ersten Status nach dem Start prüfen, kurz verzögert, damit
-  // Katalog und Vorschaubilder zuerst laden
+  // Nur einmal nach dem Start prüfen, kurz verzögert, damit Katalog und
+  // Vorschaubilder zuerst laden. Frisch nachfragen: Die Bildbearbeitung sucht
+  // ihre Grafikkarte im Hintergrund, der erste Status kennt sie noch nicht.
   $effect(() => {
     if (checked || !lib.ai) return;
     checked = true;
-    setTimeout(() => {
-      if (lib.ai && need(lib.ai)) open = true;
+    setTimeout(async () => {
+      await lib.refreshAi();
+      if (lib.ai && gpuPromptNeed(lib.ai)) open = true;
     }, 2000);
   });
 
-  // Download fertig: Ist schon eine Laufzeit (für den Prozessor) geladen,
-  // wird die neue erst nach einem Neustart genommen
+  const installed = () => !!lib.ai?.gpuRuntimes.some((g) => g.installed);
+
+  // Download zu Ende. Der Store meldet das, bevor der neue Status da ist –
+  // deshalb selbst nachfragen, statt den alten Status zu lesen.
   let seen = false;
   $effect(() => {
-    if (phase !== "download" || !lib.ai) return;
-    if (lib.aiPending(runtime?.backend ?? "webgpu")) {
+    if (phase !== "download" || !runtime) return;
+    if (lib.aiPending(runtime.backend)) {
       seen = true;
-      return;
+    } else if (seen) {
+      seen = false;
+      void settle();
     }
-    if (lib.ai.gpuRuntimes.some((g) => g.installed)) finish();
-    // Gescheitert: Die Fehlermeldung kommt vom Store, der Dialog geht zu
-    else if (seen) open = false;
   });
+
+  async function settle() {
+    await lib.refreshAi();
+    if (installed()) finish();
+    // Gescheitert: Die Fehlermeldung kommt vom Store, der Dialog geht zu
+    else open = false;
+  }
 
   async function yes() {
     const s = lib.ai;
@@ -60,6 +61,8 @@
         phase = "download";
         await api.aiDownload(runtime.backend);
         await lib.refreshAi();
+        // War der Download sofort fertig, kam das Ereignis schon vorher
+        if (installed() && !lib.aiPending(runtime.backend)) finish();
       } else {
         await lib.refreshAi();
         finish();
@@ -70,9 +73,14 @@
     }
   }
 
+  // Ist schon eine Laufzeit (für den Prozessor) geladen, wird die neue erst nach
+  // einem Neustart genommen. Das auch dann sagen, wenn der Download im
+  // Hintergrund weiterlief und der Dialog schon zu war.
   function finish() {
-    if (lib.ai?.accel.restartRequired) phase = "restart";
-    else {
+    if (lib.ai?.accel.restartRequired) {
+      phase = "restart";
+      open = true;
+    } else {
       open = false;
       lib.notify(t("Die KI rechnet jetzt auf der Grafikkarte."));
     }
@@ -105,7 +113,7 @@
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="gpu-title">
       <h3 id="gpu-title"><Icon name="sparkle" size={16} /> {t("KI auf der Grafikkarte rechnen lassen?")}</h3>
       {#if device}
-        <p class="meta">{t("Erkannt: {device}", { device: `${device.vendor} ${device.name}` })}</p>
+        <p class="meta">{t("Erkannt: {device}", { device: gpuLabel(device) })}</p>
       {/if}
 
       {#if phase === "ask"}

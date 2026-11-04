@@ -6,6 +6,22 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Import: with “delete from the card afterwards” on, importing from a folder inside the target
+  could delete the only copy of a photo: a file that already had its final name counted as its own
+  verified copy. Such a file now stays.
+- Import: a photo no longer counts as “already imported” when its file is gone. The badge could
+  tempt you to format the card while no copy existed.
+- The question about GPU support for AI never appeared on Windows, because Windows reported no
+  graphics card. Lumenkorn now lists the adapters there, shows them in the settings, and also
+  offers the restart when the download finished in the background.
+- Slideshow: music played silently and video export with music failed without a message in the
+  installed app (blocked by the app's content security policy).
+- A crafted photo could end the app on every start: very small files could make the EXIF reader
+  request many GB. Such blocks are now skipped.
+- A PNG with a highly compressed color profile could request many GB. Extra PNG data is now capped
+  at 64 MB; large images still open.
+
 ## [1.2.1] – 2026-11-01
 
 ### Added

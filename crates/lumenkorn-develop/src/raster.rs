@@ -11,8 +11,11 @@
 
 use crate::color::srgb_decode_lut_u16;
 use crate::image_f32::ImageF32;
+use image::codecs::png::PngDecoder;
 use image::error::{LimitError, LimitErrorKind};
-use image::{DynamicImage, ImageDecoder, ImageError, ImageReader, ImageResult, Limits};
+use image::{
+    DynamicImage, ImageDecoder, ImageError, ImageFormat, ImageReader, ImageResult, Limits,
+};
 use rayon::prelude::*;
 use std::path::Path;
 use std::sync::Mutex;
@@ -62,11 +65,37 @@ const LARGE_BYTES: u64 = 512 << 20;
 
 static LARGE_TURN: Mutex<()> = Mutex::new(());
 
+/// Zusatzdaten eines PNG (Farbprofil, Text) entpackt der Decoder in eigene Puffer,
+/// bevor das erste Pixel kommt. Ohne Grenze wächst ein 1-MB-PNG so auf 1 GB. Die
+/// Pixel zählen nicht dazu, die prüft [`decode_allowed`].
+const PNG_ANCILLARY_BYTES: u64 = 64 << 20;
+
+fn png_limits() -> Limits {
+    let mut limits = Limits::no_limits();
+    limits.max_alloc = Some(PNG_ANCILLARY_BYTES);
+    limits
+}
+
 /// Öffnet ein Rasterbild ohne die Standardgrenzen von `image` (siehe Moduldoc).
 pub fn open(path: &Path) -> ImageResult<DynamicImage> {
     let mut reader = ImageReader::open(path)?.with_guessed_format()?;
+    if reader.format() == Some(ImageFormat::Png) {
+        return decode_checked(PngDecoder::with_limits(reader.into_inner(), png_limits())?);
+    }
     reader.limits(Limits::no_limits());
-    let decoder = reader.into_decoder()?;
+    decode_checked(reader.into_decoder()?)
+}
+
+/// Pixelmaße, ohne die Pixel zu lesen (mit denselben Grenzen wie [`open`]).
+pub fn dimensions(path: &Path) -> ImageResult<(u32, u32)> {
+    let reader = ImageReader::open(path)?.with_guessed_format()?;
+    if reader.format() == Some(ImageFormat::Png) {
+        return Ok(PngDecoder::with_limits(reader.into_inner(), png_limits())?.dimensions());
+    }
+    reader.into_dimensions()
+}
+
+fn decode_checked(decoder: impl ImageDecoder) -> ImageResult<DynamicImage> {
     let bytes = decoder.total_bytes();
     let (w, h) = decoder.dimensions();
     let pixels = u64::from(w) * u64::from(h);

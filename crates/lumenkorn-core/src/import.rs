@@ -157,12 +157,23 @@ pub fn scan(
             Some((metadata::quick_hash(c.main()).ok()?, size))
         })
         .collect();
-    {
+    // Pfade unter der Katalogsperre lesen, die Dateien danach ohne sie prüfen:
+    // Auf einem schlafenden Netzlaufwerk kann das dauern. „Schon importiert“
+    // verleitet dazu, die Karte zu formatieren – es muss also stimmen.
+    let known: Vec<Vec<String>> = {
         let cat = catalog.locked();
-        for (c, h) in out.iter_mut().zip(hashes) {
-            c.already = h.is_some_and(|(hash, size)| cat.has_content(&hash, size).unwrap_or(false));
-        }
-    }
+        hashes
+            .iter()
+            .map(|h| {
+                h.as_ref().map_or_else(Vec::new, |(hash, size)| {
+                    cat.content_paths(hash, *size).unwrap_or_default()
+                })
+            })
+            .collect()
+    };
+    out.par_iter_mut().zip(known).for_each(|(c, paths)| {
+        c.already = paths.iter().any(|p| Path::new(p).is_file());
+    });
     for (i, c) in out.iter_mut().enumerate() {
         c.id = i;
     }
@@ -405,7 +416,7 @@ pub fn run(
             p.bytes += n;
             progress(&p);
         }) {
-            Ok(Outcome::Copied(n, replaced)) => {
+            Ok((Outcome::Copied(n, replaced), own)) => {
                 report.imported += 1;
                 if shift.is_some() && !replaced {
                     report.unshifted += 1;
@@ -414,14 +425,14 @@ pub fn run(
                 report.bytes += n;
                 dirs.insert(dir);
                 if delete_after {
-                    report.deleted += delete_originals(c, &mut report.failed);
+                    report.deleted += delete_originals(c, &own, &mut report.failed);
                 }
             }
-            Ok(Outcome::Existing) => {
+            Ok((Outcome::Existing, own)) => {
                 report.existing += 1;
                 dirs.insert(dir);
                 if delete_after {
-                    report.deleted += delete_originals(c, &mut report.failed);
+                    report.deleted += delete_originals(c, &own, &mut report.failed);
                 }
             }
             Err(e) => {
@@ -456,7 +467,7 @@ fn import_one(
     shift: Shift,
     cancel: &AtomicBool,
     on_bytes: &mut dyn FnMut(u64),
-) -> Result<Outcome> {
+) -> Result<(Outcome, Vec<PathBuf>)> {
     std::fs::create_dir_all(dir)?;
     let base = new_stem(captured, counter);
     // Freien Namen suchen: gleicher Name mit gleichem Inhalt → schon da;
@@ -475,7 +486,14 @@ fn import_one(
             .map(|(src, dst)| dst.exists().then(|| same_content(src, dst, shift)))
             .collect();
         if states.iter().all(|s| *s == Some(true)) {
-            return Ok(Outcome::Existing);
+            let own = c
+                .files
+                .iter()
+                .zip(&dests)
+                .filter(|(src, dst)| same_file(src, dst))
+                .map(|(src, _)| src.clone())
+                .collect();
+            return Ok((Outcome::Existing, own));
         }
         if states.iter().all(|s| *s != Some(false)) {
             break;
@@ -484,17 +502,32 @@ fn import_one(
     }
     let mut total = 0;
     let mut replaced = false;
+    let mut own = Vec::new();
     for (i, f) in c.files.iter().enumerate() {
         let dst = dir.join(renamed(f, &c.stem, &stem));
         if dst.exists() && same_content(f, &dst, shift) {
             replaced |= i == 0;
+            if same_file(f, &dst) {
+                own.push(f.clone());
+            }
             continue; // Teil der Gruppe schon da (abgebrochener Import)
         }
         let (n, r) = copy_verified(f, &dst, shift, cancel, on_bytes)?;
         total += n;
         replaced |= i == 0 && r > 0;
     }
-    Ok(Outcome::Copied(total, replaced))
+    Ok((Outcome::Copied(total, replaced), own))
+}
+
+/// Dieselbe Datei (auch über Verknüpfungen oder andere Schreibweise)? Liegt die
+/// Quelle im Zielbaum, kann eine Datei ihr eigenes Ziel sein – dann gibt es
+/// keine zweite Kopie. Lässt sich das nicht klären, gilt „ja“: Im Zweifel wird
+/// nichts gelöscht.
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => true,
+    }
 }
 
 /// Gleicher Inhalt: gleiche Größe und gleicher BLAKE3 der ganzen Datei
@@ -642,9 +675,10 @@ fn copy_verified(
 }
 
 /// Originale löschen (nur nach erfolgreicher, geprüfter Kopie aufgerufen).
-fn delete_originals(c: &Candidate, failed: &mut Vec<(String, String)>) -> usize {
+/// `own`: Dateien, die ihr eigenes Ziel sind – sie sind die einzige Kopie.
+fn delete_originals(c: &Candidate, own: &[PathBuf], failed: &mut Vec<(String, String)>) -> usize {
     let mut n = 0;
-    for f in &c.files {
+    for f in c.files.iter().filter(|f| !own.contains(f)) {
         match std::fs::remove_file(f) {
             Ok(()) => n += 1,
             Err(e) => failed.push((f.display().to_string(), e.to_string())),
@@ -821,6 +855,42 @@ mod tests {
         let dir = target_dir(&target, &other.captured_at, "");
         let stem = new_stem(&other.captured_at, "10");
         assert!(dir.join(format!("{stem}-2.JPG")).is_file());
+    }
+
+    /// Quelle im Zielbaum: Die Datei ist ihr eigenes Ziel und damit die einzige
+    /// Kopie – „Danach löschen“ darf sie nie entfernen.
+    #[test]
+    fn deleting_after_import_never_removes_the_only_copy() {
+        let d = tempfile::tempdir().unwrap();
+        let card = d.path().join("karte");
+        std::fs::create_dir_all(&card).unwrap();
+        jpeg_taken(&card.join("DSC00778.JPG"), 1, "2026:10:11 14:32:10");
+        std::fs::write(card.join("DSC00778.xmp"), b"<xmp/>").unwrap();
+        let target = d.path().join("Bilder");
+        let cat = Mutex::new(Catalog::open_in_memory().unwrap());
+        let found = scan(&card, &cat, &|_| {}).unwrap();
+        let pairs: Vec<(&Candidate, String, i64)> = found
+            .iter()
+            .zip(counters(&found))
+            .map(|(c, n)| (c, n, 0))
+            .collect();
+        let first = run(&pairs, &target, "", false, &AtomicBool::new(false), &|_| {});
+        assert_eq!(first.imported, 1, "{first:?}");
+
+        // Zweiter Import: Quelle ist der Tagesordner im Ziel
+        let day = target.join("2026").join("2026.10.11");
+        let found = scan(&day, &cat, &|_| {}).unwrap();
+        assert_eq!(found.len(), 1);
+        let pairs: Vec<(&Candidate, String, i64)> = found
+            .iter()
+            .zip(counters(&found))
+            .map(|(c, n)| (c, n, 0))
+            .collect();
+        let again = run(&pairs, &target, "", true, &AtomicBool::new(false), &|_| {});
+        assert_eq!((again.existing, again.deleted), (1, 0), "{again:?}");
+        assert!(again.failed.is_empty());
+        assert!(day.join("20261011_143210_778.JPG").is_file());
+        assert!(day.join("20261011_143210_778.xmp").is_file());
     }
 
     /// JPEG mit EXIF-Aufnahmezeit (DateTimeOriginal und DateTime)

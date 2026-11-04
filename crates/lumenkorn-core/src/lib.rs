@@ -8,6 +8,7 @@
 
 pub mod catalog;
 pub mod error;
+mod exif_guard;
 pub mod exports;
 pub mod formats;
 pub mod geo;

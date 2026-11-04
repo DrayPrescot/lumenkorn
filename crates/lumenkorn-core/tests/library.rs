@@ -25,6 +25,30 @@ fn names(cat: &Catalog, scope: Scope) -> Vec<String> {
         .collect()
 }
 
+/// „Schon importiert“ verleitet dazu, die Karte zu formatieren: Es darf nur
+/// gelten, solange die Datei wirklich noch da ist.
+#[test]
+fn deleted_photo_does_not_count_as_already_imported() {
+    let d = tempfile::tempdir().unwrap();
+    let library = d.path().join("Bilder");
+    let card = d.path().join("Karte");
+    std::fs::create_dir_all(&library).unwrap();
+    std::fs::create_dir_all(&card).unwrap();
+    write_jpeg(&library.join("a.jpg"), 16, 16, 1);
+    std::fs::copy(library.join("a.jpg"), card.join("DSC1.jpg")).unwrap();
+    let cat = std::sync::Mutex::new(Catalog::open_in_memory().unwrap());
+    let root = cat.lock().unwrap().add_root(&library).unwrap();
+    scan_root(&cat, root.id, &no_progress).unwrap();
+
+    let found = lumenkorn_core::import::scan(&card, &cat, &|_| {}).unwrap();
+    assert!(found[0].already, "Datei liegt in der Bibliothek");
+
+    // Außerhalb von Lumenkorn gelöscht, der Katalog weiß noch nichts davon
+    std::fs::remove_file(library.join("a.jpg")).unwrap();
+    let found = lumenkorn_core::import::scan(&card, &cat, &|_| {}).unwrap();
+    assert!(!found[0].already, "Datei ist weg");
+}
+
 #[test]
 fn scan_tree_projects_and_moves() {
     let tmp = tempfile::tempdir().unwrap();

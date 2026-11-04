@@ -495,7 +495,7 @@ mod migration_tests {
         DROP TRIGGER search_meta_del; DROP VIEW search_source; DROP TABLE image_meta;
         CREATE VIEW search_source(id, body) AS SELECT 0, '';";
 
-    /// Stand vor v22 nachstellen: der Index für `has_content` fehlt wieder. Vor
+    /// Stand vor v22 nachstellen: der Index für `content_paths` fehlt wieder. Vor
     /// `UNDO_V11` einsetzen, das den alten `images_hash` neu anlegt.
     const UNDO_V22: &str = "DROP INDEX images_hash;";
 
@@ -685,14 +685,30 @@ mod migration_tests {
         assert!(body(2).contains("Ada"));
     }
 
-    /// v22: `has_content` nutzt den Index statt die Tabelle zu durchlaufen.
+    /// Fehlende Fotos zählen nicht als „schon importiert“.
     #[test]
-    fn has_content_uses_index() {
+    fn content_paths_skips_missing_photos() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let ids = tests_support::insert_dummy_images(&mut cat, 2);
+        cat.conn
+            .execute("UPDATE images SET quick_hash = 'h', size = 7", [])
+            .unwrap();
+        assert_eq!(cat.content_paths("h", 7).unwrap().len(), 2);
+        cat.conn
+            .execute("UPDATE images SET missing = 1 WHERE id = ?1", [ids[0]])
+            .unwrap();
+        assert_eq!(cat.content_paths("h", 7).unwrap().len(), 1);
+        assert!(cat.content_paths("h", 8).unwrap().is_empty());
+    }
+
+    /// v22: `content_paths` nutzt den Index statt die Tabelle zu durchlaufen.
+    #[test]
+    fn content_paths_uses_index() {
         let cat = Catalog::open_in_memory().unwrap();
         let plan: String = cat
             .conn
             .query_row(
-                "EXPLAIN QUERY PLAN SELECT 1 FROM images WHERE quick_hash = ?1 AND size = ?2 LIMIT 1",
+                "EXPLAIN QUERY PLAN SELECT path FROM images WHERE quick_hash = ?1 AND size = ?2 AND missing = 0",
                 params!["h", 1],
                 |r| r.get(3),
             )

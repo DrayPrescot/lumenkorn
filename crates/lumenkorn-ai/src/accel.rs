@@ -16,7 +16,7 @@
 //! wechseln. Nur eine andere Laufzeitbibliothek erfordert einen Neustart.
 
 use crate::error::{Error, Result};
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows, test))]
 use lumenkorn_develop::i18n::tr_s;
 use lumenkorn_develop::tr;
 use ort::session::Session;
@@ -586,8 +586,8 @@ pub struct GpuDevice {
     pub discrete: Option<bool>,
 }
 
-// Only the Linux GPU listing (sysfs) needs the PCI tables below
-#[cfg(target_os = "linux")]
+// Die Listen der Betriebssysteme nennen den Hersteller nur als PCI-Kennung
+#[cfg(any(target_os = "linux", windows, test))]
 fn vendor_name(id: u32) -> &'static str {
     match id {
         0x1002 => "AMD",
@@ -685,11 +685,92 @@ fn detect_platform() -> Vec<GpuDevice> {
     out
 }
 
-#[cfg(not(target_os = "linux"))]
+/// Windows: Grafikadapter laut `EnumDisplayDevicesW`. Das fragt nur die
+/// Geräteliste ab und öffnet keinen Grafiktreiber – bei einem defekten Treiber
+/// stürzt es also nicht ab (anders als das Öffnen über wgpu oder DXGI).
+#[cfg(windows)]
 fn detect_platform() -> Vec<GpuDevice> {
-    // Windows: WebGPU wählt selbst die leistungsstärkste Karte. Eine
-    // Abfrage über DXGI würde eine weitere große Abhängigkeit bedeuten – die
-    // Anzeige beschränkt sich dort auf „Grafikkarte über DirectX 12“.
+    #[repr(C)]
+    struct DisplayDevice {
+        cb: u32,
+        device_name: [u16; 32],
+        device_string: [u16; 128],
+        state_flags: u32,
+        device_id: [u16; 128],
+        device_key: [u16; 128],
+    }
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn EnumDisplayDevicesW(
+            device: *const u16,
+            index: u32,
+            info: *mut DisplayDevice,
+            flags: u32,
+        ) -> i32;
+    }
+    const MIRRORING_DRIVER: u32 = 0x8;
+    let text = |w: &[u16]| {
+        let end = w.iter().position(|&c| c == 0).unwrap_or(w.len());
+        String::from_utf16_lossy(&w[..end])
+    };
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for index in 0.. {
+        let mut d = DisplayDevice {
+            cb: std::mem::size_of::<DisplayDevice>() as u32,
+            device_name: [0; 32],
+            device_string: [0; 128],
+            state_flags: 0,
+            device_id: [0; 128],
+            device_key: [0; 128],
+        };
+        // SAFETY: gültiger Zeiger auf eine Struktur mit gesetzter Länge, wie die
+        // Windows-API es verlangt; ein Nullzeiger als Gerät zählt die Adapter auf.
+        if unsafe { EnumDisplayDevicesW(std::ptr::null(), index, &mut d, 0) } == 0 {
+            break;
+        }
+        let id = text(&d.device_id);
+        // Ein Adapter mit mehreren Ausgängen erscheint mehrfach
+        if d.state_flags & MIRRORING_DRIVER != 0 || !seen.insert(id.clone()) {
+            continue;
+        }
+        out.extend(windows_device(&id, &text(&d.device_string)));
+    }
+    out
+}
+
+/// Adapter aus Kennung (`PCI\VEN_1002&DEV_744C&…`) und Name. `None` für alles,
+/// was nicht rechnen kann: Microsofts Software-Adapter, Fernwartung (keine PCI-Kennung).
+#[cfg(any(windows, test))]
+fn windows_device(id: &str, name: &str) -> Option<GpuDevice> {
+    const MICROSOFT: u32 = 0x1414;
+    let hex = id.to_ascii_uppercase();
+    let vendor = hex.strip_prefix(r"PCI\VEN_")?.get(..4)?;
+    let vendor = u32::from_str_radix(vendor, 16).ok()?;
+    let name = name.trim();
+    if vendor == MICROSOFT || name.is_empty() {
+        return None;
+    }
+    let known = matches!(vendor, 0x1002 | 0x10de | 0x8086 | 0x5143 | 0x13b5);
+    let label = if known { vendor_name(vendor) } else { "" };
+    // Der Name enthält den Hersteller schon („AMD Radeon …“, „Intel(R) UHD …“)
+    let short = name
+        .strip_prefix(label)
+        .map(|n| n.strip_prefix("(R)").unwrap_or(n).trim_start())
+        .filter(|n| !label.is_empty() && !n.is_empty())
+        .unwrap_or(name);
+    Some(GpuDevice {
+        vendor: label.into(),
+        name: short.into(),
+        memory: None,
+        // Ohne Speichergröße sicher erkennbar nur bei NVIDIA
+        discrete: (vendor == 0x10de).then_some(true),
+    })
+}
+
+/// macOS: WebGPU wählt selbst, eine Geräteliste gibt es hier nicht.
+#[cfg(not(any(target_os = "linux", windows)))]
+fn detect_platform() -> Vec<GpuDevice> {
     Vec::new()
 }
 
@@ -749,6 +830,48 @@ mod tests {
         verify_sha256(&f, ok).unwrap();
         verify_sha256(&f, &ok.to_uppercase()).unwrap();
         assert!(verify_sha256(&f, &ok.replace('b', "c")).is_err());
+    }
+
+    #[test]
+    fn windows_adapters_are_recognized() {
+        let amd =
+            windows_device(r"PCI\VEN_1002&DEV_744C&SUBSYS_0", "AMD Radeon RX 7900 XTX").unwrap();
+        assert_eq!(
+            (amd.vendor.as_str(), amd.name.as_str()),
+            ("AMD", "Radeon RX 7900 XTX")
+        );
+        let intel = windows_device(r"PCI\VEN_8086&DEV_4680", "Intel(R) UHD Graphics 770").unwrap();
+        assert_eq!(
+            (intel.vendor.as_str(), intel.name.as_str()),
+            ("Intel", "UHD Graphics 770")
+        );
+        let nvidia = windows_device(r"pci\ven_10de&dev_2204", "NVIDIA GeForce RTX 3090").unwrap();
+        assert_eq!(
+            (nvidia.name.as_str(), nvidia.discrete),
+            ("GeForce RTX 3090", Some(true))
+        );
+        // Unbekannter Hersteller: Name bleibt, wie er ist
+        let vm = windows_device(r"PCI\VEN_15AD&DEV_0405", "VMware SVGA 3D").unwrap();
+        assert_eq!(
+            (vm.vendor.as_str(), vm.name.as_str()),
+            ("", "VMware SVGA 3D")
+        );
+        // Was nicht rechnen kann, zählt nicht als Grafikkarte
+        assert!(
+            windows_device(r"PCI\VEN_1414&DEV_008C", "Microsoft Basic Display Adapter").is_none()
+        );
+        assert!(windows_device(r"ROOT\BasicDisplay", "Microsoft Basic Display Driver").is_none());
+        assert!(windows_device(r"PCI\VEN_1002", "").is_none());
+    }
+
+    /// Die Liste entscheidet, ob Lumenkorn beim Start die GPU-Unterstützung
+    /// anbietet. Rechner ohne Grafikkarte (CI) liefern eine leere Liste.
+    #[cfg(windows)]
+    #[test]
+    fn windows_listing_has_no_software_adapter() {
+        let list = detect_gpus();
+        eprintln!("Grafikadapter: {list:?}");
+        assert!(list.iter().all(|d| !d.name.contains("Basic")));
     }
 
     #[test]

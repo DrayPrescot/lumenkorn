@@ -276,7 +276,7 @@ pub(super) const MIGRATIONS: &[&str] = &[
     "#,
     // v21: Aufnahmeort (siehe `GEO`)
     GEO,
-    // v22: Index für „schon importiert?“ (`has_content`, je Aufnahme beim
+    // v22: Index für „schon importiert?“ (`content_paths`, je Aufnahme beim
     // Import). v11 hatte `images_hash` entfernt; mit der Größe als zweiter
     // Spalte deckt er die ganze Abfrage ab.
     "CREATE INDEX images_hash ON images(quick_hash, size);",

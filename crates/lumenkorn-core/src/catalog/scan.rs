@@ -64,13 +64,16 @@ impl Catalog {
         Ok(out)
     }
 
-    /// Gibt es ein Foto mit diesem Inhalt (Größe und schneller Hash) schon im
-    /// Katalog – egal wo? Für den Import („schon importiert“).
-    pub fn has_content(&self, quick_hash: &str, size: i64) -> Result<bool> {
-        Ok(self
-            .conn
-            .prepare_cached("SELECT 1 FROM images WHERE quick_hash = ?1 AND size = ?2 LIMIT 1")?
-            .exists(params![quick_hash, size])?)
+    /// Wo liegen Fotos mit diesem Inhalt (Größe und schneller Hash) laut Katalog –
+    /// egal in welchem Ordner? Für den Import („schon importiert“). Ein Eintrag
+    /// allein beweist nichts: Der Aufrufer muss prüfen, ob die Datei noch da ist,
+    /// sonst gilt ein längst gelöschtes Foto als gesichert.
+    pub fn content_paths(&self, quick_hash: &str, size: i64) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT path FROM images WHERE quick_hash = ?1 AND size = ?2 AND missing = 0",
+        )?;
+        let rows = stmt.query_map(params![quick_hash, size], |r| r.get(0))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
     /// Bild mit genau diesem Pfad, falls schon im Katalog.
