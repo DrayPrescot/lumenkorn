@@ -3155,7 +3155,7 @@ dependencies = [
 
 [[package]]
 name = "lumenkorn"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "base64 0.23.1",
  "dirs",
@@ -3185,7 +3185,7 @@ dependencies = [
 
 [[package]]
 name = "lumenkorn-ai"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "flate2",
  "image",
@@ -3208,7 +3208,7 @@ dependencies = [
 
 [[package]]
 name = "lumenkorn-core"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "blake3",
  "image",
@@ -3228,7 +3228,7 @@ dependencies = [
 
 [[package]]
 name = "lumenkorn-develop"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "bytemuck",
  "exr",

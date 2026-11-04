@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.2] – 2026-11-04
+
 ### Fixed
 - Import: with “delete from the card afterwards” on, importing from a folder inside the target
   could delete the only copy of a photo: a file that already had its final name counted as its own
