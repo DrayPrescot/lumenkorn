@@ -434,6 +434,22 @@ pub fn session(path: &Path) -> Result<Model> {
     })
 }
 
+/// Für ein Modell, das erst beim Rechnen auf der GPU scheitert (z. B. zu wenig
+/// Grafikspeicher): ab jetzt auf der CPU, auch nach einem Neustart. Der Grund
+/// erscheint im KI-Dialog.
+pub fn reopen_on_cpu(path: &Path, why: &str) -> Result<Model> {
+    log::warn!("{} wechselt auf die CPU: {why}", file_name(path));
+    active_lock().gpu_error = Some(why.to_string());
+    let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    remember_cpu_only(path, size);
+    let session = cpu_builder()?.commit_from_file(path)?;
+    record(path, false);
+    Ok(Model {
+        session: Mutex::new(session),
+        gpu: false,
+    })
+}
+
 /// Öffnet die Sitzung und meldet, ob sie auf der GPU rechnet – direkt statt
 /// über die globale Liste in [`on_gpu`], die ein paralleles Laden derselben
 /// Datei überschreiben könnte.

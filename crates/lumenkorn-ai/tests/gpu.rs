@@ -3,7 +3,7 @@
 //!     LUMENKORN_TEST_ORT_GPU=/pfad/runtime-webgpu/libonnxruntime.so \
 //!     LUMENKORN_TEST_DENOISE=/pfad cargo test -p lumenkorn-ai --test gpu
 //!
-//! Weitere Modelle: `LUMENKORN_TEST_SEG`, `LUMENKORN_TEST_BIOCLIP` (Ordner).
+//! Weitere Modelle: `LUMENKORN_TEST_SEG`, `LUMENKORN_TEST_BIOCLIP`, `LUMENKORN_TEST_OWL` (Ordner).
 //!
 //! Ohne Grafikkarte genügt ein Software-Vulkan (Mesa lavapipe) – dann sehr
 //! langsam, aber die Ergebnisse sind dieselben.
@@ -139,6 +139,63 @@ fn denoise_on_gpu_matches_cpu() {
         .filter(|(a, b)| (a[0] - b[0]).abs() > 1e-3)
         .count();
     assert!(changed > w * h / 2);
+}
+
+/// OWLv2 muss auf der GPU dieselben Rechtecke und Werte liefern wie auf der CPU
+/// (die fp16-Datei tut das nicht). `LUMENKORN_TEST_OWL`: Ordner mit Modell und Tokenizer.
+#[test]
+fn owl_on_gpu_matches_cpu() {
+    let (Some(_), Ok(dir)) = (gpu_lib(), std::env::var("LUMENKORN_TEST_OWL")) else {
+        eprintln!("übersprungen: LUMENKORN_TEST_ORT_GPU/LUMENKORN_TEST_OWL fehlen");
+        return;
+    };
+    let _g = SERIAL.lock().unwrap();
+    let dir = PathBuf::from(dir);
+    // Dunkel: Die fp16-Datei versagte gerade bei dunklen Bildern
+    let img = image::RgbImage::from_fn(640, 480, |x, y| {
+        let d = ((x as f32 - 400.0).powi(2) + (y as f32 - 240.0).powi(2)).sqrt();
+        let n = ((x * 31 + y * 17) % 11) as u8;
+        if d < 110.0 {
+            image::Rgb([60 + n, 40 + n, 20 + n])
+        } else {
+            image::Rgb([10 + n, 12 + n, 15 + n])
+        }
+    });
+    let queries = vec![
+        "a photo of a person".to_string(),
+        "a photo of a bird".to_string(),
+    ];
+    let run = |gpu: bool| {
+        accel::set_use_gpu(gpu);
+        let owl = lumenkorn_ai::parts::Owl::load(&dir).unwrap();
+        assert_eq!(accel::on_gpu(lumenkorn_ai::parts::OWL_FILE), gpu);
+        let t = std::time::Instant::now();
+        let d = owl.detect(&img, &queries, 0.0).unwrap();
+        eprintln!(
+            "OWLv2 ({}): {:.2?}, {} Treffer",
+            if gpu { "GPU" } else { "CPU" },
+            t.elapsed(),
+            d.len()
+        );
+        d
+    };
+    let cpu = run(false);
+    let gpu = run(true);
+    assert!(accel::active().gpu_error.is_none());
+    assert_eq!(cpu.len(), gpu.len());
+    let mut max = 0f32;
+    for (a, b) in cpu.iter().zip(&gpu) {
+        for (x, y) in a
+            .rect
+            .iter()
+            .zip(&b.rect)
+            .chain(a.scores.iter().zip(&b.scores))
+        {
+            max = max.max((x - y).abs());
+        }
+    }
+    eprintln!("größte Abweichung GPU/CPU: {max:e}");
+    assert!(max < 0.01, "GPU weicht ab: {max}");
 }
 
 /// BioCLIP 2: ONNX Runtime legt die Form-Berechnungen (variable Bildzahl) auf

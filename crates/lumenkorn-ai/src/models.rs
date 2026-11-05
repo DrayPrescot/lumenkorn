@@ -43,7 +43,9 @@ const SKYSEG: &str = "https://huggingface.co/JianyuanWang/skyseg/resolve/3ba8c6d
 /// Dateiname des Himmelsmodells im Maskenordner
 pub const SKY_MODEL: &str = "sky.onnx";
 /// OWLv2 (Google, Apache 2.0) als ONNX von Xenova; Tokenizer wie CLIP
-const OWLV2: &str = "https://huggingface.co/Xenova/owlv2-base-patch16/resolve/7463883add9ec3fbcdfc5493010f5908313d7d32";
+const OWLV2: &str = "https://huggingface.co/Xenova/owlv2-base-patch16-ensemble/resolve/3e255bc9bf304b3358a8c1945c0a9514eefe7f10";
+/// Frühere OWLv2-Datei: Nach dem Laden der neuen wird sie gelöscht.
+const OLD_OWL_FILE: &str = "owlv2.onnx";
 /// MediaPipe Selfie Multiclass (Google, Apache 2.0), unverändert nach ONNX umgewandelt
 const SELFIE_MULTICLASS: &str = "https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX/resolve/6db8421a7150ac20558f2c24675078eb3a1a04d0/onnx/model.onnx";
 /// MediaPipe Face Mesh V2 (Google, Apache 2.0), unverändert nach ONNX umgewandelt
@@ -325,9 +327,9 @@ fn default_masks() -> Vec<FileSpec> {
         // Personen und Tiere (alle Apache 2.0)
         FileSpec::pinned(
             crate::parts::OWL_FILE,
-            format!("{OWLV2}/onnx/model_quantized.onnx"),
-            155_312_754,
-            "279a4827037e076fc62cff27c84258cab4562f14512aa2ba30fda8b156451167",
+            format!("{OWLV2}/onnx/model.onnx"),
+            614_400_346,
+            "a58f0efe148481660a0b1e4843b59cf7af52c8d2965afb6abc98a252c63552d2",
         ),
         FileSpec::pinned(
             crate::parts::OWL_VOCAB,
@@ -605,6 +607,21 @@ pub struct GpuRuntimeStatus {
     pub download_size: u64,
 }
 
+/// Die frühere OWLv2-Datei löschen, sobald die neue da ist. Eine eigene
+/// `quellen.json` darf den alten Namen weiter benutzen.
+fn remove_old_owl(manifest: &Manifest, dir: &Path) {
+    if !dir.join(crate::parts::OWL_FILE).is_file()
+        || manifest.masks.iter().any(|f| f.name == OLD_OWL_FILE)
+    {
+        return;
+    }
+    if let Err(e) = std::fs::remove_file(dir.join(OLD_OWL_FILE))
+        && e.kind() != std::io::ErrorKind::NotFound
+    {
+        log::warn!("{OLD_OWL_FILE} nicht gelöscht: {e}");
+    }
+}
+
 /// Ob eine Komponente vollständig ist und wie viel für sie noch zu laden wäre –
 /// `runtime_size` ist die Größe von ONNX Runtime, falls die noch fehlt (jede
 /// KI-Funktion braucht sie, daher zählt sie überall mit).
@@ -806,6 +823,10 @@ pub fn download_missing(
         }
         std::fs::rename(&tmp, &target)?;
         let _ = std::fs::remove_file(part_marker(&tmp));
+    }
+
+    if component == Component::Masks {
+        remove_old_owl(&manifest, &dir);
     }
 
     // DRUNet: Original-Gewichte lokal in ONNX übersetzen, dann aufräumen.

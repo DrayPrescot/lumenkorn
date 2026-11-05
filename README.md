@@ -765,7 +765,7 @@ of Windows, and the GPU build of ONNX Runtime needs the Microsoft Visual C++ Red
 | IS-Net / DIS | [Xuebin Qin et al.](https://github.com/xuebinqin/DIS) | [rembg](https://github.com/danielgatis/rembg) releases | Apache-2.0 |
 | Segment Anything (ViT-B, quantized) | [Meta AI](https://github.com/facebookresearch/segment-anything) | rembg releases | Apache-2.0 |
 | skyseg (U²-Net) | [xiongzhu666](https://github.com/xiongzhu666/Sky-Segmentation-and-Post-processing), based on [U²-Net](https://github.com/xuebinqin/U-2-Net) | [Hugging Face](https://huggingface.co/JianyuanWang/skyseg) | MIT |
-| OWLv2 (base, patch16) | [Google Research](https://github.com/google-research/scenic/tree/main/scenic/projects/owl_vit); ONNX conversion by [Xenova](https://huggingface.co/Xenova/owlv2-base-patch16) | Hugging Face | Apache-2.0 |
+| OWLv2 (base, patch16, ensemble) | [Google Research](https://github.com/google-research/scenic/tree/main/scenic/projects/owl_vit); ONNX conversion by [Xenova](https://huggingface.co/Xenova/owlv2-base-patch16-ensemble) | Hugging Face | Apache-2.0 |
 | MediaPipe Selfie Multiclass | [Google](https://ai.google.dev/edge/mediapipe/solutions/vision/image_segmenter); ONNX conversion by [senty-au](https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX) | Hugging Face | Apache-2.0 |
 | MediaPipe Face Mesh V2 | [Google](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker); ONNX conversion for [QtMeshEditor](https://huggingface.co/fernandotonon/QtMeshEditor-facemesh-onnx) | Hugging Face | Apache-2.0 |
 | BioCLIP 2 | [Imageomics Institute](https://huggingface.co/imageomics/bioclip-2) (Gu et al., NeurIPS 2025); ONNX conversion for Lumenkorn | [Hugging Face](https://huggingface.co/DrayPrescot/bioclip2-onnx) | MIT |

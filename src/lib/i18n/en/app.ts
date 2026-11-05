@@ -10,6 +10,7 @@ export default {
   "Rauschreduzierung": "Noise reduction",
   "Motiv": "Subject",
   "Objekt per Klick": "Object by click",
+  "Personen und Tiere": "People and animals",
   "Schlagworte": "Keywords",
   "Prozessor (CPU)": "CPU",
   "Alle Fotos werden neu analysiert.": "All photos will be reanalyzed.",

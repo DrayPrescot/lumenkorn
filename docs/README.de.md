@@ -421,7 +421,7 @@ einem Absturz. „Nein, nicht mehr fragen“ merkt es sich.
 | Funktion | Modell | Download |
 |---|---|---|
 | Schlagworte und Inhaltssuche | CLIP ViT-B/32 | ca. 160 MB inkl. ONNX Runtime |
-| Masken: Motiv, Objekt, Himmel, Person, Tier | IS-Net, Segment Anything, skyseg, OWLv2, MediaPipe | ca. 640 MB |
+| Masken: Motiv, Objekt, Himmel, Person, Tier | IS-Net, Segment Anything, skyseg, OWLv2, MediaPipe | ca. 1,1 GB |
 | Rauschreduzierung | DRUNet | ca. 130 MB |
 | Reparatur | LaMa | ca. 93 MB |
 | Tierarten genauer (optional) | BioCLIP 2 mit Tierarten-Liste | ca. 620 MB |
@@ -916,7 +916,7 @@ Nominatim. Der Hinweis „© OpenStreetMap contributors“ steht auf der Karte.
 | IS-Net / DIS | [Xuebin Qin u. a.](https://github.com/xuebinqin/DIS) | Releases von [rembg](https://github.com/danielgatis/rembg) | Apache-2.0 |
 | Segment Anything ViT-B | [Meta AI](https://github.com/facebookresearch/segment-anything) | Releases von rembg | Apache-2.0 |
 | skyseg (U²-Net) | [xiongzhu666](https://github.com/xiongzhu666/Sky-Segmentation-and-Post-processing), auf Basis von [U²-Net](https://github.com/xuebinqin/U-2-Net) | [Hugging Face](https://huggingface.co/JianyuanWang/skyseg) | MIT |
-| OWLv2 (base, patch16) | [Google Research](https://github.com/google-research/scenic/tree/main/scenic/projects/owl_vit), ONNX-Fassung von [Xenova](https://huggingface.co/Xenova/owlv2-base-patch16) | Hugging Face | Apache-2.0 |
+| OWLv2 (base, patch16, ensemble) | [Google Research](https://github.com/google-research/scenic/tree/main/scenic/projects/owl_vit), ONNX-Fassung von [Xenova](https://huggingface.co/Xenova/owlv2-base-patch16-ensemble) | Hugging Face | Apache-2.0 |
 | MediaPipe Selfie Multiclass | [Google](https://ai.google.dev/edge/mediapipe/solutions/vision/image_segmenter), ONNX-Umwandlung von [senty-au](https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX) | Hugging Face | Apache-2.0 |
 | MediaPipe Face Mesh V2 | [Google](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker), ONNX-Umwandlung für [QtMeshEditor](https://huggingface.co/fernandotonon/QtMeshEditor-facemesh-onnx) | Hugging Face | Apache-2.0 |
 | BioCLIP 2 | [Imageomics Institute](https://huggingface.co/imageomics/bioclip-2) (Gu u. a., NeurIPS 2025), ONNX-Umwandlung für Lumenkorn | [Hugging Face](https://huggingface.co/DrayPrescot/bioclip2-onnx) | MIT |

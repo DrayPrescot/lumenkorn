@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Person and animal masks find their subjects far more reliably, especially on noisy photos. They now
+  use the larger OWLv2 ensemble model with new limits for what counts as a find. On photos without
+  an animal, “Animal” used to mark large parts of the picture on most photos and now almost never does.
+  The model runs on the GPU and takes about 0.5 s instead of 1.4 s.
+- The AI masks grow from about 640 MB to about 1.1 GB. After this update “Person” and “Animal” ask for
+  a download of about 614 MB; all other masks and the eye check when culling keep working. The old
+  model file is deleted afterwards. A custom `quellen.json` needs the new file name.
+- The model needs about 3 GB of video memory. If the GPU fails while computing, it continues on the CPU,
+  which takes about 1.7 s per photo, and the AI dialog names the reason.
+
 ## [1.2.3] – 2026-11-05
 
 ### Changed

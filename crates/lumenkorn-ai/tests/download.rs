@@ -1,6 +1,7 @@
 //! Download-Logik gegen einen lokalen HTTP-Server – ohne Internet.
 
 use lumenkorn_ai::models::{self, Component, FileSpec, Manifest, RuntimeSpec};
+use lumenkorn_ai::parts::OWL_FILE;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::atomic::AtomicBool;
@@ -353,6 +354,69 @@ fn single_file_manifest(data: &std::path::Path, spec: FileSpec) {
         serde_json::to_string(&manifest).unwrap(),
     )
     .unwrap();
+}
+
+/// Bestehende Installation nach dem Wechsel des OWLv2-Modells: Nur „Person“ und
+/// „Tier“ warten auf den Download, die übrigen Masken gelten weiter als installiert.
+#[test]
+fn old_owl_keeps_other_masks_ready() {
+    let data = tempfile::tempdir().unwrap();
+    let dir = models::masks_dir(data.path());
+    std::fs::create_dir_all(&dir).unwrap();
+    for f in &models::default_manifest().masks {
+        if f.name != OWL_FILE {
+            std::fs::write(dir.join(&f.name), b"x").unwrap();
+        }
+    }
+    std::fs::write(dir.join("owlv2.onnx"), b"alt").unwrap();
+    let s = models::status(data.path());
+    assert!(s.masks_ready && s.sky_ready);
+    assert!(!s.parts_ready);
+    assert!(s.masks_download_size >= 614_400_346);
+}
+
+/// Die alte Datei verschwindet erst, wenn die neue vollständig da ist.
+#[test]
+fn old_owl_is_removed_only_after_download() {
+    let data = tempfile::tempdir().unwrap();
+    let ai = models::ai_dir(data.path());
+    let dir = models::masks_dir(data.path());
+    std::fs::create_dir_all(&dir).unwrap();
+    let old = dir.join("owlv2.onnx");
+    std::fs::write(&old, b"alt").unwrap();
+    let manifest = |base: &str| Manifest {
+        runtime: None,
+        model: vec![],
+        masks: vec![FileSpec {
+            name: OWL_FILE.into(),
+            url: format!("{base}/owl"),
+            size: None,
+            sha256: None,
+        }],
+        denoise: vec![],
+        gpu_runtimes: vec![],
+        faces: vec![],
+        repair: vec![],
+        animals: vec![],
+    };
+    let no_cancel = AtomicBool::new(false);
+    let base = serve(vec![]);
+    std::fs::write(
+        ai.join("quellen.json"),
+        serde_json::to_string(&manifest(&base)).unwrap(),
+    )
+    .unwrap();
+    assert!(models::download_missing(data.path(), Component::Masks, &|_| {}, &no_cancel).is_err());
+    assert!(old.is_file(), "bleibt, solange die neue fehlt");
+    let base = serve(vec![("/owl", b"neu".to_vec())]);
+    std::fs::write(
+        ai.join("quellen.json"),
+        serde_json::to_string(&manifest(&base)).unwrap(),
+    )
+    .unwrap();
+    models::download_missing(data.path(), Component::Masks, &|_| {}, &no_cancel).unwrap();
+    assert!(dir.join(OWL_FILE).is_file());
+    assert!(!old.exists(), "alte Datei gelöscht");
 }
 
 #[test]

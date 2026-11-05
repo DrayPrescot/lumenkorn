@@ -3,9 +3,11 @@
 //!
 //! Drei Modelle, alle Apache 2.0:
 //!
-//! - **OWLv2** (Google, `owlv2-base-patch16`, ONNX-Export von Xenova):
+//! - **OWLv2** (Google, `owlv2-base-patch16-ensemble`, ONNX-Export von Xenova):
 //!   Objekterkennung nach Textbeschreibung („a photo of a person“, „a photo
 //!   of a lizard“) – findet Personen, Gesichter und Tiere als Rechtecke.
+//!   Bewusst die große fp32-Datei: Die quantisierte meldet auf den meisten Fotos
+//!   ohne Tier ein Tier, die fp16-Datei rechnet auf WebGPU falsch.
 //! - **MediaPipe Selfie Multiclass** (Google, 256×256, ONNX-Umwandlung von
 //!   senty-au): je Pixel Hintergrund, Haare, Körperhaut, Gesichtshaut,
 //!   Kleidung, Accessoires – auf einem Ausschnitt um jede Person bzw. jedes
@@ -26,10 +28,11 @@ use image::{DynamicImage, GrayImage, Luma, Rgb, RgbImage};
 use lumenkorn_develop::{i18n::tr_s, tr};
 use ort::value::Tensor;
 use rayon::prelude::*;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 /// Dateinamen im Masken-Ordner
-pub const OWL_FILE: &str = "owlv2.onnx";
+pub const OWL_FILE: &str = "owlv2-ensemble.onnx";
 pub const OWL_VOCAB: &str = "owlv2-vocab.json";
 pub const OWL_MERGES: &str = "owlv2-merges.txt";
 pub const SEG_FILE: &str = "selfie-multiclass.onnx";
@@ -111,7 +114,9 @@ pub struct Detection {
 }
 
 pub struct Owl {
-    session: Model,
+    /// Austauschbar: Scheitert ein Lauf auf der GPU, rechnet die CPU weiter
+    session: Mutex<Arc<Model>>,
+    path: PathBuf,
     tokenizer: ClipTokenizer,
     ids: String,
     mask: Option<String>,
@@ -126,7 +131,8 @@ const OWL_TEXT_LEN: usize = 16;
 
 impl Owl {
     pub fn load(dir: &Path) -> Result<Self> {
-        let mut session = crate::accel::open_model(&dir.join(OWL_FILE))?;
+        let path = dir.join(OWL_FILE);
+        let mut session = crate::accel::open_model(&path)?;
         let read = |f: &str| {
             std::fs::read_to_string(dir.join(f)).map_err(|_| Error::ModelMissing(f.into()))
         };
@@ -158,7 +164,8 @@ impl Owl {
             .filter(|v| *v > 0)
             .map_or(960, |v| v as usize);
         Ok(Self {
-            session,
+            session: Mutex::new(Arc::new(session)),
+            path,
             tokenizer,
             ids,
             mask,
@@ -223,33 +230,52 @@ impl Owl {
             ids.extend(t);
             mask.extend((0..OWL_TEXT_LEN).map(|i| (i < used) as i64));
         }
-        let mut inputs = vec![
-            (
-                self.ids.as_str(),
-                Tensor::from_array(([q, OWL_TEXT_LEN], ids))?.into_dyn(),
-            ),
-            (
-                self.pixels.as_str(),
-                Tensor::from_array(([1usize, 3, s, s], data))?.into_dyn(),
-            ),
-        ];
-        if let Some(m) = &self.mask {
-            inputs.push((
-                m.as_str(),
-                Tensor::from_array(([q, OWL_TEXT_LEN], mask))?.into_dyn(),
-            ));
-        }
-        let mut session = self.session.lock();
-        let out = session.run(inputs)?;
-        let (lshape, logits) = out[self.logits.as_str()].try_extract_tensor::<f32>()?;
-        let (_, boxes) = out[self.boxes.as_str()].try_extract_tensor::<f32>()?;
-        let patches = lshape.get(1).copied().unwrap_or(0).max(0) as usize;
-        if logits.len() < patches * q || boxes.len() < patches * 4 {
-            return Err(Error::ModelFormat(tr!(
-                "OWLv2: unerwartete Ausgabe {lshape:?}",
-                "OWLv2: unexpected output {lshape:?}"
-            )));
-        }
+        let run = |model: &Model| -> Result<(usize, Vec<f32>, Vec<f32>)> {
+            let mut inputs = vec![
+                (
+                    self.ids.as_str(),
+                    Tensor::from_array(([q, OWL_TEXT_LEN], ids.clone()))?.into_dyn(),
+                ),
+                (
+                    self.pixels.as_str(),
+                    Tensor::from_array(([1usize, 3, s, s], data.clone()))?.into_dyn(),
+                ),
+            ];
+            if let Some(m) = &self.mask {
+                inputs.push((
+                    m.as_str(),
+                    Tensor::from_array(([q, OWL_TEXT_LEN], mask.clone()))?.into_dyn(),
+                ));
+            }
+            let mut session = model.lock();
+            let out = session.run(inputs)?;
+            let (lshape, logits) = out[self.logits.as_str()].try_extract_tensor::<f32>()?;
+            let (_, boxes) = out[self.boxes.as_str()].try_extract_tensor::<f32>()?;
+            let patches = lshape.get(1).copied().unwrap_or(0).max(0) as usize;
+            if logits.len() < patches * q || boxes.len() < patches * 4 {
+                return Err(Error::ModelFormat(tr!(
+                    "OWLv2: unerwartete Ausgabe {lshape:?}",
+                    "OWLv2: unexpected output {lshape:?}"
+                )));
+            }
+            Ok((patches, logits.to_vec(), boxes.to_vec()))
+        };
+        let model = self
+            .session
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let (patches, logits, boxes) = match run(&model) {
+            // Das Modell braucht rund 3 GB Grafikspeicher; fehlt der, scheitert
+            // erst der Lauf und nicht schon das Laden
+            Err(e) if model.on_gpu() => {
+                let cpu = Arc::new(crate::accel::reopen_on_cpu(&self.path, &e.to_string())?);
+                let r = run(&cpu)?;
+                *self.session.lock().unwrap_or_else(|e| e.into_inner()) = cpu;
+                r
+            }
+            other => other?,
+        };
         let sig = |v: f32| 1.0 / (1.0 + (-v).exp());
         // Rechtecke beziehen sich auf das aufgefüllte Quadrat
         let (fx, fy) = (side / w, side / h);
@@ -283,17 +309,53 @@ fn iou(a: &[f32; 4], b: &[f32; 4]) -> f32 {
     inter / (area(a) + area(b) - inter).max(1e-9)
 }
 
-/// Beste Rechtecke einer Gruppe von Abfragen (`group`: Indizes in
-/// `scores`): Wert über `min` und mindestens `rel` des besten Werts, sich
-/// überlappende Treffer zusammengefasst (NMS). Mit `others` muss die Gruppe
-/// bei diesem Rechteck auch besser abschneiden als jede andere.
-fn pick(
-    dets: &[Detection],
-    group: &[usize],
-    others: &[&[usize]],
+/// Welcher Anteil von `a` liegt in `b`?
+fn share_inside(a: &[f32; 4], b: &[f32; 4]) -> f32 {
+    let ix = (a[2].min(b[2]) - a[0].max(b[0])).max(0.0);
+    let iy = (a[3].min(b[3]) - a[1].max(b[1])).max(0.0);
+    ix * iy / ((a[2] - a[0]) * (a[3] - a[1])).max(1e-9)
+}
+
+/// Schwellen für die Auswahl der Rechtecke. Abgestimmt an Fotos mit und ohne
+/// Motiv, rauscharm und verrauscht, und an getrennten Fotos geprüft.
+struct Pick {
+    /// Mindestwert
     min: f32,
+    /// Mindestanteil am besten Wert des Fotos
     rel: f32,
-) -> Vec<[f32; 4]> {
+    /// Ab dieser Überlappung (IoU) mit einem besseren Rechteck ist es derselbe Treffer
+    overlap: f32,
+    /// Liegt ein Rechteck zu diesem Anteil in einem besseren, ist es nur ein Teil davon
+    inside: f32,
+}
+
+/// Personen bekommen vom Modell durchweg niedrige Werte (selten über 0,35):
+/// Der Mindestwert muss niedrig bleiben, aufgeräumt wird über den Abstand zum Besten.
+const PICK_PERSON: Pick = Pick {
+    min: 0.1,
+    rel: 0.7,
+    overlap: 0.4,
+    inside: 0.8,
+};
+/// Gesichter bekommen noch niedrigere Werte als Personen.
+const PICK_FACE: Pick = Pick {
+    min: 0.05,
+    rel: 0.4,
+    overlap: 0.3,
+    inside: 0.8,
+};
+/// Tiere: Treffer liegen klar höher, Fehlalarme darunter. 0,35–0,45 wirken gleich.
+const PICK_ANIMAL: Pick = Pick {
+    min: 0.4,
+    rel: 0.5,
+    overlap: 0.4,
+    inside: 0.8,
+};
+
+/// Beste Rechtecke einer Gruppe von Abfragen (`group`: Indizes in `scores`).
+/// Mit `others` muss die Gruppe bei diesem Rechteck auch besser abschneiden
+/// als jede andere.
+fn pick(dets: &[Detection], group: &[usize], others: &[&[usize]], p: &Pick) -> Vec<[f32; 4]> {
     let best_of = |d: &Detection, g: &[usize]| g.iter().map(|i| d.scores[*i]).fold(0.0, f32::max);
     let mut cand: Vec<(f32, [f32; 4])> = dets
         .iter()
@@ -304,11 +366,14 @@ fn pick(
         .map(|d| (best_of(d, group), d.rect))
         .collect();
     let top = cand.iter().map(|c| c.0).fold(0.0, f32::max);
-    cand.retain(|c| c.0 >= min && c.0 >= top * rel);
+    cand.retain(|c| c.0 >= p.min && c.0 >= top * p.rel);
     cand.sort_by(|a, b| b.0.total_cmp(&a.0));
     let mut keep: Vec<[f32; 4]> = Vec::new();
     for (_, r) in cand {
-        if keep.iter().all(|k| iou(k, &r) < 0.5) {
+        if keep
+            .iter()
+            .all(|k| iou(k, &r) < p.overlap && share_inside(&r, k) < p.inside)
+        {
             keep.push(r);
         }
     }
@@ -775,8 +840,8 @@ pub fn person_mask(
         cache.person = Some(m.owl.detect(&rgb, &queries, 0.05)?);
     }
     let dets = cache.person.as_deref().unwrap_or_default();
-    let persons = pick(dets, &[0], &[], 0.1, 0.3);
-    let face_boxes = pick(dets, &[1], &[], 0.1, 0.25);
+    let persons = pick(dets, &[0], &[], &PICK_PERSON);
+    let face_boxes = pick(dets, &[1], &[], &PICK_FACE);
     log::info!(
         "Personen: {} gefunden, Gesichter: {}",
         persons.len(),
@@ -1066,10 +1131,10 @@ pub fn animal_mask(
     let human = [person];
     let all: Vec<usize> = idx.iter().flatten().copied().collect();
     let rects = match kind {
-        AnimalKind::All => pick(dets, &all, &[&human], 0.1, 0.25),
-        AnimalKind::Bird => pick(dets, &idx[0], &[&idx[1], &idx[2], &human], 0.1, 0.25),
-        AnimalKind::Mammal => pick(dets, &idx[1], &[&idx[0], &idx[2], &human], 0.1, 0.25),
-        AnimalKind::Reptile => pick(dets, &idx[2], &[&idx[0], &idx[1], &human], 0.1, 0.25),
+        AnimalKind::All => pick(dets, &all, &[&human], &PICK_ANIMAL),
+        AnimalKind::Bird => pick(dets, &idx[0], &[&idx[1], &idx[2], &human], &PICK_ANIMAL),
+        AnimalKind::Mammal => pick(dets, &idx[1], &[&idx[0], &idx[2], &human], &PICK_ANIMAL),
+        AnimalKind::Reptile => pick(dets, &idx[2], &[&idx[0], &idx[1], &human], &PICK_ANIMAL),
     };
     log::info!("Tiere ({kind:?}): {} gefunden", rects.len());
     let (w, h) = sam.1.size();
@@ -1146,9 +1211,40 @@ mod tests {
             d([0.6, 0.2, 0.9, 0.6], vec![0.3, 0.7]),   // eher Gruppe 2
             d([0.5, 0.7, 0.6, 0.8], vec![0.12, 0.0]),  // zu schwach (relativ)
         ];
-        let a = pick(&dets, &[0], &[&[1]], 0.1, 0.3);
+        let p = Pick {
+            min: 0.1,
+            rel: 0.3,
+            overlap: 0.5,
+            inside: 0.8,
+        };
+        let a = pick(&dets, &[0], &[&[1]], &p);
         assert_eq!(a.len(), 1);
-        let b = pick(&dets, &[1], &[], 0.1, 0.3);
+        let b = pick(&dets, &[1], &[], &p);
         assert_eq!(b, vec![[0.6, 0.2, 0.9, 0.6]]);
+    }
+
+    #[test]
+    fn picking_drops_parts_of_a_better_box() {
+        let d = |rect: [f32; 4], s: f32| Detection {
+            rect,
+            scores: vec![s],
+        };
+        let dets = vec![
+            d([0.1, 0.1, 0.9, 0.9], 0.6),  // das Tier
+            d([0.2, 0.2, 0.4, 0.4], 0.5),  // sein Kopf: geringe IoU, liegt aber ganz darin
+            d([0.85, 0.2, 1.0, 0.4], 0.5), // ragt deutlich heraus: eigener Treffer
+            d([0.2, 0.2, 0.3, 0.3], 0.1),  // zu schwach
+        ];
+        let p = Pick {
+            min: 0.4,
+            rel: 0.5,
+            overlap: 0.4,
+            inside: 0.8,
+        };
+        assert_eq!(
+            pick(&dets, &[0], &[], &p),
+            vec![[0.1, 0.1, 0.9, 0.9], [0.85, 0.2, 1.0, 0.4]]
+        );
+        assert!((share_inside(&[0.2, 0.2, 0.4, 0.4], &[0.1, 0.1, 0.9, 0.9]) - 1.0).abs() < 1e-5);
     }
 }

@@ -99,6 +99,7 @@
     "drunet.onnx": t("Rauschreduzierung"),
     "subject.onnx": t("Motiv"),
     "sam-encoder.onnx": t("Objekt per Klick"),
+    "owlv2-ensemble.onnx": t("Personen und Tiere"),
     "vision.onnx": t("Schlagworte"),
     "bioclip2-vision-fp16.onnx": t("Tierarten"),
   };

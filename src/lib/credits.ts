@@ -54,7 +54,7 @@ export const MODELS: Credit[] = [
   { name: "IS-Net (DIS)", url: "https://github.com/xuebinqin/DIS", use: t("Motiv-Maske"), license: "Apache-2.0" },
   { name: "Segment Anything (ViT-B)", url: "https://github.com/facebookresearch/segment-anything", use: t("Objekt-, Personen- und Tiermasken"), license: "Apache-2.0" },
   { name: "skyseg (U²-Net)", url: "https://huggingface.co/JianyuanWang/skyseg", use: t("Himmel-Maske"), license: "MIT" },
-  { name: "OWLv2", url: "https://huggingface.co/Xenova/owlv2-base-patch16", use: t("Personen, Gesichter und Tiere finden"), license: "Apache-2.0" },
+  { name: "OWLv2 (ensemble)", url: "https://huggingface.co/Xenova/owlv2-base-patch16-ensemble", use: t("Personen, Gesichter und Tiere finden"), license: "Apache-2.0" },
   { name: "MediaPipe Selfie Multiclass", url: "https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX", use: t("Haare, Haut und Kleidung"), license: "Apache-2.0" },
   { name: "MediaPipe Face Mesh V2", url: "https://huggingface.co/fernandotonon/QtMeshEditor-facemesh-onnx", use: t("Augen, Brauen und Lippen"), license: "Apache-2.0" },
   { name: "DRUNet", url: "https://github.com/cszn/KAIR", use: t("Rauschreduzierung"), license: "MIT" },

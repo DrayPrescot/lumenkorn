@@ -1686,8 +1686,12 @@ fn parts_needed(state: &AppState) -> Result<(), Error> {
 /// Face Mesh für die Augen-Prüfung des Aussortier-Assistenten; `None`, wenn
 /// die KI-Masken für Personen nicht eingerichtet sind.
 pub(crate) fn face_mesh(state: &AppState) -> Option<Arc<parts::FaceMesh>> {
-    parts_needed(state).ok()?;
+    masks_needed(state).ok()?;
     let dir = models::masks_dir(&state.data_dir);
+    // Nur diese Datei: Fehlt nach einem Update das neue OWLv2, läuft die Prüfung weiter
+    if !dir.join(parts::MESH_FILE).is_file() {
+        return None;
+    }
     lazy_model(state, &state.ai.mesh, "Face Mesh", || {
         parts::FaceMesh::load(&dir.join(parts::MESH_FILE)).map_err(err)
     })
