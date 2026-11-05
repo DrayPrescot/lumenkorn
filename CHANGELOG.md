@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.4] – 2026-11-05
+
 ### Changed
 - Person and animal masks find their subjects far more reliably, especially on noisy photos. They now
   use the larger OWLv2 ensemble model with new limits for what counts as a find. On photos without
