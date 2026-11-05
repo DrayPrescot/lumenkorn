@@ -126,6 +126,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(updater::UpdaterState::default());
     let (data_dir, custom) = prepare_data_dir(app)?;
     let catalog_path = data_dir.join("katalog.db");
+    settings::prepare_first_start(&data_dir, &catalog_path);
     let catalog = match Catalog::open(&catalog_path) {
         Ok(c) => Arc::new(Mutex::new(c)),
         // Neuere Version: nicht beenden, sondern das Update anbieten

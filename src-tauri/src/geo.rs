@@ -129,7 +129,7 @@ fn pause_nominatim(e: &ureq::Error) {
 
 /// Karte und Ortsnamen über OpenStreetMap erlaubt (Einstellungen →
 /// Allgemein). Aus: keine Anfragen an Nominatim und keine Kartenkacheln.
-static ENABLED: AtomicBool = AtomicBool::new(true);
+static ENABLED: AtomicBool = AtomicBool::new(false);
 
 pub fn set_enabled(on: bool) {
     ENABLED.store(on, Ordering::SeqCst);

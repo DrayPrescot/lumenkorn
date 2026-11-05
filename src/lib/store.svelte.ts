@@ -1021,7 +1021,7 @@ class Library {
   }
 
   /** Karte und Ortsnamen über OpenStreetMap (Einstellungen → Allgemein) */
-  mapEnabled = $state(true);
+  mapEnabled = $state(false);
 
   /** Unterordner in die Bibliothek aufnehmen: Standard und je Ordner */
   includeSubfolders = $state(true);
@@ -1140,9 +1140,13 @@ class Library {
   }
 
   async setMapEnabled(on: boolean) {
-    await api.appSetSettings({ mapEnabled: on });
-    this.mapEnabled = on;
-    if (!on && this.view === "map") this.view = "grid";
+    try {
+      const s = await api.appSetSettings({ mapEnabled: on });
+      this.mapEnabled = s.mapEnabled;
+      if (!s.mapEnabled && this.view === "map") this.view = "grid";
+    } catch (e) {
+      this.notify(String(e), "error");
+    }
   }
 
   /** Aufnahmeort für Fotos setzen; ohne `place` ermittelt ihn das Backend. */

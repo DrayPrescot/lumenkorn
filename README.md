@@ -38,7 +38,7 @@ There is no account, no cloud and no usage statistics.
 |---|---|---|
 | **Update check** | `GitHub` | Shortly after starting, Lumenkorn asks once whether a new version is out. This tells GitHub your IP address. |
 | **AI downloads** | `GitHub`, `Hugging Face`, `OpenCV` | Only when you click the button for it. Nothing about your photos is sent. |
-| **Map and place names** | `tile.openstreetmap.org`, `nominatim.openstreetmap.org` | To find place names, the coordinates of your photos are sent, rounded to about 100 m and bundled per town. Settings → General → Map and place names switches this off completely. |
+| **Map and place names** | `tile.openstreetmap.org`, `nominatim.openstreetmap.org` | To find place names, the coordinates of your photos are sent, rounded to about 100 m and bundled per town. On a new installation this is off; you switch it on, and off again, under Settings → General → Map and place names. |
 | **Nextcloud** | Your own server | Only when you connect it yourself and upload a project's exports or originals. The data only goes to the server you enter. |
 
 Read all the details on the [privacy page](https://lumenkorn.com/privacy).
@@ -596,8 +596,9 @@ RANSAC.
   at most one Nominatim request per second, and tiles are cached on disk for 7 days. The
   coordinates of your photos are sent to Nominatim to look up place names, rounded to about
   100 m and bundled: one request covers all photos inside the same town or village. Everything else
-  stays local. **Settings → General → Map and place names** switches all of this off; then nothing
-  is sent to OpenStreetMap (the map in the photo album still works, it is built in).
+  stays local. On a new installation all of this is off until you switch it on under
+  **Settings → General → Map and place names**. While it is off, nothing is sent to OpenStreetMap
+  (the map in the photo album still works, it is built in).
 - Nextcloud: only after you connect under Settings → Nextcloud, and only to the server you
   enter. Uploads go there when you start them for a project; the app password is kept in the
   system's credential store (Windows Credential Manager; on Linux GNOME Keyring, KWallet or

@@ -104,7 +104,9 @@ impl AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            map_enabled: true,
+            // Geht erst nach ausdrücklichem Einschalten ins Netz. Bestehende
+            // Installationen behalten die Karte: siehe `prepare_first_start`
+            map_enabled: false,
             export_subfolder: lumenkorn_core::scanner::DEFAULT_EXPORT_SUBFOLDER.into(),
             include_subfolders: true,
             preview_cache_gb: 5,
@@ -155,6 +157,26 @@ pub fn apply_folder_rules(data_dir: &Path, catalog: &lumenkorn_core::Catalog) {
         Vec::new()
     });
     lumenkorn_core::scanner::set_subfolder_rules(read(data_dir).include_subfolders, &folders);
+}
+
+/// Legt die Einstellungsdatei an, falls es sie noch nicht gibt. Muss vor dem
+/// Öffnen des Katalogs laufen, denn das legt `katalog.db` an: Nur so lässt sich
+/// eine neue Installation (Karte aus) von einer bestehenden unterscheiden, die
+/// nie etwas gespeichert hat und die Karte bisher nutzen konnte (Karte bleibt an).
+/// Die Datei hält das fest; sonst sähe der zweite Start wie eine bestehende
+/// Installation aus.
+pub fn prepare_first_start(data_dir: &Path, catalog_path: &Path) {
+    let file = path(data_dir);
+    if file.exists() {
+        return;
+    }
+    let settings = AppSettings {
+        map_enabled: catalog_path.exists(),
+        ..AppSettings::default()
+    };
+    if let Err(e) = lumenkorn_develop::fsutil::save_json(&file, &settings) {
+        log::warn!("{} nicht angelegt: {e}", file.display());
+    }
 }
 
 /// Beim Start: Einstellungen lesen und wirksam machen.
@@ -236,6 +258,53 @@ mod tests {
         assert!(!MemorySaver::Auto.active(None));
         assert!(MemorySaver::On.active(Some(64 * GB)));
         assert!(!MemorySaver::Off.active(Some(4 * GB)));
+    }
+
+    /// Datenordner mit Katalog und ggf. Einstellungsdatei, wie ihn ein Start vorfindet
+    fn start(d: &Path) -> bool {
+        let catalog = d.join("katalog.db");
+        prepare_first_start(d, &catalog);
+        let map_enabled = read(d).map_enabled;
+        // Das Öffnen des Katalogs legt ihn an
+        std::fs::write(&catalog, b"").unwrap();
+        map_enabled
+    }
+
+    #[test]
+    fn new_installation_keeps_map_off_on_every_start() {
+        let d = tempfile::tempdir().unwrap();
+        assert!(!start(d.path()), "erster Start");
+        assert!(!start(d.path()), "zweiter Start: Katalog gibt es nun");
+    }
+
+    #[test]
+    fn existing_installation_without_settings_keeps_map_on() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("katalog.db"), b"").unwrap();
+        assert!(start(d.path()), "erster Start mit dieser Version");
+        assert!(start(d.path()), "bleibt so");
+    }
+
+    #[test]
+    fn saved_choice_is_never_overwritten() {
+        for (saved, catalog) in [(true, false), (false, true)] {
+            let d = tempfile::tempdir().unwrap();
+            if catalog {
+                std::fs::write(d.path().join("katalog.db"), b"").unwrap();
+            }
+            let json = format!(r#"{{"mapEnabled":{saved}}}"#);
+            std::fs::write(path(d.path()), json).unwrap();
+            assert_eq!(start(d.path()), saved);
+        }
+    }
+
+    #[test]
+    fn damaged_settings_keep_map_off() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("katalog.db"), b"").unwrap();
+        std::fs::write(path(d.path()), b"{kaputt").unwrap();
+        assert!(!start(d.path()));
+        assert!(!start(d.path()));
     }
 
     #[test]

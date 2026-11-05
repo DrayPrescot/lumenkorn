@@ -33,6 +33,13 @@
     await lib.setMemorySaver(mode);
     memory = await api.memoryStatus().catch(() => memory);
   }
+  async function setMapEnabled(e: Event & { currentTarget: HTMLInputElement }) {
+    const box = e.currentTarget;
+    await lib.setMapEnabled(box.checked);
+    // Speichern gescheitert: Der Haken springt von selbst nicht zurück, denn
+    // der Zustand hat sich nicht geändert
+    box.checked = lib.mapEnabled;
+  }
   const gb = (b: number) => `${num(b / 2 ** 30, { maximumFractionDigits: 1 })} GB`;
 
   const PAGES: { id: SettingsPage; icon: IconName; label: string }[] = [
@@ -149,7 +156,7 @@
           <div class="field">
             <span class="label">{t("Karte und Ortsnamen")}</span>
             <label class="check">
-              <input type="checkbox" checked={lib.mapEnabled} onchange={(e) => lib.setMapEnabled(e.currentTarget.checked)} />
+              <input type="checkbox" checked={lib.mapEnabled} onchange={setMapEnabled} />
               {t("Karte und Ortsnamen über OpenStreetMap verwenden")}
             </label>
             <p class="muted small">

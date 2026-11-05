@@ -34,7 +34,7 @@ deinem Rechner. Konto, Cloud und Nutzungsstatistik gibt es nicht.
 |---|---|---|
 | **Update-Prüfung** | `GitHub` | Kurz nach dem Start fragt Lumenkorn einmal, ob es eine neue Version gibt. GitHub erfährt dabei deine IP-Adresse. |
 | **KI-Downloads** | `GitHub`, `Hugging Face`, `OpenCV` | Nur wenn du auf den Knopf dafür klickst. Über deine Fotos wird dabei nichts gesendet. |
-| **Karte und Ortsnamen** | `tile.openstreetmap.org`, `nominatim.openstreetmap.org` | Für die Ortsnamen werden die Koordinaten deiner Fotos gesendet, auf etwa 100 m gerundet und je Ort gebündelt. Einstellungen → Allgemein → Karte und Ortsnamen schaltet das vollständig ab. |
+| **Karte und Ortsnamen** | `tile.openstreetmap.org`, `nominatim.openstreetmap.org` | Für die Ortsnamen werden die Koordinaten deiner Fotos gesendet, auf etwa 100 m gerundet und je Ort gebündelt. Bei einer neuen Installation ist das aus; du schaltest es unter Einstellungen → Allgemein → Karte und Ortsnamen ein und dort auch wieder ab. |
 | **Nextcloud** | Dein eigener Server | Nur wenn du sie selbst verbindest und die Exporte oder Originale eines Projekts hochlädst. Die Daten gehen nur an den Server, den du einträgst. |
 
 Alles genau nachlesen: [Datenschutz](https://lumenkorn.com/de/datenschutz).
@@ -825,9 +825,9 @@ zerlegt jedes Bild in eine Laplace-Pyramide und behält je Stufe das schärfste 
   an Nominatim höchstens eine pro Sekunde, und Kacheln werden 7 Tage im Cache-Ordner
   zwischengespeichert. Die Koordinaten deiner Fotos gehen an Nominatim, damit es Ortsnamen liefert –
   auf etwa 100 m gerundet und gebündelt: Eine Anfrage gilt für alle Fotos im selben Ort.
-  Alles andere bleibt lokal. **Einstellungen → Allgemein → Karte und Ortsnamen** schaltet das
-  alles ab; dann geht nichts an OpenStreetMap (die Karte im Fotoalbum funktioniert weiter, sie ist
-  im Programm enthalten).
+  Alles andere bleibt lokal. Bei einer neuen Installation ist das alles aus, bis du es unter
+  **Einstellungen → Allgemein → Karte und Ortsnamen** einschaltest. Ausgeschaltet geht nichts an
+  OpenStreetMap (die Karte im Fotoalbum funktioniert weiter, sie ist im Programm enthalten).
 - **Aufräumen:** 90 Sekunden nach dem Start und danach täglich löscht Lumenkorn verwaiste Dateien im
   Datenordner (alte Entrauschungen, gelöschte Masken und Reparaturen, Vorschauen entfernter Fotos).
   Was eine Bearbeitung oder ein Schnappschuss noch braucht, bleibt.

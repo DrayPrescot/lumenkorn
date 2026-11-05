@@ -6,6 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.3] – 2026-11-05
+
+### Changed
+- Map and place names are now off on a new installation, so nothing goes to OpenStreetMap until you
+  switch them on under Settings → General. Existing installations keep their current setting.
+
+### Fixed
+- If saving the map switch fails, the switch now returns to its real state and shows a message.
+
 ## [1.2.2] – 2026-11-04
 
 ### Fixed

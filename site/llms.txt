@@ -23,7 +23,7 @@ catalog and never changes the original files. Interface in English and German.
   people and animals, noise reduction (DRUNet), object removal (LaMa), face grouping.
 - Statistics: cameras, lenses, focal lengths, apertures, shutter speeds, ISO, keywords, people,
   countries, file types and ratings of the photos in the current view; click an entry to filter.
-- Map: photos on an OpenStreetMap map, place names; can be switched off completely.
+- Map: photos on an OpenStreetMap map, place names; off on a new installation, switched on in the settings.
 - Photo album: automatic photo book from a project, print-ready PDF.
 - Slideshow: the same photo selection as the album, full screen with music (cuts on the beat,
   several songs, also per place), animated maps between places and a closing map; saved as MP4
