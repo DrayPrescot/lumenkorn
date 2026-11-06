@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.6] – 2026-11-06
+
 ### Changed
 - The culling assistant now also learns from decisions made without it: photos you reject yourself, flag
   as a pick or rate with stars. It works this out in the background and only from new decisions, not from
