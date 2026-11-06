@@ -13,6 +13,28 @@
 //! Datenordner festgehalten, ebenso eine spätere Rücknahme einer Ablehnung.
 //! Daraus wird je Grund die Schwelle verschoben – vorsichtig, mit der
 //! Grundschwelle als Vorwissen. „Zurücksetzen“ löscht alles Gelernte.
+//!
+//! **Lernen ohne den Assistenten:** Auch was der Nutzer sonst in der Bibliothek
+//! entscheidet, zählt: Ablehnen, Pick und Sterne (nicht aber, was ein KI-Agent
+//! über MCP setzt). `commands.rs` meldet die Fotos, der Worker wertet sie
+//! stapelweise aus (`Job::CullLearn`), und vor dem Löschen abgelehnter Fotos
+//! holt `learn_before_delete` nach, was noch fehlt. Dabei gilt:
+//!
+//! - Der Grund ist nur geraten, deshalb zählen solche Beispiele schwächer
+//!   ([`Source::weight`]) und bewegen die Schwelle allein nur begrenzt
+//!   ([`HAND_SHIFT`]). Ein Foto, das aus ganz anderen Gründen abgelehnt wurde,
+//!   zählt gar nicht: Es muss wie im Dialog mindestens ein Grenzfall sein.
+//! - Nur aus Ablehnungen würde die Schwelle immer weiter sinken. Darum gelten
+//!   die Fotos neben einer Ablehnung als gesehen und behalten
+//!   ([`PASSED_NEIGHBORS`]). Das ist die Gegenprobe, und sie zählt am wenigsten.
+//! - Gemessen wird wie vor der Entscheidung: Sterne und Markierungen schützen
+//!   hier nicht, und abgelehnte Fotos gehören noch zur Serie. Sonst hätten die
+//!   Schweregrade einen anderen Maßstab als die Schwellen, mit denen sie
+//!   verglichen werden.
+//! - Bearbeitete Fotos zählen nicht: Ihre Vorschau zeigt die Bearbeitung und
+//!   nicht das Foto, über das entschieden wurde. Im Hintergrund wird nichts
+//!   entwickelt (`get_light`), und CLIP wird dafür nicht geladen; „Versehentlich
+//!   ausgelöst“ lernt außerhalb des Dialogs daher nur aus schwarzen Bildern.
 
 use crate::AppState;
 use crate::album::select::{
@@ -24,10 +46,11 @@ use lumenkorn_develop::fsutil::unix_now;
 use lumenkorn_develop::i18n::tr_s;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use tauri::{AppHandle, Emitter, State};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 const FILE: &str = "aussortieren.json";
 /// Kantenlänge, auf der gemessen wird (die Vorschau hat 2048)
@@ -59,6 +82,24 @@ const MIN_SAMPLES: usize = 8;
 const PRIOR_PER_TENTH: f32 = 2.0;
 /// Älteste Lernbeispiele fallen darüber hinaus weg
 const MAX_SAMPLES: usize = 5000;
+/// So weit unter der Schwelle gilt ein Befund als Grenzfall (wie `BORDER` in
+/// `lib/cull.ts`). Darunter hat eine Ablehnung von Hand wohl einen anderen Grund.
+const BORDER: f32 = 0.15;
+/// Ohne genug Entscheidungen im Assistenten bewegt sich die Schwelle höchstens
+/// so weit: Was von Hand entschieden wurde, sagt über den Grund nichts Sicheres.
+const HAND_SHIFT: f32 = 0.2;
+/// Behaltene Fotos zählen ab diesem Schweregrad: Tiefer liegt keine Schwelle.
+const MIN_KEPT_SEVERITY: f32 = 0.15;
+/// So viele Fotos vor und nach einer Ablehnung gelten als gesehen und behalten
+const PASSED_NEIGHBORS: usize = 3;
+/// Rund um eine Entscheidung gehören höchstens so viele Fotos je Seite zur Serie
+const MAX_CHAIN: usize = 20;
+/// Entscheidungen von Hand je Stapel im Hintergrund
+const LEARN_BATCH: usize = 16;
+/// Längere Warteschlange: die ältesten Entscheidungen fallen weg
+const MAX_PENDING: usize = 5000;
+/// So lange darf das Lernen das Löschen abgelehnter Fotos aufhalten
+const DELETE_WAIT: Duration = Duration::from_secs(5);
 
 /// CLIP: Beschreibungen gewöhnlicher Fotos und versehentlicher Auslösungen
 const PHOTO_PROMPTS: &[&str] = &[
@@ -78,6 +119,14 @@ const ACCIDENT_PROMPTS: &[&str] = &[
 static CANCEL: AtomicBool = AtomicBool::new(false);
 /// Lesen und Schreiben von `aussortieren.json` nacheinander
 static FILE_LOCK: Mutex<()> = Mutex::new(());
+/// Von Hand entschiedene Fotos, die noch nicht in der Datei stehen. Ein Tastendruck
+/// soll keine Datei schreiben; was hier liegt, geht beim Beenden verloren, schadet
+/// aber nicht: Es sind höchstens die letzten Sekunden.
+static QUEUE: Mutex<Vec<i64>> = Mutex::new(Vec::new());
+/// Gibt es etwas auszuwerten? Beim Start ja: Die Datei kann noch etwas enthalten.
+static WORK: AtomicBool = AtomicBool::new(true);
+/// Zählt jedes Zurücksetzen: Ein Stapel, der gerade läuft, ist danach hinfällig.
+static GENERATION: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -375,7 +424,122 @@ pub(crate) fn evaluate(p: &[Photo]) -> Vec<(usize, CullItem)> {
     out
 }
 
+// --- Messen ---------------------------------------------------------------------
+
+/// Gesichter, die für die Augen-Prüfung groß genug sind, und je Foto ihre Anzahl
+/// mit den erkannten Personen.
+#[derive(Default)]
+struct BigFaces {
+    rects: HashMap<i64, Vec<[f64; 4]>>,
+    count: HashMap<i64, (u32, Vec<i64>)>,
+}
+
+fn big_faces(cat: &lumenkorn_core::Catalog, ids: &[i64]) -> Result<BigFaces, Error> {
+    let mut out = BigFaces::default();
+    for fc in &cat.faces_of_images(ids)? {
+        if fc.rect[2] * fc.rect[3] >= EYE_FACE_AREA {
+            out.rects.entry(fc.image_id).or_default().push(fc.rect);
+            let e = out.count.entry(fc.image_id).or_default();
+            e.0 += 1;
+            if let Some(p) = fc.person_id {
+                e.1.push(p);
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// Misst ein Foto an seiner Vorschau. Die Augen nur bei unbearbeiteten Fotos: Die
+/// Lage der Gesichter bezieht sich aufs unbearbeitete Bild, und bearbeitete werden
+/// ohnehin nicht vorgeschlagen.
+fn measure_photo(
+    img: &lumenkorn_core::ImageSummary,
+    bytes: &[u8],
+    faces: &BigFaces,
+    mesh: Option<&lumenkorn_ai::parts::FaceMesh>,
+) -> Option<Photo> {
+    let full = image::load_from_memory(bytes).ok()?;
+    let small = full.thumbnail(MEASURE_EDGE, MEASURE_EDGE);
+    let (sharp, clip_hi, clip_lo, mean, hash) = measure(&small.to_luma8());
+    let (luma, color) = signature(&small);
+    let (face_count, mut people) = faces.count.get(&img.id).cloned().unwrap_or_default();
+    people.sort_unstable();
+    people.dedup();
+    let mut eyes = None;
+    if let (Some(mesh), Some(rects), false) = (mesh, faces.rects.get(&img.id), img.edited) {
+        let rgb = full.to_rgb8();
+        let (w, h) = (rgb.width() as f64, rgb.height() as f64);
+        let boxes: Vec<[f32; 4]> = rects
+            .iter()
+            .filter(|r| r[2] * w >= EYE_FACE_PX)
+            .map(|r| {
+                [
+                    (r[0] * w) as f32,
+                    (r[1] * h) as f32,
+                    ((r[0] + r[2]) * w) as f32,
+                    ((r[1] + r[3]) * h) as f32,
+                ]
+            })
+            .collect();
+        match lumenkorn_ai::parts::eye_openness(&rgb, &boxes, mesh) {
+            Ok(v) => eyes = v.into_iter().flatten().reduce(f32::min),
+            Err(e) => log::warn!("Augen-Prüfung {}: {e}", img.id),
+        }
+    }
+    Some(Photo {
+        f: Features {
+            id: img.id,
+            time: img
+                .captured_at
+                .as_deref()
+                .and_then(lumenkorn_core::geotime::parse_time),
+            captured_at: img.captured_at.clone(),
+            aspect: full.width().max(1) as f32 / full.height().max(1) as f32,
+            sharp,
+            clip_hi,
+            clip_lo,
+            mean,
+            hash,
+            luma,
+            color,
+            rating: img.rating,
+            flag: img.flag,
+            edited: img.edited,
+            faces: face_count,
+            people,
+            ..Default::default()
+        },
+        raw: img.kind == lumenkorn_core::formats::ImageKind::Raw,
+        eyes,
+        accident: None,
+    })
+}
+
 // --- Lernen --------------------------------------------------------------------
+
+/// Woher ein Lernbeispiel stammt
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum Source {
+    /// Im Assistenten entschieden: Der Grund stand dabei
+    #[default]
+    Assistant,
+    /// Von Hand abgelehnt, mit Pick markiert oder mit Sternen bewertet
+    Hand,
+    /// Neben einer Ablehnung gesehen und nicht abgelehnt
+    Passed,
+}
+
+impl Source {
+    /// Wie viel ein Beispiel zählt: Nur im Assistenten ist der Grund sicher.
+    fn weight(self) -> f32 {
+        match self {
+            Source::Assistant => 1.0,
+            Source::Hand => 0.5,
+            Source::Passed => 0.25,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -386,6 +550,8 @@ struct Sample {
     /// Abgelehnt (Vorschlag richtig bzw. Grenzfall doch aussortiert)
     reject: bool,
     at: i64,
+    #[serde(default)]
+    source: Source,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -396,6 +562,237 @@ struct LearnFile {
     /// Vom Assistenten abgelehnte Fotos: Hebt der Nutzer die Ablehnung
     /// später auf, war der Vorschlag falsch.
     applied: Vec<i64>,
+    /// Von Hand entschiedene Fotos, die noch ausgewertet werden müssen
+    pending: Vec<i64>,
+}
+
+/// Was der Nutzer ohne den Assistenten über ein Foto entschieden hat
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Hand {
+    Reject,
+    Keep,
+}
+
+/// Abgelehnt schlägt Sterne: Das Foto soll weg, auch wenn es einmal gefiel.
+fn hand_of(flag: i64, rating: i64) -> Option<Hand> {
+    match flag {
+        -1 => Some(Hand::Reject),
+        1 => Some(Hand::Keep),
+        _ => (rating > 0).then_some(Hand::Keep),
+    }
+}
+
+/// Was eine Auswertung über ein Foto ergeben hat: (Grund, Schweregrad, abgelehnt)
+#[derive(Debug)]
+struct Learned {
+    id: i64,
+    /// Von Hand entschieden (sonst nur gesehen und behalten). Ohne `samples` heißt
+    /// das: Das Foto lehrt nichts (mehr), die Entscheidung ist etwa zurückgenommen.
+    hand: bool,
+    samples: Vec<(Reason, f32, bool)>,
+}
+
+/// Eine Ablehnung von Hand lehrt nur den wahrscheinlichsten Grund – den, den auch
+/// der Dialog genannt hätte –, und nur, wenn der mindestens ein Grenzfall ist.
+/// Behaltene Fotos lehren alle Gründe: Das Foto blieb trotz aller Befunde.
+fn hand_samples(
+    hand: Hand,
+    findings: &[Finding],
+    thresholds: &HashMap<Reason, f32>,
+) -> Vec<(Reason, f32, bool)> {
+    let margin = |f: &Finding| f.severity - thresholds.get(&f.reason).copied().unwrap_or(BASE);
+    match hand {
+        Hand::Reject => findings
+            .iter()
+            .max_by(|a, b| margin(a).total_cmp(&margin(b)))
+            .filter(|f| margin(f) >= -BORDER)
+            .map(|f| (f.reason, f.severity, true))
+            .into_iter()
+            .collect(),
+        Hand::Keep => kept_samples(findings),
+    }
+}
+
+fn kept_samples(findings: &[Finding]) -> Vec<(Reason, f32, bool)> {
+    findings
+        .iter()
+        .filter(|f| f.severity >= MIN_KEPT_SEVERITY)
+        .map(|f| (f.reason, f.severity, false))
+        .collect()
+}
+
+/// Wertet gemessene Fotos eines Ordners aus (chronologisch). `decided`: die Fotos
+/// aus der Warteschlange; die übrigen sind nur Umgebung.
+fn learn_from(
+    photos: &mut [Photo],
+    decided: &HashSet<i64>,
+    thresholds: &HashMap<Reason, f32>,
+) -> Vec<Learned> {
+    let mut hands: HashMap<i64, Hand> = HashMap::new();
+    let mut passed: HashSet<i64> = HashSet::new();
+    for (pos, p) in photos.iter().enumerate() {
+        if !decided.contains(&p.f.id) {
+            continue;
+        }
+        let Some(hand) = hand_of(p.f.flag, p.f.rating) else {
+            continue;
+        };
+        hands.insert(p.f.id, hand);
+        if hand == Hand::Reject {
+            let near = pos.saturating_sub(PASSED_NEIGHBORS)
+                ..(pos + PASSED_NEIGHBORS + 1).min(photos.len());
+            passed.extend(
+                photos[near]
+                    .iter()
+                    .filter(|n| hand_of(n.f.flag, n.f.rating).is_none())
+                    .map(|n| n.f.id),
+            );
+        }
+    }
+    // Wie vor der Entscheidung messen: Geschützte Fotos hätten sonst keine Befunde
+    for p in photos.iter_mut() {
+        p.f.rating = 0;
+        p.f.flag = 0;
+        p.f.edited = false;
+    }
+    let mut findings: HashMap<i64, Vec<Finding>> = evaluate(photos)
+        .into_iter()
+        .map(|(_, it)| (it.id, it.findings))
+        .collect();
+    let mut out = Vec::new();
+    for (id, hand) in hands {
+        let f = findings.remove(&id).unwrap_or_default();
+        out.push(Learned {
+            id,
+            hand: true,
+            samples: hand_samples(hand, &f, thresholds),
+        });
+    }
+    for id in passed {
+        if let Some(f) = findings.get(&id) {
+            out.push(Learned {
+                id,
+                hand: false,
+                samples: kept_samples(f),
+            });
+        }
+    }
+    out
+}
+
+/// Positionen der Fotos (chronologisch), die für die Entscheidungen an den
+/// Positionen `decided` gemessen werden müssen: die Fotos daneben und die Serie,
+/// zu der sie gehören könnten.
+fn context_of(times: &[Option<i64>], decided: &[usize]) -> BTreeSet<usize> {
+    let close = |a: usize, b: usize| matches!((times[a], times[b]), (Some(x), Some(y)) if y - x <= BURST_GAP_S);
+    let n = times.len();
+    let mut out = BTreeSet::new();
+    for &d in decided {
+        out.extend(d.saturating_sub(PASSED_NEIGHBORS)..(d + PASSED_NEIGHBORS + 1).min(n));
+        let mut i = d;
+        for _ in 0..MAX_CHAIN {
+            if i == 0 || !close(i - 1, i) {
+                break;
+            }
+            i -= 1;
+            out.insert(i);
+        }
+        let mut i = d;
+        for _ in 0..MAX_CHAIN {
+            if i + 1 >= n || !close(i, i + 1) {
+                break;
+            }
+            i += 1;
+            out.insert(i);
+        }
+    }
+    out
+}
+
+impl LearnFile {
+    /// Fotos einreihen, jedes nur einmal: Gezählt wird beim Auswerten, was dann gilt.
+    fn enqueue(&mut self, ids: Vec<i64>) {
+        let mut seen: HashSet<i64> = self.pending.iter().copied().collect();
+        self.pending
+            .extend(ids.into_iter().filter(|id| seen.insert(*id)));
+        let excess = self.pending.len().saturating_sub(MAX_PENDING);
+        self.pending.drain(..excess);
+    }
+
+    /// Den nächsten Stapel aus der Warteschlange nehmen
+    fn take(&mut self, only: Option<&HashSet<i64>>) -> Vec<i64> {
+        let mut taken = Vec::new();
+        self.pending.retain(|id| {
+            let take = taken.len() < LEARN_BATCH && only.is_none_or(|o| o.contains(id));
+            if take {
+                taken.push(*id);
+            }
+            !take
+        });
+        taken
+    }
+
+    fn waiting(&self, only: Option<&HashSet<i64>>) -> bool {
+        self.pending
+            .iter()
+            .any(|id| only.is_none_or(|o| o.contains(id)))
+    }
+
+    /// Ergebnisse einer Auswertung übernehmen. Die neuere Entscheidung ersetzt die
+    /// ältere; nur gesehen zu sein ersetzt nie eine Entscheidung.
+    fn apply(&mut self, learned: Vec<Learned>, at: i64) {
+        for l in learned {
+            // Hat der Assistent abgelehnt: Dafür gibt es ein Beispiel, und eine
+            // Rücknahme erkennt `reconcile`
+            if self.applied.contains(&l.id) {
+                continue;
+            }
+            let source = if l.hand {
+                self.samples.retain(|s| {
+                    s.id != l.id
+                        || (s.source == Source::Assistant
+                            && !l.samples.iter().any(|x| x.0 == s.reason))
+                });
+                Source::Hand
+            } else {
+                if self
+                    .samples
+                    .iter()
+                    .any(|s| s.id == l.id && s.source != Source::Passed)
+                {
+                    continue;
+                }
+                self.samples.retain(|s| s.id != l.id);
+                Source::Passed
+            };
+            for (reason, severity, reject) in l.samples {
+                self.samples.push(Sample {
+                    id: l.id,
+                    reason,
+                    severity,
+                    reject,
+                    at,
+                    source,
+                });
+            }
+        }
+        self.trim();
+    }
+
+    /// Älteste Beispiele fallen weg, die aus dem Assistenten zuletzt. Hand und
+    /// Gegenprobe gemeinsam nach Alter, sonst kippte das Verhältnis der beiden.
+    fn trim(&mut self) {
+        let mut excess = self.samples.len().saturating_sub(MAX_SAMPLES);
+        for assistant in [false, true] {
+            self.samples.retain(|s| {
+                let drop = excess > 0 && (s.source == Source::Assistant) == assistant;
+                if drop {
+                    excess -= 1;
+                }
+                !drop
+            });
+        }
+    }
 }
 
 fn load(state: &AppState) -> LearnFile {
@@ -408,20 +805,21 @@ fn save(state: &AppState, f: &LearnFile) {
     }
 }
 
-/// Schwelle aus Entscheidungen (Schweregrad, abgelehnt): die mit den wenigsten
-/// Fehlentscheidungen, wobei jede Verschiebung von `base` weg etwas kostet.
-/// Unter [`MIN_SAMPLES`] Beispielen bleibt es bei `base`.
-pub(crate) fn fit(samples: &[(f32, bool)], base: f32) -> f32 {
-    if samples.len() < MIN_SAMPLES {
+/// Schwelle aus Entscheidungen (Schweregrad, abgelehnt, Gewicht): die mit den
+/// wenigsten Fehlentscheidungen, wobei jede Verschiebung von `base` weg etwas
+/// kostet. Unter [`MIN_SAMPLES`] Beispielen (nach Gewicht) bleibt es bei `base`.
+pub(crate) fn fit(samples: &[(f32, bool, f32)], base: f32) -> f32 {
+    if samples.iter().map(|s| s.2).sum::<f32>() < MIN_SAMPLES as f32 {
         return base;
     }
     let mut best = (f32::MAX, base);
     for step in 15..=90 {
         let t = step as f32 / 100.0;
-        let wrong = samples
+        let wrong: f32 = samples
             .iter()
-            .filter(|(s, reject)| (*s >= t) != *reject)
-            .count() as f32;
+            .filter(|(s, reject, _)| (*s >= t) != *reject)
+            .map(|s| s.2)
+            .sum();
         let cost = wrong + PRIOR_PER_TENTH * (t - base).abs() * 10.0;
         if cost < best.0 - 1e-4
             || ((cost - best.0).abs() <= 1e-4 && (t - base).abs() < (best.1 - base).abs())
@@ -432,19 +830,22 @@ pub(crate) fn fit(samples: &[(f32, bool)], base: f32) -> f32 {
     best.1
 }
 
+fn threshold_of(f: &LearnFile, reason: Reason) -> f32 {
+    let mine = || f.samples.iter().filter(|x| x.reason == reason);
+    let s: Vec<(f32, bool, f32)> = mine()
+        .map(|x| (x.severity, x.reject, x.source.weight()))
+        .collect();
+    let t = fit(&s, BASE);
+    let sure = mine().filter(|x| x.source == Source::Assistant).count();
+    if sure >= MIN_SAMPLES {
+        t
+    } else {
+        t.clamp(BASE - HAND_SHIFT, BASE + HAND_SHIFT)
+    }
+}
+
 fn thresholds(f: &LearnFile) -> HashMap<Reason, f32> {
-    REASONS
-        .iter()
-        .map(|r| {
-            let s: Vec<(f32, bool)> = f
-                .samples
-                .iter()
-                .filter(|x| x.reason == *r)
-                .map(|x| (x.severity, x.reject))
-                .collect();
-            (*r, fit(&s, BASE))
-        })
-        .collect()
+    REASONS.iter().map(|r| (*r, threshold_of(f, *r))).collect()
 }
 
 /// Vom Assistenten abgelehnte Fotos, deren Ablehnung inzwischen aufgehoben
@@ -510,24 +911,9 @@ fn suggest(state: &AppState, app: &AppHandle, scope: Scope) -> Result<CullResult
     let _ = app.emit("cull-progress", Progress { done: 0, total });
     let pool = crate::album::select::analysis_pool()?;
 
-    // Gesichter, die für die Augen groß genug sind (nur bei unbearbeiteten
-    // Fotos: Die Lage bezieht sich aufs unbearbeitete Bild, und bearbeitete
-    // werden ohnehin nicht vorgeschlagen)
     let ids: Vec<i64> = images.iter().map(|i| i.id).collect();
-    let faces = state.catalog.locked().faces_of_images(&ids)?;
-    let mut face_rects: HashMap<i64, Vec<[f64; 4]>> = HashMap::new();
-    let mut face_count: HashMap<i64, (u32, Vec<i64>)> = HashMap::new();
-    for fc in &faces {
-        if fc.rect[2] * fc.rect[3] >= EYE_FACE_AREA {
-            face_rects.entry(fc.image_id).or_default().push(fc.rect);
-            let e = face_count.entry(fc.image_id).or_default();
-            e.0 += 1;
-            if let Some(p) = fc.person_id {
-                e.1.push(p);
-            }
-        }
-    }
-    let mesh = if face_rects.is_empty() {
+    let faces = big_faces(&state.catalog.locked(), &ids)?;
+    let mesh = if faces.rects.is_empty() {
         None
     } else {
         crate::ai::face_mesh(state)
@@ -547,63 +933,7 @@ fn suggest(state: &AppState, app: &AppHandle, scope: Scope) -> Result<CullResult
                         .cache
                         .get_or_render(&state.catalog, Variant::Preview, &job)
                         .ok()?;
-                    let full = image::load_from_memory(&bytes).ok()?;
-                    let small = full.thumbnail(MEASURE_EDGE, MEASURE_EDGE);
-                    let (sharp, clip_hi, clip_lo, mean, hash) = measure(&small.to_luma8());
-                    let (luma, color) = signature(&small);
-                    let (faces, mut people) = face_count.get(&img.id).cloned().unwrap_or_default();
-                    people.sort_unstable();
-                    people.dedup();
-                    let mut eyes = None;
-                    if let (Some(mesh), Some(rects), false) =
-                        (&mesh, face_rects.get(&img.id), img.edited)
-                    {
-                        let rgb = full.to_rgb8();
-                        let (w, h) = (rgb.width() as f64, rgb.height() as f64);
-                        let boxes: Vec<[f32; 4]> = rects
-                            .iter()
-                            .filter(|r| r[2] * w >= EYE_FACE_PX)
-                            .map(|r| {
-                                [
-                                    (r[0] * w) as f32,
-                                    (r[1] * h) as f32,
-                                    ((r[0] + r[2]) * w) as f32,
-                                    ((r[1] + r[3]) * h) as f32,
-                                ]
-                            })
-                            .collect();
-                        match lumenkorn_ai::parts::eye_openness(&rgb, &boxes, mesh) {
-                            Ok(v) => eyes = v.into_iter().flatten().reduce(f32::min),
-                            Err(e) => log::warn!("Augen-Prüfung {}: {e}", img.id),
-                        }
-                    }
-                    Some(Photo {
-                        f: Features {
-                            id: img.id,
-                            time: img
-                                .captured_at
-                                .as_deref()
-                                .and_then(lumenkorn_core::geotime::parse_time),
-                            captured_at: img.captured_at.clone(),
-                            aspect: full.width().max(1) as f32 / full.height().max(1) as f32,
-                            sharp,
-                            clip_hi,
-                            clip_lo,
-                            mean,
-                            hash,
-                            luma,
-                            color,
-                            rating: img.rating,
-                            flag: img.flag,
-                            edited: img.edited,
-                            faces,
-                            people,
-                            ..Default::default()
-                        },
-                        raw: img.kind == lumenkorn_core::formats::ImageKind::Raw,
-                        eyes,
-                        accident: None,
-                    })
+                    measure_photo(img, &bytes, &faces, mesh.as_deref())
                 })();
                 let n = done.fetch_add(1, Ordering::Relaxed) + 1;
                 if n.is_multiple_of(8) || n == total {
@@ -676,34 +1006,211 @@ pub struct Decision {
 pub fn cull_learn(state: State<AppState>, decisions: Vec<Decision>) {
     let _g = FILE_LOCK.locked();
     let mut f = load(&state);
-    let at = unix_now();
-    for d in &decisions {
-        // Neuere Entscheidung zum selben Foto und Grund ersetzt die alte
+    record_decisions(&mut f, &decisions, unix_now());
+    // Die Oberfläche hat diese Fotos eben selbst markiert: keine Entscheidung von Hand
+    let ids: HashSet<i64> = decisions.iter().map(|d| d.id).collect();
+    QUEUE.locked().retain(|id| !ids.contains(id));
+    f.pending.retain(|id| !ids.contains(id));
+    save(&state, &f);
+}
+
+fn record_decisions(f: &mut LearnFile, decisions: &[Decision], at: i64) {
+    for d in decisions {
+        // Die neuere Entscheidung zum selben Foto und Grund ersetzt die alte. Was von
+        // Hand oder nur nebenbei über das Foto bekannt war, zählt daneben nicht mehr.
         f.samples
-            .retain(|s| !(s.id == d.id && s.reason == d.reason));
+            .retain(|s| s.id != d.id || (s.source == Source::Assistant && s.reason != d.reason));
         f.samples.push(Sample {
             id: d.id,
             reason: d.reason,
             severity: d.severity,
             reject: d.reject,
             at,
+            source: Source::Assistant,
         });
         if d.reject && !f.applied.contains(&d.id) {
             f.applied.push(d.id);
         }
     }
-    if f.samples.len() > MAX_SAMPLES {
-        let drop = f.samples.len() - MAX_SAMPLES;
-        f.samples.drain(..drop);
+    f.trim();
+    f.version = 2;
+}
+
+// --- Entscheidungen ohne den Assistenten ------------------------------------------
+
+/// Der Nutzer hat Fotos in der Bibliothek abgelehnt, markiert oder bewertet.
+pub fn note_decisions(ids: &[i64]) {
+    QUEUE.locked().extend_from_slice(ids);
+    WORK.store(true, Ordering::Relaxed);
+}
+
+/// Für den Hausmeister: Liegen Entscheidungen zum Auswerten bereit?
+pub fn has_work() -> bool {
+    WORK.load(Ordering::Relaxed)
+}
+
+/// Ein Stapel im Hintergrund. `true`: Es wartet noch mehr.
+pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
+    batch(&app.state::<AppState>(), None)
+}
+
+/// Abgelehnte Fotos werden gleich gelöscht: Was davon noch nicht ausgewertet ist,
+/// jetzt auswerten, danach ist es nicht mehr möglich. Ein Fehler hier darf das
+/// Löschen nicht verhindern.
+pub fn learn_before_delete(state: &AppState, ids: &[i64]) {
+    let only: HashSet<i64> = ids.iter().copied().collect();
+    let until = Instant::now() + DELETE_WAIT;
+    let run = std::panic::AssertUnwindSafe(|| {
+        while batch(state, Some(&only))? && Instant::now() < until {}
+        Ok::<_, Error>(())
+    });
+    match std::panic::catch_unwind(run) {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => log::warn!("Aussortieren: Lernen vor dem Löschen: {e}"),
+        Err(_) => log::error!("Aussortieren: Lernen vor dem Löschen abgebrochen (Panik)"),
     }
-    f.version = 1;
-    save(&state, &f);
+}
+
+fn batch(state: &AppState, only: Option<&HashSet<i64>>) -> Result<bool, Error> {
+    let generation = GENERATION.load(Ordering::Relaxed);
+    let (ids, known, more) = {
+        let _g = FILE_LOCK.locked();
+        // Vor dem Abholen: Eine Meldung ab jetzt setzt es wieder
+        WORK.store(false, Ordering::Relaxed);
+        let mut f = load(state);
+        let fresh = std::mem::take(&mut *QUEUE.locked());
+        let changed = !fresh.is_empty();
+        f.enqueue(fresh);
+        let ids = f.take(only);
+        // Schon vor dem Messen aus der Datei: Bringt ein Foto das Programm zu Fall,
+        // ist es beim nächsten Start nicht wieder dran.
+        if changed || !ids.is_empty() {
+            f.version = 2;
+            save(state, &f);
+        }
+        if !f.pending.is_empty() {
+            WORK.store(true, Ordering::Relaxed);
+        }
+        (ids, thresholds(&f), f.waiting(only))
+    };
+    if ids.is_empty() {
+        return Ok(false);
+    }
+    let sources = Sources {
+        catalog: &state.catalog,
+        cache: &state.cache,
+        ai: crate::ai::enabled(state),
+        mesh: &|| crate::ai::face_mesh(state),
+    };
+    let learned = evaluate_decisions(&sources, &ids, &known)?;
+    let _g = FILE_LOCK.locked();
+    if GENERATION.load(Ordering::Relaxed) == generation {
+        let mut f = load(state);
+        f.apply(learned, unix_now());
+        save(state, &f);
+    }
+    Ok(more)
+}
+
+/// Was die Auswertung vom Programm braucht
+struct Sources<'a> {
+    catalog: &'a Mutex<lumenkorn_core::Catalog>,
+    cache: &'a lumenkorn_core::thumbs::ThumbCache,
+    /// KI eingeschaltet: Gesichtsmodell und CLIP-Vektoren aus dem Katalog nutzen
+    ai: bool,
+    mesh: &'a dyn Fn() -> Option<std::sync::Arc<lumenkorn_ai::parts::FaceMesh>>,
+}
+
+/// Misst die Fotos `ids` mit ihrer Umgebung, ohne Katalogsperre und nacheinander:
+/// Das läuft neben der Arbeit des Nutzers her. Ohne Entwicklung (`get_light`): Was
+/// sich nur entwickelt messen ließe, lehrt nichts.
+fn evaluate_decisions(
+    src: &Sources,
+    ids: &[i64],
+    thresholds: &HashMap<Reason, f32>,
+) -> Result<Vec<Learned>, Error> {
+    let reader = src.catalog.locked().reader()?;
+    let mut out = Vec::new();
+    let mut by_dir: HashMap<String, HashSet<i64>> = HashMap::new();
+    for img in reader.images_in_order(ids, &ImageQuery::new(Scope::All))? {
+        if hand_of(img.flag, img.rating).is_none() {
+            // Zurückgenommen: Was das Foto gelehrt hat, gilt nicht mehr
+            out.push(Learned {
+                id: img.id,
+                hand: true,
+                samples: Vec::new(),
+            });
+        } else if !img.edited
+            && let Some(dir) = std::path::Path::new(&img.path).parent()
+        {
+            by_dir
+                .entry(dir.to_string_lossy().into_owned())
+                .or_default()
+                .insert(img.id);
+        }
+    }
+    for (dir, decided) in by_dir {
+        let mut q = ImageQuery::new(Scope::Folder {
+            path: dir,
+            recursive: false,
+        });
+        q.sort = SortOrder::CapturedAsc;
+        let list = reader.query_images(&q)?;
+        let times: Vec<Option<i64>> = list
+            .iter()
+            .map(|i| {
+                i.captured_at
+                    .as_deref()
+                    .and_then(lumenkorn_core::geotime::parse_time)
+            })
+            .collect();
+        let positions: Vec<usize> = (0..list.len())
+            .filter(|p| decided.contains(&list[*p].id))
+            .collect();
+        let images: Vec<_> = context_of(&times, &positions)
+            .into_iter()
+            .map(|p| &list[p])
+            .filter(|i| !i.edited && !i.missing)
+            .collect();
+        let image_ids: Vec<i64> = images.iter().map(|i| i.id).collect();
+        let faces = big_faces(&reader, &image_ids)?;
+        let mesh = if src.ai && !faces.rects.is_empty() {
+            (src.mesh)()
+        } else {
+            None
+        };
+        let mut vectors: HashMap<i64, Vec<f32>> = if src.ai {
+            reader
+                .embeddings_of(lumenkorn_ai::models::MODEL_ID, &image_ids)?
+                .into_iter()
+                .map(|(id, bytes)| (id, lumenkorn_ai::index::from_bytes(&bytes)))
+                .collect()
+        } else {
+            HashMap::new()
+        };
+        let mut photos: Vec<Photo> = images
+            .iter()
+            .filter_map(|img| {
+                let job = reader.thumb_job(img.id).ok()?;
+                let bytes = src
+                    .cache
+                    .get_light(src.catalog, Variant::Preview, &job)
+                    .ok()??;
+                let mut photo = measure_photo(img, &bytes, &faces, mesh.as_deref())?;
+                photo.f.vector = vectors.remove(&img.id);
+                Some(photo)
+            })
+            .collect();
+        out.extend(learn_from(&mut photos, &decided, thresholds));
+    }
+    Ok(out)
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReasonStatus {
     pub reason: Reason,
+    /// Entscheidungen (ohne die nur gesehenen und behaltenen Fotos)
     pub samples: usize,
     /// Davon abgelehnt
     pub rejected: usize,
@@ -714,7 +1221,12 @@ pub struct ReasonStatus {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CullStatus {
+    /// Lernbeispiele insgesamt
     pub samples: usize,
+    /// Davon Entscheidungen ohne den Assistenten
+    pub hand: usize,
+    /// Fotos, deren Entscheidung noch ausgewertet wird
+    pub pending: usize,
     pub base: f32,
     pub reasons: Vec<ReasonStatus>,
 }
@@ -727,13 +1239,28 @@ pub fn cull_status(state: State<AppState>) -> Result<CullStatus, Error> {
         save(&state, &f);
     }
     let t = thresholds(&f);
+    let waiting: HashSet<i64> = f
+        .pending
+        .iter()
+        .chain(QUEUE.locked().iter())
+        .copied()
+        .collect();
     Ok(CullStatus {
         samples: f.samples.len(),
+        hand: f
+            .samples
+            .iter()
+            .filter(|s| s.source == Source::Hand)
+            .count(),
+        pending: waiting.len(),
         base: BASE,
         reasons: REASONS
             .iter()
             .map(|r| {
-                let mine = f.samples.iter().filter(|s| s.reason == *r);
+                let mine = f
+                    .samples
+                    .iter()
+                    .filter(|s| s.reason == *r && s.source != Source::Passed);
                 ReasonStatus {
                     reason: *r,
                     samples: mine.clone().count(),
@@ -749,6 +1276,8 @@ pub fn cull_status(state: State<AppState>) -> Result<CullStatus, Error> {
 #[tauri::command(async)]
 pub fn cull_reset(state: State<AppState>) {
     let _g = FILE_LOCK.locked();
+    GENERATION.fetch_add(1, Ordering::Relaxed);
+    QUEUE.locked().clear();
     save(&state, &LearnFile::default());
     log::info!("Aussortier-Assistent zurückgesetzt");
 }
@@ -890,6 +1419,11 @@ mod tests {
 
     #[test]
     fn learning_moves_the_threshold_only_with_evidence() {
+        // Entscheidungen aus dem Assistenten zählen voll
+        let fit = |s: &[(f32, bool)], base: f32| {
+            let s: Vec<(f32, bool, f32)> = s.iter().map(|x| (x.0, x.1, 1.0)).collect();
+            fit(&s, base)
+        };
         // Zu wenig Beispiele: Grundschwelle
         assert_eq!(fit(&[(0.6, false); 5], BASE), BASE);
         // Vorschläge um 0,55–0,65 werden regelmäßig abgewählt: Schwelle steigt
@@ -906,5 +1440,476 @@ mod tests {
             .map(|i| (0.305 + i as f32 * 0.02, i % 2 == 0))
             .collect();
         assert_eq!(fit(&s, BASE), BASE);
+    }
+
+    // --- Entscheidungen ohne den Assistenten ---
+
+    /// Einzelfoto mit Unschärfe 0,5: kein gemeinsamer Hash, weit auseinander
+    fn blurry(id: i64, time: i64) -> Photo {
+        photo(
+            id,
+            time * 1000,
+            (id as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15),
+            80.0,
+        )
+    }
+
+    fn base_thresholds() -> HashMap<Reason, f32> {
+        REASONS.iter().map(|r| (*r, BASE)).collect()
+    }
+
+    fn sample(id: i64, severity: f32, reject: bool, source: Source) -> Sample {
+        Sample {
+            id,
+            reason: Reason::Blur,
+            severity,
+            reject,
+            at: 0,
+            source,
+        }
+    }
+
+    fn finding(reason: Reason, severity: f32) -> Finding {
+        Finding { reason, severity }
+    }
+
+    #[test]
+    fn what_counts_as_a_decision() {
+        assert_eq!(hand_of(-1, 0), Some(Hand::Reject));
+        assert_eq!(hand_of(-1, 4), Some(Hand::Reject));
+        assert_eq!(hand_of(1, 0), Some(Hand::Keep));
+        assert_eq!(hand_of(0, 3), Some(Hand::Keep));
+        assert_eq!(hand_of(0, 0), None);
+    }
+
+    #[test]
+    fn a_rejection_teaches_only_the_likely_reason() {
+        let t = base_thresholds();
+        let f = [
+            finding(Reason::Series, 0.6),
+            finding(Reason::Blur, 0.9),
+            finding(Reason::Eyes, 0.2),
+        ];
+        assert_eq!(
+            hand_samples(Hand::Reject, &f, &t),
+            vec![(Reason::Blur, 0.9, true)]
+        );
+        // Grenzfall zählt noch …
+        let f = [finding(Reason::Blur, 0.36)];
+        assert_eq!(hand_samples(Hand::Reject, &f, &t).len(), 1);
+        // … was weit darunter liegt, war nicht der Grund
+        let f = [finding(Reason::Blur, 0.3)];
+        assert!(hand_samples(Hand::Reject, &f, &t).is_empty());
+        assert!(hand_samples(Hand::Reject, &[], &t).is_empty());
+    }
+
+    #[test]
+    fn a_kept_photo_teaches_every_reason() {
+        let f = [
+            finding(Reason::Blur, 0.8),
+            finding(Reason::Eyes, 0.2),
+            finding(Reason::Exposure, 0.05),
+        ];
+        assert_eq!(
+            hand_samples(Hand::Keep, &f, &base_thresholds()),
+            vec![(Reason::Blur, 0.8, false), (Reason::Eyes, 0.2, false)]
+        );
+    }
+
+    #[test]
+    fn protected_photos_are_measured_as_before_the_decision() {
+        // Pick und Sterne schützen im Assistenten: Dort hätten sie keinen Befund
+        let mut p = vec![blurry(1, 10), blurry(2, 20), blurry(3, 30)];
+        p[0].f.flag = 1;
+        p[1].f.rating = 3;
+        assert!(
+            evaluate(&p)
+                .iter()
+                .filter(|(_, it)| it.id != 3)
+                .all(|(_, it)| it.findings.is_empty())
+        );
+        let learned = learn_from(&mut p, &HashSet::from([1, 2]), &base_thresholds());
+        assert_eq!(learned.len(), 2);
+        for l in learned {
+            assert!(l.hand);
+            assert_eq!(l.samples.len(), 1);
+            assert_eq!(l.samples[0].0, Reason::Blur);
+            assert!(!l.samples[0].2);
+        }
+    }
+
+    #[test]
+    fn rejected_photos_still_count_for_their_series() {
+        // Zehn fast gleiche Fotos, die schwächsten von Hand abgelehnt: Für den Assistenten
+        // wären das die Vorschläge. Ohne die abgelehnten wäre die Serie viel kleiner.
+        let mut p: Vec<Photo> = (0..10)
+            .map(|i| photo(i, 1000 + i, 0xF0F0, 1000.0 - i as f32 * 10.0))
+            .collect();
+        for x in &mut p[4..] {
+            x.f.flag = -1;
+        }
+        let decided: HashSet<i64> = (4..10).collect();
+        let learned = learn_from(&mut p, &decided, &base_thresholds());
+        let hand: Vec<_> = learned.iter().filter(|l| l.hand).collect();
+        assert_eq!(hand.len(), 6);
+        for l in hand {
+            assert_eq!(l.samples.len(), 1, "Foto {}", l.id);
+            assert_eq!(l.samples[0].0, Reason::Series);
+            assert!(l.samples[0].2);
+        }
+    }
+
+    #[test]
+    fn photos_next_to_a_rejection_count_as_kept() {
+        let mut p: Vec<Photo> = (0..9).map(|i| blurry(i, i * 10)).collect();
+        p[4].f.flag = -1;
+        // Daneben, aber schon entschieden: kein stilles Behalten
+        p[3].f.rating = 2;
+        let learned = learn_from(&mut p, &HashSet::from([4]), &base_thresholds());
+        let mut passed: Vec<i64> = learned.iter().filter(|l| !l.hand).map(|l| l.id).collect();
+        passed.sort_unstable();
+        assert_eq!(passed, vec![1, 2, 5, 6, 7]);
+        for l in learned.iter().filter(|l| !l.hand) {
+            assert_eq!(l.samples.len(), 1);
+            assert_eq!(l.samples[0].0, Reason::Blur);
+            assert!(!l.samples[0].2);
+        }
+        // Sterne allein sagen nichts über die Fotos daneben
+        let mut p: Vec<Photo> = (0..9).map(|i| blurry(i, i * 10)).collect();
+        p[4].f.rating = 5;
+        let learned = learn_from(&mut p, &HashSet::from([4]), &base_thresholds());
+        assert!(learned.iter().all(|l| l.hand));
+    }
+
+    #[test]
+    fn context_covers_neighbours_and_the_series() {
+        let t = |v: &[i64]| v.iter().map(|x| Some(*x)).collect::<Vec<_>>();
+        // Weit auseinander: nur die Nachbarn, am Rand weniger
+        let far = t(&[0, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000]);
+        assert_eq!(
+            context_of(&far, &[4]).into_iter().collect::<Vec<_>>(),
+            vec![1, 2, 3, 4, 5, 6, 7]
+        );
+        assert_eq!(
+            context_of(&far, &[0]).into_iter().collect::<Vec<_>>(),
+            vec![0, 1, 2, 3]
+        );
+        // Kurz hintereinander: die ganze Kette, aber nicht unbegrenzt
+        let burst: Vec<i64> = (0..100).map(|i| i * 10).collect();
+        let c = context_of(&t(&burst), &[50]);
+        assert_eq!(c.len(), 2 * MAX_CHAIN + 1);
+        assert_eq!(c.first(), Some(&(50 - MAX_CHAIN)));
+        assert_eq!(c.last(), Some(&(50 + MAX_CHAIN)));
+        // Ohne Aufnahmezeit: keine Kette
+        let none = vec![None; 20];
+        assert_eq!(context_of(&none, &[10]).len(), 2 * PASSED_NEIGHBORS + 1);
+        assert!(context_of(&[], &[]).is_empty());
+    }
+
+    #[test]
+    fn a_newer_decision_replaces_the_older_one() {
+        let learned = |id, hand, samples| Learned { id, hand, samples };
+        let mut f = LearnFile::default();
+        // Nur gesehen und behalten …
+        f.apply(vec![learned(1, false, vec![(Reason::Blur, 0.6, false)])], 1);
+        assert_eq!(f.samples.len(), 1);
+        assert_eq!(f.samples[0].source, Source::Passed);
+        // … dann doch von Hand abgelehnt
+        f.apply(vec![learned(1, true, vec![(Reason::Blur, 0.6, true)])], 2);
+        assert_eq!(f.samples.len(), 1);
+        assert_eq!(f.samples[0].source, Source::Hand);
+        assert!(f.samples[0].reject);
+        // Nebenbei gesehen ändert daran nichts mehr
+        f.apply(vec![learned(1, false, vec![(Reason::Blur, 0.6, false)])], 3);
+        assert!(f.samples[0].reject);
+        // Zurückgenommen: Das Foto lehrt nichts mehr
+        f.apply(vec![learned(1, true, vec![])], 4);
+        assert!(f.samples.is_empty());
+
+        // Entscheidung im Assistenten: bleibt, außer die neue gilt demselben Grund
+        let mut f = LearnFile {
+            samples: vec![sample(2, 0.7, false, Source::Assistant)],
+            ..Default::default()
+        };
+        f.samples[0].reason = Reason::Eyes;
+        f.apply(vec![learned(2, true, vec![(Reason::Blur, 0.6, true)])], 5);
+        assert_eq!(f.samples.len(), 2);
+        f.apply(vec![learned(2, true, vec![(Reason::Eyes, 0.7, true)])], 6);
+        assert_eq!(f.samples.len(), 1);
+        assert!(f.samples[0].reject);
+        assert_eq!(f.samples[0].source, Source::Hand);
+        // Vom Assistenten selbst abgelehnt: kein Beispiel von Hand, obwohl `set_flag` es meldet
+        let mut f = LearnFile {
+            applied: vec![3],
+            ..Default::default()
+        };
+        f.apply(vec![learned(3, true, vec![(Reason::Blur, 0.6, true)])], 7);
+        assert!(f.samples.is_empty());
+    }
+
+    #[test]
+    fn a_decision_in_the_assistant_replaces_what_was_guessed() {
+        let mut f = LearnFile {
+            samples: vec![
+                sample(1, 0.6, false, Source::Passed),
+                sample(2, 0.6, true, Source::Hand),
+                sample(3, 0.6, true, Source::Assistant),
+            ],
+            ..Default::default()
+        };
+        f.samples[1].reason = Reason::Eyes;
+        f.samples[2].reason = Reason::Eyes;
+        let d = |id| Decision {
+            id,
+            reason: Reason::Series,
+            severity: 0.7,
+            reject: false,
+        };
+        record_decisions(&mut f, &[d(1), d(2), d(3)], 1);
+        // Bei 1 und 2 ist das Geratene weg, bei 3 bleibt der andere Grund aus dem Assistenten
+        assert_eq!(f.samples.iter().filter(|s| s.id == 1).count(), 1);
+        assert_eq!(f.samples.iter().filter(|s| s.id == 2).count(), 1);
+        assert_eq!(f.samples.iter().filter(|s| s.id == 3).count(), 2);
+        assert!(f.samples.iter().all(|s| s.source == Source::Assistant));
+    }
+
+    #[test]
+    fn decisions_by_hand_count_less() {
+        let file = |samples: Vec<Sample>| LearnFile {
+            samples,
+            ..Default::default()
+        };
+        let n = |count: i64, severity, reject, source| -> Vec<Sample> {
+            (0..count)
+                .map(|i| sample(i, severity, reject, source))
+                .collect()
+        };
+        // Acht Entscheidungen im Assistenten genügen, acht von Hand noch nicht
+        let f = file(n(8, 0.45, true, Source::Assistant));
+        assert!(threshold_of(&f, Reason::Blur) < BASE);
+        let f = file(n(8, 0.45, true, Source::Hand));
+        assert_eq!(threshold_of(&f, Reason::Blur), BASE);
+        let f = file(n(16, 0.45, true, Source::Hand));
+        assert!(threshold_of(&f, Reason::Blur) < BASE);
+        // Von Hand allein nur begrenzt, in beide Richtungen
+        let f = file(n(400, 0.17, true, Source::Hand));
+        assert_eq!(threshold_of(&f, Reason::Blur), BASE - HAND_SHIFT);
+        let f = file(n(400, 0.88, false, Source::Hand));
+        assert_eq!(threshold_of(&f, Reason::Blur), BASE + HAND_SHIFT);
+        // Mit genug Entscheidungen im Assistenten gilt die Grenze nicht
+        let mut s = n(400, 0.88, false, Source::Hand);
+        s.extend(n(8, 0.88, false, Source::Assistant));
+        assert!(threshold_of(&file(s), Reason::Blur) > BASE + HAND_SHIFT);
+    }
+
+    #[test]
+    fn the_control_group_keeps_the_threshold_from_sinking() {
+        let at = |i: i64| 0.36 + (i % 14) as f32 * 0.01;
+        // Abgelehnte Fotos knapp unter der Schwelle: Ohne Gegenprobe sinkt sie …
+        let mut samples: Vec<Sample> = (0..40)
+            .map(|i| sample(i, at(i), true, Source::Hand))
+            .collect();
+        let f = LearnFile {
+            samples: samples.clone(),
+            ..Default::default()
+        };
+        assert!(threshold_of(&f, Reason::Blur) < BASE - 0.05);
+        // … doch wenn gleich unscharfe Fotos daneben meist behalten wurden, bleibt sie
+        samples.extend((100..300).map(|i| sample(i, at(i), false, Source::Passed)));
+        let f = LearnFile {
+            samples,
+            ..Default::default()
+        };
+        assert_eq!(threshold_of(&f, Reason::Blur), BASE);
+    }
+
+    #[test]
+    fn the_queue_holds_every_photo_once_and_stays_bounded() {
+        let mut f = LearnFile::default();
+        f.enqueue(vec![1, 2, 2, 3]);
+        f.enqueue(vec![3, 4]);
+        assert_eq!(f.pending, vec![1, 2, 3, 4]);
+        // Nur die gewünschten Fotos, der Rest wartet weiter
+        let only = HashSet::from([2, 4]);
+        assert_eq!(f.take(Some(&only)), vec![2, 4]);
+        assert_eq!(f.pending, vec![1, 3]);
+        assert!(!f.waiting(Some(&only)));
+        assert!(f.waiting(None));
+        // Stapelgröße und Obergrenze
+        f.enqueue((10..10 + MAX_PENDING as i64 * 2).collect());
+        assert_eq!(f.pending.len(), MAX_PENDING);
+        assert_eq!(f.take(None).len(), LEARN_BATCH);
+        assert_eq!(f.pending.len(), MAX_PENDING - LEARN_BATCH);
+    }
+
+    #[test]
+    fn old_samples_go_first_and_those_from_the_assistant_last() {
+        let mut f = LearnFile::default();
+        f.samples
+            .extend((0..10).map(|i| sample(i, 0.6, true, Source::Assistant)));
+        f.samples
+            .extend((10..MAX_SAMPLES as i64).map(|i| sample(i, 0.6, true, Source::Hand)));
+        f.samples
+            .extend((0..5).map(|i| sample(90_000 + i, 0.6, false, Source::Passed)));
+        f.trim();
+        assert_eq!(f.samples.len(), MAX_SAMPLES);
+        let count = |source| f.samples.iter().filter(|s| s.source == source).count();
+        assert_eq!(count(Source::Assistant), 10);
+        // Weg sind die ältesten von Hand, die jüngsten aus der Gegenprobe bleiben
+        assert_eq!(count(Source::Passed), 5);
+        assert!(!f.samples.iter().any(|s| s.id == 10));
+        // Nur aus dem Assistenten: wie bisher die ältesten
+        let mut f = LearnFile {
+            samples: (0..MAX_SAMPLES as i64 + 3)
+                .map(|i| sample(i, 0.6, true, Source::Assistant))
+                .collect(),
+            ..Default::default()
+        };
+        f.trim();
+        assert_eq!(f.samples.len(), MAX_SAMPLES);
+        assert_eq!(f.samples[0].id, 3);
+    }
+
+    #[test]
+    fn decisions_are_evaluated_from_files_on_disk() {
+        use image::{Rgb, RgbImage};
+        let d = tempfile::tempdir().unwrap();
+        let dir = d.path().join("Fotos");
+        std::fs::create_dir_all(&dir).unwrap();
+        // Scharfes Rauschen, jedes Foto anders …
+        let noise = |seed: u32| {
+            RgbImage::from_fn(800, 600, |x, y| {
+                let v = (x * 7 + y * 13 + seed * 101).wrapping_mul(2_654_435_761) >> 24;
+                Rgb([v as u8, v as u8, v as u8])
+            })
+        };
+        for i in 0..8 {
+            let name = dir.join(format!("{i}.jpg"));
+            match i {
+                // … und zwei deutlich unscharfe Fotos, die nichts miteinander zu tun haben
+                3 => RgbImage::from_fn(800, 600, |x, _| {
+                    let v = (x / 4) as u8;
+                    Rgb([v, v, v])
+                })
+                .save(name)
+                .unwrap(),
+                4 => RgbImage::from_fn(800, 600, |_, y| {
+                    let v = (y / 3) as u8;
+                    Rgb([v, v, v])
+                })
+                .save(name)
+                .unwrap(),
+                _ => noise(i).save(name).unwrap(),
+            }
+        }
+        let cat =
+            std::sync::Mutex::new(lumenkorn_core::Catalog::open(&d.path().join("k.db")).unwrap());
+        let root = cat.locked().add_root(&dir).unwrap();
+        lumenkorn_core::scanner::scan_root(&cat, root.id, &|_| {}).unwrap();
+        let mut q = ImageQuery::new(Scope::All);
+        q.sort = SortOrder::NameAsc;
+        let ids: Vec<i64> = cat
+            .locked()
+            .query_images(&q)
+            .unwrap()
+            .iter()
+            .map(|i| i.id)
+            .collect();
+        assert_eq!(ids.len(), 8);
+        cat.locked().set_flag(&[ids[3]], -1).unwrap();
+        cat.locked().set_rating(&[ids[0]], 4).unwrap();
+
+        let cache = lumenkorn_core::thumbs::ThumbCache::new(d.path().join("cache"));
+        let sources = Sources {
+            catalog: &cat,
+            cache: &cache,
+            ai: false,
+            mesh: &|| panic!("KI ist aus"),
+        };
+        // Abgelehnt, mit Sternen, zurückgenommen (6) und ein gelöschtes Foto
+        let wanted = [ids[3], ids[0], ids[6], 999_999];
+        let learned = evaluate_decisions(&sources, &wanted, &base_thresholds()).unwrap();
+        let of = |id: i64, hand: bool| {
+            learned
+                .iter()
+                .find(|l| l.id == id && l.hand == hand)
+                .unwrap_or_else(|| panic!("Foto {id}: {learned:?}"))
+        };
+        // Abgelehnt: Unschärfe war der Grund
+        let rejected = &of(ids[3], true).samples;
+        assert_eq!(rejected.len(), 1, "{learned:?}");
+        assert_eq!(rejected[0].0, Reason::Blur);
+        assert!(rejected[0].2);
+        // Daneben: unscharf und trotzdem behalten. Die scharfen lehren nichts.
+        let passed = &of(ids[4], false).samples;
+        assert_eq!(passed.len(), 1, "{learned:?}");
+        assert_eq!(passed[0].0, Reason::Blur);
+        assert!(!passed[0].2);
+        assert!(!learned.iter().any(|l| l.id == ids[4] && l.hand));
+        // Sterne auf einem scharfen Foto: Daran gibt es nichts zu lernen
+        assert!(of(ids[0], true).samples.is_empty());
+        // Entscheidung zurückgenommen: alte Beispiele werden gelöscht
+        assert!(of(ids[6], true).samples.is_empty());
+        // Das gelöschte Foto fehlt einfach, und die Datei ist nicht angefasst
+        assert!(!learned.iter().any(|l| l.id == 999_999));
+        assert!(dir.join("3.jpg").is_file());
+
+        // Bearbeitet: Die Vorschau zeigt nicht mehr das Foto, über das entschieden wurde
+        let edited = lumenkorn_develop::DevelopParams {
+            exposure: 1.0,
+            ..Default::default()
+        };
+        cat.locked().save_develop(&[ids[3]], &edited).unwrap();
+        let learned = evaluate_decisions(&sources, &[ids[3]], &base_thresholds()).unwrap();
+        assert!(learned.is_empty(), "{learned:?}");
+    }
+
+    #[test]
+    fn an_older_file_still_loads() {
+        // So hat die Vorgängerversion geschrieben
+        let f: LearnFile = serde_json::from_str(
+            r#"{"version":1,"samples":[{"id":7,"reason":"blur","severity":0.6,"reject":true,"at":5}],"applied":[7]}"#,
+        )
+        .unwrap();
+        assert_eq!(f.samples[0].source, Source::Assistant);
+        assert_eq!(f.applied, vec![7]);
+        assert!(f.pending.is_empty());
+    }
+
+    #[test]
+    fn a_measured_preview_becomes_a_photo() {
+        let img = image::RgbImage::from_fn(640, 480, |x, y| {
+            image::Rgb([(x % 251) as u8, (y % 241) as u8, ((x ^ y) % 256) as u8])
+        });
+        let mut bytes = Vec::new();
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(
+                &mut std::io::Cursor::new(&mut bytes),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        let summary: lumenkorn_core::ImageSummary = serde_json::from_value(serde_json::json!({
+            "id": 42,
+            "path": "x.jpg",
+            "fileName": "x.jpg",
+            "kind": "raster",
+            "width": null,
+            "height": null,
+            "capturedAt": "2026-11-06T10:00:00",
+            "rating": 3,
+            "flag": 1,
+            "thumbReady": true,
+            "missing": false,
+            "edited": false,
+        }))
+        .unwrap();
+        let p = measure_photo(&summary, &bytes, &BigFaces::default(), None).unwrap();
+        assert_eq!((p.f.id, p.f.rating, p.f.flag), (42, 3, 1));
+        assert!(p.f.time.is_some());
+        assert!((p.f.aspect - 640.0 / 480.0).abs() < 1e-3);
+        assert!(!p.raw);
+        assert_eq!(p.eyes, None);
+        // Kaputte Vorschau: kein Foto, kein Abbruch
+        assert!(measure_photo(&summary, b"kaputt", &BigFaces::default(), None).is_none());
     }
 }

@@ -718,6 +718,8 @@ export const mock = {
       case "cull_status":
         return out({
           samples: mockCullSamples,
+          hand: mockCullSamples ? 12 : 0,
+          pending: mockCullSamples ? 3 : 0,
           base: 0.5,
           reasons: [
             { reason: "series", samples: mockCullSamples ? 21 : 0, rejected: mockCullSamples ? 17 : 0, threshold: 0.5 },

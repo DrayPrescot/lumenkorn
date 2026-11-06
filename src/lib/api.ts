@@ -328,7 +328,12 @@ export interface CullDecision {
 }
 
 export interface CullStatus {
+  /** Lernbeispiele insgesamt */
   samples: number;
+  /** Davon Entscheidungen ohne den Assistenten */
+  hand: number;
+  /** Fotos, deren Entscheidung noch ausgewertet wird */
+  pending: number;
   base: number;
   reasons: { reason: CullReason; samples: number; rejected: number; threshold: number }[];
 }

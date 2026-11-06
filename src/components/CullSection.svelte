@@ -36,7 +36,7 @@
 
 <h4>{t("Aussortier-Assistent")}</h4>
 <p class="muted">
-  {t("Der Assistent („Aussortieren …“ im Rechtsklick-Menü von Ordnern und Projekten) lernt aus deinen Entscheidungen: welche Vorschläge du abwählst, welche Grenzfälle du doch ablehnst und welche Ablehnungen du später wieder aufhebst. Je Grund verschiebt sich die Schwelle erst, wenn genug Entscheidungen vorliegen. Alles bleibt auf diesem Rechner.")}
+  {t("Der Assistent („Aussortieren …“ im Rechtsklick-Menü von Ordnern und Projekten) lernt aus deinen Entscheidungen: welche Vorschläge du abwählst, welche Grenzfälle du doch ablehnst und welche Ablehnungen du später wieder aufhebst. Er lernt auch aus dem, was du ohne ihn entscheidest: Fotos, die du selbst ablehnst, mit Pick markierst oder mit Sternen bewertest. Das zählt weniger, weil er den Grund dann nur vermuten kann. Je Grund verschiebt sich die Schwelle erst, wenn genug Entscheidungen vorliegen. Alles bleibt auf diesem Rechner.")}
 </p>
 {#if status}
   {#if status.samples}
@@ -53,8 +53,14 @@
         </li>
       {/each}
     </ul>
+    {#if status.hand}
+      <p class="muted small">{t("Davon ohne den Assistenten getroffen: {n}", { n: num(status.hand) })}</p>
+    {/if}
   {:else}
     <p class="muted small">{t("Noch nichts gelernt.")}</p>
+  {/if}
+  {#if status.pending}
+    <p class="muted small">{t("Noch nicht ausgewertet: {n}", { n: num(status.pending) })}</p>
   {/if}
   <div class="actions">
     {#if confirmReset}

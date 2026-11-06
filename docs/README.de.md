@@ -234,8 +234,10 @@ vergibt sie in der neuen Sprache neu.
   CLIP. Du gehst Vorschläge und Grenzfälle durch und stellst die Strenge ein (vorsichtig, normal,
   streng); als abgelehnt markiert wird nur, was angehakt ist. Fotos mit Sternen, Pick-Markierung
   oder Bearbeitung schlägt er nie vor. Der Assistent lernt aus deinen Entscheidungen und aus
-  Ablehnungen, die du später wieder aufhebst – je Grund und erst, wenn genug zusammenkommen
-  (`aussortieren.json` im Datenordner, zurücksetzen unter Einstellungen → KI).
+  Ablehnungen, die du später wieder aufhebst, außerdem aus dem, was du ohne ihn entscheidest:
+  Fotos, die du selbst ablehnst, mit Pick markierst oder mit Sternen bewertest. Das zählt weniger,
+  weil er den Grund dann nur vermuten kann. Gelernt wird je Grund und erst, wenn genug zusammenkommt
+  (`aussortieren.json` im Datenordner, zurücksetzen unter Einstellungen → Aussortieren).
 
 ## Karte
 

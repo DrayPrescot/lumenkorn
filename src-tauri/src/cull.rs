@@ -78,6 +78,7 @@ fn delete_rejected_blocking(
             .into(),
         ));
     }
+    crate::cull_assist::learn_before_delete(state, &ids);
     // Liste unter Sperre holen, Dateien ohne Sperre löschen (Papierkorb kann dauern)
     let files = state.catalog.locked().rejected_files(&ids)?;
     let mut deleted = Vec::new();

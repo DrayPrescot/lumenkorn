@@ -698,7 +698,8 @@ async fn rate_photos(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let ids = ids(a, "ids")?;
     let r = int(a, "rating")?.clamp(0, 5);
-    crate::commands::set_rating(state.clone(), ids.clone(), r).map_err(e)?;
+    // Nicht über `commands::set_rating`: Der Aussortier-Assistent lernt nur vom Nutzer
+    state.catalog.locked().set_rating(&ids, r).map_err(e)?;
     changed(app, &[]);
     text(json!({ "rated": ids.len(), "rating": r }))
 }
@@ -725,7 +726,8 @@ async fn flag_photos(app: &AppHandle, a: &Value) -> ToolResult {
         Some("none") => 0,
         _ => return Err("`flag` must be pick, rejected or none".into()),
     };
-    crate::commands::set_flag(state.clone(), ids.clone(), f).map_err(e)?;
+    // Nicht über `commands::set_flag`: Der Aussortier-Assistent lernt nur vom Nutzer
+    state.catalog.locked().set_flag(&ids, f).map_err(e)?;
     changed(app, &[]);
     text(json!({ "flagged": ids.len() }))
 }

@@ -199,12 +199,16 @@ pub fn image_detail(state: State<AppState>, id: i64) -> CmdResult<ImageDetail> {
 
 #[tauri::command(async)]
 pub fn set_rating(state: State<AppState>, ids: Vec<i64>, rating: i64) -> CmdResult<()> {
-    state.catalog.locked().set_rating(&ids, rating)
+    state.catalog.locked().set_rating(&ids, rating)?;
+    crate::cull_assist::note_decisions(&ids);
+    Ok(())
 }
 
 #[tauri::command(async)]
 pub fn set_flag(state: State<AppState>, ids: Vec<i64>, flag: i64) -> CmdResult<()> {
-    state.catalog.locked().set_flag(&ids, flag)
+    state.catalog.locked().set_flag(&ids, flag)?;
+    crate::cull_assist::note_decisions(&ids);
+    Ok(())
 }
 
 #[tauri::command(async)]

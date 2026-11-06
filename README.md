@@ -164,8 +164,10 @@ the catalog before you let Lumenkorn loose on your whole collection.
   masks for people), accidental shots with CLIP. You review the suggestions and borderline cases
   and switch between cautious, normal and strict; only what you tick is flagged as rejected.
   Photos with stars, a pick flag or edits are never suggested. The assistant learns from your
-  decisions and from rejections you take back later, per reason and only once there are enough
-  of them (`aussortieren.json` in the data folder; reset under Settings → AI).
+  decisions and from rejections you take back later, and also from what you decide without it:
+  photos you reject yourself, flag as a pick or rate with stars. These count for less, because it
+  can only guess the reason. It learns per reason and only once there are enough decisions
+  (`aussortieren.json` in the data folder; reset under Settings → Cull).
 - Compare up to 12 photos side by side with linked zoom, with a filmstrip below to swap photos
   in and out. Any photo can be viewed at 100 % from the full-resolution file.
 - Supported formats: JPEG, PNG, TIFF (8, 16 and 32 bit), WebP, OpenEXR and RAW files from Canon,

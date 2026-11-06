@@ -109,6 +109,10 @@ pub fn start_janitor(app: AppHandle) {
                 // Ein Panic in einem Durchlauf darf den Hausmeister nicht beenden
                 let round = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let state = app.state::<AppState>();
+                    // Entscheidungen beim Aussortieren: gesammelt statt je Tastendruck
+                    if crate::cull_assist::has_work() {
+                        state.worker.submit(crate::worker::Job::CullLearn);
+                    }
                     if Instant::now() >= next_sweep {
                         next_sweep = Instant::now() + SWEEP_EVERY;
                         match sweep_data(&state) {

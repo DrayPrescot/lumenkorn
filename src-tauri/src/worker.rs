@@ -28,6 +28,9 @@ pub enum Job {
     Ai,
     /// Ein Stapel Gesichtserkennung; reiht sich selbst neu ein.
     Faces,
+    /// Ein Stapel Entscheidungen von Hand für den Aussortier-Assistenten; reiht
+    /// sich selbst neu ein. Der Hausmeister stößt ihn an.
+    CullLearn,
 }
 
 #[derive(Clone)]
@@ -179,6 +182,11 @@ impl Worker {
                             Ok(false) => {}
                             Err(e) => log::warn!("Personenerkennung: {e}"),
                         },
+                        Job::CullLearn => match crate::cull_assist::run_batch(&app) {
+                            Ok(true) => me.submit(Job::CullLearn),
+                            Ok(false) => {}
+                            Err(e) => log::warn!("Aussortieren lernen: {e}"),
+                        },
                     });
                     if std::panic::catch_unwind(run).is_err() {
                         log::error!("Auftrag {job:?} abgebrochen (Panik, siehe oben)");
@@ -190,7 +198,7 @@ impl Worker {
                             }
                             Job::Thumbs => me.submit(Job::Ai),
                             Job::Ai => me.submit(Job::Faces),
-                            Job::Faces => {}
+                            Job::Faces | Job::CullLearn => {}
                         }
                     }
                 }

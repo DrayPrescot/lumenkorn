@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- The culling assistant now also learns from decisions made without it: photos you reject yourself, flag
+  as a pick or rate with stars. It works this out in the background and only from new decisions, not from
+  older flags and ratings. Because the reason is only a guess, these count for less than decisions in the
+  assistant, and on their own they move a threshold only so far. Flags and ratings set by an AI agent over
+  MCP do not count.
+
 ## [1.2.5] – 2026-11-06
 
 ### Fixed
