@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.5] – 2026-11-06
+
 ### Fixed
 - “Whole person” could mark only the skin and leave out hat, hair and clothes when the detected box cut
   through the head. Such a box now also takes in the head.
