@@ -854,12 +854,13 @@ pub fn person_mask(
     match part {
         PersonPart::Person => {
             for r in &persons {
-                let mask = match m.sam {
-                    Some((sam, emb)) => Some(sam.predict_box(emb, sam_rect(r))?),
-                    None => None,
-                };
-                match mask {
-                    Some(sm) => paste_full(&mut canvas, &sm),
+                match m.sam {
+                    Some((sam, emb)) => {
+                        paste_full(&mut canvas, &sam.predict_box(emb, sam_rect(r))?);
+                        if let Some(k) = rect_with_head(r, &face_boxes) {
+                            paste_full(&mut canvas, &sam.predict_box(emb, sam_rect(&k))?);
+                        }
+                    }
                     None => {
                         let roi = box_roi(&px(r), 1.06);
                         let classes = m.seg.predict(&roi_crop(&rgb, &roi))?;
@@ -1157,6 +1158,31 @@ fn sam_rect(r: &[f32; 4]) -> [f32; 4] {
     ]
 }
 
+/// Der Personen-Rahmen von OWLv2 schneidet manchmal den Kopf ab. SAM markiert
+/// dann oft nur die Haut, ohne Hut, Haare und Kleidung. Ragt ein Gesicht oben
+/// aus dem Rahmen, liefert das den Rahmen samt Kopf (mit Platz für Haare und
+/// Hut). Liegen alle Gesichter im Rahmen, bleibt er, wie er ist: Größere Rahmen
+/// verschlechterten dort die Masken, besonders bei zwei Personen.
+fn rect_with_head(r: &[f32; 4], faces: &[[f32; 4]]) -> Option<[f32; 4]> {
+    let mut k = *r;
+    let mut extended = false;
+    for f in faces {
+        let (fw, fh) = (f[2] - f[0], f[3] - f[1]);
+        let center_x = (f[0] + f[2]) / 2.0;
+        let center_y = (f[1] + f[3]) / 2.0;
+        let sticks_out = f[1] < r[1] && f[3] > r[1] - fh * 0.5 && center_y < (r[1] + r[3]) / 2.0;
+        // Ein Rahmen, der selbst fast so groß wie die Person ist, ist kein Gesicht
+        let small = fw * fh < (r[2] - r[0]) * (r[3] - r[1]) * 0.5;
+        if sticks_out && small && center_x >= r[0] && center_x <= r[2] {
+            k[0] = k[0].min(f[0]);
+            k[1] = k[1].min(f[1] - fh * 0.5);
+            k[2] = k[2].max(f[2]);
+            extended = true;
+        }
+    }
+    extended.then_some(k)
+}
+
 /// Text für Fehlermeldungen, falls Teile fehlen
 pub fn missing_hint() -> &'static str {
     tr_s(
@@ -1221,6 +1247,26 @@ mod tests {
         assert_eq!(a.len(), 1);
         let b = pick(&dets, &[1], &[], &p);
         assert_eq!(b, vec![[0.6, 0.2, 0.9, 0.6]]);
+    }
+
+    #[test]
+    fn head_extends_the_box_only_when_it_sticks_out() {
+        let person = [0.2, 0.4, 0.8, 1.0];
+        // Das Gesicht liegt ganz im Rahmen
+        assert_eq!(rect_with_head(&person, &[[0.4, 0.45, 0.5, 0.55]]), None);
+        // Das Gesicht ragt oben heraus: Platz für Haare und Hut darüber
+        let k = rect_with_head(&person, &[[0.4, 0.35, 0.5, 0.45]]).unwrap();
+        assert!((k[1] - 0.3).abs() < 1e-5, "{k:?}");
+        assert_eq!((k[0], k[2], k[3]), (0.2, 0.8, 1.0));
+        // Es ragt seitlich über den Rahmen: Die Breite wächst mit
+        let k = rect_with_head(&person, &[[0.15, 0.35, 0.25, 0.45]]).unwrap();
+        assert_eq!(k[0], 0.15);
+        // Das Gesicht einer anderen Person neben dem Rahmen zählt nicht
+        assert_eq!(rect_with_head(&person, &[[0.85, 0.35, 0.95, 0.45]]), None);
+        // Weit darüber: gehört nicht zu dieser Person
+        assert_eq!(rect_with_head(&person, &[[0.4, 0.05, 0.5, 0.15]]), None);
+        // Fast so groß wie die Person: kein Gesicht
+        assert_eq!(rect_with_head(&person, &[[0.2, 0.3, 0.8, 0.9]]), None);
     }
 
     #[test]
