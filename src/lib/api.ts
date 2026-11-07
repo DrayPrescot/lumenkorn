@@ -855,6 +855,16 @@ export interface ExportOptions {
   longEdge: number | null;
 }
 
+/** Zieldateien eines Exports, die es schon gibt (`develop.rs::ExportConflicts`) */
+export interface ExportConflicts {
+  /** Dateinamen */
+  names: string[];
+  /** Davon Fotos der Bibliothek, die „Überschreiben“ ersetzen würde */
+  library: number;
+  /** Davon Fotos dieses Exports selbst: Sie werden nie überschrieben */
+  sources: number;
+}
+
 export interface ExportProgress {
   done: number;
   total: number;
@@ -1130,9 +1140,9 @@ export const api = {
   /** `dir` null: Unterordner aus den Einstellungen neben dem jeweiligen Original. */
   exportImages: (ids: number[], dir: string | null, options: ExportOptions) =>
     call<void>("export_images", { ids, dir, options }),
-  /** Dateinamen, die es im Ziel schon gibt */
+  /** Zieldateien, die es schon gibt */
   exportConflicts: (ids: number[], dir: string | null, options: ExportOptions) =>
-    call<string[]>("export_conflicts", { ids, dir, options }),
+    call<ExportConflicts>("export_conflicts", { ids, dir, options }),
 
   docGet: (kind: DocKind, scope: Scope) => call<string | null>("doc_get", { kind, scope }),
   docPut: (kind: DocKind, scope: Scope, json: string) => call<void>("doc_put", { kind, scope, json }),

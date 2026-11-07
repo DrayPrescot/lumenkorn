@@ -1122,7 +1122,15 @@ async fn export_photos(app: &AppHandle, a: &Value) -> ToolResult {
         }
         None => None,
     };
-    crate::develop::export_images(app.clone(), ids.clone(), dir.clone(), options).map_err(e)?;
+    // KI-Agenten ersetzen nie ein Foto der Bibliothek (der Nutzer bestätigt hier nichts)
+    crate::develop::start_export(
+        app.clone(),
+        ids.clone(),
+        dir.clone(),
+        options,
+        crate::develop::Keep::Library,
+    )
+    .map_err(e)?;
     text(json!({
         "exporting": ids.len(),
         "to": dir.unwrap_or_else(|| "the export subfolder from the settings, next to each original".into()),

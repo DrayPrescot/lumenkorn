@@ -3170,6 +3170,7 @@ dependencies = [
  "lumenkorn-develop",
  "quick-xml",
  "rayon",
+ "same-file",
  "serde",
  "serde_json",
  "tauri",

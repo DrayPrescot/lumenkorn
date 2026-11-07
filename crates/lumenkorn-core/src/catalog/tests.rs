@@ -813,7 +813,7 @@ mod migration_tests {
         assert!(plan.contains("images_hash"), "{plan}");
     }
 
-    /// Die Prüfung beim Export, ob das Ziel ein Foto der Bibliothek ist, nutzt
+    /// Die Prüfung beim Export, welche Ziele Fotos der Bibliothek sind, nutzt
     /// einen Index (sonst ein Durchgang über alle Fotos je Zieldatei).
     #[test]
     fn path_lookup_ignoring_case_uses_index() {
@@ -821,9 +821,12 @@ mod migration_tests {
         // Die Unterabfrage steht in einer eigenen Zeile des Plans
         let plans: Vec<String> = cat
             .conn
-            .prepare("EXPLAIN QUERY PLAN SELECT EXISTS (SELECT 1 FROM images WHERE path = ?1 COLLATE NOCASE)")
+            .prepare(
+                "EXPLAIN QUERY PLAN SELECT DISTINCT j.value FROM json_each(?1) j
+                 WHERE EXISTS (SELECT 1 FROM images WHERE path = j.value COLLATE NOCASE)",
+            )
             .unwrap()
-            .query_map(["C:/a.jpg"], |r| r.get(3))
+            .query_map([r#"["C:/a.jpg"]"#], |r| r.get(3))
             .unwrap()
             .collect::<std::result::Result<_, _>>()
             .unwrap();
@@ -831,6 +834,32 @@ mod migration_tests {
             plans.iter().any(|p| p.contains("images_path_nocase")),
             "{plans:?}"
         );
+    }
+
+    /// Fotos der Bibliothek unter den Zielen eines Exports: ohne Rücksicht auf
+    /// Groß-/Kleinschreibung, in der übergebenen Schreibweise
+    #[test]
+    fn library_paths_finds_photos_ignoring_case() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        tests_support::insert_dummy_images(&mut cat, 2);
+        let found = cat
+            .library_paths(&[
+                "/tmp/lumenkorn-test/bild0.jpg".into(),
+                "/tmp/lumenkorn-test/BILD1.JPG".into(),
+                "/tmp/lumenkorn-test/bild2.jpg".into(),
+                "/tmp/lumenkorn-test/bild0.jpg".into(),
+            ])
+            .unwrap();
+        let mut found: Vec<_> = found.into_iter().collect();
+        found.sort();
+        assert_eq!(
+            found,
+            [
+                "/tmp/lumenkorn-test/BILD1.JPG",
+                "/tmp/lumenkorn-test/bild0.jpg"
+            ]
+        );
+        assert!(cat.library_paths(&[]).unwrap().is_empty());
     }
 
     /// v10: Gesichts-IDs werden nach dem Löschen der neuesten Gesichter nicht

@@ -791,7 +791,7 @@ export const mock = {
       case "semantic_search":
         return out(query({ scope: a.scope, search: a.query, minRating: a.minRating, exts: a.exts, edited: a.edited }));
       case "export_conflicts":
-        return out(["DSC01153.jpg", "DSC01154.jpg"]);
+        return out({ names: ["DSC01153.jpg", "DSC01154.jpg"], library: 1, sources: 0 });
       case "export_images":
         throw t("Export ist nur in der App verfügbar.");
       case "nc_status":

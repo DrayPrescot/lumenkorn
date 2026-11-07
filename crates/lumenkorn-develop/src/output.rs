@@ -133,7 +133,8 @@ pub enum OnConflict {
     /// Zusätzlich exportieren: `name-2.jpg`
     #[default]
     Rename,
-    /// Vorhandene Datei ersetzen (nie ein Original der Bibliothek)
+    /// Vorhandene Datei ersetzen (nie ein Foto dieses Exports, bei KI-Agenten
+    /// kein Foto der Bibliothek)
     Overwrite,
     /// Vorhandene Datei behalten, dieses Format nicht schreiben
     Skip,

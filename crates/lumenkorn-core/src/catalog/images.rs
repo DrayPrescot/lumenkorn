@@ -7,15 +7,17 @@ impl Catalog {
     // Bilder – Abfragen
     // ------------------------------------------------------------------
 
-    /// Liegt unter diesem Pfad ein Foto der Bibliothek? (Groß-/Kleinschreibung
-    /// egal – unter Windows ist es dieselbe Datei.) Der Export überschreibt
-    /// solche Dateien nie.
-    pub fn has_image_path(&self, path: &str) -> Result<bool> {
-        Ok(self.conn.query_row(
-            "SELECT EXISTS (SELECT 1 FROM images WHERE path = ?1 COLLATE NOCASE)",
-            [path],
-            |r| r.get(0),
-        )?)
+    /// Welche dieser Pfade sind Fotos der Bibliothek? (Groß-/Kleinschreibung
+    /// egal – unter Windows ist es dieselbe Datei.) Liefert die Pfade in der
+    /// übergebenen Schreibweise. Für den Export: Der Dialog warnt vor dem
+    /// Überschreiben solcher Dateien, KI-Agenten überschreiben sie nie.
+    pub fn library_paths(&self, paths: &[String]) -> Result<HashSet<String>> {
+        let mut st = self.conn.prepare_cached(
+            "SELECT DISTINCT j.value FROM json_each(?1) j
+             WHERE EXISTS (SELECT 1 FROM images WHERE path = j.value COLLATE NOCASE)",
+        )?;
+        let rows = st.query_map([serde_json::to_string(paths)?], |r| r.get(0))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
     pub fn query_images(&self, q: &ImageQuery) -> Result<Vec<ImageSummary>> {

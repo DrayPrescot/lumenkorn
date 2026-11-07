@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- “Overwrite” in the export dialog now also replaces files that are photos in the library, for
+  example earlier exports in a folder that belongs to the library. Before, such files were never
+  replaced and the export quietly went to `name-2` instead. The dialog now says how many photos in
+  the library would be replaced. A photo that is part of the same export is still never
+  overwritten, so a RAW cannot replace its camera JPEG while that JPEG is being exported too. AI
+  agents (MCP) still never overwrite photos in the library.
+
 ## [1.2.6] – 2026-11-06
 
 ### Changed

@@ -373,8 +373,9 @@ Außerdem:
   Originals selbst (auch für Exporte durch KI-Agenten).
   Von Lumenkorn angelegte Export-Ordner tragen eine versteckte Markierung (`.lumenkorn-export`) und
   erscheinen nicht in der Bibliothek. Gibt es eine Datei schon, fragt Lumenkorn: überschreiben,
-  zusätzlich exportieren (`Name-2`) oder überspringen. Originale der Bibliothek werden nie
-  überschrieben. Alle Formate enthalten die Metadaten des Fotos als EXIF und XMP: Kamera,
+  zusätzlich exportieren (`Name-2`) oder überspringen. Überschreiben kann auch Fotos der
+  Bibliothek ersetzen; der Dialog sagt, wie viele es wären. Ein Foto, das selbst exportiert wird,
+  wird nie überschrieben, und KI-Agenten überschreiben keine Fotos der Bibliothek. Alle Formate enthalten die Metadaten des Fotos als EXIF und XMP: Kamera,
   Objektiv, Belichtung, Blende, ISO, Brennweite, Aufnahmezeit, Titel, Beschreibung, Autor,
   Urheberrecht, eigene Schlagworte und die Bewertung, bearbeitete Werte eingeschlossen.
   KI-Schlagworte und der Ort bleiben draußen.

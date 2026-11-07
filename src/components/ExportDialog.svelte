@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, isTauri, pickFolder, type ExportFormat, type ExportOptions } from "../lib/api";
+  import { api, isTauri, pickFolder, type ExportConflicts, type ExportFormat, type ExportOptions } from "../lib/api";
   import { prefs } from "../lib/prefs.svelte";
   import { dev } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
@@ -49,7 +49,7 @@
   }
 
   // Gibt es Zieldateien schon, wird einmal für alle gefragt
-  let conflicts = $state<string[] | null>(null);
+  let conflicts = $state<ExportConflicts | null>(null);
   const options = (): ExportOptions => ({ format: formats[0], formats, dngEdited, quality, longEdge: resize ? longEdge : null });
 
   async function start() {
@@ -57,7 +57,7 @@
     await dev.flush();
     try {
       const existing = await api.exportConflicts(ids, dir, options());
-      if (existing.length) conflicts = existing;
+      if (existing.names.length) conflicts = existing;
       else await run("rename");
     } catch (e) {
       lib.notify(String(e), "error");
@@ -149,10 +149,17 @@
     {#if conflicts}
       <div class="conflict" role="alert">
         <p>
-          {t(conflicts.length === 1 ? "{n} Datei gibt es im Ziel schon:" : "{n} Dateien gibt es im Ziel schon:", { n: conflicts.length })}
-          <span class="names">{conflicts.slice(0, 3).join(", ")}{conflicts.length > 3 ? " …" : ""}</span>
+          {t(conflicts.names.length === 1 ? "{n} Datei gibt es im Ziel schon:" : "{n} Dateien gibt es im Ziel schon:", { n: conflicts.names.length })}
+          <span class="names">{conflicts.names.slice(0, 3).join(", ")}{conflicts.names.length > 3 ? " …" : ""}</span>
         </p>
-        <p class="hint">{t("Originale aus der Bibliothek werden nie überschrieben.")}</p>
+        {#if conflicts.library}
+          <p class="warn">
+            {t(conflicts.library === 1 ? "Darunter ist {n} Foto aus der Bibliothek. Überschreiben ersetzt es endgültig." : "Darunter sind {n} Fotos aus der Bibliothek. Überschreiben ersetzt sie endgültig.", { n: conflicts.library })}
+          </p>
+        {/if}
+        {#if conflicts.sources}
+          <p class="hint">{t("Fotos, die selbst exportiert werden, bleiben unverändert. Ihr Export kommt als Name-2 daneben.")}</p>
+        {/if}
         <div class="choices">
           <button type="button" class="btn small" onclick={() => run("overwrite")}>{t("Überschreiben")}</button>
           <button type="button" class="btn small" onclick={() => run("rename")} title={t("Als Name-2 usw. neben die vorhandene Datei")}>{t("Zusätzlich exportieren")}</button>
@@ -280,6 +287,10 @@
   }
   .conflict p {
     margin: 0;
+  }
+  .warn {
+    color: var(--reject);
+    font-size: var(--step--1);
   }
   .choices {
     display: grid;
