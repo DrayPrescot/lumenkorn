@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.7] – 2026-11-07
+
 ### Changed
 - “Overwrite” in the export dialog now also replaces files that are photos in the library, for
   example earlier exports in a folder that belongs to the library. Before, such files were never
