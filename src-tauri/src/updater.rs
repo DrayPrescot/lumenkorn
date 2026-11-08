@@ -1,7 +1,8 @@
 //! Updates von GitHub: Beim Start fragt die Oberfläche einmal nach einer
 //! neueren Version (`latest.json` des neuesten Releases, signiert mit dem
 //! Schlüssel des Projekts). Der Nutzer entscheidet, ob installiert wird;
-//! lehnt er ab, kommt die Frage beim nächsten Start wieder.
+//! lehnt er ab, bieten die Einstellungen das gefundene Update weiter an, und
+//! beim nächsten Start kommt die Frage wieder.
 //!
 //! Nur Desktop – auf Android aktualisiert der App-Store bzw. das APK.
 
@@ -37,28 +38,54 @@ pub struct UpdaterState {
     pending: std::sync::Mutex<Option<tauri_plugin_updater::Update>>,
 }
 
-/// Neuere Version auf GitHub? Fehler (offline, GitHub nicht erreichbar)
-/// bleiben still – dann gibt es eben kein Update.
+/// So lange darf die Prüfung dauern (eine kleine JSON-Datei). Ohne Grenze hing
+/// sie bei einer Störung auf GitHub minutenlang, ohne dass etwas zu sehen war.
+#[cfg(desktop)]
+const CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Neuere Version auf GitHub? Beim Start (`manual` aus) bleiben Fehler still,
+/// offline gibt es eben kein Update. Auf Wunsch (Einstellungen) wird ein
+/// Fehler gemeldet, statt „auf dem neuesten Stand“ vorzutäuschen. Ein früher
+/// gefundenes Update bleibt dann installierbar.
 #[tauri::command]
-pub async fn update_check(app: AppHandle) -> Result<Option<UpdateInfo>, Error> {
+pub async fn update_check(
+    app: AppHandle,
+    manual: Option<bool>,
+) -> Result<Option<UpdateInfo>, Error> {
     #[cfg(desktop)]
     {
         use tauri::Manager;
         use tauri_plugin_updater::UpdaterExt;
-        let updater = match app.updater() {
+        let manual = manual.unwrap_or(false);
+        let failed = |e: String| {
+            if manual {
+                Err(Error::Invalid(lumenkorn_develop::tr!(
+                    "GitHub ist gerade nicht erreichbar ({e}). Bitte später noch einmal versuchen.",
+                    "GitHub cannot be reached right now ({e}). Please try again later."
+                )))
+            } else {
+                Ok(None)
+            }
+        };
+        let updater = match app.updater_builder().timeout(CHECK_TIMEOUT).build() {
             Ok(u) => u,
             Err(e) => {
                 log::warn!("Updater nicht verfügbar: {e}");
-                return Ok(None);
+                return failed(e.to_string());
             }
         };
-        let update = match updater.check().await {
+        let mut update = match updater.check().await {
             Ok(u) => u,
             Err(e) => {
                 log::info!("Keine Update-Prüfung möglich: {e}");
-                return Ok(None);
+                return failed(e.to_string());
             }
         };
+        // Die Grenze gilt nur der Prüfung: Der Download (rund 18 MB) darf auf
+        // einer langsamen Leitung dauern, wie bisher
+        if let Some(u) = update.as_mut() {
+            u.timeout = None;
+        }
         let info = update.as_ref().map(|u| UpdateInfo {
             version: u.version.clone(),
             current: u.current_version.clone(),
@@ -73,7 +100,7 @@ pub async fn update_check(app: AppHandle) -> Result<Option<UpdateInfo>, Error> {
     }
     #[cfg(not(desktop))]
     {
-        let _ = app;
+        let _ = (app, manual);
         Ok(None)
     }
 }

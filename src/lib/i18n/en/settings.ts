@@ -20,6 +20,8 @@ export default {
   "Updates": "Updates",
   "Installiert: Version {v}": "Installed: version {v}",
   "Jetzt nach Updates suchen": "Check for updates now",
+  "Suche nach Updates …": "Checking for updates…",
+  "Update auf {v} installieren …": "Install update to {v}…",
   "Lumenkorn sucht außerdem bei jedem Start auf GitHub nach einer neuen Version und fragt, bevor es etwas installiert.": "Lumenkorn also checks GitHub for a new version on every start and asks before installing anything.",
   "Datenordner": "Data folder",
   "Katalog, Vorschaubilder, KI-Modelle und Einstellungen. Die Fotos selbst bleiben in ihren Ordnern.": "Catalog, previews, AI models and settings. The photos themselves stay in their folders.",

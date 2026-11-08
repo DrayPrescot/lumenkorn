@@ -1,7 +1,7 @@
 // Zentraler Oberflächenzustand (Svelte-5-Runes).
 
 import { isCanceled, lang, num, t, tc } from "./i18n";
-import { api, listen, type AiSettings, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type AiComponent, type MemorySaver, type DeleteReport, type BakeProgress, type OriginalsReport, type DeleteOriginalsReport, type RenameOptions, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress, type ImportProgress, type ImportDone, type ImageQuery, type LocationItem, type MetaPatch, type MetaReport } from "./api";
+import { api, listen, type AiSettings, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type AiComponent, type MemorySaver, type DeleteReport, type UpdateInfo, type BakeProgress, type OriginalsReport, type DeleteOriginalsReport, type RenameOptions, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress, type ImportProgress, type ImportDone, type ImageQuery, type LocationItem, type MetaPatch, type MetaReport } from "./api";
 
 class Library {
   roots = $state<Root[]>([]);
@@ -636,6 +636,12 @@ class Library {
   mergeProgress = $state<MergeProgress | null>(null);
   /** Hochzählen: Update-Prüfung jetzt (Einstellungen → Allgemein) */
   updateRequest = $state(0);
+  /** Prüfung auf Wunsch läuft */
+  updateChecking = $state(false);
+  /** Zuletzt gefundenes Update; bleibt nach „Später“, damit es sich wieder öffnen lässt */
+  updateKnown = $state<UpdateInfo | null>(null);
+  /** Hochzählen: gefundenes Update wieder anzeigen (ohne neue Prüfung) */
+  updateShow = $state(0);
 
   /** Öffnet den Dialog zum Zusammenfügen der ausgewählten Fotos. */
   openMerge(kind: MergeKind) {

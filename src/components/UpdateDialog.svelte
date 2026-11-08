@@ -1,7 +1,8 @@
 <script lang="ts">
   // Update von GitHub: einmal kurz nach dem Start prüfen und fragen. „Später“
-  // schließt nur – beim nächsten Start kommt die Frage wieder.
-  import { onMount } from "svelte";
+  // schließt nur: Das gefundene Update bleibt in `lib.updateKnown`, die
+  // Einstellungen bieten es wieder an, und beim nächsten Start kommt die Frage wieder.
+  import { onMount, untrack } from "svelte";
   import { api, listenWhileMounted, type UpdateInfo } from "../lib/api";
   import { dev } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
@@ -17,9 +18,13 @@
     // Erst nach dem Start prüfen, damit Katalog und Vorschaubilder zuerst laden
     const timer = setTimeout(async () => {
       try {
-        info = await api.updateCheck();
+        const found = await api.updateCheck();
+        if (found) {
+          lib.updateKnown = found;
+          info = found;
+        }
       } catch {
-        info = null;
+        // Beim Start still: offline gibt es eben kein Update
       }
     }, 4000);
     const off = listenWhileMounted("update-progress", (p) => {
@@ -33,17 +38,41 @@
     };
   });
 
-  // Prüfen auf Wunsch (Einstellungen → Allgemein)
+  // Prüfen auf Wunsch (Einstellungen → Allgemein). Ein Fehler (GitHub nicht
+  // erreichbar) wird gemeldet, nicht als „auf dem neuesten Stand“ ausgegeben.
   $effect(() => {
     if (lib.updateRequest === 0) return;
-    void (async () => {
-      try {
-        info = await api.updateCheck();
-        if (!info) lib.notify(t("Lumenkorn ist auf dem neuesten Stand."));
-      } catch (e) {
-        lib.notify(t("Update-Prüfung fehlgeschlagen: {error}", { error: String(e) }), "error");
-      }
-    })();
+    untrack(() => {
+      if (lib.updateChecking) return;
+      lib.updateChecking = true;
+      void (async () => {
+        try {
+          const found = await api.updateCheck(true);
+          if (found) {
+            lib.updateKnown = found;
+            phase = "ask";
+            info = found;
+          } else {
+            lib.updateKnown = null;
+            lib.notify(t("Lumenkorn ist auf dem neuesten Stand."));
+          }
+        } catch (e) {
+          lib.notify(t("Update-Prüfung fehlgeschlagen: {error}", { error: String(e) }), "error");
+        } finally {
+          lib.updateChecking = false;
+        }
+      })();
+    });
+  });
+
+  // Schon gefundenes Update wieder anzeigen (nach „Später“), ohne neue Prüfung
+  $effect(() => {
+    if (lib.updateShow === 0) return;
+    untrack(() => {
+      if (!lib.updateKnown) return;
+      phase = "ask";
+      info = lib.updateKnown;
+    });
   });
 
   /** Markdown des Releases als schlichter Text (Links ohne Adresse) */

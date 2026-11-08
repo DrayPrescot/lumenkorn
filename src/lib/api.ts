@@ -1193,7 +1193,8 @@ export const api = {
   aiSetSettings: (settings: Partial<AiSettings>) => call<void>("ai_set_settings", { settings }),
   aiBenchmark: () => call<Benchmark>("ai_benchmark"),
   appRestart: () => call<void>("app_restart"),
-  updateCheck: () => call<UpdateInfo | null>("update_check"),
+  /** `manual`: auf Wunsch geprüft, Fehler kommen dann als Fehler (sonst still „kein Update“) */
+  updateCheck: (manual = false) => call<UpdateInfo | null>("update_check", { manual }),
   updateInstall: () => call<void>("update_install"),
   mcpStatus: () => call<McpStatus>("mcp_status"),
   /** Ordner mit eigener Einstellung „Unterordner einbeziehen“: [Pfad, an] */

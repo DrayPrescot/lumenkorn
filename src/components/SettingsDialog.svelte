@@ -149,7 +149,14 @@
             <span class="label">{t("Updates")}</span>
             <div class="row">
               <span>{info ? t("Installiert: Version {v}", { v: info.version }) : ""}</span>
-              <button class="btn" onclick={() => lib.updateRequest++}>{t("Jetzt nach Updates suchen")}</button>
+              {#if lib.updateKnown}
+                <!-- Schon gefunden (z. B. mit „Später“ weggeklickt): direkt wieder anbieten -->
+                <button class="btn primary" onclick={() => lib.updateShow++}>{t("Update auf {v} installieren …", { v: lib.updateKnown.version })}</button>
+              {:else}
+                <button class="btn" onclick={() => lib.updateRequest++} disabled={lib.updateChecking}>
+                  {lib.updateChecking ? t("Suche nach Updates …") : t("Jetzt nach Updates suchen")}
+                </button>
+              {/if}
             </div>
             <p class="muted small">{t("Lumenkorn sucht außerdem bei jedem Start auf GitHub nach einer neuen Version und fragt, bevor es etwas installiert.")}</p>
           </div>

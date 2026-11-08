@@ -6,6 +6,14 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- “Check for updates now” in Settings said “Lumenkorn is up to date” when GitHub could not be
+  reached, and showed nothing while it waited, sometimes for minutes. It now shows that it is
+  checking, gives up after 30 seconds and says when GitHub is not reachable. The download itself
+  still has no time limit.
+- After closing the update prompt with “Later”, Settings now offers to install the update that was
+  found, without checking again.
+
 ## [1.2.8] – 2026-11-08
 
 ### Added
