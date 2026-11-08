@@ -220,6 +220,13 @@ the catalog before you let Lumenkorn loose on your whole collection.
   (EXIF and XMP: camera and exposure data, capture time, title, description, author, copyright,
   your own keywords and the rating; edited values included). AI keywords and the location are left
   out.
+- Apply edits to original (a checkbox in the export dialog): writes the edits into the JPEG, TIFF
+  or PNG file itself, at full resolution and in the same format, with all metadata including the
+  location. The previous file is kept in an `Original` folder next to the photo (a hard link where
+  the drive allows it, otherwise a copy), and the edits go into a snapshot. "Restore original" in
+  the context menu undoes both. Raw files and DNG are left out. The toolbar shows how many photos
+  in the current view have a saved original, and like rejected photos these saved originals can be
+  moved to the trash or deleted for good.
 
 ### Auto in your style
 Auto learns from your edits how you differ from its suggestions and adapts step by step,
@@ -592,7 +599,7 @@ RANSAC.
 - Before a catalog upgrade, a copy is saved as `katalog.db.v<old version>.bak` in the data folder (the
   last two are kept). To go back: close Lumenkorn, remove `katalog.db` and rename the copy to it.
 - Lumenkorn writes to your photo folders only when you ask it to: deleting rejected photos,
-  saving merge results, or exporting.
+  saving merge results, exporting, or applying edits to the original.
 - Network access: downloading the AI runtime and models when you click the button for it
   (files with a published checksum are verified with SHA-256), and the map view. Map tiles come
   from `tile.openstreetmap.org` and place search and place names from

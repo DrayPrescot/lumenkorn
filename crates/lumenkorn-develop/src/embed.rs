@@ -22,6 +22,9 @@ pub struct ExportMeta {
     pub focal_length: Option<f64>,
     /// Vollständiges XMP-Paket (mit Schlagworten und Bewertung)
     pub xmp: Option<String>,
+    /// Aufnahmeort (Breite, Länge in Grad). Exporte lassen ihn weg; gesetzt nur,
+    /// wenn die Bearbeitung ins Original übernommen wird.
+    pub gps: Option<(f64, f64)>,
 }
 
 /// Wert eines EXIF-Tags
@@ -30,6 +33,9 @@ pub(crate) enum Val {
     Ascii(String),
     Short(u16),
     Rational(u32, u32),
+    /// Mehrere Brüche (GPS: Grad, Minuten, Sekunden)
+    Rationals(Vec<(u32, u32)>),
+    Bytes(Vec<u8>),
     Undefined(Vec<u8>),
 }
 
@@ -114,6 +120,35 @@ pub(crate) fn tags(m: &ExportMeta) -> Tags {
     (ifd0, exif)
 }
 
+/// Grad als Grad, Minuten und Sekunden (Sekunden auf 1/10000)
+fn dms(v: f64) -> Vec<(u32, u32)> {
+    let v = v.abs();
+    let deg = v.floor();
+    let min = ((v - deg) * 60.0).floor();
+    let sec = ((v - deg) * 60.0 - min) * 60.0;
+    vec![
+        (deg as u32, 1),
+        (min as u32, 1),
+        ((sec * 10_000.0).round() as u32, 10_000),
+    ]
+}
+
+/// GPS-Verzeichnis für den Aufnahmeort; leer ohne (gültigen) Ort
+pub(crate) fn gps_tags(m: &ExportMeta) -> Vec<(u16, Val)> {
+    let Some((lat, lon)) = m.gps.filter(|(lat, lon)| {
+        lat.is_finite() && lon.is_finite() && lat.abs() <= 90.0 && lon.abs() <= 180.0
+    }) else {
+        return Vec::new();
+    };
+    vec![
+        (0, Val::Bytes(vec![2, 3, 0, 0])),
+        (1, Val::Ascii(if lat < 0.0 { "S" } else { "N" }.into())),
+        (2, Val::Rationals(dms(lat))),
+        (3, Val::Ascii(if lon < 0.0 { "W" } else { "E" }.into())),
+        (4, Val::Rationals(dms(lon))),
+    ]
+}
+
 fn to_ifd(tags: Vec<(u16, Val)>) -> Ifd {
     let mut ifd = Ifd::default();
     push(&mut ifd, tags);
@@ -127,6 +162,8 @@ fn push(ifd: &mut Ifd, tags: Vec<(u16, Val)>) {
             Val::Ascii(s) => ifd.ascii(tag, &s),
             Val::Short(s) => ifd.short(tag, &[s]),
             Val::Rational(n, d) => ifd.rational(tag, &[(n, d)]),
+            Val::Rationals(v) => ifd.rational(tag, &v),
+            Val::Bytes(b) => ifd.add(tag, 1, b.len(), b),
             Val::Undefined(b) => ifd.add(tag, 7, b.len(), b),
         }
     }
@@ -139,6 +176,11 @@ pub(crate) fn add_to_dng(m: &ExportMeta, ifd0: &mut Ifd, out: &mut Vec<u8>) {
     let (tags0, exif) = tags(m);
     let exif_off = to_ifd(exif).write(out);
     ifd0.long(34665, &[exif_off]);
+    let gps = gps_tags(m);
+    if !gps.is_empty() {
+        let gps_off = to_ifd(gps).write(out);
+        ifd0.long(34853, &[gps_off]);
+    }
     push(
         ifd0,
         tags0
@@ -159,6 +201,11 @@ pub(crate) fn exif_tiff(m: &ExportMeta) -> Vec<u8> {
     let exif_off = to_ifd(exif).write(&mut out);
     let mut d0 = to_ifd(ifd0);
     d0.long(34665, &[exif_off]);
+    let gps = gps_tags(m);
+    if !gps.is_empty() {
+        let gps_off = to_ifd(gps).write(&mut out);
+        d0.long(34853, &[gps_off]);
+    }
     let off0 = d0.write(&mut out);
     out[4..8].copy_from_slice(&off0.to_le_bytes());
     out
@@ -200,6 +247,7 @@ mod tests {
             aperture: Some(2.8),
             focal_length: Some(35.0),
             xmp: Some("<x:xmpmeta/>".into()),
+            gps: None,
         }
     }
 

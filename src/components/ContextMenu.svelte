@@ -10,6 +10,21 @@
   let { x, y, onclose, onrename }: { x: number; y: number; onclose: () => void; onrename: () => void } = $props();
 
   const targets = $derived(lib.pasteTargets());
+  const targetImages = $derived.by(() => {
+    const want = new Set(targets);
+    return lib.images.filter((i) => want.has(i.id));
+  });
+  const withOriginal = $derived(targetImages.filter((i) => i.hasOriginal && !i.missing).map((i) => i.id));
+
+  async function restore(ids: number[]) {
+    // Das Entwickeln verlassen: Seine Bearbeitung gehört zur übernommenen Fassung
+    if (lib.mode === "develop") {
+      await dev.flush();
+      lib.mode = "library";
+      lib.view = "loupe";
+    }
+    await lib.restoreOriginals(ids);
+  }
   const many = $derived(lib.selection.size >= 2);
   const busy = $derived(!!lib.mergeProgress && !lib.mergeProgress.finished);
   let el = $state<HTMLDivElement>();
@@ -130,6 +145,15 @@
     <span>{many ? t("Groß nebeneinander vergleichen ({n} Fotos)", { n: Math.min(lib.selection.size, 12) }) : t("Groß nebeneinander vergleichen")}</span>
     <kbd>{keymap.hint("compare")}</kbd>
   </button>
+  {#if withOriginal.length}
+    <hr />
+    <button role="menuitem" onclick={() => run(() => restore(withOriginal))}>
+      <span>
+        {withOriginal.length > 1 ? t("Original wiederherstellen ({n} Fotos)", { n: withOriginal.length }) : t("Original wiederherstellen")}
+        <small>{t("macht „Bearbeitung ins Original übernehmen“ rückgängig")}</small>
+      </span>
+    </button>
+  {/if}
   <hr />
   <div class="label">{many ? t("Zusammenfügen ({n} Fotos)", { n: lib.selection.size }) : t("Zusammenfügen")}</div>
   <button role="menuitem" disabled={!many || busy} onclick={() => run(() => lib.openMerge("hdr"))}>

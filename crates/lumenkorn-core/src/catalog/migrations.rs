@@ -308,6 +308,15 @@ pub(super) const MIGRATIONS: &[&str] = &[
     // ohne Groß-/Kleinschreibung; der Index auf `path` ist binär und hilft
     // dabei nicht – ohne diesen lief je Zieldatei ein Durchgang über alle Fotos
     "CREATE INDEX images_path_nocase ON images(path COLLATE NOCASE);",
+    // v29: Bearbeitung ins Original übernommen (`catalog/originals.rs`): wo das
+    // bisherige Original liegt und welcher Schnappschuss die Bearbeitung davor
+    // hält. Ein Eintrag je Foto, das erste Original bleibt.
+    "CREATE TABLE originals (
+        image_id    INTEGER PRIMARY KEY REFERENCES images(id) ON DELETE CASCADE,
+        path        TEXT NOT NULL,
+        snapshot_id INTEGER,
+        created_at  INTEGER NOT NULL
+    );",
 ];
 
 /// v24: Metadaten, die der Nutzer geändert hat (`imagemeta.rs`). Ein Eintrag

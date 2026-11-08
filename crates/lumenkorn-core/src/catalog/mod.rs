@@ -19,6 +19,8 @@ mod ai;
 mod edits;
 mod images;
 mod migrations;
+mod originals;
+pub use originals::{BakeCandidate, SavedOriginal};
 mod projects;
 mod roots;
 mod scan;
@@ -202,6 +204,7 @@ fn summary_from_row(r: &Row) -> rusqlite::Result<ImageSummary> {
         lat: r.get(12)?,
         lon: r.get(13)?,
         aspect: r.get(14)?,
+        has_original: r.get(15)?,
     })
 }
 

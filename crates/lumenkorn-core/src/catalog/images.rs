@@ -32,7 +32,8 @@ impl Catalog {
             "SELECT i.id, i.path, i.file_name, i.kind, i.width, i.height, i.captured_at,
                     i.rating, i.flag, i.thumb_state, i.missing,
                     EXISTS (SELECT 1 FROM edits e WHERE e.image_id = i.id AND e.is_current = 1),
-                    i.gps_lat, i.gps_lon, {EDIT_ASPECT}
+                    i.gps_lat, i.gps_lon, {EDIT_ASPECT},
+                    EXISTS (SELECT 1 FROM originals o WHERE o.image_id = i.id)
              FROM images i WHERE {where_sql} ORDER BY {order}"
         );
         if let Some(limit) = q.limit {

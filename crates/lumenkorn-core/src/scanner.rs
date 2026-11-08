@@ -223,6 +223,79 @@ fn is_export_dir(dir: &Path) -> bool {
     dir.join(EXPORT_MARKER).is_file()
 }
 
+/// Markierung im Ordner mit gesicherten Originalen („Bearbeitung ins Original
+/// übernehmen“). Wie Export-Ordner wird er nicht katalogisiert: Das Foto steht
+/// schon mit seiner neuen Fassung in der Bibliothek.
+pub const ORIGINAL_MARKER: &str = ".lumenkorn-original";
+
+/// Name des Ordners mit gesicherten Originalen neben dem Foto
+pub const ORIGINAL_DIR: &str = "Original";
+
+fn is_original_dir(dir: &Path) -> bool {
+    dir.join(ORIGINAL_MARKER).is_file()
+}
+
+/// Ordner für das gesicherte Original von `photo`: `Original` neben dem Foto,
+/// angelegt und markiert, falls nötig. Gibt es dort schon einen eigenen
+/// Ordner „Original“ ohne Markierung (mit Fotos aus der Bibliothek), wird er
+/// nicht angetastet, sondern `Original-2` usw. genommen.
+pub fn original_dir_for(photo: &Path) -> std::io::Result<PathBuf> {
+    let parent = photo
+        .parent()
+        .ok_or_else(|| std::io::Error::other(tr_s("Foto ohne Ordner", "Photo without folder")))?;
+    for n in 1..1000 {
+        let dir = if n == 1 {
+            parent.join(ORIGINAL_DIR)
+        } else {
+            parent.join(format!("{ORIGINAL_DIR}-{n}"))
+        };
+        if dir.is_dir() {
+            if is_original_dir(&dir) {
+                return Ok(dir);
+            }
+            continue;
+        }
+        if dir.exists() {
+            continue; // eine Datei dieses Namens
+        }
+        std::fs::create_dir(&dir)?;
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            opts.attributes(0x2); // FILE_ATTRIBUTE_HIDDEN
+        }
+        use std::io::Write;
+        opts.open(dir.join(ORIGINAL_MARKER))?.write_all(
+            b"Von Lumenkorn angelegt: Originale von Fotos, deren Bearbeitung uebernommen wurde. Lumenkorn nimmt diese Dateien nicht in die Bibliothek auf.\n",
+        )?;
+        return Ok(dir);
+    }
+    Err(std::io::Error::other(tr_s(
+        "Kein freier Ordnername für das Original",
+        "No free folder name for the original",
+    )))
+}
+
+/// Ordner mit gesicherten Originalen entfernen, wenn außer der Markierung
+/// nichts mehr darin liegt
+pub fn remove_original_dir_if_empty(dir: &Path) {
+    if !is_original_dir(dir) {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let only_marker = rd
+        .flatten()
+        .all(|e| e.file_name().to_string_lossy() == ORIGINAL_MARKER);
+    if only_marker {
+        let _ = std::fs::remove_file(dir.join(ORIGINAL_MARKER));
+        let _ = std::fs::remove_dir(dir);
+    }
+}
+
 /// Von Lumenkorn angelegte Export-Ordner unter `dir`: im ganzen Baum bzw.
 /// (`recursive = false`) nur direkt darunter, wo der Export sie neben den
 /// Fotos anlegt. Versteckte Ordner werden übersprungen.
@@ -258,6 +331,7 @@ fn is_skipped(e: &DirEntry) -> bool {
             && (SKIP_DIRS.contains(&name.as_ref())
                 || is_excluded(e.path())
                 || is_export_dir(e.path())
+                || is_original_dir(e.path())
                 // Der Ordner darüber bezieht seine Unterordner nicht ein (die
                 // Ebenen darüber hat der Durchlauf schon geprüft)
                 || e.path().parent().is_some_and(|p| !includes_subfolders(p))))
@@ -485,11 +559,11 @@ fn in_skipped_dir(root: &Path, p: &Path) -> bool {
                 n.starts_with('.') || SKIP_DIRS.contains(&n.as_ref())
             })
         })
-        // Export-Ordner (auch der gemeldete Ordner selbst)
+        // Export-Ordner und gesicherte Originale (auch der gemeldete Ordner selbst)
         || p
             .ancestors()
             .take_while(|a| *a != root && a.starts_with(root))
-            .any(is_export_dir)
+            .any(|a| is_export_dir(a) || is_original_dir(a))
 }
 
 fn found_file(path: PathBuf, meta: &std::fs::Metadata) -> Option<FoundFile> {

@@ -121,7 +121,7 @@ export default {
   "{n} Dateien gibt es im Ziel schon:": "{n} files already exist in the destination:",
   "Darunter ist {n} Foto aus der Bibliothek. Überschreiben ersetzt es endgültig.": "{n} of them is a photo in the library. Overwrite replaces it for good.",
   "Darunter sind {n} Fotos aus der Bibliothek. Überschreiben ersetzt sie endgültig.": "{n} of them are photos in the library. Overwrite replaces them for good.",
-  "Fotos, die selbst exportiert werden, bleiben unverändert. Ihr Export kommt als Name-2 daneben.": "Photos that are being exported themselves stay unchanged. Their export is saved as name-2 next to them.",
+  "Fotos, die selbst exportiert werden, bleiben unverändert, ihr Export kommt als Name-2 daneben. Um die Originale zu ersetzen, „Bearbeitung ins Original übernehmen“ anhaken.": "Photos that are being exported themselves stay unchanged, their export is saved as name-2 next to them. To replace the originals, tick “Apply edits to original”.",
   "Zurück": "Back",
   "Überspringen": "Skip",
   "Zusätzlich exportieren": "Export as well",

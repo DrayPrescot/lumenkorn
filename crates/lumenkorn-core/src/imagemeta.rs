@@ -423,6 +423,8 @@ impl Catalog {
             aperture: m.aperture.value,
             focal_length: m.focal_length.value,
             xmp,
+            // Exporte zum Weitergeben ohne Ort
+            gps: None,
         })
     }
 

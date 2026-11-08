@@ -6,6 +6,19 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- “Apply edits to original”, a checkbox in the export dialog, writes the edits into the JPEG, TIFF
+  or PNG file itself, at full resolution and in the same format, with all metadata including the
+  location (exports leave the location out). Format, quality and size do not apply then. The
+  previous file is kept in an `Original` folder next to the photo, which does not show up in the
+  library, and the edits go into a snapshot. The photo file is never missing along the way: the
+  original is saved first, then the new file takes its place in one step. “Restore original” in
+  the context menu puts the saved file back and makes the earlier edits current again. Raw files
+  and DNG are left out, and AI agents cannot use it.
+- A toolbar button shows how many photos in the current view have a saved original. Like rejected
+  photos, these originals can be moved to the trash or deleted for good. A saved original is only
+  deleted while its photo is still there.
+
 ## [1.2.7] – 2026-11-07
 
 ### Changed

@@ -19,6 +19,7 @@ mod memory;
 mod merge;
 mod meta;
 mod nextcloud;
+mod originals;
 mod people;
 mod protocol;
 mod rename;
@@ -312,6 +313,11 @@ pub fn run() {
             import::import_close,
             merge::merge_cancel,
             cull::delete_rejected,
+            originals::bake_summary,
+            originals::bake_originals,
+            originals::restore_originals,
+            originals::originals_summary,
+            originals::delete_originals,
             rename::rename_preview,
             rename::rename_apply,
             memory::develop_release,

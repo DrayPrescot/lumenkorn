@@ -235,6 +235,12 @@ fn write_tiff16<W: std::io::Write + std::io::Seek>(
                 Val::Ascii(s) => d.write_tag(tag, s.as_str()),
                 Val::Short(s) => d.write_tag(tag, *s),
                 Val::Rational(n, dd) => d.write_tag(tag, Rational { n: *n, d: *dd }),
+                Val::Rationals(v) => {
+                    let v: Vec<Rational> =
+                        v.iter().map(|(n, dd)| Rational { n: *n, d: *dd }).collect();
+                    d.write_tag(tag, v.as_slice())
+                }
+                Val::Bytes(b) => d.write_tag(tag, b.as_slice()),
                 // Kann das tiff-Crate nicht schreiben (ExifVersion), Leser kommen ohne aus
                 Val::Undefined(_) => Ok(()),
             }?;
@@ -248,6 +254,14 @@ fn write_tiff16<W: std::io::Write + std::io::Seek>(
         write(&mut d, &exif).map_err(err)?;
         Some(d.finish_with_offsets().map_err(err)?.offset)
     };
+    let gps = meta.map(crate::embed::gps_tags).unwrap_or_default();
+    let gps_off = if gps.is_empty() {
+        None
+    } else {
+        let mut d = enc.extra_directory().map_err(err)?;
+        write(&mut d, &gps).map_err(err)?;
+        Some(d.finish_with_offsets().map_err(err)?.offset)
+    };
     let mut im = enc
         .new_image::<RGB16>(rgb.width(), rgb.height())
         .map_err(err)?;
@@ -255,6 +269,9 @@ fn write_tiff16<W: std::io::Write + std::io::Seek>(
     write(d, &ifd0).map_err(err)?;
     if let Some(off) = exif_off {
         d.write_tag(Tag::ExifDirectory, off).map_err(err)?;
+    }
+    if let Some(off) = gps_off {
+        d.write_tag(Tag::GpsDirectory, off).map_err(err)?;
     }
     if let Some(x) = meta.and_then(|m| m.xmp.as_ref()) {
         d.write_tag(Tag::from_u16_exhaustive(700), x.as_bytes())
@@ -462,5 +479,70 @@ mod tests {
         // keine temporären Reste
         assert_eq!(std::fs::read_dir(&d).unwrap().count(), 4);
         std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    /// Der Ort steht nur in der Datei, wenn er gesetzt ist (Übernahme ins
+    /// Original), und lässt sich mit einem unabhängigen Leser zurücklesen
+    #[test]
+    fn writes_location_only_when_given() {
+        let d = tempfile::tempdir().unwrap();
+        let img = ImageF32::from_fn(60, 40, |x, _| [x as f32 / 60.0, 0.4, 0.5]);
+        let opts = |format| ExportOptions {
+            format,
+            formats: Vec::new(),
+            quality: 90,
+            long_edge: None,
+            dng_edited: true,
+            on_conflict: OnConflict::Rename,
+        };
+        // Sydney: Süd und Ost
+        let with = ExportMeta {
+            gps: Some((-33.868_8, 151.209_3)),
+            ..Default::default()
+        };
+        let angle =
+            |exif: &exif::Exif, t| match exif.get_field(t, exif::In::PRIMARY).map(|f| &f.value) {
+                Some(exif::Value::Rational(v)) if v.len() == 3 => {
+                    v[0].to_f64() + v[1].to_f64() / 60.0 + v[2].to_f64() / 3600.0
+                }
+                other => panic!("{t}: {other:?}"),
+            };
+        let text =
+            |exif: &exif::Exif, t| match exif.get_field(t, exif::In::PRIMARY).map(|f| &f.value) {
+                Some(exif::Value::Ascii(v)) => String::from_utf8_lossy(&v[0]).into_owned(),
+                other => panic!("{t}: {other:?}"),
+            };
+        for (format, name) in [
+            (ExportFormat::Jpeg, "a.jpg"),
+            (ExportFormat::Tiff16, "a.tif"),
+            (ExportFormat::Png, "a.png"),
+        ] {
+            let read = |meta: &ExportMeta| {
+                let p = d.path().join(name);
+                write(&img, &p, &opts(format), Some(meta)).unwrap();
+                let f = std::fs::File::open(&p).unwrap();
+                exif::Reader::new()
+                    .read_from_container(&mut std::io::BufReader::new(f))
+                    .unwrap_or_else(|e| panic!("{name}: {e}"))
+            };
+            let exif = read(&with);
+            assert_eq!(text(&exif, exif::Tag::GPSLatitudeRef), "S", "{name}");
+            assert_eq!(text(&exif, exif::Tag::GPSLongitudeRef), "E", "{name}");
+            assert!(
+                (angle(&exif, exif::Tag::GPSLatitude) - 33.868_8).abs() < 1e-6,
+                "{name}"
+            );
+            assert!(
+                (angle(&exif, exif::Tag::GPSLongitude) - 151.209_3).abs() < 1e-6,
+                "{name}"
+            );
+            // Export ohne Ort
+            let exif = read(&ExportMeta::default());
+            assert!(
+                exif.get_field(exif::Tag::GPSLatitude, exif::In::PRIMARY)
+                    .is_none(),
+                "{name}"
+            );
+        }
     }
 }

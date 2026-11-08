@@ -64,6 +64,13 @@
     else lib.notify(t("In dieser Ansicht sind keine Fotos abgelehnt ({key}).", { key: keymap.hint("reject") }));
   }
 
+  // Gesicherte Originale („Bearbeitung ins Original übernehmen“ im Export) löschen
+  let deleteOriginals = $state<ImageSummary[] | null>(null);
+
+  function openDeleteOriginals() {
+    if (lib.originalCount) deleteOriginals = lib.originalList();
+  }
+
   // Beim Verlassen des Entwickeln-Modus offene Änderungen speichern.
   $effect(() => {
     if (lib.mode !== "develop") dev.close();
@@ -120,7 +127,7 @@
       toggleFullscreen();
       return;
     }
-    if (isTyping(e) || exportIds || renameIds || deleteImages || lib.merge || lib.importOpen) return;
+    if (isTyping(e) || exportIds || renameIds || deleteImages || deleteOriginals || lib.merge || lib.importOpen) return;
     // Personen-, Album- und Diashow-Ansicht: Kein Foto ist zu sehen – Bewerten oder
     // Ablehnen träfe unbemerkt das zuletzt gewählte
     const noPhoto = lib.mode === "library" && (lib.view === "people" || lib.view === "album" || lib.view === "slideshow" || lib.view === "stats");
@@ -179,6 +186,7 @@
       ontogglesidebar={() => (sidebarOpen = !sidebarOpen)}
       ontoggleinfo={() => (infoOpen = !infoOpen)}
       ondeleterejected={openDeleteRejected}
+      ondeleteoriginals={openDeleteOriginals}
     />
     {#if lib.mode === "develop" && lib.focused}
       <DevelopView />
@@ -261,10 +269,17 @@
 {#if deleteImages}
   <DeleteRejectedDialog images={deleteImages} onclose={() => (deleteImages = null)} />
 {/if}
+{#if deleteOriginals}
+  <DeleteRejectedDialog images={deleteOriginals} originals onclose={() => (deleteOriginals = null)} />
+{/if}
 
 {#if dev.exportProgress && !dev.exportProgress.finished}
   <div class="toast" role="status">
     {t("Exportiere {done} von {total}", { done: dev.exportProgress.done + 1, total: dev.exportProgress.total })}{dev.exportProgress.current ? `: ${dev.exportProgress.current}` : ""}
+  </div>
+{:else if lib.bakeProgress && !lib.bakeProgress.finished}
+  <div class="toast" role="status">
+    {t("Übernehme ins Original {done} von {total}", { done: lib.bakeProgress.done + 1, total: lib.bakeProgress.total })}{lib.bakeProgress.current ? `: ${lib.bakeProgress.current}` : ""}
   </div>
 {:else if lib.importRunning && lib.importProgress && !lib.importOpen}
   <div class="toast" role="status">

@@ -5,11 +5,14 @@
   import { lib } from "../lib/store.svelte";
   import { num, t } from "../lib/i18n";
 
-  let { images, onclose }: { images: ImageSummary[]; onclose: () => void } = $props();
+  // Abgelehnte Fotos löschen oder (`originals`) die gesicherten Originale von
+  // Fotos, deren Bearbeitung ins Original übernommen wurde
+  let { images, onclose, originals = false }: { images: ImageSummary[]; onclose: () => void; originals?: boolean } = $props();
 
   // Liste beim Öffnen festhalten – spätere Markierungen ändern den Dialog nicht
   const items = untrack(() => images.slice());
   const ids = items.map((i) => i.id);
+  const forOriginals = untrack(() => originals);
   let summary = $state<RejectedSummary | null>(null);
   let toTrash = $state(true);
   let busy = $state(false);
@@ -17,7 +20,7 @@
 
   onMount(async () => {
     try {
-      summary = await api.rejectedSummary(ids);
+      summary = forOriginals ? await api.originalsSummary(ids) : await api.rejectedSummary(ids);
       if (!summary.trashSupported) toTrash = false;
     } catch (e) {
       lib.notify(String(e), "error");
@@ -46,6 +49,13 @@
   async function run() {
     if (busy || !summary?.count) return;
     busy = true;
+    if (forOriginals) {
+      // Die Fotos selbst bleiben, also auch die Ansicht
+      await lib.deleteOriginals(ids, toTrash);
+      busy = false;
+      onclose();
+      return;
+    }
     // Offene Bearbeitung zuerst speichern und schließen
     const wasDevelop = lib.mode === "develop";
     if (wasDevelop) {
@@ -70,8 +80,12 @@
     onsubmit={(e) => { e.preventDefault(); run(); }}
   >
     <h3>
-      {#if summary}
+      {#if summary && forOriginals}
+        {t(summary.count === 1 ? "{n} gesichertes Original löschen?" : "{n} gesicherte Originale löschen?", { n: summary.count })}
+      {:else if summary}
         {t(summary.count === 1 ? "{n} abgelehntes Foto löschen?" : "{n} abgelehnte Fotos löschen?", { n: summary.count })}
+      {:else if forOriginals}
+        {t("Gesicherte Originale werden gezählt …")}
       {:else}
         {t("Abgelehnte Fotos werden gezählt …")}
       {/if}
@@ -91,7 +105,11 @@
           size: mb(summary.bytes),
           scope: lib.scopeTitle,
         })}
-        {t("Zugehörige XMP-Dateien und Bearbeitungen werden mit entfernt.")}
+        {#if forOriginals}
+          {t("Die Fotos mit der übernommenen Bearbeitung bleiben. Danach lässt sich die Übernahme nicht mehr rückgängig machen.")}
+        {:else}
+          {t("Zugehörige XMP-Dateien und Bearbeitungen werden mit entfernt.")}
+        {/if}
       </p>
     {/if}
 

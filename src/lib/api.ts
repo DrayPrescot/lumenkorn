@@ -55,6 +55,8 @@ export interface ImageSummary {
   thumbReady: boolean;
   missing: boolean;
   edited: boolean;
+  /** Bearbeitung ins Original übernommen, das bisherige Original ist gesichert */
+  hasOriginal?: boolean;
   /** Seitenverhältnis nach Drehen und Zuschnitt (nur bearbeitete Fotos) */
   aspect?: number;
   /** Aufnahmeort (fehlt, wenn unbekannt) */
@@ -876,6 +878,37 @@ export interface ExportProgress {
   dir: string;
 }
 
+/** Vor „Bearbeitung ins Original übernehmen“: was geht und was nicht (`originals.rs`) */
+export interface BakeSummary {
+  ready: number;
+  raw: number;
+  unsupported: number;
+  unedited: number;
+  missing: number;
+}
+
+export interface BakeProgress {
+  done: number;
+  total: number;
+  current: string | null;
+  failed: string[];
+  /** Übernommene Fotos */
+  baked: number[];
+  finished: boolean;
+}
+
+export interface OriginalsReport {
+  done: number[];
+  failed: string[];
+}
+
+export interface DeleteOriginalsReport {
+  deleted: number[];
+  bytes: number;
+  failed: string[];
+  toTrash: boolean;
+}
+
 export type Backend = "cpu" | "webgpu" | "directml";
 export type AccelPreference = "auto" | Backend;
 export interface AiSettings {
@@ -1076,6 +1109,13 @@ export const api = {
   setFlag: (ids: number[], flag: number) => call<void>("set_flag", { ids, flag }),
   rejectedSummary: (ids: number[]) => call<RejectedSummary>("rejected_summary", { ids }),
   deleteRejected: (ids: number[], toTrash: boolean) => call<DeleteReport>("delete_rejected", { ids, toTrash }),
+  bakeSummary: (ids: number[]) => call<BakeSummary>("bake_summary", { ids }),
+  /** Läuft im Hintergrund, Fortschritt per `bake-progress` */
+  bakeOriginals: (ids: number[]) => call<void>("bake_originals", { ids }),
+  restoreOriginals: (ids: number[]) => call<OriginalsReport>("restore_originals", { ids }),
+  /** Wie viele gesicherte Originale würden gelöscht (gleiche Felder wie bei abgelehnten) */
+  originalsSummary: (ids: number[]) => call<RejectedSummary>("originals_summary", { ids }),
+  deleteOriginals: (ids: number[], toTrash: boolean) => call<DeleteOriginalsReport>("delete_originals", { ids, toTrash }),
   renamePreview: (ids: number[], options: RenameOptions) => call<RenameItem[]>("rename_preview", { ids, options }),
   renameApply: (ids: number[], options: RenameOptions) => call<RenameReport>("rename_apply", { ids, options }),
   addTag: (imageId: number, name: string) => call<ImageTag[]>("add_tag", { imageId, name }),
@@ -1361,6 +1401,7 @@ export interface Events {
   "thumbs-ready": { ids: number[] };
   "job-error": { message: string };
   "export-progress": ExportProgress;
+  "bake-progress": BakeProgress;
   "ai-progress": { done: number; total: number; ids: number[] };
   "faces-progress": { done: number; total: number; faces: number; ids: number[] };
   /** Tiererkennung mit BioCLIP: durchgesehene Fotos */

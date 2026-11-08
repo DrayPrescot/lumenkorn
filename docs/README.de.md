@@ -379,6 +379,14 @@ Außerdem:
   Objektiv, Belichtung, Blende, ISO, Brennweite, Aufnahmezeit, Titel, Beschreibung, Autor,
   Urheberrecht, eigene Schlagworte und die Bewertung, bearbeitete Werte eingeschlossen.
   KI-Schlagworte und der Ort bleiben draußen.
+- **Bearbeitung ins Original übernehmen** (Checkbox im Export-Dialog): schreibt die Bearbeitung
+  in die JPEG-, TIFF- oder PNG-Datei selbst, in voller Auflösung und im selben Format, mit allen
+  Metadaten einschließlich Ort. Die bisherige Datei bleibt im Ordner `Original` neben dem Foto
+  (als harter Link, wo das Laufwerk es kann, sonst als Kopie), die Bearbeitung kommt in einen
+  Schnappschuss. „Original wiederherstellen“ im Kontextmenü macht beides rückgängig. RAW und DNG
+  bleiben außen vor. Die Werkzeugleiste zeigt, wie viele Fotos der Ansicht ein gesichertes
+  Original haben; wie abgelehnte Fotos lassen sich diese Originale in den Papierkorb verschieben
+  oder endgültig löschen.
 
 ## Masken (lokale Anpassungen)
 
@@ -815,7 +823,7 @@ zerlegt jedes Bild in eine Laplace-Pyramide und behält je Stufe das schärfste 
   `katalog.db.v<alter Stand>.bak` im Datenordner an und behält die letzten zwei. Zurück geht es so:
   Lumenkorn schließen, `katalog.db` entfernen und die Kopie so umbenennen.
 - **Fotoordner** werden nur beschrieben, wenn du es auslöst: abgelehnte Fotos löschen,
-  Zusammenfügen, Export.
+  Zusammenfügen, Export, Bearbeitung ins Original übernehmen.
 - **Nextcloud:** Verbindungen erst, wenn du unter Einstellungen → Nextcloud verbindest, und nur
   zu dem Server, den du einträgst. Hochgeladen wird, wenn du es für ein Projekt startest; das
   App-Passwort liegt im Anmeldespeicher des Systems (Windows-Anmeldeinformationsverwaltung; unter

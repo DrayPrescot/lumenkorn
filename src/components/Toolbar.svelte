@@ -15,7 +15,8 @@
     ontogglesidebar,
     ontoggleinfo,
     ondeleterejected,
-  }: { ontogglesidebar: () => void; ontoggleinfo: () => void; ondeleterejected: () => void } = $props();
+    ondeleteoriginals,
+  }: { ontogglesidebar: () => void; ontoggleinfo: () => void; ondeleterejected: () => void; ondeleteoriginals: () => void } = $props();
 
   let foldersOpen = $state(false);
   let holdStart = 0;
@@ -130,6 +131,11 @@
   {#if lib.rejectedCount && lib.view !== "people"}
     <button class="btn reject-btn" onclick={ondeleterejected} title={withKey(t("Abgelehnte Fotos dieser Ansicht von der Festplatte löschen"), "deleteRejected")}>
       <Icon name="trash" size={14} /> {t("{n} abgelehnt", { n: String(lib.rejectedCount) })}
+    </button>
+  {/if}
+  {#if lib.originalCount && lib.view !== "people"}
+    <button class="btn reject-btn" onclick={ondeleteoriginals} title={t("Gesicherte Originale der Fotos dieser Ansicht löschen, deren Bearbeitung übernommen wurde")}>
+      <Icon name="trash" size={14} /> {t(lib.originalCount === 1 ? "{n} Original" : "{n} Originale", { n: lib.originalCount })}
     </button>
   {/if}
 

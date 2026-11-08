@@ -915,7 +915,7 @@ struct ExportProgress {
 /// Entwickelt ein Foto für den Export. Mit begrenzter Kantenlänge nicht in
 /// voller Auflösung: Die Quelle muss nur groß genug sein, dass der Zuschnitt
 /// (und die Vergrößerung beim Geraderichten) die Zielgröße erreicht.
-fn develop_for_export(
+pub(crate) fn develop_for_export(
     state: &AppState,
     job: &lumenkorn_core::catalog::ThumbJob,
     params: &DevelopParams,

@@ -490,6 +490,7 @@ mod migration_tests {
     const UNDO_V27: &str = "DROP TABLE folder_options;";
     /// Stand vor v28: kein Pfad-Index ohne Groß-/Kleinschreibung
     const UNDO_V28: &str = "DROP INDEX images_path_nocase;";
+    const UNDO_V29: &str = "DROP TABLE originals;";
 
     const UNDO_V24: &str = "DROP TRIGGER search_meta_ins; DROP TRIGGER search_meta_upd;
         DROP TRIGGER search_meta_del; DROP VIEW search_source; DROP TABLE image_meta;
@@ -575,7 +576,7 @@ mod migration_tests {
             cat.conn
                 .execute_batch(&format!(
                     // Stand vor v9 (und damit auch vor v10, v11) nachstellen
-                    "UPDATE images SET thumb_state = 1; {UNDO_V28} {UNDO_V27} {UNDO_V26} {UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11}
+                    "UPDATE images SET thumb_state = 1; {UNDO_V29} {UNDO_V28} {UNDO_V27} {UNDO_V26} {UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11}
                      DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
                      PRAGMA user_version = 8;"
                 ))
@@ -884,7 +885,7 @@ mod migration_tests {
             // Zustand vor v10 nachstellen: höchste ID bereits im Bestand
             cat.conn
                 .execute_batch(&format!(
-                    "{UNDO_V28} {UNDO_V27} {UNDO_V26} {UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11} DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
+                    "{UNDO_V29} {UNDO_V28} {UNDO_V27} {UNDO_V26} {UNDO_V24} {UNDO_V22} {UNDO_V21} {UNDO_V11} DROP TRIGGER face_id_floor_del; DROP TABLE face_id_floor;
                      PRAGMA user_version = 9;"
                 ))
                 .unwrap();
@@ -1010,5 +1011,133 @@ mod project_tests {
         let list = cat.presets().unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].name, "SW");
+    }
+}
+
+#[cfg(test)]
+mod original_tests {
+    use super::*;
+
+    fn edited(cat: &mut Catalog, id: i64, exposure: f32) -> DevelopParams {
+        let p = DevelopParams {
+            exposure,
+            ..Default::default()
+        };
+        cat.save_develop(&[id], &p).unwrap();
+        p
+    }
+
+    fn summary(cat: &Catalog, id: i64) -> ImageSummary {
+        cat.query_images(&ImageQuery::new(Scope::All))
+            .unwrap()
+            .into_iter()
+            .find(|i| i.id == id)
+            .unwrap()
+    }
+
+    /// Übernahme: Bearbeitung in den Schnappschuss, zurückgesetzt, Original
+    /// eingetragen. Wiederherstellen: alles wie vorher.
+    #[test]
+    fn bake_and_restore_round_trip() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let id = tests_support::insert_dummy_images(&mut cat, 1)[0];
+        let before = edited(&mut cat, id, 1.5);
+        assert!(!summary(&cat, id).has_original);
+
+        cat.bake_done(id, Some("/b/Original/bild0.jpg"), "Vor Übernahme")
+            .unwrap();
+        let s = summary(&cat, id);
+        assert!(
+            s.has_original && !s.edited,
+            "zurückgesetzt, Original gesichert"
+        );
+        let saved = cat.saved_originals(&[id]).unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].backup, "/b/Original/bild0.jpg");
+        let snap = saved[0].snapshot_id.expect("Schnappschuss");
+        let edits = cat.edits(id).unwrap();
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].id, snap);
+        assert_eq!(edits[0].name, "Vor Übernahme");
+
+        // Nach der Übernahme weiter bearbeitet: kommt beim Wiederherstellen in
+        // einen eigenen Schnappschuss
+        edited(&mut cat, id, -0.5);
+        cat.restore_done(id, "Vor Wiederherstellen").unwrap();
+        assert_eq!(cat.develop_params(id).unwrap(), before.sanitized());
+        let s = summary(&cat, id);
+        assert!(!s.has_original && s.edited);
+        assert!(cat.saved_originals(&[id]).unwrap().is_empty());
+        let names: Vec<String> = cat
+            .edits(id)
+            .unwrap()
+            .into_iter()
+            .filter(|e| !e.is_current)
+            .map(|e| e.name)
+            .collect();
+        assert_eq!(names, ["Vor Wiederherstellen"]);
+    }
+
+    /// Ein zweites Mal übernommen: Das erste Original bleibt eingetragen
+    #[test]
+    fn second_bake_keeps_first_original() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let id = tests_support::insert_dummy_images(&mut cat, 1)[0];
+        edited(&mut cat, id, 1.0);
+        cat.bake_done(id, Some("/b/Original/bild0.jpg"), "1")
+            .unwrap();
+        let first = cat.saved_originals(&[id]).unwrap()[0].clone();
+        edited(&mut cat, id, 0.5);
+        cat.bake_done(id, None, "2").unwrap();
+        assert_eq!(cat.saved_originals(&[id]).unwrap(), vec![first]);
+    }
+
+    /// Original gelöscht: Eintrag und Schnappschuss von davor sind weg, andere
+    /// Schnappschüsse bleiben
+    #[test]
+    fn forget_original_removes_its_snapshot() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let id = tests_support::insert_dummy_images(&mut cat, 1)[0];
+        edited(&mut cat, id, 1.0);
+        cat.create_snapshot(id, "eigener").unwrap();
+        cat.bake_done(id, Some("/b/Original/bild0.jpg"), "Vor Übernahme")
+            .unwrap();
+        cat.forget_original(id).unwrap();
+        assert!(cat.saved_originals(&[id]).unwrap().is_empty());
+        let names: Vec<String> = cat.edits(id).unwrap().into_iter().map(|e| e.name).collect();
+        assert_eq!(names, ["eigener"]);
+        assert!(!summary(&cat, id).has_original);
+    }
+
+    /// Schnappschuss von Hand gelöscht: Wiederherstellen setzt zurück
+    #[test]
+    fn restore_without_snapshot_resets() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let id = tests_support::insert_dummy_images(&mut cat, 1)[0];
+        edited(&mut cat, id, 1.0);
+        cat.bake_done(id, Some("/b/Original/bild0.jpg"), "Vor Übernahme")
+            .unwrap();
+        let snap = cat.saved_originals(&[id]).unwrap()[0].snapshot_id.unwrap();
+        cat.delete_snapshot(snap).unwrap();
+        cat.restore_done(id, "x").unwrap();
+        assert!(cat.develop_params(id).unwrap().is_default());
+        assert!(cat.saved_originals(&[id]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn bake_candidates_keep_order_and_flags() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let ids = tests_support::insert_dummy_images(&mut cat, 3);
+        edited(&mut cat, ids[1], 1.0);
+        cat.conn
+            .execute("UPDATE images SET missing = 1 WHERE id = ?1", [ids[2]])
+            .unwrap();
+        let c = cat.bake_candidates(&[ids[2], ids[0], ids[1]]).unwrap();
+        assert_eq!(
+            c.iter().map(|c| c.id).collect::<Vec<_>>(),
+            [ids[2], ids[0], ids[1]]
+        );
+        assert!(c[0].missing && !c[1].edited && c[2].edited);
+        assert!(c.iter().all(|c| !c.saved));
     }
 }

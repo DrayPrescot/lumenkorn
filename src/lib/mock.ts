@@ -14,6 +14,8 @@ type Img = ImageDetail & {
   flag: number;
   edit?: DevelopParams;
   snapshots: Edit[];
+  /** Bearbeitung ins Original übernommen (Original gesichert) */
+  hasOriginal?: boolean;
   /** Metadaten bearbeiten: Dateiwerte der überschriebenen Felder */
   fileMeta?: Record<string, unknown>;
 };
@@ -162,6 +164,7 @@ for (const [rootId, dir, n] of dirs) {
       flag: 0,
       tags,
       snapshots: [],
+      hasOriginal: ext === "jpg" && id % 7 === 3,
       // Etwa jedes dritte Foto mit Ort, leicht gestreut um einen der Beispielorte
       location:
         id % 3 === 0
@@ -294,6 +297,7 @@ function query(q: ImageQuery): ImageSummary[] {
     thumbReady: true,
     missing: false,
     edited: !!i.edit,
+    ...(i.hasOriginal ? { hasOriginal: true } : {}),
     ...(i.location ? { lat: i.location.lat, lon: i.location.lon } : {}),
   }));
 }
@@ -919,6 +923,36 @@ export const mock = {
           renamed.push({ id: img.id, path: img.path, fileName: img.fileName });
         }
         return out({ renamed });
+      }
+      case "bake_summary": {
+        const sel = images.filter((i) => a.ids.includes(i.id));
+        return out({
+          ready: sel.filter((i) => i.ext === "jpg" && i.edit).length,
+          raw: sel.filter((i) => i.ext !== "jpg").length,
+          unsupported: 0,
+          unedited: sel.filter((i) => i.ext === "jpg" && !i.edit).length,
+          missing: 0,
+        });
+      }
+      case "bake_originals":
+        for (const i of images.filter((i) => a.ids.includes(i.id) && i.ext === "jpg" && i.edit)) {
+          i.edit = undefined;
+          i.hasOriginal = true;
+        }
+        return out(null);
+      case "restore_originals": {
+        const r = images.filter((i) => a.ids.includes(i.id) && i.hasOriginal);
+        for (const i of r) i.hasOriginal = false;
+        return out({ done: r.map((i) => i.id), failed: [] });
+      }
+      case "originals_summary": {
+        const r = images.filter((i) => a.ids.includes(i.id) && i.hasOriginal);
+        return out({ count: r.length, bytes: r.reduce((n, i) => n + i.size, 0), trashSupported: true });
+      }
+      case "delete_originals": {
+        const r = images.filter((i) => a.ids.includes(i.id) && i.hasOriginal);
+        for (const i of r) i.hasOriginal = false;
+        return out({ deleted: r.map((i) => i.id), bytes: r.reduce((n, i) => n + i.size, 0), failed: [], toTrash: a.toTrash });
       }
       case "delete_rejected": {
         const r = images.filter((i) => a.ids.includes(i.id) && i.flag === -1);

@@ -68,7 +68,7 @@ impl Catalog {
         })
     }
 
-    fn write_develop(
+    pub(super) fn write_develop(
         tx: &rusqlite::Transaction,
         id: i64,
         params: &DevelopParams,

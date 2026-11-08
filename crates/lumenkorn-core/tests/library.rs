@@ -872,6 +872,59 @@ fn export_folders_stay_out_of_the_library() {
     assert_eq!(up, a.join("Exporte"));
 }
 
+/// Gesicherte Originale („Bearbeitung ins Original übernehmen“) kommen nicht in
+/// die Bibliothek. Ein eigener Ordner „Original“ mit Fotos bleibt unangetastet.
+#[test]
+fn original_folders_stay_out_of_the_library() {
+    use lumenkorn_core::scanner::{
+        ORIGINAL_MARKER, original_dir_for, remove_original_dir_if_empty, scan_paths,
+    };
+    let tmp = tempfile::tempdir().unwrap();
+    let a = tmp.path().join("Fotos");
+    write_jpeg(&a.join("Reise/eins.jpg"), 64, 64, 1);
+    write_jpeg(&a.join("Alt/zwei.jpg"), 64, 64, 2);
+    write_jpeg(&a.join("Alt/Original/eigen.jpg"), 64, 64, 3);
+    let cat = Mutex::new(Catalog::open_in_memory().unwrap());
+    let root = cat.lock().unwrap().add_root(&a).unwrap();
+    scan_root(&cat, root.id, &no_progress).unwrap();
+
+    let dir = original_dir_for(&a.join("Reise/eins.jpg")).unwrap();
+    assert_eq!(dir, a.join("Reise/Original"));
+    assert!(dir.join(ORIGINAL_MARKER).is_file());
+    std::fs::copy(a.join("Reise/eins.jpg"), dir.join("eins.jpg")).unwrap();
+    let rep = scan_paths(
+        &cat,
+        root.id,
+        &[dir.clone(), dir.join("eins.jpg")],
+        &no_progress,
+    )
+    .unwrap();
+    assert_eq!(rep.added, 0);
+    assert_eq!(scan_root(&cat, root.id, &no_progress).unwrap().added, 0);
+    let mut n = names(&cat.lock().unwrap(), Scope::All);
+    n.sort();
+    assert_eq!(n, vec!["eigen.jpg", "eins.jpg", "zwei.jpg"]);
+    // Wiederverwendet, solange markiert
+    assert_eq!(original_dir_for(&a.join("Reise/eins.jpg")).unwrap(), dir);
+
+    // Eigener Ordner „Original“ bleibt, wie er ist: daneben „Original-2“
+    let other = original_dir_for(&a.join("Alt/zwei.jpg")).unwrap();
+    assert_eq!(other, a.join("Alt/Original-2"));
+    assert!(!a.join("Alt/Original").join(ORIGINAL_MARKER).exists());
+
+    // Aufräumen nur, wenn nichts mehr darin liegt
+    remove_original_dir_if_empty(&dir);
+    assert!(dir.join("eins.jpg").is_file());
+    std::fs::remove_file(dir.join("eins.jpg")).unwrap();
+    remove_original_dir_if_empty(&dir);
+    assert!(!dir.exists());
+    remove_original_dir_if_empty(&a.join("Alt/Original"));
+    assert!(
+        a.join("Alt/Original/eigen.jpg").is_file(),
+        "unmarkiert: nie angetastet"
+    );
+}
+
 #[test]
 fn export_subfolder_is_checked() {
     use lumenkorn_core::scanner::check_export_subfolder as check;

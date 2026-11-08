@@ -131,13 +131,13 @@ fn delete_rejected_blocking(
 /// Ist die Datei sicher nicht mehr da? Nur wenn ihr Ordner erreichbar ist –
 /// fehlt eine Netzwerkfreigabe oder externe Platte, meldet `exists()` auch
 /// `false`; das Foto darf dann nicht samt Bearbeitungen verschwinden.
-fn already_gone(path: &Path) -> bool {
+pub(crate) fn already_gone(path: &Path) -> bool {
     let dir_there = path.parent().is_some_and(|d| d.is_dir());
     dir_there
         && std::fs::symlink_metadata(path).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound)
 }
 
-fn remove(path: &Path, to_trash: bool) -> Result<(), String> {
+pub(crate) fn remove(path: &Path, to_trash: bool) -> Result<(), String> {
     if to_trash {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         return trash::delete(path).map_err(|e| e.to_string());

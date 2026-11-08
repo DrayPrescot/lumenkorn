@@ -65,6 +65,9 @@ pub struct ImageSummary {
     pub missing: bool,
     /// Hat eine aktuelle Bearbeitung.
     pub edited: bool,
+    /// Bearbeitung ins Original übernommen, das bisherige Original ist gesichert
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub has_original: bool,
     /// Seitenverhältnis nach Drehen und Zuschnitt der Bearbeitung (Breite durch
     /// Höhe); fehlt ohne Bearbeitung oder ohne bekannte Maße
     #[serde(default, skip_serializing_if = "Option::is_none")]
