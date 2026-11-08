@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.9] – 2026-11-08
+
 ### Fixed
 - “Check for updates now” in Settings said “Lumenkorn is up to date” when GitHub could not be
   reached, and showed nothing while it waited, sometimes for minutes. It now shows that it is
