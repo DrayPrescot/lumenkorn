@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.8] – 2026-11-08
+
 ### Added
 - “Apply edits to original”, a checkbox in the export dialog, writes the edits into the JPEG, TIFF
   or PNG file itself, at full resolution and in the same format, with all metadata including the
