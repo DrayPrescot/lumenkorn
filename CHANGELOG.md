@@ -13,6 +13,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   still has no time limit.
 - After closing the update prompt with “Later”, Settings now offers to install the update that was
   found, without checking again.
+- The culling assistant now lets you reject photos it wanted to keep, such as the best photos of a
+  series. Clicking them or pressing X in the large view did nothing before. If marking the photos
+  as rejected fails, the dialog stays open instead of reporting success.
 
 ## [1.2.8] – 2026-11-08
 

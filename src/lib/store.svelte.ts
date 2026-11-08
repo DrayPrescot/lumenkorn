@@ -789,11 +789,18 @@ class Library {
    * Im Vergleich weiter zum nächsten verglichenen Bild, im Raster mit
    * Mehrfachauswahl hinter das letzte ausgewählte Bild.
    */
-  /** Fotos `ids` als abgelehnt markieren (Aussortier-Assistent) */
-  async rejectIds(ids: number[]) {
-    if (!ids.length) return;
+  /** Fotos `ids` als abgelehnt markieren (Aussortier-Assistent). `false`: Das
+   *  Speichern ist gescheitert (schon gemeldet, Liste neu geladen). */
+  async rejectIds(ids: number[]): Promise<boolean> {
+    if (!ids.length) return true;
     this.#patch(ids, { flag: -1 });
-    await this.#write(() => api.setFlag(ids, -1)).catch((e) => this.#writeFailed(e));
+    try {
+      await this.#write(() => api.setFlag(ids, -1));
+      return true;
+    } catch (e) {
+      this.#writeFailed(e);
+      return false;
+    }
   }
 
   /** Offener Aussortier-Assistent */

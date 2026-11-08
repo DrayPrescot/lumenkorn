@@ -1,7 +1,7 @@
 // Aussortier-Assistent: aus den Befunden des Backends (Schweregrad je Grund)
 // und den gelernten Schwellen ableiten, was vorgeschlagen wird. Die Strenge
 // verschiebt alle Schwellen gleich; das wirkt sofort, ohne neue Analyse.
-import type { CullItem, CullReason } from "./api";
+import type { CullDecision, CullItem, CullReason } from "./api";
 import { t } from "./i18n";
 
 export type Strictness = "cautious" | "normal" | "strict";
@@ -45,4 +45,33 @@ export function judge(item: CullItem, thresholds: Record<CullReason, number>, st
   }
   if (!best || best.margin < -BORDER) return null;
   return { reason: best.reason, severity: best.severity, state: best.margin >= 0 ? "suggest" : "border" };
+}
+
+/** Wird abgelehnt: was der Nutzer angeklickt hat, sonst der Vorschlag */
+export function isRejected(id: number, verdicts: Map<number, Verdict>, manual: Record<number, boolean>): boolean {
+  return manual[id] ?? verdicts.get(id)?.state === "suggest";
+}
+
+/**
+ * Was „Ablehnen“ ausführt. `reject`: alle angezeigten Fotos, die abgelehnt werden,
+ * auch die, die der Assistent behalten wollte. `learn`: nur Fotos mit Vorschlag
+ * oder Grenzfall. Ein behaltenes Foto hat keinen Befund nahe an seiner Schwelle;
+ * als Entscheidung im Assistenten (volles Gewicht) zöge es die Schwelle weit nach
+ * unten. Seine Ablehnung wertet das Backend wie jede von Hand aus (`setFlag` →
+ * `note_decisions`), und die lehrt nur einen Grenzfall.
+ */
+export function cullPlan(
+  items: CullItem[],
+  verdicts: Map<number, Verdict>,
+  manual: Record<number, boolean>,
+): { reject: number[]; learn: CullDecision[] } {
+  const reject: number[] = [];
+  const learn: CullDecision[] = [];
+  for (const it of items) {
+    const no = isRejected(it.id, verdicts, manual);
+    if (no) reject.push(it.id);
+    const v = verdicts.get(it.id);
+    if (v) learn.push({ id: it.id, reason: v.reason, severity: v.severity, reject: no });
+  }
+  return { reject, learn };
 }

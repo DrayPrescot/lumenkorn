@@ -5,7 +5,7 @@
   // zurück, damit der Assistent lernt.
   import { onMount } from "svelte";
   import { api, imageUrl, listenWhileMounted, type CullItem, type CullResult, type Scope } from "../lib/api";
-  import { judge, reasonLabel, REASONS, type Strictness, type Verdict } from "../lib/cull";
+  import { cullPlan, isRejected, judge, reasonLabel, REASONS, type Strictness, type Verdict } from "../lib/cull";
   import { lib } from "../lib/store.svelte";
   import { isCanceled, num, t } from "../lib/i18n";
   import Icon from "./Icon.svelte";
@@ -74,12 +74,12 @@
   const borderline = $derived(shown.length - suggested);
 
   function checked(id: number): boolean {
-    return manual[id] ?? verdicts.get(id)?.state === "suggest";
+    return isRejected(id, verdicts, manual);
   }
-  const count = $derived(shown.filter((it) => checked(it.id)).length);
+  /** Auch Fotos, die der Assistent behalten wollte, lassen sich ablehnen */
+  const count = $derived(browse.filter((it) => checked(it.id)).length);
 
   function toggle(id: number) {
-    if (!verdicts.has(id)) return;
     manual = { ...manual, [id]: !checked(id) };
   }
 
@@ -124,16 +124,17 @@
   async function apply() {
     if (applying) return;
     applying = true;
-    const decisions = shown.map((it) => {
-      const v = verdicts.get(it.id)!;
-      return { id: it.id, reason: v.reason, severity: v.severity, reject: checked(it.id) };
-    });
-    const ids = decisions.filter((d) => d.reject).map((d) => d.id);
-    await lib.rejectIds(ids);
-    await api.cullLearn(decisions).catch((e) => console.warn("Lernen fehlgeschlagen", e));
-    lib.notify(t(ids.length === 1 ? "{n} Foto als abgelehnt markiert." : "{n} Fotos als abgelehnt markiert.", { n: String(ids.length) }));
-    applying = false;
-    onclose();
+    try {
+      const plan = cullPlan(browse, verdicts, manual);
+      // Scheitert das Speichern (schon gemeldet), bleibt der Dialog offen und nichts wird gelernt
+      if (!(await lib.rejectIds(plan.reject))) return;
+      await api.cullLearn(plan.learn).catch((e) => console.warn("Lernen fehlgeschlagen", e));
+      const n = plan.reject.length;
+      lib.notify(t(n === 1 ? "{n} Foto als abgelehnt markiert." : "{n} Fotos als abgelehnt markiert.", { n: String(n) }));
+      onclose();
+    } finally {
+      applying = false;
+    }
   }
 
   /** In der Großansicht blättern (durch alle angezeigten Fotos) */
@@ -168,17 +169,16 @@
 
 {#snippet tile(it: CullItem)}
   {@const v = verdicts.get(it.id)}
-  {@const on = v ? checked(it.id) : false}
+  {@const on = checked(it.id)}
   <div class="tile" class:on class:border={v?.state === "border"} class:kept={!v}>
     <button
       class="pick"
-      disabled={!v}
-      aria-pressed={v ? on : undefined}
+      aria-pressed={on}
       onclick={() => toggle(it.id)}
-      title={v ? (on ? t("Wird abgelehnt – klicken zum Behalten") : t("Wird behalten – klicken zum Ablehnen")) : undefined}
+      title={on ? t("Wird abgelehnt – klicken zum Behalten") : t("Wird behalten – klicken zum Ablehnen")}
     >
       <img src={imageUrl("thumb", it.id, lib.thumbVersion(it.id))} alt="" loading="lazy" />
-      {#if v}<span class="box" aria-hidden="true">{#if on}<Icon name="reject" size={12} />{/if}</span>{/if}
+      <span class="box" aria-hidden="true">{#if on}<Icon name="reject" size={12} />{/if}</span>
     </button>
     <button class="zoom" onclick={() => (zoom = it.id)} title={t("Größer ansehen")} aria-label={t("Größer ansehen")}>
       <Icon name="search" size={12} />
@@ -186,6 +186,8 @@
     <span class="label">
       {#if v}
         {v.state === "border" ? `${t("Grenzfall")} · ` : ""}{shortLabel(v)}
+      {:else if on}
+        {t("Wird abgelehnt")}
       {:else if it.protected}
         {t("Geschützt")}
       {:else}
@@ -273,17 +275,15 @@
   {@const v = verdicts.get(zoomItem.id)}
   {@const pos = browse.findIndex((it) => it.id === zoomItem.id)}
   <div class="zoomview" role="presentation" onclick={() => (zoom = null)}>
-    <img src={imageUrl("preview", zoomItem.id, lib.thumbVersion(zoomItem.id))} alt="" class:rejected={v && checked(zoomItem.id)} />
+    <img src={imageUrl("preview", zoomItem.id, lib.thumbVersion(zoomItem.id))} alt="" class:rejected={checked(zoomItem.id)} />
     <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
     <div class="zoombar" onclick={(e) => e.stopPropagation()}>
       <span class="muted small">{pos + 1} / {browse.length}</span>
       {#if zoomItem.series !== undefined}<span class="muted small">{t("Serie, Platz {n}", { n: String(zoomItem.rank + 1) })}</span>{/if}
       <span>{v ? `${v.state === "border" ? `${t("Grenzfall")} · ` : ""}${reasonLabel(v.reason)}` : zoomItem.protected ? t("Geschützt") : t("Behalten")}</span>
-      {#if v}
-        <button class="btn" class:danger={checked(zoomItem.id)} onclick={() => toggle(zoomItem.id)}>
-          {checked(zoomItem.id) ? t("Wird abgelehnt") : t("Wird behalten")}
-        </button>
-      {/if}
+      <button class="btn" class:danger={checked(zoomItem.id)} onclick={() => toggle(zoomItem.id)}>
+        {checked(zoomItem.id) ? t("Wird abgelehnt") : t("Wird behalten")}
+      </button>
       <span class="muted small">{t("← → blättern · X umschalten · Esc schließen")}</span>
     </div>
   </div>
@@ -406,17 +406,11 @@
     height: 100px;
     overflow: hidden;
   }
-  .pick:disabled {
-    cursor: default;
-  }
   .pick img {
     width: 100%;
     height: 100%;
     object-fit: contain;
     display: block;
-  }
-  .tile.on .pick {
-    border-color: var(--reject);
   }
   .tile.border .pick {
     border-style: dashed;
@@ -424,6 +418,10 @@
   }
   .tile.kept .pick {
     border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+  /* Zuletzt: Abgelehnt gilt auch für Grenzfälle und behaltene Fotos */
+  .tile.on .pick {
+    border-color: var(--reject);
   }
   .box {
     position: absolute;
