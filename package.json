@@ -18,7 +18,7 @@
     "@tauri-apps/plugin-dialog": "^2.8.4",
     "leaflet": "^1.9.4",
     "leaflet.markercluster": "^1.5.3",
-    "mediabunny": "^1.65.0"
+    "mediabunny": "^1.65.2"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
@@ -27,9 +27,9 @@
     "@types/leaflet": "^1.9.22",
     "@types/leaflet.markercluster": "^1.5.6",
     "svelte": "^5.57.3",
-    "svelte-check": "^4.7.7",
+    "svelte-check": "^4.7.8",
     "typescript": "^6.0.3",
-    "vite": "^8.3.5",
+    "vite": "^8.3.6",
     "vitest": "^5.1.0"
   }
 }
