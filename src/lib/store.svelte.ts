@@ -54,7 +54,8 @@ class Library {
   importProgress = $state<ImportProgress | null>(null);
   message = $state<{ text: string; kind: "info" | "error" } | null>(null);
   ai = $state<AiStatus | null>(null);
-  people = $state<Person[]>([]);
+  /** Flach (`raw`): Bei Tausenden Gruppen kein Proxy je Eintrag; geändert wird nur durch Ersetzen. */
+  people = $state.raw<Person[]>([]);
   /** Personengruppen (Familie, Freunde …), alphabetisch */
   personGroups = $state<PersonGroup[]>([]);
   peopleStatus = $state<PeopleStatus | null>(null);

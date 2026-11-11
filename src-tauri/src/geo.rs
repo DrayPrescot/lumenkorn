@@ -524,10 +524,11 @@ pub fn geo_time_suggest(
     offset_s: Option<i64>,
     window_s: i64,
 ) -> CmdResult<lumenkorn_core::geotime::TimeSuggestions> {
-    state
-        .catalog
-        .locked()
-        .time_suggestions(&query, offset_s, window_s.clamp(60, 4 * 3600))
+    // Liest alle Fotos mit Ort und schätzt je Kamera den Uhrenversatz: nicht unter
+    // der Katalogsperre
+    crate::read_catalog(&state, |c| {
+        c.time_suggestions(&query, offset_s, window_s.clamp(60, 4 * 3600))
+    })
 }
 
 /// Übernommener Vorschlag: Ort für ein Foto

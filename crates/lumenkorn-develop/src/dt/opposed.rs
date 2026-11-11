@@ -117,6 +117,27 @@ fn mask_dilated(m: &[u8], i: usize, w1: usize) -> u8 {
     FAR.iter().any(|&(dy, dx)| at(dy, dx) != 0) as u8
 }
 
+/// [`mask_dilated`] für alle Zellen außer dem Rand von 3 Zellen (der bleibt 0).
+/// Zeilenweise parallel; eine Zeile, in deren Umkreis (±3 Zeilen) nichts gesetzt
+/// ist, bleibt 0, ohne gerechnet zu werden – meist ist nur ein kleiner Teil des
+/// Bildes gesättigt (bei 33 MP sonst 200 ms auf einem Kern).
+fn dilate(src: &[u8], dst: &mut [u8], mwidth: usize, mheight: usize) {
+    let row_set: Vec<bool> = (0..mheight)
+        .map(|r| src[r * mwidth..(r + 1) * mwidth].iter().any(|v| *v != 0))
+        .collect();
+    let rows = 3..mheight.saturating_sub(3);
+    dst[..mwidth * mheight]
+        .par_chunks_mut(mwidth)
+        .enumerate()
+        .filter(|(row, _)| rows.contains(row) && row_set[row - 3..=row + 3].contains(&true))
+        .for_each(|(row, out)| {
+            let cols = 3..mwidth.saturating_sub(3);
+            for (col, o) in out.iter_mut().enumerate().filter(|(c, _)| cols.contains(c)) {
+                *o = mask_dilated(src, row * mwidth + col, mwidth);
+            }
+        });
+}
+
 /// Rekonstruiert gesättigte Fotosites an Ort und Stelle.
 ///
 /// `data`: Mosaik `width` × `height`, normiert (Weiß = 1) und mit den
@@ -184,14 +205,12 @@ pub(crate) fn process_opposed(
 
     // Maske leicht erweitern: die Fotosites dicht um gesättigte Bereiche
     for c in 0..3 {
-        let src = &base[c * msize..(c + 1) * msize];
-        let dst = &mut dil[c * msize..(c + 1) * msize];
-        for row in 3..mheight.saturating_sub(3) {
-            for col in 3..mwidth.saturating_sub(3) {
-                let mx = row * mwidth + col;
-                dst[mx] = mask_dilated(src, mx, mwidth);
-            }
-        }
+        dilate(
+            &base[c * msize..(c + 1) * msize],
+            &mut dil[c * msize..(c + 1) * msize],
+            mwidth,
+            mheight,
+        );
     }
 
     // Korrektur je Farbe aus den nicht gesättigten Fotosites dicht am Rand
@@ -230,24 +249,29 @@ pub(crate) fn process_opposed(
         }
     });
 
-    // Rekonstruieren (gelesen wird immer das unveränderte Mosaik)
-    let out: Vec<f32> = (0..height)
+    // Rekonstruieren. Gelesen wird immer das unveränderte Mosaik: Erst alle neuen
+    // Werte der gesättigten Fotosites sammeln (meist ein kleiner Teil), dann
+    // schreiben – statt das ganze Mosaik neu aufzubauen und zurückzukopieren.
+    let fixed: Vec<Vec<(usize, f32)>> = (0..height)
         .into_par_iter()
-        .flat_map_iter(|row| {
-            let color = &color;
-            (0..width).map(move |col| {
+        .map(|row| {
+            let mut out = Vec::new();
+            for col in 0..width {
                 let c = color(row, col);
-                let inval = input[row * width + col].max(0.0);
+                let inval = input[row * width + col];
                 if inval >= clips[c] {
-                    let r = refavg(input, width, height, row, col, color, correction);
-                    inval.max(r + chrominance[c])
-                } else {
-                    inval
+                    let r = refavg(input, width, height, row, col, &color, correction);
+                    out.push((row * width + col, inval.max(r + chrominance[c])));
                 }
-            })
+            }
+            out
         })
         .collect();
-    data.copy_from_slice(&out);
+    // Wie im Original: übrige Werte unter 0 (und NaN) werden 0
+    data.par_iter_mut().for_each(|v| *v = v.max(0.0));
+    for (i, v) in fixed.into_iter().flatten() {
+        data[i] = v;
+    }
 }
 
 #[cfg(test)]
@@ -287,5 +311,50 @@ mod tests {
         assert!(g > 1.2, "Grün geschätzt: {g}");
         // Nie dunkler als gemessen
         assert!(d.iter().all(|v| *v >= 0.0));
+    }
+
+    /// Die zeilenweise Erweiterung mit übersprungenen Zeilen liefert dasselbe wie
+    /// die einfache Schleife über alle Zellen – auch für einzelne Zellen genau 3
+    /// Zeilen über bzw. unter einer sonst leeren Zeile und am Rand.
+    #[test]
+    fn dilate_matches_plain_loop() {
+        let (mw, mh) = (40, 37);
+        let mut src = vec![0u8; (mw + 1) * (mh + 1)];
+        for (r, c) in [
+            (0, 5),
+            (3, 3),
+            (10, 20),
+            (16, 3),
+            (22, 36),
+            (33, 30),
+            (36, 39),
+        ] {
+            src[r * mw + c] = 1;
+        }
+        let mut fast = vec![0u8; src.len()];
+        dilate(&src, &mut fast, mw, mh);
+        let mut plain = vec![0u8; src.len()];
+        for row in 3..mh - 3 {
+            for col in 3..mw - 3 {
+                plain[row * mw + col] = mask_dilated(&src, row * mw + col, mw);
+            }
+        }
+        assert_eq!(fast, plain);
+        assert!(plain.iter().filter(|v| **v != 0).count() > 50, "Testaufbau");
+    }
+
+    /// Unter 0 wird 0, auch bei Sättigung anderswo (wie im Original darktable)
+    #[test]
+    fn negative_values_become_zero_when_reconstructing() {
+        let (w, h) = (60, 60);
+        let mut d: Vec<f32> = (0..w * h)
+            .map(|i| if i % 7 == 0 { -0.01 } else { 0.5 })
+            .collect();
+        for i in [30 * w + 30, 30 * w + 31, 31 * w + 30, 31 * w + 31] {
+            d[i] = 2.0;
+        }
+        process_opposed(&mut d, w, h, bayer, [1.0; 3], [1.0; 3]);
+        assert!(d.iter().all(|v| *v >= 0.0));
+        assert!(d[30 * w + 30] >= 2.0);
     }
 }

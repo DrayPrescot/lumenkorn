@@ -6,6 +6,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- RAW files load about twice as fast (a 33 MP Sony ARW in 0.27 instead of 0.54 seconds) when you
+  open them in Develop, export them or create previews of edited photos. The result is identical.
+- The first content search after a pause, the people list during face recognition, place
+  suggestions and editing metadata of many photos no longer hold up the rest of the app while
+  they read from the catalog.
+
 ## [1.2.9] – 2026-11-08
 
 ### Fixed

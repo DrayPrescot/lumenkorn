@@ -173,14 +173,7 @@ pub fn photo_stats(
 ) -> CmdResult<lumenkorn_core::stats::PhotoStats> {
     // Viele volle Abfragen hintereinander: über eine eigene Leseverbindung, damit
     // Raster und Bewertung nicht auf die Katalogsperre warten
-    let reader = state.catalog.locked().reader();
-    match reader {
-        Ok(r) => r.photo_stats(&query),
-        Err(e) => {
-            log::warn!("Leseverbindung nicht geöffnet: {e}");
-            state.catalog.locked().photo_stats(&query)
-        }
-    }
+    crate::read_catalog(&state, |c| c.photo_stats(&query))
 }
 
 /// Vorhandene Dateitypen einer Ansicht (für den Dateityp-Filter)

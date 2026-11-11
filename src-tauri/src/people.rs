@@ -253,7 +253,8 @@ pub fn people_status(state: State<AppState>) -> Result<PeopleStatus, Error> {
 
 #[tauri::command(async)]
 pub fn people_list(state: State<AppState>) -> Result<Vec<Person>, Error> {
-    state.catalog.locked().list_people()
+    // Bei vielen Gruppen ~100 ms; während der Gesichtserkennung alle 1,5 s abgefragt
+    crate::read_catalog(&state, |c| c.list_people())
 }
 
 #[tauri::command(async)]

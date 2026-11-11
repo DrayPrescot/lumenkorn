@@ -467,6 +467,23 @@ pub(crate) async fn blocking<T: Send + 'static>(
         })?
 }
 
+/// Längere Leseabfrage über eine eigene Leseverbindung (`Catalog::reader`), damit
+/// sie die Katalogsperre nicht hält, die sich die Oberfläche teilt. Lässt sich
+/// keine öffnen, liest sie wie bisher unter der Sperre.
+pub(crate) fn read_catalog<T>(
+    state: &AppState,
+    f: impl Fn(&Catalog) -> Result<T, Error>,
+) -> Result<T, Error> {
+    let reader = state.catalog.locked().reader();
+    match reader {
+        Ok(r) => f(&r),
+        Err(e) => {
+            log::warn!("Leseverbindung nicht geöffnet: {e}");
+            f(&state.catalog.locked())
+        }
+    }
+}
+
 /// Datei mit der zuletzt gewählten Sprache („de“ oder „en“).
 pub(crate) fn language_file(data_dir: &std::path::Path) -> PathBuf {
     data_dir.join("sprache")

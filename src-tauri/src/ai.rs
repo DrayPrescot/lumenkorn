@@ -561,8 +561,8 @@ fn ensure_loaded(state: &AppState) -> Result<Loaded, Error> {
 /// und Änderungen während des Aufbaus gehen nicht verloren – `upsert` und
 /// `forget_in_index` warten auf die Sperre und wirken danach auf den fertigen
 /// Index (was sie vorher in den Katalog geschrieben haben, liest der Aufbau
-/// ohnehin schon mit). Die Katalogsperre gilt nur fürs Lesen der Zeilen, das
-/// Dekodieren der ~100 MB Vektoren läuft ohne sie. Reihenfolge der Sperren:
+/// ohnehin schon mit). Gelesen wird über eine eigene Leseverbindung, die
+/// Katalogsperre nur kurz zum Öffnen gehalten. Reihenfolge der Sperren:
 /// Index → Katalog; umgekehrt hält niemand den Katalog, während er den Index sperrt.
 fn with_index<T>(state: &AppState, f: impl FnOnce(&EmbeddingIndex) -> T) -> Result<T, Error> {
     *state.ai.index_used.locked() = std::time::Instant::now();
@@ -587,7 +587,8 @@ fn with_index<T>(state: &AppState, f: impl FnOnce(&EmbeddingIndex) -> T) -> Resu
     let idx = match guard.take() {
         Some(idx) => idx,
         None => {
-            let rows = state.catalog.locked().embeddings(MODEL_KEY)?;
+            // Rund 2 KB je Foto (bei 85 000 Fotos 170 MB): nicht unter der Katalogsperre
+            let rows = crate::read_catalog(state, |c| c.embeddings(MODEL_KEY))?;
             let mut idx = EmbeddingIndex::default();
             for (id, bytes) in rows {
                 idx.upsert(id, &from_bytes(&bytes));

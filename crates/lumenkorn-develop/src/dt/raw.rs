@@ -242,28 +242,54 @@ pub(crate) fn develop(mut raw: rawler::RawImage, exif: Exif) -> Result<ImageF32>
         .map(|(x, y)| color::calibration_illuminant(x, y))
         .unwrap_or(color::D50_XY);
     let cal = color::Calibration::new(illuminant);
-    let mut rgb = rgb;
-    rgb.par_iter_mut().for_each(|p| {
+    let convert = |p: [f32; 3]| {
         let e = p.map(|v| (v - SCENE_BLACK) * scale);
         let work = color::apply(&cam_to_work, e);
         let work = color::calibrate_pixel(&cal, work);
         let out = color::apply(&work_to_srgb, work);
-        *p = out.map(|v| if v.is_finite() { v } else { 0.0 });
-    });
+        out.map(|v| if v.is_finite() { v } else { 0.0 })
+    };
 
     // Standard-Zuschnitt, angepasst an den bereits abgeschnittenen aktiven Bereich
-    let mut img = rawler::pixarray::Color2D::new_with(rgb, w, h);
-    if let Some(mut crop) = raw.crop_area.or(raw.active_area) {
-        if let Some(active) = &raw.active_area {
-            crop = crop.adapt(active);
+    let crop = raw
+        .crop_area
+        .or(raw.active_area)
+        .map(|c| match &raw.active_area {
+            Some(active) => c.adapt(active),
+            None => c,
+        });
+    let mut rgb = rgb;
+    match crop.filter(|c| (c.d.w, c.d.h) != (w, h)) {
+        // Zuschneiden und Farbe in einem Durchgang: nur die Pixel umrechnen, die
+        // bleiben, und zeilenweise in den fertigen Puffer schreiben (rawlers
+        // `crop` kopierte jedes Pixel einzeln, bei 33 MP über 100 ms)
+        Some(c) => {
+            let (x0, y0, cw, ch) = (c.p.x, c.p.y, c.d.w, c.d.h);
+            if cw == 0 || ch == 0 || x0 + cw > w || y0 + ch > h {
+                return Err(crate::error::Error::Raw(
+                    "Zuschnitt liegt außerhalb des Bildes".into(),
+                ));
+            }
+            let mut out = vec![[0f32; 3]; cw * ch];
+            out.par_chunks_mut(cw).enumerate().for_each(|(row, o)| {
+                let src = &rgb[(y0 + row) * w + x0..][..cw];
+                for (o, p) in o.iter_mut().zip(src) {
+                    *o = convert(*p);
+                }
+            });
+            Ok(ImageF32 {
+                width: cw,
+                height: ch,
+                data: out,
+            })
         }
-        if crop.d != img.dim() {
-            img = img.crop(crop);
+        None => {
+            rgb.par_iter_mut().for_each(|p| *p = convert(*p));
+            Ok(ImageF32 {
+                width: w,
+                height: h,
+                data: rgb,
+            })
         }
     }
-    Ok(ImageF32 {
-        width: img.width,
-        height: img.height,
-        data: img.data,
-    })
 }
