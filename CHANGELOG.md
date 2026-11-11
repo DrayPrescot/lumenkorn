@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.10] – 2026-11-11
+
 ### Fixed
 - “Remove from library” now asks first and says that edits, snapshots, keywords, ratings and
   people of the folder are lost.
