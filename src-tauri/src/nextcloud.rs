@@ -691,6 +691,14 @@ pub async fn nc_login_start(app: AppHandle, server: String) -> Result<(), Error>
                 "No Nextcloud answers at {server}"
             )));
         };
+        // Abgefragt wird nur der eingegebene Server: Sonst könnte er die App
+        // 20 Minuten lang beliebige Adressen (auch im eigenen Netz) abfragen lassen
+        if !same_server(&server, endpoint) {
+            return Err(Error::Invalid(tr!(
+                "{server} verweist die Anmeldung an eine andere Adresse – abgebrochen",
+                "{server} redirects the login to another address – canceled"
+            )));
+        }
         open_browser(login)?;
         let (token, endpoint) = (token.to_string(), endpoint.to_string());
         std::thread::spawn(move || {
@@ -782,6 +790,21 @@ fn poll_login(app: &AppHandle, attempt: u64, endpoint: &str, token: &str) -> Res
         )
         .into(),
     ))
+}
+
+/// Gehört `url` zum Server `server` (gleicher Host und Port; ein Wechsel von
+/// http zu https ist erlaubt, umgekehrt nicht)?
+fn same_server(server: &str, url: &str) -> bool {
+    let split = |u: &str| -> Option<(String, String)> {
+        let (scheme, rest) = u.split_once("://")?;
+        let authority = rest.split(['/', '?', '#']).next()?.to_ascii_lowercase();
+        (!authority.is_empty() && !authority.contains('@'))
+            .then(|| (scheme.to_ascii_lowercase(), authority))
+    };
+    let (Some((s_scheme, s_auth)), Some((u_scheme, u_auth))) = (split(server), split(url)) else {
+        return false;
+    };
+    s_auth == u_auth && (u_scheme == s_scheme || (s_scheme == "http" && u_scheme == "https"))
 }
 
 fn open_browser(url: &str) -> Result<(), Error> {
@@ -1137,6 +1160,26 @@ fn upload(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Die Anmeldung fragt nur beim eingegebenen Server nach
+    #[test]
+    fn login_polling_stays_on_the_server() {
+        let s = "https://cloud.example.org";
+        assert!(same_server(
+            s,
+            "https://cloud.example.org/index.php/login/v2/poll"
+        ));
+        assert!(same_server(s, "https://Cloud.Example.org/x"));
+        assert!(!same_server(s, "https://cloud.example.org:8443/x"));
+        assert!(!same_server(s, "https://evil.example/x"));
+        assert!(
+            !same_server(s, "http://cloud.example.org/x"),
+            "nicht zurück zu http"
+        );
+        assert!(!same_server(s, "https://cloud.example.org@evil.example/x"));
+        assert!(!same_server(s, "http://192.168.1.1/admin"));
+        assert!(same_server("http://nas.local", "https://nas.local/poll"));
+    }
 
     /// Eine Benutzerangabe vor dem Host täuschte sonst das eigene Netz vor
     #[test]

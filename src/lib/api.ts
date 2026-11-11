@@ -127,6 +127,8 @@ export interface RejectedSummary {
   count: number;
   bytes: number;
   trashSupported: boolean;
+  /** Abgelehnte Fotos mit gesichertem Original: Es wird mit gelöscht */
+  originals?: number;
 }
 
 /** Einstellungen der Stapel-Umbenennung */

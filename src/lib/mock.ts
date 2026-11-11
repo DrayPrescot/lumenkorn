@@ -867,7 +867,7 @@ export const mock = {
         return out(null);
       case "rejected_summary": {
         const r = images.filter((i) => a.ids.includes(i.id) && i.flag === -1);
-        return out({ count: r.length, bytes: r.reduce((n, i) => n + i.size, 0), trashSupported: true });
+        return out({ count: r.length, bytes: r.reduce((n, i) => n + i.size, 0), trashSupported: true, originals: r.filter((i) => i.hasOriginal).length });
       }
       case "rename_preview":
       case "rename_apply": {

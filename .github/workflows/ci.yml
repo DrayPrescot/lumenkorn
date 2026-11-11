@@ -9,6 +9,10 @@ on:
     paths-ignore: ["site/**"]
   workflow_dispatch:
 
+# Nur lesen; der Job, der „nightly“ veröffentlicht, bekommt sein Schreibrecht selbst
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

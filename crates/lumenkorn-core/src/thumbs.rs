@@ -646,6 +646,10 @@ fn decode_embedded_preview(path: &Path, min_edge: u32) -> Result<DynamicImage> {
     best_preview(&data, min_edge, false).ok_or_else(|| Error::NoPreview(path.display().to_string()))
 }
 
+/// Größte eingebettete Vorschau, die dekodiert wird (Mittelformat-Sensoren
+/// haben gut 100 MP)
+const MAX_PREVIEW_PIXELS: u64 = 160_000_000;
+
 /// Dekodiert die kleinste eingebettete Vorschau mit mindestens `min_edge`
 /// Pixeln Kante, sonst die größte. `only_sufficient`: nur eine ausreichend
 /// große akzeptieren (für den Versuch mit dem Dateianfang).
@@ -657,6 +661,13 @@ fn best_preview(data: &[u8], min_edge: u32, only_sufficient: bool) -> Option<Dyn
         .filter_map(|c| jpeg_size(c).map(|(w, h)| (c, w.max(h))))
         // EXIF-Thumbnails (160 × 120) sind fürs Raster zu klein
         .filter(|(_, edge)| *edge >= 160)
+        // Präparierte Kopfdaten: Die Vorschauen laufen parallel, und je Bild
+        // ließe der Dekoder bis 512 MB zu – mehrere zugleich können den Speicher
+        // sprengen. Echte eingebettete Vorschauen sind höchstens so groß wie der
+        // Sensor; was größer behauptet, wird nicht dekodiert.
+        .filter(|(c, _)| {
+            jpeg_size(c).is_some_and(|(w, h)| u64::from(w) * u64::from(h) <= MAX_PREVIEW_PIXELS)
+        })
         .filter(|(_, edge)| !only_sufficient || *edge >= min_edge)
         .collect();
     // Passende aufsteigend, danach die zu kleinen absteigend

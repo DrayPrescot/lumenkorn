@@ -50,4 +50,6 @@ export default {
   "Noch nichts gelernt.": "Nothing learned yet.",
   "Gelerntes wirklich löschen?": "Really delete what it learned?",
   "Gelerntes zurücksetzen": "Reset what it learned",
+  "Bei {n} Foto wurde die Bearbeitung ins Original übernommen: Das gesicherte Original im Ordner „Original“ wird mit gelöscht.": "For {n} photo the edit was applied to the original: the saved original in the “Original” folder is deleted too.",
+  "Bei {n} Fotos wurde die Bearbeitung ins Original übernommen: Die gesicherten Originale im Ordner „Original“ werden mit gelöscht.": "For {n} photos the edit was applied to the original: the saved originals in the “Original” folder are deleted too.",
 };

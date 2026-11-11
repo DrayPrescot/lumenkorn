@@ -18,6 +18,9 @@ pub struct RejectedSummary {
     count: usize,
     bytes: i64,
     trash_supported: bool,
+    /// Davon Fotos mit gesichertem Original („Bearbeitung ins Original
+    /// übernehmen“): Das Original wird mit gelöscht
+    originals: usize,
 }
 
 #[derive(Serialize)]
@@ -43,11 +46,17 @@ pub fn trash_supported() -> bool {
 /// Wie viele der übergebenen Bilder würden tatsächlich gelöscht?
 #[tauri::command(async)]
 pub fn rejected_summary(state: State<AppState>, ids: Vec<i64>) -> Result<RejectedSummary, Error> {
-    let files = state.catalog.locked().rejected_files(&ids)?;
+    let (files, saved) = {
+        let cat = state.catalog.locked();
+        let files = cat.rejected_files(&ids)?;
+        let rejected: Vec<i64> = files.iter().map(|f| f.0).collect();
+        (files, cat.saved_originals(&rejected)?.len())
+    };
     Ok(RejectedSummary {
         count: files.len(),
         bytes: files.iter().map(|f| f.2).sum(),
         trash_supported: trash_supported(),
+        originals: saved,
     })
 }
 

@@ -150,6 +150,15 @@ pub fn update_sidecar(photo: &Path, changes: &[XmpChange]) -> Result<Option<Path
         return Ok(None);
     }
     let path = sidecar_for_edit(photo);
+    // Echte Begleitdateien haben wenige KB (mit Verlauf einige hundert); eine
+    // riesige untergeschobene Datei würde ganz in den Speicher gelesen
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > MAX_SIDECAR_BYTES) {
+        return Err(xmp_err(tr!(
+            "{} ist ungewöhnlich groß und bleibt unverändert",
+            "{} is unusually large and was left unchanged",
+            path.display()
+        )));
+    }
     let existing = match std::fs::read(&path) {
         Ok(bytes) => Some(String::from_utf8(bytes).map_err(|_| {
             xmp_err(tr!(
@@ -178,6 +187,9 @@ pub fn update_sidecar(photo: &Path, changes: &[XmpChange]) -> Result<Option<Path
     write_atomic(&path, merged.as_bytes())?;
     Ok(Some(path))
 }
+
+/// Größte Begleitdatei, die ergänzt wird
+const MAX_SIDECAR_BYTES: u64 = 16 << 20;
 
 fn write_atomic(path: &Path, data: &[u8]) -> Result<()> {
     Ok(lumenkorn_develop::fsutil::write_atomic(path, data)?)

@@ -111,6 +111,13 @@
           {t("Zugehörige XMP-Dateien und Bearbeitungen werden mit entfernt.")}
         {/if}
       </p>
+      {#if !forOriginals && summary.originals}
+        <p class="warn">
+          {t(summary.originals === 1
+            ? "Bei {n} Foto wurde die Bearbeitung ins Original übernommen: Das gesicherte Original im Ordner „Original“ wird mit gelöscht."
+            : "Bei {n} Fotos wurde die Bearbeitung ins Original übernommen: Die gesicherten Originale im Ordner „Original“ werden mit gelöscht.", { n: summary.originals })}
+        </p>
+      {/if}
     {/if}
 
     {#if summary?.trashSupported}

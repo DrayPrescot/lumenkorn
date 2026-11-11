@@ -6,10 +6,16 @@
 # bei Bibliotheken ab 1.0 – Minor-Versionen. Unter 1.0 gilt ein Minor-Sprung
 # als inkompatibel (z. B. rawler 0.8 → 0.9), ebenso jede neue Major-Version
 # (Tauri 2 → 3); diese Pull Requests bleiben zur Prüfung von Hand offen.
+#
+# `cooldown`: Neue Versionen erst nach einigen Tagen vorschlagen. Eine frisch
+# veröffentlichte, kompromittierte Version fällt in der Regel binnen Tagen auf
+# und wird zurückgezogen – sonst käme sie automatisch in Nightly und Release.
 version: 2
 updates:
   - package-ecosystem: cargo
     directory: /
+    cooldown:
+      default-days: 7
     schedule:
       interval: weekly
       day: monday
@@ -24,6 +30,8 @@ updates:
 
   - package-ecosystem: npm
     directory: /
+    cooldown:
+      default-days: 7
     schedule:
       interval: weekly
       day: monday
@@ -45,6 +53,8 @@ updates:
 
   - package-ecosystem: github-actions
     directory: /
+    cooldown:
+      default-days: 7
     schedule:
       interval: weekly
       day: monday

@@ -30,6 +30,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - AI analysis and face recognition now start after downloading the models.
 - In memory saver mode only one full-resolution task (export, denoise, repair, merge, apply to
   original) runs at a time.
+- Deleting rejected photos says how many saved originals (from “Apply edits to original”) are
+  deleted with them.
+- Security: the Nextcloud login only polls the server you entered, oversized XMP sidecars and
+  embedded RAW previews with implausible sizes are skipped, and Dependabot proposes new versions
+  only after a week.
 - Smaller fixes: snapshot errors are reported, unreadable edits are kept in a snapshot instead of
   being overwritten, slideshow videos and album PDFs no longer leave broken files behind, one
   photo the AI cannot read no longer blocks the analysis of the others.
