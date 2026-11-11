@@ -110,12 +110,25 @@ pub fn add_root(state: State<AppState>, path: String) -> CmdResult<Root> {
 #[tauri::command(async)]
 pub fn remove_root(state: State<AppState>, id: i64) -> CmdResult<()> {
     let root = state.catalog.locked().root(id)?;
+    // Gesicherte Originale: Ihre Ordner verlieren die Markierung, damit die
+    // Dateien beim erneuten Hinzufügen als Fotos erscheinen statt unsichtbar zu
+    // bleiben (der Katalogeintrag, der auf sie verweist, geht gleich verloren)
+    let original_dirs: std::collections::BTreeSet<PathBuf> = state
+        .catalog
+        .locked()
+        .saved_originals_of_root(id)?
+        .into_iter()
+        .filter_map(|s| Path::new(&s.backup).parent().map(Path::to_path_buf))
+        .collect();
     // In Portionen, die Katalogsperre ist dazwischen frei: Ein Ordner mit
     // Zehntausenden Fotos legt die Oberfläche sonst lange still
     lumenkorn_core::catalog::Catalog::remove_root_chunked(&state.catalog, id)?;
     crate::ai::forget_in_index(&state, None);
     if let Some(w) = state.watcher.locked().as_mut() {
         w.unwatch(Path::new(&root.path));
+    }
+    for d in &original_dirs {
+        lumenkorn_core::scanner::unmark_original_dir(d);
     }
     Ok(())
 }

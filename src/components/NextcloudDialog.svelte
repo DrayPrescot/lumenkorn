@@ -136,6 +136,9 @@
         <input type="checkbox" bind:checked={removeMissing} disabled={running} />
         {t("Dateien im Ordner entfernen, die es im Projekt nicht mehr gibt")}
       </label>
+      {#if removeMissing}
+        <p class="small muted">{t("Entfernt werden nur Dateien, die Lumenkorn in diesen Ordner hochgeladen hat, und nichts, solange ein Ordner des Projekts nicht erreichbar ist.")}</p>
+      {/if}
       {#if removeMissing && source !== info.source && info.shareUrl}
         <p class="small warn">
           {source === "originals"
@@ -169,6 +172,9 @@
               {t("Läuft ab am")}
               {#if useExpire}<input class="date" type="date" min={minDate} bind:value={expire} />{/if}
             </label>
+            {#if info.shareUrl}
+              <p class="small muted">{t("Passwort und Ablaufdatum des vorhandenen Links bleiben, wie sie sind, wenn du hier nichts angibst.")}</p>
+            {/if}
           </div>
         {:else if info.shareUrl}
           <p class="small muted">{t("Der bisherige Link wird beim Hochladen entfernt.")}</p>
@@ -207,7 +213,11 @@
     {#if error}<p class="error">{error}</p>{/if}
 
     <div class="buttons">
-      <button class="btn quiet" disabled={running} onclick={onclose}>{done ? t("Schließen") : t("Abbrechen")}</button>
+      {#if running}
+        <button class="btn quiet" onclick={() => api.ncUploadCancel().catch((e) => (error = String(e)))}>{t("Abbrechen")}</button>
+      {:else}
+        <button class="btn quiet" onclick={onclose}>{done ? t("Schließen") : t("Abbrechen")}</button>
+      {/if}
       {#if !done}
         <button class="btn primary" disabled={!canStart} onclick={start}>{running ? t("Wird hochgeladen …") : t("Hochladen")}</button>
       {/if}

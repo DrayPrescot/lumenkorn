@@ -49,6 +49,11 @@ struct ProjectLink {
     /// Zuletzt hochgeladen: Exporte oder Originale
     #[serde(default)]
     source: Source,
+    /// Dateien, die Lumenkorn in `folder` hochgeladen hat. „Dateien entfernen, die
+    /// es im Projekt nicht mehr gibt“ löscht nur unter diesen, nie fremde Dateien
+    /// im Ordner.
+    #[serde(default)]
+    uploaded: Vec<String>,
 }
 
 /// Was hochgeladen wird
@@ -137,6 +142,10 @@ fn normalize_server(s: &str) -> Result<String, Error> {
         None => ("https".to_string(), input),
     };
     let mut rest = rest.trim_end_matches('/');
+    // „http://x.local:80@fremd.de“: Der Host ist fremd.de, nicht x.local
+    if rest.split('/').next().is_some_and(|a| a.contains('@')) {
+        return Err(bad());
+    }
     for suffix in ["/index.php", "/login"] {
         rest = rest.strip_suffix(suffix).unwrap_or(rest);
     }
@@ -493,9 +502,15 @@ impl Conn {
         let exp = o.expire.as_deref().unwrap_or("");
         match existing {
             Some((id, url)) => {
-                // Einzeln setzen: Nextcloud nimmt je Aufruf eine Änderung
-                self.ocs("PUT", &format!("{api}/{id}"), &[("password", pw)])?;
-                self.ocs("PUT", &format!("{api}/{id}"), &[("expireDate", exp)])?;
+                // Einzeln setzen: Nextcloud nimmt je Aufruf eine Änderung. Nur was
+                // angegeben ist: Ein leerer Wert nähme dem Link Passwort bzw.
+                // Ablaufdatum, und der Dialog kennt die bisherigen nicht.
+                if !pw.is_empty() {
+                    self.ocs("PUT", &format!("{api}/{id}"), &[("password", pw)])?;
+                }
+                if !exp.is_empty() {
+                    self.ocs("PUT", &format!("{api}/{id}"), &[("expireDate", exp)])?;
+                }
                 Ok(Some(url))
             }
             None => {
@@ -729,12 +744,7 @@ fn poll_login(app: &AppHandle, attempt: u64, endpoint: &str, token: &str) -> Res
         };
         let state = app.state::<AppState>();
         let mut c = load(&state.data_dir);
-        // Alten Zugang (anderer Server oder Nutzer) aus dem Speicher nehmen
-        if !c.server.is_empty()
-            && let Ok(e) = keyring_entry(&c)
-        {
-            let _ = e.delete_credential();
-        }
+        let old = c.clone();
         c.server = normalize_server(server)?;
         c.login_name = login.to_string();
         keyring_entry(&c)?
@@ -748,6 +758,14 @@ fn poll_login(app: &AppHandle, attempt: u64, endpoint: &str, token: &str) -> Res
                     )
                 ))
             })?;
+        // Erst jetzt, da der neue Zugang gespeichert ist: den alten (anderer Server
+        // oder Nutzer) aus dem Speicher nehmen
+        if !old.server.is_empty()
+            && (old.server != c.server || old.login_name != c.login_name)
+            && let Ok(e) = keyring_entry(&old)
+        {
+            let _ = e.delete_credential();
+        }
         // Benutzer-ID für WebDAV (Anmeldung per E-Mail-Adresse u. Ä.)
         let conn = Conn::new(&c)?;
         if let Ok(d) = conn.ocs("GET", "cloud/user", &[]) {
@@ -929,6 +947,13 @@ struct Progress {
 }
 
 static UPLOADING: AtomicBool = AtomicBool::new(false);
+static UPLOAD_CANCEL: AtomicBool = AtomicBool::new(false);
+
+/// Laufendes Hochladen vor der nächsten Datei beenden
+#[tauri::command]
+pub fn nc_upload_cancel() {
+    UPLOAD_CANCEL.store(true, Ordering::SeqCst);
+}
 
 /// Lädt die Exporte bzw. Originale des Projekts hoch (gleicht ab) und teilt
 /// den Ordner.
@@ -949,7 +974,7 @@ pub fn nc_upload_project(
             "Invalid date: {e}"
         )));
     }
-    if UPLOADING.swap(true, Ordering::SeqCst) {
+    let Some(running) = crate::busy::claim(&UPLOADING) else {
         return Err(Error::Invalid(
             tr_s(
                 "Es läuft bereits ein Hochladen.",
@@ -957,16 +982,26 @@ pub fn nc_upload_project(
             )
             .into(),
         ));
-    }
+    };
+    UPLOAD_CANCEL.store(false, Ordering::SeqCst);
     std::thread::spawn(move || {
+        // Gibt die Markierung auch nach einem Panic frei
+        let _running = running;
         let mut p = Progress::default();
-        let res = upload(&app, project_id, &options, &parts, &mut p);
+        // Ein Panic endet als Fehler, sonst zeigte der Dialog ewig „läuft“
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            upload(&app, project_id, &options, &parts, &mut p)
+        }))
+        .unwrap_or_else(|_| {
+            Err(Error::Invalid(
+                tr_s("Interner Fehler", "Internal error").into(),
+            ))
+        });
         p.finished = true;
         p.current = None;
         if let Err(e) = res {
             p.error = Some(e.to_string());
         }
-        UPLOADING.store(false, Ordering::SeqCst);
         let _ = app.emit("nextcloud-progress", p);
     });
     Ok(())
@@ -990,6 +1025,15 @@ fn upload(
     conn.mkdirs(parts)?;
     let remote = conn.list(parts)?;
     for (file, name) in files.iter().zip(&names) {
+        if UPLOAD_CANCEL.load(Ordering::SeqCst) {
+            return Err(Error::Invalid(
+                tr_s(
+                    "Abgebrochen – bis dahin hochgeladene Dateien bleiben.",
+                    "Canceled – files uploaded so far are kept.",
+                )
+                .into(),
+            ));
+        }
         p.current = Some(name.clone());
         let _ = app.emit("nextcloud-progress", p.clone());
         let size = std::fs::metadata(file).map(|m| m.len()).unwrap_or(0);
@@ -1009,14 +1053,62 @@ fn upload(
         }
         p.done += 1;
     }
+    // Was Lumenkorn zuletzt in genau diesen Ordner gelegt hat
+    let folder = parts.join("/");
+    let before: Vec<String> = c
+        .projects
+        .get(&project_id.to_string())
+        .filter(|l| l.folder == folder)
+        .map(|l| l.uploaded.clone())
+        .unwrap_or_default();
+    let keep: HashSet<&str> = names.iter().map(String::as_str).collect();
+    // Noch nicht entfernte eigene Dateien bleiben in der Liste
+    let mut ours: Vec<String> = names.clone();
     if o.remove_missing {
-        let keep: HashSet<&str> = names.iter().map(String::as_str).collect();
-        for name in remote.keys().filter(|n| !keep.contains(n.as_str())) {
-            match conn.delete(parts, name) {
-                Ok(()) => p.removed += 1,
-                Err(e) => p.failed.push(format!("{name}: {e}")),
+        // Fehlt ein Ordner des Projekts (Laufwerk abgesteckt, NAS schläft), fehlen
+        // auch seine Dateien in der Liste: Dann nichts löschen, sonst verschwänden
+        // ihre Kopien auf dem Server
+        let offline = state
+            .catalog
+            .locked()
+            .project(project_id)?
+            .folders
+            .into_iter()
+            .filter(|f| !Path::new(&f.path).is_dir())
+            .count();
+        if offline > 0 {
+            p.failed.push(tr!(
+                "{offline} Ordner des Projekts nicht erreichbar – auf dem Server wurde nichts entfernt.",
+                "{offline} folders of the project are not reachable – nothing was removed on the server."
+            ));
+            ours.extend(
+                before
+                    .iter()
+                    .filter(|n| !keep.contains(n.as_str()))
+                    .cloned(),
+            );
+        } else {
+            // Nur eigene Dateien, nie fremde im (frei wählbaren) Ordner
+            for name in before
+                .iter()
+                .filter(|n| !keep.contains(n.as_str()) && remote.contains_key(*n))
+            {
+                match conn.delete(parts, name) {
+                    Ok(()) => p.removed += 1,
+                    Err(e) => {
+                        p.failed.push(format!("{name}: {e}"));
+                        ours.push(name.clone());
+                    }
+                }
             }
         }
+    } else {
+        ours.extend(
+            before
+                .iter()
+                .filter(|n| !keep.contains(n.as_str()))
+                .cloned(),
+        );
     }
     p.current = None;
     p.share_url = conn.share(parts, o.share.as_ref())?;
@@ -1025,9 +1117,10 @@ fn upload(
     c.projects.insert(
         project_id.to_string(),
         ProjectLink {
-            folder: parts.join("/"),
+            folder,
             share_url: p.share_url.clone(),
             source: o.source,
+            uploaded: ours,
         },
     );
     save(&state.data_dir, &c)?;
@@ -1044,6 +1137,14 @@ fn upload(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Eine Benutzerangabe vor dem Host täuschte sonst das eigene Netz vor
+    #[test]
+    fn userinfo_in_server_address_is_rejected() {
+        assert!(normalize_server("http://x.local:80@example.com").is_err());
+        assert!(normalize_server("https://user@cloud.example.org").is_err());
+        assert!(normalize_server("http://nas.local:8080/nextcloud").is_ok());
+    }
 
     #[test]
     fn server_addresses_are_normalized() {

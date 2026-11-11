@@ -986,6 +986,10 @@ fn install_gpu_runtime(
 /// das legitim deutlich länger als jede feste Frist.
 const STALL_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Größter Download ohne angegebene Länge (die größten Modelle haben wenige GB):
+/// Ein Server, der endlos sendet, füllte sonst die Platte.
+const MAX_DOWNLOAD: u64 = 8 << 30;
+
 fn download(
     url: &str,
     target: &Path,
@@ -1121,6 +1125,14 @@ fn fetch(
         }
         out.write_all(&chunk)?;
         done += chunk.len() as u64;
+        if done > total.unwrap_or(MAX_DOWNLOAD) {
+            drop(out);
+            let _ = std::fs::remove_file(target);
+            return Err(Error::Download(tr!(
+                "{url}: größer als angekündigt",
+                "{url}: larger than announced"
+            )));
+        }
         if done - last >= 1 << 20 {
             progress(done, total);
             last = done;

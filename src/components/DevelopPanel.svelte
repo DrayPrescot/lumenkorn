@@ -305,7 +305,7 @@
 
     <details>
       <summary>{t("Schnappschüsse")} {dev.snapshots.length ? `(${dev.snapshots.length})` : ""}</summary>
-      <form class="snap" onsubmit={(e) => { e.preventDefault(); dev.snapshot(snapName); snapName = ""; }}>
+      <form class="snap" onsubmit={async (e) => { e.preventDefault(); if (await dev.snapshot(snapName)) snapName = ""; }}>
         <input type="text" placeholder={t("Name, z. B. Schwarzweiß")} bind:value={snapName} onkeydown={(e) => e.stopPropagation()} />
         <button class="btn" type="submit" disabled={dev.isDefault}>{t("Festhalten")}</button>
       </form>

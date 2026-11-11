@@ -103,4 +103,6 @@ export default {
   "Prozent der Bildhöhe": "Percent of the picture height",
   "Die Diashow ließ sich nicht öffnen: {error}": "Could not open the slideshow: {error}",
   "Die Diashow ließ sich nicht speichern: {error}": "Could not save the slideshow: {error}",
+  "Die zuletzt geöffnete Diashow ließ sich nicht speichern. Damit die Änderungen nicht verloren gehen, öffnet sich keine andere, bis das Speichern gelingt (z. B. nach dem Freigeben von Speicherplatz).": "The slideshow opened last could not be saved. So that the changes are not lost, no other slideshow opens until saving works (for example after freeing disk space).",
+  "Die gespeicherte Diashow dieses Bereichs lässt sich nicht lesen (beschädigt oder von einer neueren Version). Eine neue Diashow ersetzt sie. Trotzdem eine neue erstellen?": "The saved slideshow for this selection cannot be read (damaged or from a newer version). A new slideshow replaces it. Create a new one anyway?",
 };

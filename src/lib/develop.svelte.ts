@@ -313,6 +313,8 @@ class Develop {
     // weiteres Bild geöffnet, gewinnt dieses (nicht das zuletzt fertige).
     const token = ++this.#loadToken;
     await this.flush();
+    // Auch ein Wiederholversuch für genau dieses Foto muss durch sein
+    await this.#saving;
     if (token !== this.#loadToken) return;
     this.#dropPreview();
     this.imageId = id;
@@ -351,6 +353,8 @@ class Develop {
       this.lensInfo = info.lens ?? null;
       this.fullSize = [info.fullWidth, info.fullHeight];
       this.snapshots = info.snapshots;
+      if (info.unreadable)
+        lib.notify(t("Die Bearbeitung dieses Fotos ließ sich nicht lesen (beschädigt oder von einer neueren Version). Sie liegt unverändert im Schnappschuss „Nicht lesbare Bearbeitung“; angezeigt wird das Foto ohne Bearbeitung."), "error");
       await this.renderNow();
       this.renderBefore();
     } catch (e) {
@@ -361,10 +365,12 @@ class Develop {
   }
 
   close() {
-    this.#dropPreview();
     const wasOpen = this.imageId !== null;
-    // Erst speichern, dann die großen Puffer im Backend freigeben
+    // Erst speichern, dann die großen Puffer im Backend freigeben. Vor dem
+    // Verwerfen der Preset-Vorschau: `flush` speichert den Stand davor, danach
+    // gälte die Vorschau als Bearbeitung.
     const saved = this.flush();
+    this.#dropPreview();
     const token = ++this.#loadToken;
     this.#target = null;
     this.imageId = null;
@@ -1033,10 +1039,13 @@ class Develop {
 
   /** Vor dem Schließen des Fensters: offenen Zuschnitt übernehmen und alles
    *  schreiben, auch einen bereits laufenden Speichervorgang abwarten. */
-  async flushForClose() {
+  /** Vor dem Schließen des Fensters: `false`, wenn eine Bearbeitung nicht
+   *  gespeichert werden konnte */
+  async flushForClose(): Promise<boolean> {
     if (this.cropMode) this.applyCrop();
     await this.flush();
     await this.#saving;
+    return this.#unsaved.size === 0;
   }
 
   /** Speichern fehlgeschlagen: der Stand je Foto, beim nächsten Anlass neu versucht.
@@ -1077,6 +1086,9 @@ class Develop {
     this.#saving = run.catch(() => {});
     try {
       await run;
+      // Ein früher gescheiterter Stand dieses Fotos ist jetzt überholt (gespeichert
+      // wird der Reihe nach: Was davor scheiterte, ist älter)
+      this.#unsaved.delete(id);
       const edited = json !== DEFAULT_JSON;
       // Nur bei Änderung neu zuweisen – sonst rechnet das Raster bei jedem Speichern neu
       const im = lib.images.find((i) => i.id === id);
@@ -1355,16 +1367,26 @@ class Develop {
 
   // --- Schnappschüsse --------------------------------------------------------
 
-  async snapshot(name: string) {
-    if (this.imageId === null) return;
+  /** Schnappschuss anlegen; `true`, wenn er gespeichert ist */
+  async snapshot(name: string): Promise<boolean> {
+    if (this.imageId === null) return false;
     await this.flush();
     if (this.isDefault) {
       lib.notify(t("Ohne Bearbeitung gibt es nichts festzuhalten."));
-      return;
+      return false;
     }
     const id = this.imageId;
-    const list = await api.developSnapshot(id, name);
-    if (this.imageId === id) this.snapshots = list;
+    try {
+      // Der Schnappschuss hält den gespeicherten Stand fest: Der muss es sein
+      await this.#saving;
+      if (this.#unsaved.has(id)) throw t("Die Bearbeitung ist noch nicht gespeichert.");
+      const list = await api.developSnapshot(id, name);
+      if (this.imageId === id) this.snapshots = list;
+      return true;
+    } catch (e) {
+      lib.notify(t("Schnappschuss nicht angelegt: {error}", { error: String(e) }), "error");
+      return false;
+    }
   }
 
   async restore(edit: Edit) {
@@ -1372,7 +1394,13 @@ class Develop {
     const id = this.imageId;
     await this.flush();
     await this.#saving;
-    const p = await api.developRestore(edit.id);
+    let p: DevelopParams;
+    try {
+      p = await api.developRestore(edit.id);
+    } catch (e) {
+      lib.notify(String(e), "error");
+      return;
+    }
     // Inzwischen anderes Foto geöffnet: Stand nicht übernehmen
     if (this.imageId !== id || !this.ready) return;
     this.replace({ ...clone(DEFAULT_PARAMS), ...p });
@@ -1382,8 +1410,12 @@ class Develop {
   async deleteSnapshot(edit: Edit) {
     if (this.imageId === null) return;
     const id = this.imageId;
-    const list = await api.developDeleteSnapshot(id, edit.id);
-    if (this.imageId === id) this.snapshots = list;
+    try {
+      const list = await api.developDeleteSnapshot(id, edit.id);
+      if (this.imageId === id) this.snapshots = list;
+    } catch (e) {
+      lib.notify(String(e), "error");
+    }
   }
 }
 

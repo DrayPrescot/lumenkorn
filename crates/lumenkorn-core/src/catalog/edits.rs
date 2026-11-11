@@ -38,6 +38,38 @@ impl Catalog {
         )?)
     }
 
+    /// Lässt sich die aktuelle Bearbeitung von Foto `id` nicht lesen (beschädigt
+    /// oder von einer neueren Version), gelten Standardwerte – und das nächste
+    /// Speichern überschriebe sie. Dann kommt sie unverändert in den Schnappschuss
+    /// `name` (einmal). `true`, wenn sie unlesbar ist.
+    pub fn keep_unreadable(&self, id: i64, name: &str) -> Result<bool> {
+        let Some(cur) = self.current_edit(id)? else {
+            return Ok(false);
+        };
+        if serde_json::from_value::<DevelopParams>(cur.params).is_ok() {
+            return Ok(false);
+        }
+        self.snapshot_unsaved(&[id], name)?;
+        Ok(true)
+    }
+
+    /// Schnappschuss `name` der aktuellen Bearbeitung der Fotos `ids`, bevor jemand
+    /// anderes sie ändert (KI-Agenten über MCP). Fotos ohne Bearbeitung und solche,
+    /// deren Stand schon in einem Schnappschuss steht, bekommen keinen neuen: Ein
+    /// Agent, der hundertmal nachregelt, legt so nicht hundert an. Liefert die Anzahl.
+    pub fn snapshot_unsaved(&self, ids: &[i64], name: &str) -> Result<usize> {
+        let t = now();
+        Ok(self.conn.execute(
+            "INSERT INTO edits (image_id, name, params, is_current, created_at, updated_at)
+             SELECT e.image_id, ?2, e.params, 0, ?3, ?3 FROM edits e
+             WHERE e.is_current = 1 AND e.image_id IN (SELECT value FROM json_each(?1))
+               AND NOT EXISTS (SELECT 1 FROM edits s
+                               WHERE s.image_id = e.image_id AND s.is_current = 0
+                                 AND s.params = e.params)",
+            params![serde_json::to_string(ids)?, name, t],
+        )?)
+    }
+
     pub fn edits(&self, image_id: i64) -> Result<Vec<Edit>> {
         let mut st = self.conn.prepare(
             "SELECT id, image_id, name, params, is_current, created_at, updated_at
@@ -137,10 +169,20 @@ impl Catalog {
     }
 
     pub fn delete_snapshot(&self, edit_id: i64) -> Result<()> {
-        self.conn.execute(
+        let tx = self.conn.unchecked_transaction()?;
+        let n = tx.execute(
             "DELETE FROM edits WHERE id = ?1 AND is_current = 0",
             [edit_id],
         )?;
+        // War es der Schnappschuss „Vor Übernahme ins Original“: Der Verweis darf
+        // nicht auf eine später vergebene ID derselben Nummer zeigen
+        if n > 0 {
+            tx.execute(
+                "UPDATE originals SET snapshot_id = NULL WHERE snapshot_id = ?1",
+                [edit_id],
+            )?;
+        }
+        tx.commit()?;
         Ok(())
     }
 

@@ -284,4 +284,5 @@ export default {
   "{n} Originale ersetzt, die bisherigen liegen im Ordner „Original“.": "{n} originals replaced, the previous ones are in the “Original” folder.",
   "{n} Original wiederhergestellt": "{n} original restored",
   "{n} Originale wiederhergestellt": "{n} originals restored",
+  "„{name}“ aus der Bibliothek entfernen? Die Dateien auf der Platte bleiben, aber Bearbeitungen, Schnappschüsse, Schlagworte, Bewertungen und Personenzuordnungen dieser {n} Fotos gehen verloren – auch wenn du den Ordner später wieder hinzufügst.": "Remove “{name}” from the library? The files on disk are kept, but edits, snapshots, keywords, ratings and people of these {n} photos are lost – even if you add the folder again later.",
 } satisfies Record<string, string>;

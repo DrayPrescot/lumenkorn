@@ -86,11 +86,19 @@
     let unlisten: (() => void) | undefined;
     let gone = false;
     getCurrentWindow()
-      .onCloseRequested(async () => {
+      .onCloseRequested(async (event) => {
+        let saved = false;
         try {
-          await Promise.race([Promise.all([dev.flushForClose(), album.flush(), slideshow.flush()]), new Promise((r) => setTimeout(r, 5000))]);
+          saved = await Promise.race([
+            Promise.all([dev.flushForClose(), album.flush(), slideshow.flush()]).then((r) => r.every(Boolean)),
+            new Promise<boolean>((r) => setTimeout(() => r(false), 5000)),
+          ]);
         } catch (e) {
           console.error("Speichern beim Schließen fehlgeschlagen", e);
+        }
+        // Gescheitertes Speichern nicht stillschweigend verwerfen
+        if (!saved && !confirm(t("Nicht alle Änderungen ließen sich speichern (Bearbeitung, Album oder Diashow). Trotzdem schließen? Sie gehen dann verloren."))) {
+          event.preventDefault();
         }
       })
       .then((u) => (gone ? u() : (unlisten = u)))

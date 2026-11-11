@@ -247,4 +247,7 @@ export default {
   "Perspektive": "Perspective",
   "Senkrecht": "Vertical",
   "Waagerecht": "Horizontal",
+  "Die Bearbeitung dieses Fotos ließ sich nicht lesen (beschädigt oder von einer neueren Version). Sie liegt unverändert im Schnappschuss „Nicht lesbare Bearbeitung“; angezeigt wird das Foto ohne Bearbeitung.": "The edit of this photo could not be read (damaged or from a newer version). It is kept unchanged in the snapshot “Unreadable edit”; the photo is shown without edits.",
+  "Die Bearbeitung ist noch nicht gespeichert.": "The edit has not been saved yet.",
+  "Schnappschuss nicht angelegt: {error}": "Snapshot not created: {error}",
 } satisfies Record<string, string>;

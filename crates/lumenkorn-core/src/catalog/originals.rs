@@ -75,13 +75,27 @@ impl Catalog {
         Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
-    /// Die Datei von Foto `id` ist jetzt die entwickelte Fassung: Die
-    /// Bearbeitung kommt in den Schnappschuss `snapshot` und wird zurückgesetzt
-    /// (sonst wirkte sie doppelt). `backup`: wohin das bisherige Original kam;
-    /// ohne bleibt ein schon gesichertes Original eingetragen.
-    pub fn bake_done(&mut self, id: i64, backup: Option<&str>, snapshot: &str) -> Result<()> {
+    /// Die Datei von Foto `id` wird gleich durch die entwickelte Fassung ersetzt.
+    /// Eingetragen wird vorher: Bricht das Programm dazwischen ab, steht die
+    /// Bearbeitung im Schnappschuss und wirkt nie doppelt. Die Bearbeitung kommt
+    /// in den Schnappschuss `snapshot` und wird zurückgesetzt. `backup`: wohin das
+    /// bisherige Original kam; ohne bleibt ein schon gesichertes Original
+    /// eingetragen. Die Gesichter werden auf das fertige Bild umgerechnet, sonst
+    /// gingen bestätigte Zuordnungen beim erneuten Erkennen verloren, wenn die
+    /// Bearbeitung zuschneidet oder dreht. Liefert den Schnappschuss (für
+    /// [`Catalog::bake_undo`]).
+    pub fn bake_done(
+        &mut self,
+        id: i64,
+        backup: Option<&str>,
+        snapshot: &str,
+    ) -> Result<Option<i64>> {
         let t = now();
         self.with_tx(|tx| {
+            let params = current_params(tx, id)?;
+            if let Some(g) = geo_map(tx, id, &params, false)? {
+                move_faces(tx, id, |x, y| g.forward(x, y))?;
+            }
             let n = tx.execute(
                 "INSERT INTO edits (image_id, name, params, is_current, created_at, updated_at)
                  SELECT image_id, ?2, params, 0, ?3, ?3 FROM edits
@@ -99,8 +113,73 @@ impl Catalog {
                     params![id, b, snapshot_id, t],
                 )?;
             }
+            Ok(snapshot_id)
+        })
+    }
+
+    /// [`Catalog::bake_done`] zurücknehmen (die Datei ließ sich nicht ersetzen):
+    /// Bearbeitung aus dem Schnappschuss wieder aktuell, Gesichter zurück.
+    /// `new_backup`: Der Eintrag des Originals kam erst mit dieser Übernahme.
+    pub fn bake_undo(&mut self, id: i64, snapshot_id: Option<i64>, new_backup: bool) -> Result<()> {
+        let t = now();
+        self.with_tx(|tx| {
+            let params = match snapshot_id {
+                Some(s) => {
+                    let json: Option<String> = tx
+                        .query_row(
+                            "SELECT params FROM edits WHERE id = ?1 AND image_id = ?2 AND is_current = 0",
+                            params![s, id],
+                            |r| r.get(0),
+                        )
+                        .optional()?;
+                    tx.execute(
+                        "DELETE FROM edits WHERE id = ?1 AND image_id = ?2 AND is_current = 0",
+                        params![s, id],
+                    )?;
+                    match json {
+                        Some(j) => DevelopParams::from_json(&serde_json::from_str(&j)?),
+                        None => DevelopParams::default(),
+                    }
+                }
+                None => DevelopParams::default(),
+            };
+            if let Some(g) = geo_map(tx, id, &params, false)? {
+                move_faces(tx, id, |x, y| g.backward(x, y))?;
+            }
+            Self::write_develop(tx, id, &params, t)?;
+            if new_backup {
+                tx.execute("DELETE FROM originals WHERE image_id = ?1", [id])?;
+            }
             Ok(())
         })
+    }
+
+    /// Das gesicherte Original liegt jetzt unter `path` (Ordner umbenannt oder
+    /// verschoben)
+    pub fn set_original_path(&self, id: i64, path: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE originals SET path = ?2 WHERE image_id = ?1",
+            params![id, path],
+        )?;
+        Ok(())
+    }
+
+    /// Gesicherte Originale aller Fotos des Quellordners `root_id`
+    pub fn saved_originals_of_root(&self, root_id: i64) -> Result<Vec<SavedOriginal>> {
+        let mut st = self.conn.prepare(
+            "SELECT o.image_id, i.path, o.path, o.snapshot_id
+             FROM originals o JOIN images i ON i.id = o.image_id
+             WHERE i.root_id = ?1",
+        )?;
+        let rows = st.query_map([root_id], |r| {
+            Ok(SavedOriginal {
+                image_id: r.get(0)?,
+                photo: r.get(1)?,
+                backup: r.get(2)?,
+                snapshot_id: r.get(3)?,
+            })
+        })?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
     }
 
     /// Das gesicherte Original von Foto `id` liegt wieder an seinem Platz: Die
@@ -137,12 +216,17 @@ impl Catalog {
                 Some(json) => DevelopParams::from_json(&serde_json::from_str(json)?),
                 None => DevelopParams::default(),
             };
+            // Gesichter zurück auf das Original (die Maße im Katalog sind noch die
+            // der übernommenen Fassung)
+            if let Some(g) = geo_map(tx, id, &params, true)? {
+                move_faces(tx, id, |x, y| g.backward(x, y))?;
+            }
             Self::write_develop(tx, id, &params, t)?;
             // Der Schnappschuss ist jetzt die aktuelle Bearbeitung
             if let Some(s) = saved {
                 tx.execute(
-                    "DELETE FROM edits WHERE id = ?1 AND is_current = 0",
-                    [s],
+                    "DELETE FROM edits WHERE id = ?1 AND image_id = ?2 AND is_current = 0",
+                    params![s, id],
                 )?;
             }
             tx.execute("DELETE FROM originals WHERE image_id = ?1", [id])?;
@@ -156,7 +240,7 @@ impl Catalog {
     pub fn forget_original(&mut self, id: i64) -> Result<()> {
         self.with_tx(|tx| {
             tx.execute(
-                "DELETE FROM edits WHERE is_current = 0 AND id =
+                "DELETE FROM edits WHERE is_current = 0 AND image_id = ?1 AND id =
                     (SELECT snapshot_id FROM originals WHERE image_id = ?1)",
                 [id],
             )?;
@@ -164,4 +248,82 @@ impl Catalog {
             Ok(())
         })
     }
+}
+
+/// Aktuelle Bearbeitung von Foto `id` (Standard ohne)
+fn current_params(tx: &rusqlite::Transaction, id: i64) -> Result<DevelopParams> {
+    let json: Option<String> = tx
+        .query_row(
+            "SELECT params FROM edits WHERE image_id = ?1 AND is_current = 1",
+            [id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(match json {
+        Some(j) => DevelopParams::from_json(&serde_json::from_str(&j)?),
+        None => DevelopParams::default(),
+    })
+}
+
+/// Abbildung zwischen Original und fertigem Bild für Foto `id`. `baked`: Die
+/// Maße im Katalog sind schon die des fertigen Bildes. `None` ohne Geometrie
+/// oder ohne bekannte Maße.
+fn geo_map(
+    tx: &rusqlite::Transaction,
+    id: i64,
+    p: &DevelopParams,
+    baked: bool,
+) -> Result<Option<lumenkorn_develop::geometry::GeoMap>> {
+    use lumenkorn_develop::geometry::GeoMap;
+    let geometry = !p.rotate.is_multiple_of(4)
+        || p.flip_horizontal
+        || p.straighten != 0.0
+        || p.perspective_vertical != 0.0
+        || p.perspective_horizontal != 0.0
+        || p.crop.is_some();
+    if !geometry {
+        return Ok(None);
+    }
+    let dims: Option<(Option<i64>, Option<i64>)> = tx
+        .query_row(
+            "SELECT width, height FROM images WHERE id = ?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    let Some((Some(w), Some(h))) = dims else {
+        return Ok(None);
+    };
+    if w <= 0 || h <= 0 {
+        return Ok(None);
+    }
+    let (w, h) = (w as usize, h as usize);
+    let (sw, sh) = if baked {
+        GeoMap::source_size(p, w, h)
+    } else {
+        (w, h)
+    };
+    Ok(Some(GeoMap::new(p, sw, sh)))
+}
+
+/// Gesichter von Foto `id` mit `f` umrechnen. Was danach größtenteils außerhalb
+/// des Bildes liegt, bleibt, wie es ist: Das erneute Erkennen ersetzt es.
+fn move_faces(
+    tx: &rusqlite::Transaction,
+    id: i64,
+    f: impl Fn(f64, f64) -> Option<(f64, f64)>,
+) -> Result<()> {
+    let faces: Vec<(i64, [f64; 4])> = tx
+        .prepare("SELECT id, x, y, w, h FROM faces WHERE image_id = ?1")?
+        .query_map([id], |r| {
+            Ok((r.get(0)?, [r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?]))
+        })?
+        .collect::<std::result::Result<_, _>>()?;
+    let mut up = tx.prepare("UPDATE faces SET x = ?2, y = ?3, w = ?4, h = ?5 WHERE id = ?1")?;
+    for (face, r) in faces {
+        if let Some(n) = lumenkorn_develop::geometry::GeoMap::rect(r, &f) {
+            up.execute(params![face, n[0], n[1], n[2], n[3]])?;
+        }
+    }
+    Ok(())
 }

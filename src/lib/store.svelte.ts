@@ -1026,6 +1026,12 @@ class Library {
   }
 
   async removeRoot(id: number) {
+    const root = this.roots.find((r) => r.id === id);
+    const msg = t(
+      "„{name}“ aus der Bibliothek entfernen? Die Dateien auf der Platte bleiben, aber Bearbeitungen, Schnappschüsse, Schlagworte, Bewertungen und Personenzuordnungen dieser {n} Fotos gehen verloren – auch wenn du den Ordner später wieder hinzufügst.",
+      { name: root?.name ?? "", n: root?.imageCount ?? 0 },
+    );
+    if (!confirm(msg)) return;
     try {
       await api.removeRoot(id);
       if (this.scope.type === "folder") this.scope = { type: "all" };
@@ -1250,12 +1256,17 @@ class Library {
     }
   }
 
-  /** Aufnahmeort für Fotos setzen; ohne `place` ermittelt ihn das Backend. */
-  async setLocation(ids: number[], lat: number, lon: number, place: string | null = null) {
-    if (!ids.length) return;
+  /** Aufnahmeort für Fotos setzen; ohne `place` ermittelt ihn das Backend.
+   *  `false`, wenn das Speichern scheiterte (Fehler ist gemeldet). */
+  async setLocation(ids: number[], lat: number, lon: number, place: string | null = null): Promise<boolean> {
+    if (!ids.length) return false;
     this.#patch(ids, { lat, lon });
-    await this.#write(() => api.geoSetLocation(ids, lat, lon, place)).catch((e) => this.#writeFailed(e));
+    const ok = await this.#write(() => api.geoSetLocation(ids, lat, lon, place)).then(
+      () => true,
+      (e) => (this.#writeFailed(e), false),
+    );
     this.geoVersion++;
+    return ok;
   }
 
   /** Metadaten (Titel, Aufnahmezeit, Kamera …) ändern: im Katalog und in der
@@ -1265,16 +1276,17 @@ class Library {
   async editMeta(ids: number[], patch: MetaPatch, shiftSeconds = 0): Promise<MetaReport> {
     const report: MetaReport = { changed: [], failed: [] };
     try {
+      // Jeden Teil gleich ins Ergebnis: Scheitert das Verschieben der Zeit, ist
+      // das zuvor Gespeicherte trotzdem in Liste, Info und Statistik zu sehen
+      const add = (p: MetaReport) => {
+        // Große Auswahl: keine Suche je Foto und kein Ausbreiten als Argumente
+        const seen = new Set(report.changed);
+        for (const id of p.changed) if (!seen.has(id)) report.changed.push(id);
+        for (const f of p.failed) report.failed.push(f);
+      };
       await this.#write(async () => {
-        const parts: MetaReport[] = [];
-        if (Object.keys(patch).length) parts.push(await api.metaSet(ids, patch));
-        if (shiftSeconds) parts.push(await api.metaShiftTime(ids, shiftSeconds));
-        for (const p of parts) {
-          // Große Auswahl: keine Suche je Foto und kein Ausbreiten als Argumente
-          const seen = new Set(report.changed);
-          for (const id of p.changed) if (!seen.has(id)) report.changed.push(id);
-          for (const f of p.failed) report.failed.push(f);
-        }
+        if (Object.keys(patch).length) add(await api.metaSet(ids, patch));
+        if (shiftSeconds) add(await api.metaShiftTime(ids, shiftSeconds));
       });
     } catch (e) {
       this.notify(String(e), "error");
@@ -1310,15 +1322,20 @@ class Library {
     void this.loadImages();
   }
 
-  /** Vorschläge übernehmen: je Foto eigener Ort */
-  async applyLocations(items: LocationItem[]) {
-    if (!items.length) return;
+  /** Vorschläge übernehmen: je Foto eigener Ort. `false`, wenn das Speichern
+   *  scheiterte (Fehler ist gemeldet). */
+  async applyLocations(items: LocationItem[]): Promise<boolean> {
+    if (!items.length) return false;
     this.#patch(
       items.map((i) => i.id),
       new Map(items.map((i) => [i.id, { lat: i.lat, lon: i.lon }])),
     );
-    await this.#write(() => api.geoApply(items)).catch((e) => this.#writeFailed(e));
+    const ok = await this.#write(() => api.geoApply(items)).then(
+      () => true,
+      (e) => (this.#writeFailed(e), false),
+    );
     this.geoVersion++;
+    return ok;
   }
 
   async clearLocation(ids: number[]) {

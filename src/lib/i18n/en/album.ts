@@ -141,4 +141,7 @@ export default {
   "{name} (nicht installiert)": "{name} (not installed)",
   "Schriften des Systems werden gesucht …": "Looking for system fonts…",
   "Schriften des Systems": "System fonts",
+  "Das zuletzt geöffnete Album ließ sich nicht speichern. Damit die Änderungen nicht verloren gehen, öffnet sich kein anderes, bis das Speichern gelingt (z. B. nach dem Freigeben von Speicherplatz).": "The album opened last could not be saved. So that the changes are not lost, no other album opens until saving works (for example after freeing disk space).",
+  "Das gespeicherte Album dieses Bereichs lässt sich nicht lesen (beschädigt oder von einer neueren Version). Ein neues Album ersetzt es. Trotzdem ein neues erstellen?": "The saved album for this selection cannot be read (damaged or from a newer version). A new album replaces it. Create a new one anyway?",
+  "Eine Seite kann höchstens 50 Texte haben.": "A page can have at most 50 texts.",
 } satisfies Record<string, string>;

@@ -40,4 +40,6 @@ export default {
   "Lumenkorn bekommt ein eigenes App-Passwort, das du in Nextcloud unter Einstellungen → Sicherheit jederzeit widerrufen kannst. Es liegt im Anmeldespeicher des Systems (Windows-Anmeldeinformationsverwaltung bzw. Schlüsselbund unter Linux), nicht im Datenordner. Lumenkorn verbindet sich nur mit diesem Server.": "Lumenkorn gets its own app password, which you can revoke at any time in Nextcloud under Settings → Security. It is kept in the system's credential store (Windows Credential Manager, or the keyring on Linux), not in the data folder. Lumenkorn only connects to this server.",
   "Zuerst mit Nextcloud verbinden": "Connect to Nextcloud first",
   "In Nextcloud geteilt: {url}": "Shared in Nextcloud: {url}",
+  "Entfernt werden nur Dateien, die Lumenkorn in diesen Ordner hochgeladen hat, und nichts, solange ein Ordner des Projekts nicht erreichbar ist.": "Only files that Lumenkorn uploaded to this folder are removed, and nothing while a folder of the project cannot be reached.",
+  "Passwort und Ablaufdatum des vorhandenen Links bleiben, wie sie sind, wenn du hier nichts angibst.": "The password and expiry date of the existing link stay as they are if you leave them empty here.",
 } satisfies Record<string, string>;

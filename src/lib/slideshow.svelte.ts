@@ -111,7 +111,11 @@ class SlideshowStore {
   async open(scope: Scope, title: string) {
     this.#listen();
     const token = ++this.#openToken;
-    await this.flush();
+    // Ein gescheitertes Speichern nicht durch das Laden eines anderen Stands verlieren
+    if (!(await this.flush())) {
+      lib.notify(t("Die zuletzt geöffnete Diashow ließ sich nicht speichern. Damit die Änderungen nicht verloren gehen, öffnet sich keine andere, bis das Speichern gelingt (z. B. nach dem Freigeben von Speicherplatz)."), "error");
+      return;
+    }
     let doc: unknown;
     try {
       doc = await loadDoc("slideshow", scope);
@@ -129,11 +133,20 @@ class SlideshowStore {
       lib.view = "slideshow";
       this.#dropMusicUrls();
       this.ensureMusic();
-    } else this.dialog = { scope, title };
+    } else if (
+      doc === null ||
+      // Gibt es eine, die sich nicht lesen lässt: nicht ohne Rückfrage ersetzen
+      confirm(t("Die gespeicherte Diashow dieses Bereichs lässt sich nicht lesen (beschädigt oder von einer neueren Version). Eine neue Diashow ersetzt sie. Trotzdem eine neue erstellen?"))
+    )
+      this.dialog = { scope, title };
   }
 
   async create(settings: SlideshowSettings, scope: Scope, title: string): Promise<boolean> {
     this.#listen();
+    if (!(await this.flush())) {
+      lib.notify(t("Die zuletzt geöffnete Diashow ließ sich nicht speichern. Damit die Änderungen nicht verloren gehen, öffnet sich keine andere, bis das Speichern gelingt (z. B. nach dem Freigeben von Speicherplatz)."), "error");
+      return false;
+    }
     storeSettings(settings);
     this.progress = { done: 0, total: 0 };
     try {
@@ -208,7 +221,10 @@ class SlideshowStore {
   #saveNow() {
     clearTimeout(this.#saveTimer);
     this.#saveTimer = undefined;
-    if (!this.state) return;
+    if (!this.state) {
+      this.#saveFailed = false;
+      return;
+    }
     const scope = this.state.scope;
     saveDoc("slideshow", scope, $state.snapshot(this.state)).then(
       () => {
@@ -225,10 +241,13 @@ class SlideshowStore {
   #saveFailed = false;
   #openToken = 0;
 
-  /** Ausstehendes speichern und warten, bis es auf der Platte liegt */
-  async flush() {
-    if (this.#saveTimer !== undefined) this.#saveNow();
+  /** Ausstehendes speichern und warten, bis es auf der Platte liegt. `false`, wenn
+   *  das Speichern gescheitert ist: Der Stand bleibt im Speicher und wird beim
+   *  nächsten Anlass erneut geschrieben. */
+  async flush(): Promise<boolean> {
+    if (this.#saveTimer !== undefined || this.#saveFailed) this.#saveNow();
     await docsWritten();
+    return !this.#saveFailed;
   }
 
   #edit(f: (a: SlideshowState) => void) {
@@ -388,13 +407,15 @@ class SlideshowStore {
       items = paths.map((p) => ({ path: p, name: p.split(/[\\/]/).pop() ?? p, blob: () => api.slideshowMusic(p) }));
     }
     this.musicBusy = true;
+    const show = this.state;
     try {
       for (const it of items) {
         if (this.state?.music?.tracks.some((x) => x.path === it.path)) continue;
         try {
           const blob = await it.blob();
           const beats = await analyzeMusic(blob);
-          if (!this.state) return;
+          // Inzwischen eine andere Diashow geöffnet: das Lied gehört nicht dorthin
+          if (!this.state || this.state !== show) return;
           const track: MusicTrack = { path: it.path, name: it.name, beats };
           this.#setMusic(it.path, blob);
           this.#edit((a) => {

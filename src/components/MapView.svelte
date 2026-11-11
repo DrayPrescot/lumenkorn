@@ -226,7 +226,7 @@
 
   async function applyPicked() {
     if (!picked || !count) return;
-    await lib.setLocation(lib.targets(), picked.lat, picked.lon, picked.name);
+    if (!(await lib.setLocation(lib.targets(), picked.lat, picked.lon, picked.name))) return;
     lib.notify(t(count === 1 ? "Ort „{place}“ gesetzt." : "Ort „{place}“ für {n} Fotos gesetzt.", { place: picked.name, n: count }));
     clearPick();
   }

@@ -828,6 +828,8 @@ export const mock = {
           shareUrl: mockShares.get(a.projectId) ?? null,
         });
       }
+      case "nc_upload_cancel":
+        return out(null);
       case "nc_upload_project": {
         const total = 42;
         let done = 0;

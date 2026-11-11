@@ -231,8 +231,57 @@ pub const ORIGINAL_MARKER: &str = ".lumenkorn-original";
 /// Name des Ordners mit gesicherten Originalen neben dem Foto
 pub const ORIGINAL_DIR: &str = "Original";
 
-fn is_original_dir(dir: &Path) -> bool {
+/// Ordner mit gesicherten Originalen (trägt die Markierung)?
+pub fn is_original_dir(dir: &Path) -> bool {
     dir.join(ORIGINAL_MARKER).is_file()
+}
+
+/// Markierung entfernen: Die Originale darin werden wieder ganz normale Fotos.
+/// Für einen Quellordner, der aus der Bibliothek genommen wird – sonst lägen sie
+/// beim erneuten Hinzufügen unsichtbar im Ordner „Original“.
+pub fn unmark_original_dir(dir: &Path) {
+    if is_original_dir(dir)
+        && let Err(e) = std::fs::remove_file(dir.join(ORIGINAL_MARKER))
+    {
+        log::warn!("Markierung in {} nicht entfernt: {e}", dir.display());
+    }
+}
+
+/// Endung der Zwischendatei beim Übernehmen ins Original
+const BAKE_STAGING: &str = ".lumenkorn-neu-";
+
+/// Zwischendatei, in die die neue Fassung von `photo` geschrieben wird, bevor
+/// ein Umbenennen das Foto ersetzt. Enthält den Namen des Fotos (man sieht,
+/// wozu sie gehört) und die Prozessnummer; keine Bildendung, der Scan nimmt sie
+/// also nie auf.
+pub fn bake_staging_path(photo: &Path) -> PathBuf {
+    let mut name = photo.as_os_str().to_owned();
+    name.push(format!("{BAKE_STAGING}{}.tmp", std::process::id()));
+    PathBuf::from(name)
+}
+
+/// Zwischendatei eines abgebrochenen Übernehmens (anderer Prozess) entfernen.
+/// Sie lässt sich jederzeit neu erzeugen; Foto und Original sind unberührt.
+fn remove_bake_leftover(path: &Path) {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return;
+    };
+    let Some(pid) = name
+        .strip_suffix(".tmp")
+        .and_then(|n| n.rsplit_once(BAKE_STAGING))
+        .map(|(_, pid)| pid)
+    else {
+        return;
+    };
+    if pid.parse::<u32>().is_ok_and(|p| p != std::process::id()) {
+        match std::fs::remove_file(path) {
+            Ok(()) => log::info!(
+                "Reste eines abgebrochenen Übernehmens entfernt: {}",
+                path.display()
+            ),
+            Err(e) => log::warn!("{} nicht entfernt: {e}", path.display()),
+        }
+    }
 }
 
 /// Ordner für das gesicherte Original von `photo`: `Original` neben dem Foto,
@@ -662,6 +711,7 @@ fn walk(dir: &Path, out: &mut Walked, progress: &dyn Fn(usize)) {
             // über die Dateiüberwachung oder den nächsten Scan wieder aufgenommen
             if e.file_type().is_file() {
                 crate::rename::recover_leftover(e.path());
+                remove_bake_leftover(e.path());
             }
             !is_skipped(e)
         })

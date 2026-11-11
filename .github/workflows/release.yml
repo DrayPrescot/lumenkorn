@@ -1,15 +1,17 @@
 name: Release
 
-# Push a tag like `v0.2.0` to build installers and create a draft release.
-# Started by hand (Actions → Release → Run workflow) it only builds and keeps
-# the installers as a workflow artifact – a test build without a release.
+# Baut die Installer zur Kontrolle und hebt sie als Artefakt auf (14 Tage). Ein
+# Release legt dieser Lauf nicht an: Releases entstehen lokal und signiert mit
+# `tools/release_local.mjs` und `tools/publish_release.py` (das bricht den durch
+# den Tag gestarteten Lauf ab). Deshalb hier weder Signaturschlüssel noch
+# Schreibrecht – die Build-Skripte aller Abhängigkeiten laufen in diesem Job.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -19,19 +21,16 @@ jobs:
       matrix:
         platform: [windows-latest, ubuntu-22.04]
     runs-on: ${{ matrix.platform }}
-    env:
-      # Updater: ohne den Signaturschlüssel (Secret) entstehen die Installer
-      # wie bisher, nur ohne Update-Daten
-      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libdbus-1-dev \
-            libssl-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libdbus-1-dev             libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
       - uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # 1.95.0
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
@@ -41,45 +40,10 @@ jobs:
           cache: npm
       - run: npm ci
 
-      # Text des Releases: der Abschnitt dieser Version aus dem CHANGELOG
-      # (erscheint auch im Update-Dialog der App)
-      - name: Release notes from CHANGELOG
-        id: notes
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        run: |
-          v="${GITHUB_REF_NAME#v}"
-          awk -v v="$v" 'index($0, "## [" v "]") == 1 {on=1; next} on && /^## \[/ {exit} on {print}' CHANGELOG.md > notes.md
-          { echo "body<<NOTES_EOF"; cat notes.md; echo "NOTES_EOF"; } >> "$GITHUB_OUTPUT"
+      - name: Build installers
+        run: npm run tauri build
 
-      # Updates in der App: Installer signieren und latest.json anhängen
-      - name: Enable updater artifacts
-        if: env.HAS_UPDATER_KEY == 'true'
-        shell: bash
-        run: |
-          node -e "const fs=require('fs');const f='src-tauri/tauri.conf.json';const c=JSON.parse(fs.readFileSync(f,'utf8'));c.bundle.createUpdaterArtifacts=true;fs.writeFileSync(f,JSON.stringify(c,null,2))"
-
-      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          # Without a tag no release is created – only the installers are built
-          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
-          releaseName: ${{ startsWith(github.ref, 'refs/tags/') && format('Lumenkorn {0}', github.ref_name) || '' }}
-          releaseBody: |
-            ${{ steps.notes.outputs.body }}
-
-            See [CHANGELOG.md](https://github.com/DrayPrescot/lumenkorn/blob/main/CHANGELOG.md) for details.
-
-            Lumenkorn statically links rawler (LGPL-2.1). To relink with a modified rawler,
-            build from source as described in the README (section "License").
-          releaseDraft: true
-          prerelease: false
-
-      - name: Keep installers (test build)
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      - name: Keep installers
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: lumenkorn-${{ matrix.platform }}-${{ github.sha }}

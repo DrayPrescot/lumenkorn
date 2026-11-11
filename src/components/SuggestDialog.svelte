@@ -74,7 +74,7 @@
     const items: LocationItem[] = timeMatches
       .filter((m) => !timeOff.has(placeKey(m)))
       .map((m) => ({ id: m.id, lat: m.lat, lon: m.lon, place: m.place }));
-    await lib.applyLocations(items);
+    if (!(await lib.applyLocations(items))) return;
     lib.notify(t(items.length === 1 ? "Ort für 1 Foto übernommen." : "Orte für {n} Fotos übernommen.", { n: items.length }));
     onclose();
   }

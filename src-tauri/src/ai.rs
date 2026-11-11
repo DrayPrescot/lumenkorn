@@ -977,7 +977,39 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
             Some(model_backend(loaded.clip.on_gpu())),
             "CLIP",
         );
-        loaded.clip.embed_images(&images).map_err(err)?
+        match loaded.clip.embed_images(&images) {
+            Ok(e) => e,
+            // Stapel gescheitert: einzeln, damit ein Foto, das immer scheitert, nicht
+            // jedes Mal den ganzen Stapel (und alle Fotos danach) aufhält
+            Err(batch) => {
+                log::warn!("KI-Stapel gescheitert ({batch}), einzeln weiter");
+                let mut kept = (Vec::new(), Vec::new(), Vec::new());
+                let mut failed = Vec::new();
+                for (id, img) in ok_ids.iter().zip(images.drain(..)) {
+                    match loaded.clip.embed_images(std::slice::from_ref(&img)) {
+                        Ok(mut e) if e.len() == 1 => {
+                            kept.0.push(*id);
+                            kept.1.push(img);
+                            kept.2.push(e.remove(0));
+                        }
+                        _ => failed.push(*id),
+                    }
+                }
+                // Scheitern alle, liegt es nicht an den Fotos (Laufzeit, Grafikkarte):
+                // dann keins als gescheitert vermerken
+                if kept.0.is_empty() {
+                    return Err(err(batch));
+                }
+                for id in failed {
+                    if let Err(e) = state.catalog.locked().set_ai_failed(id) {
+                        log::warn!("Foto {id}: KI-Fehlschlag nicht vermerkt: {e}");
+                    }
+                }
+                ok_ids = kept.0;
+                images = kept.1;
+                kept.2
+            }
+        }
     };
     // BioCLIP nur für die Fotos mit Tier
     let bios = match &animals {
@@ -1212,6 +1244,10 @@ pub fn ai_download(app: AppHandle, component: Option<Component>) -> Result<(), E
                         Some(c) => c,
                         None => {
                             drop(done);
+                            // Erst jetzt: Solange „lädt herunter“ gilt, brechen
+                            // Analyse und Gesichtserkennung sofort ab
+                            state.worker.submit(Job::Ai);
+                            state.worker.submit(Job::Faces);
                             return;
                         }
                     }
@@ -1603,8 +1639,10 @@ fn sam_embedding(state: &AppState, sam: &Sam, id: i64) -> Result<Arc<SamEmbeddin
         return Ok(e.clone());
     }
     let t = std::time::Instant::now();
+    // Erst das Foto laden (RAW-Dekodierung): Bricht das ab, ist es kein KI-Absturz
+    let input = segmentation_input(state, id)?;
     let _g = analysis_guard(state, "Segment Anything");
-    let e = Arc::new(sam.embed(&segmentation_input(state, id)?).map_err(err)?);
+    let e = Arc::new(sam.embed(&input).map_err(err)?);
     log::info!("SAM-Embedding für Bild {id} in {:.2?}", t.elapsed());
     *state.ai.sam_embedding.locked() = Some((key, e.clone()));
     Ok(e)
@@ -1633,10 +1671,9 @@ pub async fn mask_subject(app: AppHandle, id: i64) -> Result<MaskResult, Error> 
     blocking(app, move |state| {
         let model = subject_model(state)?;
         let t = std::time::Instant::now();
+        let input = segmentation_input(state, id)?;
         let _g = analysis_guard(state, tr_s("Motiv", "Subject"));
-        let mask = model
-            .predict(&segmentation_input(state, id)?)
-            .map_err(err)?;
+        let mask = model.predict(&input).map_err(err)?;
         log::info!("Motivmaske für Bild {id} in {:.2?}", t.elapsed());
         store(state, id, "subject", &mask)
     })
@@ -1867,6 +1904,7 @@ pub fn denoise_start(app: AppHandle, id: i64, strength: Option<f32>) -> Result<(
             .into(),
         ));
     };
+    let full_res = crate::busy::full_res()?;
     state.ai.denoise_cancel.store(false, Ordering::SeqCst);
     // Reglerwert „Stärke“ (0–100) → Faktor auf die geschätzte Rauschstärke
     let strength = lumenkorn_ai::denoise::strength_factor(strength.unwrap_or(50.0));
@@ -1939,6 +1977,7 @@ pub fn denoise_start(app: AppHandle, id: i64, strength: Option<f32>) -> Result<(
                 ))
             });
             drop(finished);
+            drop(full_res);
             match res {
                 Ok(did) => emit(1, 1, true, None, Some(did)),
                 Err(e) => emit(0, 0, true, Some(e.to_string()), None),

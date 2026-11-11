@@ -81,6 +81,15 @@ fn delete_rejected_blocking(
     crate::cull_assist::learn_before_delete(state, &ids);
     // Liste unter Sperre holen, Dateien ohne Sperre löschen (Papierkorb kann dauern)
     let files = state.catalog.locked().rejected_files(&ids)?;
+    // Gesicherte Originale („Bearbeitung ins Original übernehmen“) gehen mit dem
+    // Foto: Ohne den Katalogeintrag zeigte sie danach keine Ansicht mehr
+    let originals: std::collections::HashMap<i64, String> = state
+        .catalog
+        .locked()
+        .saved_originals(&ids)?
+        .into_iter()
+        .map(|s| (s.image_id, s.backup))
+        .collect();
     let mut deleted = Vec::new();
     let mut bytes = 0;
     let mut failed = Vec::new();
@@ -93,6 +102,18 @@ fn delete_rejected_blocking(
                 for sidecar in lumenkorn_core::xmp::sidecars(p) {
                     if let Err(e) = remove(&sidecar, to_trash) {
                         log::warn!("XMP {} nicht gelöscht: {e}", sidecar.display());
+                    }
+                }
+                if let Some(b) = originals.get(id).map(Path::new)
+                    && b.is_file()
+                {
+                    match remove(b, to_trash) {
+                        Ok(()) => {
+                            if let Some(dir) = b.parent() {
+                                lumenkorn_core::scanner::remove_original_dir_if_empty(dir);
+                            }
+                        }
+                        Err(e) => log::warn!("Original {} nicht gelöscht: {e}", b.display()),
                     }
                 }
             }

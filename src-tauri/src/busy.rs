@@ -3,7 +3,7 @@
 //! bliebe z. B. „Es läuft bereits eine Reparatur“ bis zum Neustart stehen.
 
 use crate::AppState;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tauri::{AppHandle, Manager};
 
 /// Führt `f` beim Verlassen des Gültigkeitsbereichs aus (Drop), genau einmal.
@@ -45,10 +45,66 @@ pub fn claim_in(
     }))
 }
 
+/// Laufende Arbeiten, die Fotos in voller Auflösung laden (Export, Übernahme ins
+/// Original, Zusammenfügen, Entrauschen, Reparatur; ein RAW belegt dabei bis
+/// ~1,5 GB). Jede hat ihre eigene Markierung und läuft höchstens einmal; diese
+/// Zählung begrenzt sie im Speicher-Sparmodus gemeinsam auf eine.
+static FULL_RES: AtomicUsize = AtomicUsize::new(0);
+
+/// Angemeldete Arbeit in voller Auflösung; meldet sich beim Drop ab.
+pub struct FullRes(());
+
+impl Drop for FullRes {
+    fn drop(&mut self) {
+        FULL_RES.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+fn claim_full_res(low_memory: bool) -> Option<FullRes> {
+    if low_memory {
+        FULL_RES
+            .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
+            .ok()?;
+    } else {
+        FULL_RES.fetch_add(1, Ordering::SeqCst);
+    }
+    Some(FullRes(()))
+}
+
+/// Arbeit in voller Auflösung anmelden. Im Speicher-Sparmodus ein Fehler, wenn
+/// schon eine läuft.
+pub fn full_res() -> Result<FullRes, lumenkorn_core::Error> {
+    claim_full_res(lumenkorn_develop::low_memory()).ok_or_else(|| {
+        lumenkorn_core::Error::Invalid(
+            lumenkorn_develop::i18n::tr_s(
+                "Im Speicher-Sparmodus läuft immer nur eine Arbeit in voller Auflösung (Export, Entrauschen, Reparatur, Zusammenfügen) – bitte warten, bis die laufende fertig ist.",
+                "In memory saver mode only one full-resolution task runs at a time (export, denoise, repair, merge) – please wait until the current one has finished.",
+            )
+            .into(),
+        )
+    })
+}
+
+/// Läuft gerade eine Arbeit in voller Auflösung? (Hintergrundarbeit wartet dann)
+pub fn full_res_running() -> bool {
+    FULL_RES.load(Ordering::SeqCst) > 0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::Mutex;
+
+    #[test]
+    fn full_res_limit_in_memory_saver_mode() {
+        let a = claim_full_res(true).expect("erste");
+        assert!(claim_full_res(true).is_none(), "Sparmodus: nur eine");
+        let b = claim_full_res(false).expect("ohne Sparmodus mehrere");
+        assert!(full_res_running());
+        drop((a, b));
+        assert!(!full_res_running());
+        assert!(claim_full_res(true).is_some());
+    }
 
     #[test]
     fn flag_is_released_after_panic() {

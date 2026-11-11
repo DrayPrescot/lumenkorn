@@ -83,6 +83,7 @@ pub async fn repair_compute(
                 .into(),
             ));
         };
+        let _full_res = crate::busy::full_res()?;
         state.repair.cancel.store(false, Ordering::SeqCst);
         compute(
             &events,

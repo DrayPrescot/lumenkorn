@@ -4,8 +4,10 @@
 //! Beim Übernehmen wird die Datei des Fotos durch die entwickelte Fassung
 //! ersetzt. Das bisherige Original bleibt im Ordner „Original“ daneben
 //! (`scanner::original_dir_for`): als harter Link auf dieselbe Datei, wo das
-//! nicht geht als Kopie. Erst danach ersetzt ein einziges Umbenennen die Datei
-//! des Fotos, sie ist also zu keinem Zeitpunkt weg. Nur JPEG, TIFF und PNG,
+//! nicht geht als Kopie. Dann wird der Katalog umgestellt und erst danach
+//! ersetzt ein einziges Umbenennen die Datei des Fotos: Sie ist zu keinem
+//! Zeitpunkt weg, und bricht das Programm mittendrin ab, wirkt die Bearbeitung
+//! nie doppelt (sie steht dann im Schnappschuss). Nur JPEG, TIFF und PNG,
 //! jeweils ins selbe Format und in voller Auflösung; RAW und DNG nie. Die
 //! Bearbeitung kommt in einen Schnappschuss und wird zurückgesetzt, damit sie
 //! nicht doppelt wirkt. KI-Agenten haben keinen Zugang (kein MCP-Werkzeug).
@@ -104,25 +106,35 @@ struct BakeProgress {
     finished: bool,
 }
 
+/// Übernehmen, Wiederherstellen und Löschen gesicherter Originale schließen
+/// einander und den Export aus (dieselbe Markierung wie der Export: beide
+/// entwickeln in voller Auflösung). Liefen Übernehmen und Wiederherstellen
+/// gleichzeitig, könnte das eine die Sicherung löschen, während das andere die
+/// Datei ohne neue Sicherung ersetzt.
+fn claim_files(app: &AppHandle) -> Result<impl Drop + Send + 'static, Error> {
+    crate::busy::claim_in(app, |s| &s.develop.exporting).ok_or_else(|| {
+        Error::Invalid(
+            tr_s(
+                "Es läuft bereits ein Export oder eine Übernahme ins Original – bitte warten, bis er fertig ist.",
+                "An export or an apply to originals is already running – please wait until it has finished.",
+            )
+            .into(),
+        )
+    })
+}
+
 /// Übernimmt die Bearbeitung der Fotos `ids` in ihre Dateien, im Hintergrund.
 /// Fortschritt per `bake-progress`. Fotos, die nicht gehen (RAW, unbearbeitet
 /// …), werden ausgelassen.
 #[tauri::command(async)]
 pub fn bake_originals(app: AppHandle, ids: Vec<i64>) -> Result<(), Error> {
-    // Dieselbe Sperre wie der Export: beide entwickeln in voller Auflösung
-    let Some(running) = crate::busy::claim_in(&app, |s| &s.develop.exporting) else {
-        return Err(Error::Invalid(
-            tr_s(
-                "Es läuft bereits ein Export – bitte warten, bis er fertig ist.",
-                "An export is already running – please wait until it has finished.",
-            )
-            .into(),
-        ));
-    };
+    let running = claim_files(&app)?;
+    let full_res = crate::busy::full_res()?;
     std::thread::Builder::new()
         .name("lumenkorn-bake".into())
         .spawn(move || {
             let _running = running;
+            let _full_res = full_res;
             let state = app.state::<AppState>();
             let snapshot = tr_s(
                 "Vor Übernahme ins Original",
@@ -229,7 +241,7 @@ fn bake_one(state: &AppState, id: i64, snapshot: &str) -> Result<bool, String> {
     // Das erste Original bleibt gesichert; sonst wird das jetzige gesichert
     let keep_saved = saved
         .as_ref()
-        .is_some_and(|s| Path::new(&s.backup).is_file());
+        .is_some_and(|s| backup_of(state, s).is_file());
     let backup = if keep_saved {
         None
     } else {
@@ -251,31 +263,95 @@ fn bake_one(state: &AppState, id: i64, snapshot: &str) -> Result<bool, String> {
     };
     // Datei und Katalog gehören zusammen: das Beenden wartet
     let _critical = crate::exit::critical();
-    replace_keeping_backup(&photo, backup.as_deref(), |staging| {
-        output::write(&img, staging, &opts, Some(&meta)).map_err(|e| e.to_string())
-    })?;
+    // 1. Die neue Fassung in eine Zwischendatei neben dem Foto
+    let staging = lumenkorn_core::scanner::bake_staging_path(&photo);
+    if let Err(e) = output::write(&img, &staging, &opts, Some(&meta)) {
+        let _ = std::fs::remove_file(&staging);
+        return Err(e.to_string());
+    }
     drop(img);
+    let discard = |backup: Option<&Path>| {
+        let _ = std::fs::remove_file(&staging);
+        if let Some(b) = backup {
+            let _ = std::fs::remove_file(b);
+        }
+    };
+    // 2. Das bisherige Original sichern (eine vorhandene Datei nie ersetzen)
+    if let Some(b) = &backup {
+        let saved = if b.exists() {
+            Err(tr!("{} gibt es schon", "{} already exists", b.display()))
+        } else {
+            link_or_copy(&photo, b)
+        };
+        if let Err(e) = saved {
+            discard(None);
+            return Err(tr!(
+                "Original nicht gesichert: {e}",
+                "Original not saved: {e}"
+            ));
+        }
+    }
+    // 3. Katalog umstellen, bevor die Datei ersetzt wird
     let backup_str = backup.as_ref().map(|b| b.to_string_lossy().into_owned());
-    if let Err(err) = state
+    let done = state
         .catalog
         .locked()
-        .bake_done(id, backup_str.as_deref(), snapshot)
-    {
-        // Katalog nicht geändert: das Original zurücklegen, sonst wirkte die
-        // Bearbeitung auf der neuen Datei doppelt
-        if let Some(b) = &backup
-            && let Err(back) = std::fs::rename(b, &photo)
-        {
-            log::error!(
-                "{} nicht zurückgelegt: {back}; Original liegt in {}",
-                photo.display(),
-                b.display()
-            );
+        .bake_done(id, backup_str.as_deref(), snapshot);
+    let snapshot_id = match done {
+        Ok(s) => s,
+        Err(err) => {
+            discard(backup.as_deref());
+            return Err(err.to_string());
         }
-        return Err(err.to_string());
+    };
+    // 4. Ein Umbenennen ersetzt das Foto
+    if let Err(e) = std::fs::rename(&staging, &photo) {
+        let undone = state
+            .catalog
+            .locked()
+            .bake_undo(id, snapshot_id, backup.is_some());
+        if let Err(u) = undone {
+            log::error!("Übernahme von {id} nicht zurückgenommen: {u}");
+        }
+        discard(backup.as_deref());
+        return Err(e.to_string());
     }
     refresh(state, id, &photo);
     Ok(true)
+}
+
+/// Wo das gesicherte Original jetzt liegt. Steht es nicht mehr unter dem
+/// eingetragenen Pfad, weil der Ordner umbenannt oder verschoben wurde (das Foto
+/// führt der Katalog dann schon unter dem neuen Pfad), wird es im Ordner gleichen
+/// Namens neben dem Foto gesucht und der Eintrag nachgeführt.
+fn backup_of(state: &AppState, s: &SavedOriginal) -> PathBuf {
+    let stored = PathBuf::from(&s.backup);
+    if stored.is_file() {
+        return stored;
+    }
+    let (Some(dir), Some(file), Some(parent)) = (
+        stored.parent().and_then(|d| d.file_name()),
+        stored.file_name(),
+        Path::new(&s.photo).parent(),
+    ) else {
+        return stored;
+    };
+    let here = parent.join(dir);
+    let found = here.join(file);
+    if !(lumenkorn_core::scanner::is_original_dir(&here) && found.is_file()) {
+        return stored;
+    }
+    if let Err(e) = state
+        .catalog
+        .locked()
+        .set_original_path(s.image_id, &found.to_string_lossy())
+    {
+        log::warn!(
+            "Pfad des Originals von {} nicht nachgeführt: {e}",
+            s.image_id
+        );
+    }
+    found
 }
 
 /// Neue Datei im Katalog nachziehen (Maße, Metadaten, Vorschau)
@@ -303,48 +379,20 @@ fn free_name(dir: &Path, photo: &Path) -> Result<PathBuf, String> {
     }
 }
 
-/// Ersetzt `photo` durch das, was `write` in eine Zwischendatei schreibt.
-/// Vorher bekommt `backup` (sofern angegeben) das bisherige Original: als harter
-/// Link (dieselbe Datei, nichts wird kopiert), wo das nicht geht als Kopie. Dann
-/// ersetzt ein einziges Umbenennen das Foto, es ist also zu keinem Zeitpunkt weg.
-/// Scheitert ein Schritt, bleibt das Foto unverändert und die Sicherung wird
-/// wieder entfernt.
-fn replace_keeping_backup(
+/// Ersetzt `photo` durch das, was `write` in eine Zwischendatei daneben schreibt:
+/// ein einziges Umbenennen, das Foto ist also zu keinem Zeitpunkt weg. Scheitert
+/// ein Schritt, bleibt es unverändert.
+fn replace_file(
     photo: &Path,
-    backup: Option<&Path>,
     write: impl FnOnce(&Path) -> Result<(), String>,
 ) -> Result<(), String> {
-    // Der Zwischenname enthält den alten Namen und hat keine Bildendung: Der
-    // Scanner übergeht ihn, und man erkennt, wozu er gehört
-    let mut staging = photo.as_os_str().to_owned();
-    staging.push(".lumenkorn-neu.tmp");
-    let staging = PathBuf::from(staging);
-    if let Err(e) = write(&staging) {
+    let staging = lumenkorn_core::scanner::bake_staging_path(photo);
+    let res =
+        write(&staging).and_then(|()| std::fs::rename(&staging, photo).map_err(|e| e.to_string()));
+    if res.is_err() {
         let _ = std::fs::remove_file(&staging);
-        return Err(e);
     }
-    if let Some(b) = backup {
-        let saved = if b.exists() {
-            Err(tr!("{} gibt es schon", "{} already exists", b.display()))
-        } else {
-            link_or_copy(photo, b)
-        };
-        if let Err(e) = saved {
-            let _ = std::fs::remove_file(&staging);
-            return Err(tr!(
-                "Original nicht gesichert: {e}",
-                "Original not saved: {e}"
-            ));
-        }
-    }
-    if let Err(e) = std::fs::rename(&staging, photo) {
-        let _ = std::fs::remove_file(&staging);
-        if let Some(b) = backup {
-            let _ = std::fs::remove_file(b);
-        }
-        return Err(e.to_string());
-    }
-    Ok(())
+    res
 }
 
 /// `to` wird zu einer zweiten Fassung von `from`: harter Link, sonst eine
@@ -384,8 +432,10 @@ pub struct OriginalsReport {
 /// weg: Sie lässt sich aus Original und Bearbeitung jederzeit neu erzeugen.
 #[tauri::command]
 pub async fn restore_originals(app: AppHandle, ids: Vec<i64>) -> Result<OriginalsReport, Error> {
+    let running = claim_files(&app)?;
     let emitter = app.clone();
     let report = crate::blocking(app, move |state| {
+        let _running = running;
         let saved = state.catalog.locked().saved_originals(&ids)?;
         let snapshot = tr_s(
             "Vor Wiederherstellen des Originals",
@@ -423,7 +473,7 @@ pub async fn restore_originals(app: AppHandle, ids: Vec<i64>) -> Result<Original
 /// einem Umbenennen das Foto ersetzt. Die Sicherung im Ordner „Original“ wird
 /// erst gelöscht, wenn auch der Katalog umgestellt ist.
 fn restore_one(state: &AppState, s: &SavedOriginal, snapshot: &str) -> Result<(), String> {
-    let backup = Path::new(&s.backup);
+    let backup = &backup_of(state, s);
     let photo = Path::new(&s.photo);
     if !backup.is_file() {
         return Err(tr!(
@@ -433,7 +483,7 @@ fn restore_one(state: &AppState, s: &SavedOriginal, snapshot: &str) -> Result<()
         ));
     }
     let _critical = crate::exit::critical();
-    replace_keeping_backup(photo, None, |staging| link_or_copy(backup, staging))?;
+    replace_file(photo, |staging| link_or_copy(backup, staging))?;
     state
         .catalog
         .locked()
@@ -452,17 +502,16 @@ fn restore_one(state: &AppState, s: &SavedOriginal, snapshot: &str) -> Result<()
 /// Darf das gesicherte Original gelöscht werden? Nur wenn das Foto noch da ist
 /// (sonst wäre es die einzige Datei) und die Sicherung wirklich eine andere
 /// Datei ist.
-fn deletable(s: &SavedOriginal) -> Result<u64, String> {
-    let backup = Path::new(&s.backup);
+fn deletable(backup: &Path, photo: &Path) -> Result<u64, String> {
     let meta = std::fs::metadata(backup).map_err(|e| e.to_string())?;
-    if !Path::new(&s.photo).is_file() {
+    if !photo.is_file() {
         return Err(tr_s(
             "Das Foto selbst fehlt – das Original ist die einzige Datei.",
             "The photo itself is missing – the original is the only file.",
         )
         .into());
     }
-    if same_file::is_same_file(backup, &s.photo).unwrap_or(true) {
+    if same_file::is_same_file(backup, photo).unwrap_or(true) {
         return Err(tr_s(
             "Original und Foto sind dieselbe Datei.",
             "Original and photo are the same file.",
@@ -485,7 +534,10 @@ pub struct OriginalsSummary {
 pub fn originals_summary(state: State<AppState>, ids: Vec<i64>) -> Result<OriginalsSummary, Error> {
     let saved = state.catalog.locked().saved_originals(&ids)?;
     // Dateien ohne Katalogsperre prüfen
-    let sizes: Vec<u64> = saved.iter().filter_map(|s| deletable(s).ok()).collect();
+    let sizes: Vec<u64> = saved
+        .iter()
+        .filter_map(|s| deletable(&backup_of(&state, s), Path::new(&s.photo)).ok())
+        .collect();
     Ok(OriginalsSummary {
         count: sizes.len(),
         bytes: sizes.iter().sum(),
@@ -519,16 +571,18 @@ pub async fn delete_originals(
             .into(),
         ));
     }
+    let running = claim_files(&app)?;
     let emitter = app.clone();
     let report = crate::blocking(app, move |state| {
+        let _running = running;
         let saved = state.catalog.locked().saved_originals(&ids)?;
         let mut deleted = Vec::new();
         let mut bytes = 0;
         let mut failed = Vec::new();
         let mut dirs = std::collections::BTreeSet::new();
         for s in &saved {
-            let backup = Path::new(&s.backup);
-            let removed = match deletable(s) {
+            let backup = &backup_of(state, s);
+            let removed = match deletable(backup, Path::new(&s.photo)) {
                 Ok(size) => crate::cull::remove(backup, to_trash).map(|()| size),
                 // Schon weg (von außen gelöscht): nur aus dem Katalog nehmen
                 Err(_) if crate::cull::already_gone(backup) => Ok(0),
@@ -623,7 +677,7 @@ mod tests {
 
     /// Das Foto ist zu keinem Zeitpunkt weg; die Sicherung ist das alte Original
     #[test]
-    fn replace_keeps_the_original_as_backup() {
+    fn replace_keeps_the_photo_until_the_rename() {
         let tmp = tempfile::tempdir().unwrap();
         let photo = tmp.path().join("IMG_1.jpg");
         let dir = tmp.path().join("Original");
@@ -631,8 +685,10 @@ mod tests {
         std::fs::write(&photo, b"original").unwrap();
         let backup = free_name(&dir, &photo).unwrap();
         assert_eq!(backup, dir.join("IMG_1.jpg"));
-        replace_keeping_backup(&photo, Some(&backup), |s| {
+        link_or_copy(&photo, &backup).unwrap();
+        replace_file(&photo, |s| {
             assert!(photo.is_file(), "Foto noch da, während geschrieben wird");
+            assert_eq!(s.extension().unwrap(), "tmp", "Zwischendatei ist kein Foto");
             std::fs::write(s, b"neu").map_err(|e| e.to_string())
         })
         .unwrap();
@@ -644,29 +700,19 @@ mod tests {
         assert_eq!(free_name(&dir, &photo).unwrap(), dir.join("IMG_1-2.jpg"));
     }
 
-    /// Scheitert das Schreiben oder das Sichern, bleibt alles, wie es war
+    /// Scheitert das Schreiben, bleibt alles, wie es war
     #[test]
     fn failed_replace_leaves_everything_as_it_was() {
         let tmp = tempfile::tempdir().unwrap();
         let photo = tmp.path().join("IMG_1.jpg");
-        let backup = tmp.path().join("IMG_1-alt.jpg");
         std::fs::write(&photo, b"original").unwrap();
-        let err = replace_keeping_backup(&photo, Some(&backup), |s| {
+        let err = replace_file(&photo, |s| {
             std::fs::write(s, b"halb").unwrap();
             Err("kaputt".into())
         });
         assert!(err.is_err());
         assert_eq!(std::fs::read(&photo).unwrap(), b"original");
-        assert!(!backup.exists());
-        // Sicherung gibt es schon: wird nie überschrieben, Foto bleibt
-        std::fs::write(&backup, b"andere").unwrap();
-        let err = replace_keeping_backup(&photo, Some(&backup), |s| {
-            std::fs::write(s, b"neu").map_err(|e| e.to_string())
-        });
-        assert!(err.is_err());
-        assert_eq!(std::fs::read(&photo).unwrap(), b"original");
-        assert_eq!(std::fs::read(&backup).unwrap(), b"andere");
-        assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 2);
+        assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 1);
     }
 
     /// Gelöscht wird eine Sicherung nur, wenn das Foto noch da ist und sie
@@ -679,17 +725,11 @@ mod tests {
         std::fs::create_dir(backup.parent().unwrap()).unwrap();
         std::fs::write(&photo, b"neu").unwrap();
         std::fs::write(&backup, b"original").unwrap();
-        let s = |photo: &Path, backup: &Path| SavedOriginal {
-            image_id: 1,
-            photo: photo.to_string_lossy().into_owned(),
-            backup: backup.to_string_lossy().into_owned(),
-            snapshot_id: None,
-        };
-        assert_eq!(deletable(&s(&photo, &backup)), Ok(8));
+        assert_eq!(deletable(&backup, &photo), Ok(8));
         // Eingetragene Sicherung ist das Foto selbst
-        assert!(deletable(&s(&photo, &photo)).is_err());
+        assert!(deletable(&photo, &photo).is_err());
         // Foto fehlt: Das Original ist die einzige Datei
         std::fs::remove_file(&photo).unwrap();
-        assert!(deletable(&s(&photo, &backup)).is_err());
+        assert!(deletable(&backup, &photo).is_err());
     }
 }

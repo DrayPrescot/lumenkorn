@@ -255,7 +255,7 @@
   // --- Import ----------------------------------------------------------------------
 
   async function start() {
-    if (!target || !picked.length || lib.importRunning) return;
+    if (!source || !target || !picked.length || lib.importRunning || scanning) return;
     started = true;
     lib.importRunning = true;
     lib.importProgress = { done: 0, total: picked.length, bytes: 0, bytesTotal: bytes, current: "" };
@@ -263,6 +263,7 @@
       const byCamera: Record<string, number> = {};
       for (const [key] of cameras) if (seconds(shifts[key])) byCamera[key] = seconds(shifts[key]);
       await api.importStart(
+        source,
         picked.map((i) => i.id),
         target,
         event,
@@ -443,7 +444,7 @@
         {:else}
           <span class="total">{picked.length ? t("{n} ausgewählt, {size}", { n: picked.length, size: size(bytes) }) : ""}</span>
           <button type="button" class="btn quiet" onclick={onclose}>{t("Abbrechen")}</button>
-          <button type="submit" class="btn primary" disabled={!target || !picked.length || lib.importRunning}>
+          <button type="submit" class="btn primary" disabled={!target || !picked.length || lib.importRunning || scanning}>
             {t(picked.length === 1 ? "{n} Foto importieren" : "{n} Fotos importieren", { n: picked.length })}
           </button>
         {/if}

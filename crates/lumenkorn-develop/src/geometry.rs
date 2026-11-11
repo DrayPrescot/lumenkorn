@@ -390,6 +390,150 @@ pub fn crop_rect(width: usize, height: usize, c: Crop) -> (usize, usize, usize, 
     (x0, y0, w, h)
 }
 
+/// Inverse einer 3×3-Matrix (`None`, wenn singulär)
+fn inv3(m: &M3) -> Option<M3> {
+    let c =
+        |r0: usize, r1: usize, c0: usize, c1: usize| m[r0][c0] * m[r1][c1] - m[r0][c1] * m[r1][c0];
+    let det = m[0][0] * c(1, 2, 1, 2) - m[0][1] * c(1, 2, 0, 2) + m[0][2] * c(1, 2, 0, 1);
+    if det.abs() < 1e-15 || !det.is_finite() {
+        return None;
+    }
+    let adj = [
+        [c(1, 2, 1, 2), -c(0, 2, 1, 2), c(0, 1, 1, 2)],
+        [-c(1, 2, 0, 2), c(0, 2, 0, 2), -c(0, 1, 0, 2)],
+        [c(1, 2, 0, 1), -c(0, 2, 0, 1), c(0, 1, 0, 1)],
+    ];
+    Some(adj.map(|r| r.map(|v| v / det)))
+}
+
+/// Punkte zwischen dem aufrechten Original und dem fertigen Bild abbilden
+/// (Drehen, Spiegeln, Geraderichten, Perspektive, Zuschnitt), normiert auf 0…1 –
+/// wie `sourceToFrame` und `frameToCrop` in `src/lib/frame.ts`. Für Gesichter,
+/// wenn die Bearbeitung ins Original übernommen oder es wiederhergestellt wird.
+pub struct GeoMap {
+    quarters: u8,
+    flip: bool,
+    /// Gedrehter Rahmen in Pixeln
+    fw: f64,
+    fh: f64,
+    /// Ausgabe → Quelle bzw. Quelle → Ausgabe des Geraderichtens (Pixel des Rahmens)
+    warp: Option<(M3, M3)>,
+    crop: Crop,
+}
+
+impl GeoMap {
+    /// `src_w`×`src_h`: aufrechtes Original (nur das Seitenverhältnis zählt)
+    pub fn new(p: &DevelopParams, src_w: usize, src_h: usize) -> GeoMap {
+        let quarters = p.rotate % 4;
+        let (fw, fh) = if quarters % 2 == 1 {
+            (src_h, src_w)
+        } else {
+            (src_w, src_h)
+        };
+        let warp = Warp::new(fw, fh, p).and_then(|w| {
+            let m: M3 = std::array::from_fn(|i| std::array::from_fn(|j| w.m[i * 3 + j] as f64));
+            Some((m, inv3(&m)?))
+        });
+        GeoMap {
+            quarters,
+            flip: p.flip_horizontal,
+            fw: fw.max(1) as f64,
+            fh: fh.max(1) as f64,
+            warp,
+            crop: p.crop.unwrap_or(Crop {
+                x: 0.0,
+                y: 0.0,
+                w: 1.0,
+                h: 1.0,
+            }),
+        }
+    }
+
+    /// Größe des aufrechten Originals zu einem fertigen Bild `out_w`×`out_h`
+    /// (Umkehrung des Zuschnitts, auf das Seitenverhältnis genau)
+    pub fn source_size(p: &DevelopParams, out_w: usize, out_h: usize) -> (usize, usize) {
+        let c = p.crop.unwrap_or(Crop {
+            x: 0.0,
+            y: 0.0,
+            w: 1.0,
+            h: 1.0,
+        });
+        let fw = (out_w as f64 / (c.w as f64).max(1e-3)).round() as usize;
+        let fh = (out_h as f64 / (c.h as f64).max(1e-3)).round() as usize;
+        if p.rotate % 2 == 1 {
+            (fh, fw)
+        } else {
+            (fw, fh)
+        }
+    }
+
+    /// Original → fertiges Bild
+    pub fn forward(&self, sx: f64, sy: f64) -> Option<(f64, f64)> {
+        let (mut x, y) = match self.quarters {
+            1 => (1.0 - sy, sx),
+            2 => (1.0 - sx, 1.0 - sy),
+            3 => (sy, 1.0 - sx),
+            _ => (sx, sy),
+        };
+        if self.flip {
+            x = 1.0 - x;
+        }
+        let (x, y) = match &self.warp {
+            Some((_, inv)) => {
+                let (px, py) = apply(inv, x * self.fw, y * self.fh)?;
+                (px / self.fw, py / self.fh)
+            }
+            None => (x, y),
+        };
+        let c = &self.crop;
+        Some(((x - c.x as f64) / c.w as f64, (y - c.y as f64) / c.h as f64))
+    }
+
+    /// Fertiges Bild → Original
+    pub fn backward(&self, ox: f64, oy: f64) -> Option<(f64, f64)> {
+        let c = &self.crop;
+        let (x, y) = (c.x as f64 + ox * c.w as f64, c.y as f64 + oy * c.h as f64);
+        let (mut x, y) = match &self.warp {
+            Some((m, _)) => {
+                let (px, py) = apply(m, x * self.fw, y * self.fh)?;
+                (px / self.fw, py / self.fh)
+            }
+            None => (x, y),
+        };
+        if self.flip {
+            x = 1.0 - x;
+        }
+        Some(match self.quarters {
+            1 => (y, 1.0 - x),
+            2 => (1.0 - x, 1.0 - y),
+            3 => (1.0 - y, x),
+            _ => (x, y),
+        })
+    }
+
+    /// Rechteck `[x, y, w, h]` mit `f` abbilden: umschließendes Rechteck der
+    /// abgebildeten Ecken, auf das Bild beschnitten. `None`, wenn weniger als die
+    /// Hälfte im Bild bleibt (z. B. ein weggeschnittenes Gesicht).
+    pub fn rect(r: [f64; 4], f: impl Fn(f64, f64) -> Option<(f64, f64)>) -> Option<[f64; 4]> {
+        let pts = [
+            (r[0], r[1]),
+            (r[0] + r[2], r[1]),
+            (r[0], r[1] + r[3]),
+            (r[0] + r[2], r[1] + r[3]),
+        ];
+        let mut b = [f64::MAX, f64::MAX, f64::MIN, f64::MIN];
+        for (x, y) in pts {
+            let (x, y) = f(x, y)?;
+            b = [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)];
+        }
+        let full = (b[2] - b[0]) * (b[3] - b[1]);
+        let c = [b[0].max(0.0), b[1].max(0.0), b[2].min(1.0), b[3].min(1.0)];
+        let kept = (c[2] - c[0]).max(0.0) * (c[3] - c[1]).max(0.0);
+        (full.is_finite() && full > 0.0 && kept >= 0.5 * full)
+            .then(|| [c[0], c[1], c[2] - c[0], c[3] - c[1]])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -619,5 +763,63 @@ mod tests {
         );
         assert_eq!((c.width, c.height), (3, 5));
         assert_eq!(c.get(0, 0)[0], 52.0);
+    }
+
+    /// Hin und zurück ergibt denselben Punkt, und die Ecken landen dort, wo die
+    /// Pipeline sie hinlegt (gedreht, gespiegelt, zugeschnitten, gerade gerichtet)
+    #[test]
+    fn geo_map_round_trip_and_rotation() {
+        let p = DevelopParams {
+            rotate: 1,
+            ..Default::default()
+        };
+        let g = GeoMap::new(&p, 600, 400);
+        // Vierteldrehung im Uhrzeigersinn: oben links → oben rechts
+        let (x, y) = g.forward(0.0, 0.0).unwrap();
+        assert!((x - 1.0).abs() < 1e-9 && y.abs() < 1e-9, "{x} {y}");
+        let p = DevelopParams {
+            rotate: 3,
+            flip_horizontal: true,
+            straighten: 4.0,
+            perspective_vertical: 20.0,
+            crop: Some(Crop {
+                x: 0.1,
+                y: 0.2,
+                w: 0.6,
+                h: 0.5,
+            }),
+            ..Default::default()
+        };
+        let g = GeoMap::new(&p, 600, 400);
+        for (sx, sy) in [(0.5, 0.5), (0.3, 0.6), (0.62, 0.41)] {
+            let (ox, oy) = g.forward(sx, sy).unwrap();
+            let (bx, by) = g.backward(ox, oy).unwrap();
+            assert!(
+                (bx - sx).abs() < 1e-6 && (by - sy).abs() < 1e-6,
+                "{sx},{sy} → {bx},{by}"
+            );
+        }
+        // Größe des Originals aus der Ausgabe (Zuschnitt 0,6 × 0,5 eines gedrehten 400×600-Rahmens)
+        assert_eq!(GeoMap::source_size(&p, 240, 300), (600, 400));
+        // Weggeschnittenes Rechteck fällt weg, ein Rechteck in der Mitte bleibt
+        let none = GeoMap::new(
+            &DevelopParams {
+                crop: Some(Crop {
+                    x: 0.5,
+                    y: 0.0,
+                    w: 0.5,
+                    h: 1.0,
+                }),
+                ..Default::default()
+            },
+            600,
+            400,
+        );
+        assert!(GeoMap::rect([0.0, 0.4, 0.2, 0.2], |x, y| none.forward(x, y)).is_none());
+        let r = GeoMap::rect([0.7, 0.4, 0.1, 0.2], |x, y| none.forward(x, y)).unwrap();
+        assert!(
+            (r[0] - 0.4).abs() < 1e-9 && (r[2] - 0.2).abs() < 1e-9,
+            "{r:?}"
+        );
     }
 }

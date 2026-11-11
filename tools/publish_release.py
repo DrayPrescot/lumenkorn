@@ -30,7 +30,7 @@ def call(method, url, data=None, ctype="application/json"):
         print(f"HTTP {e.code} bei {method} {url.split('?')[0]}: {e.read().decode()[:400]}")
         raise
 
-# Release-Text wie in release.yml, dazu 1.0.1 (nie einzeln veröffentlicht)
+# Release-Text: der Abschnitt der Version aus dem CHANGELOG, dazu 1.0.1 (nie einzeln veröffentlicht)
 changelog = (repo_dir / "CHANGELOG.md").read_text(encoding="utf8").replace("\r\n", "\n")
 def section(v):
     start = changelog.index(f"## [{v}]")

@@ -6,7 +6,36 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- “Remove from library” now asks first and says that edits, snapshots, keywords, ratings and
+  people of the folder are lost.
+- Import: choosing another source while the card was still being read could import (and with
+  “Delete afterwards” delete) other photos than the ones shown. The import now checks that the
+  selection belongs to the source on screen.
+- Nextcloud: uploading again no longer removes the password and expiry date of an existing link.
+  “Remove files that are no longer in the project” only removes files Lumenkorn uploaded to that
+  folder, and nothing while a folder of the project is not reachable. Uploads can be canceled.
+- Apply edits to original: applying, restoring and deleting originals no longer run at the same
+  time. Named people stay assigned when the edit crops or rotates the photo. Restoring still
+  works after the folder was renamed or moved. If the app stops in the middle, the edit is never
+  applied twice. Deleting rejected photos also deletes their saved originals; removing a folder
+  from the library makes them visible again when the folder is added back.
+- Albums and slideshows that could not be saved are no longer lost when another one is opened,
+  and closing the window asks first if anything could not be saved. A saved album or slideshow
+  that cannot be read is no longer replaced without asking.
+- Leaving Develop while hovering over a preset no longer saves the preset preview.
+- AI agents (MCP): before they change develop settings, the previous ones are kept as a snapshot.
+- Setting places no longer reports success when saving failed, and the metadata editor no longer
+  closes while typing when the photo list reloads.
+- AI analysis and face recognition now start after downloading the models.
+- In memory saver mode only one full-resolution task (export, denoise, repair, merge, apply to
+  original) runs at a time.
+- Smaller fixes: snapshot errors are reported, unreadable edits are kept in a snapshot instead of
+  being overwritten, slideshow videos and album PDFs no longer leave broken files behind, one
+  photo the AI cannot read no longer blocks the analysis of the others.
+
 ### Changed
+- The release workflow on GitHub only builds installers, without signing key and write access.
 - RAW files load about twice as fast (a 33 MP Sony ARW in 0.27 instead of 0.54 seconds) when you
   open them in Develop, export them or create previews of edited photos. The result is identical.
 - The first content search after a pause, the people list during face recognition, place

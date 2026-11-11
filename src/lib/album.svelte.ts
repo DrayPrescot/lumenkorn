@@ -131,7 +131,11 @@ class AlbumStore {
   async open(scope: Scope, title: string) {
     this.#listen();
     const token = ++this.#openToken;
-    await this.flush();
+    // Ein gescheitertes Speichern nicht durch das Laden eines anderen Stands verlieren
+    if (!(await this.flush())) {
+      lib.notify(t("Das zuletzt geöffnete Album ließ sich nicht speichern. Damit die Änderungen nicht verloren gehen, öffnet sich kein anderes, bis das Speichern gelingt (z. B. nach dem Freigeben von Speicherplatz)."), "error");
+      return;
+    }
     let saved: unknown;
     try {
       saved = await loadDoc("album", scope);
@@ -148,11 +152,20 @@ class AlbumStore {
       this.selection = null;
       lib.view = "album";
       this.#refreshPlaces();
-    } else this.dialog = { scope, title };
+    } else if (
+      saved === null ||
+      // Gibt es eins, das sich nicht lesen lässt: nicht ohne Rückfrage ersetzen
+      confirm(t("Das gespeicherte Album dieses Bereichs lässt sich nicht lesen (beschädigt oder von einer neueren Version). Ein neues Album ersetzt es. Trotzdem ein neues erstellen?"))
+    )
+      this.dialog = { scope, title };
   }
 
   async create(settings: AlbumSettings, scope: Scope, title: string): Promise<boolean> {
     this.#listen();
+    if (!(await this.flush())) {
+      lib.notify(t("Das zuletzt geöffnete Album ließ sich nicht speichern. Damit die Änderungen nicht verloren gehen, öffnet sich kein anderes, bis das Speichern gelingt (z. B. nach dem Freigeben von Speicherplatz)."), "error");
+      return false;
+    }
     storeSettings(settings);
     this.progress = { done: 0, total: 0 };
     try {
@@ -215,7 +228,10 @@ class AlbumStore {
   #saveNow() {
     clearTimeout(this.#saveTimer);
     this.#saveTimer = undefined;
-    if (!this.state) return;
+    if (!this.state) {
+      this.#saveFailed = false;
+      return;
+    }
     const scope = this.state.scope;
     saveDoc("album", scope, $state.snapshot(this.state)).then(
       () => {
@@ -232,10 +248,13 @@ class AlbumStore {
   #saveFailed = false;
   #openToken = 0;
 
-  /** Ausstehendes speichern und warten, bis es auf der Platte liegt */
-  async flush() {
-    if (this.#saveTimer !== undefined) this.#saveNow();
+  /** Ausstehendes speichern und warten, bis es auf der Platte liegt. `false`, wenn
+   *  das Speichern gescheitert ist: Der Stand bleibt im Speicher und wird beim
+   *  nächsten Anlass erneut geschrieben. */
+  async flush(): Promise<boolean> {
+    if (this.#saveTimer !== undefined || this.#saveFailed) this.#saveNow();
     await docsWritten();
+    return !this.#saveFailed;
   }
 
   #edit(f: (a: AlbumState) => void) {
@@ -307,6 +326,11 @@ class AlbumStore {
 
   /** Neuer Text auf der Seite (unter den Fotos) */
   addText(page: number) {
+    // Mehr verwirft die Prüfung beim Laden (`validAlbum`)
+    if ((this.state?.pages[page]?.texts?.length ?? 0) >= 50) {
+      lib.notify(t("Eine Seite kann höchstens 50 Texte haben."), "error");
+      return;
+    }
     // Vorgabe aus dem Schriftstil des Albums
     const style = textStyleOf(this.state?.settings ?? {});
     const text: AlbumText = {

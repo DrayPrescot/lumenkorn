@@ -100,6 +100,7 @@ pub fn merge_start(
             .into(),
         ));
     };
+    let full_res = crate::busy::full_res()?;
     let state = app.state::<AppState>();
     state.merge.cancel.store(false, Ordering::SeqCst);
     let options = options.unwrap_or_default();
@@ -129,6 +130,7 @@ pub fn merge_start(
             });
             let cancelled = state.merge.cancel.load(Ordering::SeqCst);
             drop(running);
+            drop(full_res);
             // Große Zwischenpuffer dem Betriebssystem zurückgeben
             crate::memory::trim_heap();
             // Abbrechen ist kein Fehler: „Abgebrochen“/„Canceled“ melden (die Oberfläche schweigt dann)

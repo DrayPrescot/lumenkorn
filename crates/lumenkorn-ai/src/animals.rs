@@ -795,6 +795,12 @@ impl BioTaxonomy {
         }
         let n = r.u32()? as usize;
         let dim = r.u32()? as usize;
+        // Größen aus der Datei: Jeder Eintrag braucht mindestens 9 Bytes Kopf, und
+        // Embeddings haben eine sinnvolle Länge (sonst teilt `chunks_exact(0)` durch 0
+        // bzw. die Reservierung beendet das Programm)
+        if !(1..=4096).contains(&dim) || n > b.len() / 9 {
+            return Err(bad_taxa("unplausible Größen"));
+        }
         let mut nodes: Vec<BioNode> = Vec::with_capacity(n);
         for k in 0..n {
             let h = r.take(9)?;

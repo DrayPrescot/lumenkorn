@@ -440,17 +440,29 @@ Find photos with search_photos (text, folder, project, person, rating), look at 
 view_photo, then rate, flag, tag, develop (set_develop_settings, auto_tone, apply_preset, \
 add_mask) or export them. Photo ids come from search_photos. Develop values use the same \
 ranges as the app's sliders (most −100…100, exposure −5…5 EV). Changes show up in the \
-app immediately. Nothing here deletes files.";
+app immediately. Before develop settings change, the previous ones are kept as a snapshot \
+that the user can restore in the app. Nothing here deletes files.";
 
 // --- Werkzeuge ------------------------------------------------------------------
 
 fn tool(name: &str, title: &str, description: &str, schema: Value, read_only: bool) -> Value {
+    // Ersetzt vorhandene Bearbeitungen bzw. (Export „overwrite“) Dateien. Bearbeitungen
+    // kommen vorher in einen Schnappschuss, sind aber ohne Zutun des Nutzers weg.
+    let destructive = matches!(
+        name,
+        "set_develop_settings"
+            | "auto_tone"
+            | "reset_photos"
+            | "apply_preset"
+            | "copy_settings"
+            | "export_photos"
+    );
     json!({
         "name": name,
         "title": title,
         "description": description,
         "inputSchema": schema,
-        "annotations": { "readOnlyHint": read_only, "destructiveHint": false, "openWorldHint": false },
+        "annotations": { "readOnlyHint": read_only, "destructiveHint": destructive, "openWorldHint": false },
     })
 }
 
@@ -509,6 +521,20 @@ fn ids(a: &Value, k: &str) -> Result<Vec<i64>, String> {
 }
 fn e(err: Error) -> String {
     err.to_string()
+}
+
+/// Bevor ein Werkzeug Bearbeitungen ändert: Schnappschuss der jetzigen, damit sie
+/// sich im Entwickeln wiederherstellen lassen (Rückgängig gibt es nur für das
+/// geöffnete Foto).
+fn keep_edits(app: &AppHandle, ids: &[i64]) -> Result<(), String> {
+    let name =
+        lumenkorn_develop::i18n::tr_s("Vor Änderung durch KI-Agent", "Before change by AI agent");
+    app.state::<AppState>()
+        .catalog
+        .locked()
+        .snapshot_unsaved(ids, name)
+        .map(|_| ())
+        .map_err(e)
 }
 
 /// Oberfläche über Änderungen informieren
@@ -874,6 +900,7 @@ async fn set_develop_settings(app: &AppHandle, a: &Value) -> ToolResult {
         .filter(|v| v.is_object())
         .ok_or("`settings` (object) is required")?;
     let known = serde_json::to_value(DevelopParams::default()).unwrap_or_default();
+    keep_edits(app, &ids)?;
     let unknown: Vec<&String> = patch
         .as_object()
         .unwrap()
@@ -905,6 +932,7 @@ fn auto_tone_tool() -> Value {
 async fn auto_tone(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let ids = ids(a, "ids")?;
+    keep_edits(app, &ids)?;
     let mut out = Vec::new();
     for id in &ids {
         let mut p = crate::develop::develop_params(state.clone(), *id).map_err(e)?;
@@ -932,6 +960,7 @@ fn reset_photos_tool() -> Value {
 async fn reset_photos(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let ids = ids(a, "ids")?;
+    keep_edits(app, &ids)?;
     crate::develop::develop_save(
         app.clone(),
         state.clone(),
@@ -979,6 +1008,7 @@ async fn apply_preset(app: &AppHandle, a: &Value) -> ToolResult {
                     .join(", ")
             )
         })?;
+    keep_edits(app, &ids)?;
     let mut groups = p.groups;
     // `basic` würde alle feinen Gruppen einschließen
     groups.basic = false;
@@ -1029,6 +1059,7 @@ async fn copy_settings(app: &AppHandle, a: &Value) -> ToolResult {
     g.details = on("details");
     g.masks = on("masks");
     g.geometry = on("geometry");
+    keep_edits(app, &to)?;
     crate::develop::develop_transfer(state.clone(), to.clone(), src, g).map_err(e)?;
     changed(app, &to);
     text(json!({ "copiedTo": to.len() }))
@@ -1344,6 +1375,7 @@ async fn add_mask(app: &AppHandle, a: &Value) -> ToolResult {
     let adjust: LocalAdjust =
         serde_json::from_value(arg(a, "adjust").cloned().unwrap_or(json!({})))
             .map_err(|x| format!("adjust: {x}"))?;
+    keep_edits(app, &[id])?;
     let mut p = crate::develop::develop_params(state.clone(), id).map_err(e)?;
     let name = arg(a, "name")
         .and_then(Value::as_str)

@@ -22,12 +22,19 @@ const MAX_SHIFT_S: i64 = 48 * 3600;
 #[derive(Default)]
 pub struct ImportState {
     session: Mutex<Option<Arc<Session>>>,
+    /// Nummer des zuletzt begonnenen Einlesens: Nur dessen Ergebnis wird die
+    /// Sitzung. Sonst überschriebe ein älteres, langsameres Einlesen (Karte beim
+    /// Öffnen, dann gleich eine andere Quelle gewählt) die angezeigte Auswahl, und
+    /// der Import kopierte – und löschte mit „Danach löschen“ – andere Dateien.
+    scans: std::sync::atomic::AtomicU64,
     pub(crate) running: AtomicBool,
     cancel: AtomicBool,
 }
 
 /// Zuletzt eingelesene Quelle
 struct Session {
+    /// Eingelesene Quelle, wie die Oberfläche sie übergeben hat
+    source: String,
     cands: Vec<Candidate>,
     counters: Vec<String>,
     previews: Mutex<HashMap<usize, Arc<Vec<u8>>>>,
@@ -149,9 +156,10 @@ struct ScanProgress {
 pub async fn import_scan(app: AppHandle, source: String) -> Result<Vec<ImportItem>, Error> {
     let events = app.clone();
     blocking(app, move |state| {
-        let source = PathBuf::from(source);
+        let scan = state.import.scans.fetch_add(1, Ordering::SeqCst) + 1;
+        let path = PathBuf::from(&source);
         let last = std::sync::atomic::AtomicUsize::new(0);
-        let cands = import::scan(&source, &state.catalog, &|n| {
+        let cands = import::scan(&path, &state.catalog, &|n| {
             // Höchstens alle 25 Aufnahmen melden
             if n / 25 != last.swap(n, Ordering::Relaxed) / 25 {
                 let _ = events.emit("import-scan-progress", ScanProgress { found: n });
@@ -163,7 +171,15 @@ pub async fn import_scan(app: AppHandle, source: String) -> Result<Vec<ImportIte
             .zip(&counters)
             .map(|(c, n)| c.item(n))
             .collect();
-        *state.import.session.locked() = Some(Arc::new(Session {
+        let mut session = state.import.session.locked();
+        // Inzwischen wurde eine andere Quelle gewählt: Deren Einlesen gilt
+        if state.import.scans.load(Ordering::SeqCst) != scan {
+            return Err(Error::Invalid(
+                lumenkorn_develop::i18n::tr_s("Abgebrochen", "Canceled").into(),
+            ));
+        }
+        *session = Some(Arc::new(Session {
+            source,
             cands,
             counters,
             previews: Mutex::default(),
@@ -264,6 +280,7 @@ pub async fn import_estimate_shift(
 #[tauri::command]
 pub async fn import_start(
     app: AppHandle,
+    source: String,
     ids: Vec<usize>,
     target: String,
     event: String,
@@ -283,6 +300,16 @@ pub async fn import_start(
     }
     let state = app.state::<AppState>();
     let s = session(&state)?;
+    // Die Auswahl gehört zu der Quelle, die die Oberfläche zeigt
+    if s.source != source {
+        return Err(Error::Invalid(
+            lumenkorn_develop::i18n::tr_s(
+                "Die Quelle wurde inzwischen neu eingelesen – bitte die Auswahl prüfen und noch einmal importieren.",
+                "The source was read again in the meantime – please check the selection and import again.",
+            )
+            .into(),
+        ));
+    }
     let target = PathBuf::from(target.trim());
     if target.as_os_str().is_empty() || !target.is_absolute() {
         return Err(Error::Invalid(

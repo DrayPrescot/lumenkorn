@@ -270,7 +270,7 @@
     <aside class="side">
       {#if sel && selText}
         <h4>{t("Text auf Seite {n}", { n: sel.page + 1 })}</h4>
-        <textarea rows="4" value={selText.text} oninput={(e) => setText({ text: e.currentTarget.value })} onkeydown={(e) => e.stopPropagation()}></textarea>
+        <textarea rows="4" maxlength="5000" value={selText.text} oninput={(e) => setText({ text: e.currentTarget.value })} onkeydown={(e) => e.stopPropagation()}></textarea>
         <label class="field">
           <span>{t("Lage")}</span>
           <select value={selText.pos} onchange={(e) => setText({ pos: e.currentTarget.value as AlbumText["pos"] })}>
@@ -369,6 +369,7 @@
                 <label class="pin">
                   <input
                     type="text"
+                    maxlength="200"
                     value={pin.name}
                     placeholder={t("ohne Namen")}
                     onchange={(e) => album.renamePin(sel.page, pin.key, e.currentTarget.value.trim())}

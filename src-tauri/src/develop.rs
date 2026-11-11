@@ -415,6 +415,9 @@ pub struct DevelopInfo {
     /// Farbtemperatur des Kamera-Weißabgleichs (nur RAWs): Dann zeigt der
     /// Weißabgleich Kelvin statt einer relativen Temperatur
     as_shot_kelvin: Option<f32>,
+    /// Die gespeicherte Bearbeitung ließ sich nicht lesen; sie liegt unverändert
+    /// in einem Schnappschuss, angezeigt werden Standardwerte
+    unreadable: bool,
 }
 
 /// Lädt das Bild in den Bearbeitungs-Cache und liefert die aktuelle Bearbeitung.
@@ -425,6 +428,8 @@ pub async fn develop_load(app: AppHandle, id: i64) -> Result<DevelopInfo, Error>
         state.develop.recheck_file(id);
         let src = load_proxy(state, id, PROXY_EDGE)?;
         let cat = state.catalog.locked();
+        let unreadable =
+            cat.keep_unreadable(id, tr_s("Nicht lesbare Bearbeitung", "Unreadable edit"))?;
         let mut params = cat.develop_params(id)?;
         // Ältere Bearbeitung mit relativer Temperatur: als Kelvin zeigen
         // (gleiches Verhältnis Rot zu Blau); gespeichert wird erst bei einer Änderung
@@ -445,6 +450,7 @@ pub async fn develop_load(app: AppHandle, id: i64) -> Result<DevelopInfo, Error>
             snapshots: snapshots(&cat, id)?,
             lens: src.lens.as_ref().map(|l| l.summary()),
             as_shot_kelvin: src.as_shot_kelvin.map(|k| (k / 10.0).round() * 10.0),
+            unreadable,
         })
     })
     .await
@@ -993,6 +999,7 @@ pub(crate) fn start_export(
             .into(),
         ));
     };
+    let full_res = crate::busy::full_res()?;
     // Anzeige des Ziels: gewählter Ordner bzw. die tatsächlich benutzten
     let chosen = dir.clone();
     let shown = move |used: &std::collections::BTreeSet<PathBuf>| match (&chosen, used.len()) {
@@ -1005,6 +1012,7 @@ pub(crate) fn start_export(
         .name("lumenkorn-export".into())
         .spawn(move || {
             let _running = running;
+            let _full_res = full_res;
             let state = app.state::<AppState>();
             // Ohne gewählten Ordner: Unterordner aus den Einstellungen
             let sub = crate::settings::read(&state.data_dir).export_subfolder;

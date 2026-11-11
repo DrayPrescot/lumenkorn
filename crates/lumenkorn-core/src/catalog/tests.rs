@@ -1035,6 +1035,114 @@ mod original_tests {
             .unwrap()
     }
 
+    /// Vor Änderungen durch KI-Agenten: ein Schnappschuss je Stand, nicht je Aufruf;
+    /// unlesbare Bearbeitungen bleiben unverändert erhalten
+    #[test]
+    fn snapshots_before_changes_and_of_unreadable_edits() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let ids = tests_support::insert_dummy_images(&mut cat, 2);
+        edited(&mut cat, ids[0], 1.0);
+        assert_eq!(
+            cat.snapshot_unsaved(&ids, "vor KI").unwrap(),
+            1,
+            "nur das bearbeitete"
+        );
+        assert_eq!(
+            cat.snapshot_unsaved(&ids, "vor KI").unwrap(),
+            0,
+            "Stand schon gesichert"
+        );
+        edited(&mut cat, ids[0], 2.0);
+        assert_eq!(
+            cat.snapshot_unsaved(&ids, "vor KI").unwrap(),
+            1,
+            "neuer Stand"
+        );
+
+        assert!(!cat.keep_unreadable(ids[0], "x").unwrap());
+        let broken = r#"{"masks":[{"shapes":[{"type":"neueForm"}]}]}"#;
+        cat.conn
+            .execute(
+                "UPDATE edits SET params = ?2 WHERE image_id = ?1 AND is_current = 1",
+                rusqlite::params![ids[0], broken],
+            )
+            .unwrap();
+        assert!(cat.keep_unreadable(ids[0], "unlesbar").unwrap());
+        assert!(cat.keep_unreadable(ids[0], "unlesbar").unwrap());
+        let kept: Vec<String> = cat
+            .conn
+            .prepare("SELECT params FROM edits WHERE image_id = ?1 AND name = 'unlesbar'")
+            .unwrap()
+            .query_map([ids[0]], |r| r.get(0))
+            .unwrap()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap();
+        assert_eq!(kept, vec![broken.to_string()], "einmal, unverändert");
+    }
+
+    /// Gesichter ziehen beim Übernehmen mit der Geometrie um (sonst ginge die
+    /// bestätigte Zuordnung beim erneuten Erkennen verloren) und beim
+    /// Wiederherstellen bzw. Zurücknehmen wieder zurück.
+    #[test]
+    fn bake_moves_faces_with_the_geometry() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let id = tests_support::insert_dummy_images(&mut cat, 1)[0];
+        cat.conn
+            .execute(
+                "UPDATE images SET width = 600, height = 400 WHERE id = ?1",
+                [id],
+            )
+            .unwrap();
+        cat.conn
+            .execute(
+                "INSERT INTO faces (image_id, x, y, w, h, score, embedding) VALUES (?1, 0.6, 0.4, 0.1, 0.2, 1, x'00')",
+                [id],
+            )
+            .unwrap();
+        let face = |cat: &Catalog| -> [f64; 4] {
+            cat.conn
+                .query_row(
+                    "SELECT x, y, w, h FROM faces WHERE image_id = ?1",
+                    [id],
+                    |r| Ok([r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?]),
+                )
+                .unwrap()
+        };
+        let near = |a: [f64; 4], b: [f64; 4]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-6);
+        // Rechte Hälfte zugeschnitten: x 0,6 → 0,2 bei doppelter Breite
+        let p = DevelopParams {
+            crop: Some(lumenkorn_develop::Crop {
+                x: 0.5,
+                y: 0.0,
+                w: 0.5,
+                h: 1.0,
+            }),
+            ..Default::default()
+        };
+        cat.save_develop(&[id], &p).unwrap();
+        let snap = cat
+            .bake_done(id, Some("/b/Original/bild0.jpg"), "v")
+            .unwrap();
+        assert!(near(face(&cat), [0.2, 0.4, 0.2, 0.2]), "{:?}", face(&cat));
+        // Datei ließ sich nicht ersetzen: alles zurück
+        cat.bake_undo(id, snap, true).unwrap();
+        assert!(near(face(&cat), [0.6, 0.4, 0.1, 0.2]), "{:?}", face(&cat));
+        assert_eq!(cat.develop_params(id).unwrap(), p.sanitized());
+        assert!(cat.saved_originals(&[id]).unwrap().is_empty());
+        assert!(cat.edits(id).unwrap().iter().all(|e| e.is_current));
+        // Übernommen, die Datei hat jetzt die Maße des Zuschnitts; wiederherstellen
+        cat.bake_done(id, Some("/b/Original/bild0.jpg"), "v")
+            .unwrap();
+        cat.conn
+            .execute(
+                "UPDATE images SET width = 300, height = 400 WHERE id = ?1",
+                [id],
+            )
+            .unwrap();
+        cat.restore_done(id, "w").unwrap();
+        assert!(near(face(&cat), [0.6, 0.4, 0.1, 0.2]), "{:?}", face(&cat));
+    }
+
     /// Übernahme: Bearbeitung in den Schnappschuss, zurückgesetzt, Original
     /// eingetragen. Wiederherstellen: alles wie vorher.
     #[test]

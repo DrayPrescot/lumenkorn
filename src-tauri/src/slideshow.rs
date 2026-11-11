@@ -82,13 +82,27 @@ pub async fn slideshow_video_open(path: String) -> Result<(), Error> {
             .into(),
         ));
     }
-    let file = File::create(&p)?;
+    // Erst unter einem Zwischennamen schreiben: Ein Abbruch (oder Absturz) ließe
+    // sonst ein unbrauchbares Video unter dem Zielnamen zurück und hätte ein
+    // vorhandenes schon überschrieben
+    let part = part_path(&p);
+    let file = File::create(&part)?;
     // Ein abgebrochenes früheres Video bleibt nicht halb geschrieben liegen
     if let Some((old, f)) = VIDEO.locked().replace((p, file)) {
         drop(f);
-        let _ = std::fs::remove_file(old);
+        let old = part_path(&old);
+        if old != part {
+            let _ = std::fs::remove_file(old);
+        }
     }
     Ok(())
+}
+
+/// Zwischenname des Videos `p` während des Schreibens
+fn part_path(p: &std::path::Path) -> PathBuf {
+    let mut s = p.as_os_str().to_owned();
+    s.push(".part");
+    PathBuf::from(s)
 }
 
 /// Ein Stück der MP4-Daten an seine Position schreiben. Körper: die Bytes,
@@ -119,11 +133,18 @@ pub async fn slideshow_video_close(keep: bool) -> Result<(), Error> {
     let Some((path, file)) = VIDEO.locked().take() else {
         return Ok(());
     };
+    let part = part_path(&path);
     if keep {
-        file.sync_all()?;
+        let done = file.sync_all();
+        drop(file);
+        // Erst jetzt ersetzt das fertige Video ein vorhandenes gleichen Namens
+        if let Err(e) = done.and_then(|()| std::fs::rename(&part, &path)) {
+            let _ = std::fs::remove_file(&part);
+            return Err(e.into());
+        }
     } else {
         drop(file);
-        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(part);
     }
     Ok(())
 }

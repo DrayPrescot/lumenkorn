@@ -280,6 +280,7 @@ pub fn run() {
             nextcloud::nc_shared_projects,
             nextcloud::nc_project_info,
             nextcloud::nc_upload_project,
+            nextcloud::nc_upload_cancel,
             style::style_reset,
             commands::app_info,
             commands::open_url,

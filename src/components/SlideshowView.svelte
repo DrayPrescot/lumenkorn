@@ -301,6 +301,7 @@
           <span>{t("Text")}</span>
           <textarea
             rows="2"
+            maxlength="1000"
             value={selSlide.caption ?? ""}
             placeholder={t("ohne Text")}
             oninput={(e) => slideshow.setCaption(sel, e.currentTarget.value)}
@@ -365,7 +366,7 @@
         {/if}
         <label class="field">
           <span>{t("Titel")}</span>
-          <input type="text" value={a.title} placeholder={t("ohne Titel")} oninput={(e) => slideshow.setTitle(e.currentTarget.value)} onkeydown={(e) => e.stopPropagation()} />
+          <input type="text" maxlength="500" value={a.title} placeholder={t("ohne Titel")} oninput={(e) => slideshow.setTitle(e.currentTarget.value)} onkeydown={(e) => e.stopPropagation()} />
         </label>
         {#if a.title.trim() && cover !== undefined}
           <div class="cover">

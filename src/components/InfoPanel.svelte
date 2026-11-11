@@ -14,9 +14,12 @@
   // --- Metadaten bearbeiten ---------------------------------------------------
   let editing = $state(false);
   const metaIds = $derived(lib.targets());
-  // Anderes Foto oder andere Auswahl: Bearbeiten beenden
+  // Anderes Foto oder andere Auswahl: Bearbeiten beenden. Verglichen wird der
+  // Text der IDs: Ein Neuladen der Liste (Scan, Import) liefert ein neues Array
+  // mit denselben Fotos und darf die Eingabe nicht verwerfen.
+  const metaKey = $derived(metaIds.join(","));
   $effect(() => {
-    void metaIds.join(",");
+    void metaKey;
     editing = false;
   });
 

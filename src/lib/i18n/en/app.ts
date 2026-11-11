@@ -203,4 +203,5 @@ export default {
   "Verbergen": "Hide",
   "Zeigen": "Show",
   "Kopieren": "Copy",
+  "Nicht alle Änderungen ließen sich speichern (Bearbeitung, Album oder Diashow). Trotzdem schließen? Sie gehen dann verloren.": "Not all changes could be saved (edit, album or slideshow). Close anyway? They will be lost.",
 } satisfies Record<string, string>;

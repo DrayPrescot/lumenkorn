@@ -806,6 +806,8 @@ export interface DevelopInfo {
   lens: LensSummary | null;
   /** Farbtemperatur des Kamera-Weißabgleichs (RAWs); null = nur relativer Weißabgleich */
   asShotKelvin: number | null;
+  /** Die gespeicherte Bearbeitung ließ sich nicht lesen (liegt unverändert in einem Schnappschuss) */
+  unreadable?: boolean;
 }
 
 /** Vorschlag des automatischen Weißabgleichs (`kelvin` 0: relativ) */
@@ -1088,8 +1090,9 @@ export const api = {
     return new Blob([buf], { type: "image/jpeg" });
   },
   /** `shifts`: Abweichung der Uhr je Kamera (`""` ohne Kamera) in Sekunden */
-  importStart: (ids: number[], target: string, event: string, deleteAfter: boolean, shifts: Record<string, number>) =>
-    call<void>("import_start", { ids, target, event, deleteAfter, shifts }),
+  /** `source`: die eingelesene Quelle, deren Auswahl `ids` sind (das Backend prüft sie) */
+  importStart: (source: string, ids: number[], target: string, event: string, deleteAfter: boolean, shifts: Record<string, number>) =>
+    call<void>("import_start", { source, ids, target, event, deleteAfter, shifts }),
   importEstimateShift: (camera: string | null) => call<ShiftEstimate | null>("import_estimate_shift", { camera }),
   importCancel: () => call<void>("import_cancel"),
   importClose: () => call<void>("import_close"),
@@ -1211,6 +1214,8 @@ export const api = {
   ncProjectInfo: (projectId: number) => call<NcProjectInfo>("nc_project_info", { projectId }),
   /** Läuft im Hintergrund; Fortschritt per `nextcloud-progress` */
   ncUploadProject: (projectId: number, options: NcUploadOptions) => call<void>("nc_upload_project", { projectId, options }),
+  /** Laufendes Hochladen vor der nächsten Datei beenden */
+  ncUploadCancel: () => call<void>("nc_upload_cancel"),
   mcpSetEnabled: (enabled: boolean) => call<McpStatus>("mcp_set_enabled", { enabled }),
   mcpNewToken: () => call<McpStatus>("mcp_new_token"),
   aiDismissNotice: () => call<void>("ai_dismiss_notice"),

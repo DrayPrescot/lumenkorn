@@ -451,9 +451,18 @@ fn run_export(
     let mut writer = PdfWriter::new(&part)?;
     match write_pages(app, doc, dir, failed, &progress, &mut writer) {
         Ok(true) => {
-            writer.finish()?;
-            // Rename ersetzt auf Windows eine vorhandene Datei
-            std::fs::rename(&part, pdf)?;
+            // Rename ersetzt auf Windows eine vorhandene Datei. Scheitert es (das
+            // alte PDF ist in einem anderen Programm geöffnet), nicht Hunderte MB
+            // unter dem Zwischennamen liegen lassen
+            let done = writer.finish().and_then(|()| std::fs::rename(&part, pdf));
+            if let Err(e) = done {
+                let _ = std::fs::remove_file(&part);
+                return Err(Error::Invalid(tr!(
+                    "PDF nicht gespeichert ({e}). Ist {} noch in einem anderen Programm geöffnet?",
+                    "PDF not saved ({e}). Is {} still open in another program?",
+                    pdf.display()
+                )));
+            }
             Ok(true)
         }
         other => {
