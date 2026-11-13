@@ -462,7 +462,7 @@ mod tests {
             ..Default::default()
         };
         let wb = crate::pipeline::global_white_balance(&p, Some(5500.0));
-        let c = [1.35 * wb[0], 1.1 * wb[1], 0.7 * wb[2]];
+        let c = crate::wb::apply_wb(&wb, [1.35, 1.1, 0.7]);
         let spread =
             c.iter().copied().fold(f32::MIN, f32::max) / c.iter().copied().fold(f32::MAX, f32::min);
         assert!(spread < 1.04, "nicht neutral: {c:?}");

@@ -560,16 +560,33 @@ fn max_radius(cx: f32, cy: f32, w: f32, h: f32) -> f32 {
 }
 
 /// Bilinear, Koordinaten am Rand begrenzt.
+/// Kanal `c` an (x, y) bikubisch abtasten (Catmull-Rom wie `geometry::bicubic`,
+/// je Kanal: Farbsäume werden je Kanal an eigener Stelle abgetastet). Anders als
+/// dort ohne Begrenzung auf die Nachbarn: Die Korrektur muss linear bleiben,
+/// denn die entrauschte Fassung wird erst nach ihr eingemischt
+/// (`pipeline::prepared_image`). Überschwinger auf linearen Werten fängt die
+/// Tonwertabbildung ab, wie in darktable.
 fn sample(img: &ImageF32, c: usize, x: f32, y: f32) -> f32 {
-    let x = x.clamp(0.0, (img.width - 1) as f32);
-    let y = y.clamp(0.0, (img.height - 1) as f32);
-    let (x0, y0) = (x.floor() as usize, y.floor() as usize);
-    let (x1, y1) = ((x0 + 1).min(img.width - 1), (y0 + 1).min(img.height - 1));
-    let (tx, ty) = (x - x0 as f32, y - y0 as f32);
-    let p = |x: usize, y: usize| img.data[y * img.width + x][c];
-    let a = p(x0, y0) + (p(x1, y0) - p(x0, y0)) * tx;
-    let b = p(x0, y1) + (p(x1, y1) - p(x0, y1)) * tx;
-    a + (b - a) * ty
+    let (w, h) = (img.width as isize, img.height as isize);
+    let x = x.clamp(0.0, (w - 1) as f32);
+    let y = y.clamp(0.0, (h - 1) as f32);
+    let (x0, y0) = (x as isize, y as isize);
+    let (wx, wy) = (
+        crate::geometry::cubic_weights(x - x0 as f32),
+        crate::geometry::cubic_weights(y - y0 as f32),
+    );
+    let p = |i: isize, j: isize| {
+        img.data[((y0 + j).clamp(0, h - 1) * w + (x0 + i).clamp(0, w - 1)) as usize][c]
+    };
+    let mut v = 0.0;
+    for (j, wj) in wy.iter().enumerate() {
+        let mut row = 0.0;
+        for (i, wi) in wx.iter().enumerate() {
+            row += wi * p(i as isize - 1, j as isize - 1);
+        }
+        v += wj * row;
+    }
+    v
 }
 
 /// Normierter Punkt im unrotierten Bild → im aufrecht gedrehten (wie
@@ -920,7 +937,8 @@ mod tests {
         };
         let out = p.apply(&img);
         // Gleichmäßige Fläche: nur die Vignettierung ändert sie, nichts wird schwarz
-        assert!(out.data.iter().all(|p| p[1] >= 0.5 && p[1] < 0.53));
+        // (die bikubischen Gewichte ergeben in f32 nicht exakt 1)
+        assert!(out.data.iter().all(|p| p[1] >= 0.5 - 1e-5 && p[1] < 0.53));
         assert!(
             out.data[0][1] > out.data[100 * 300 + 150][1],
             "Ecke aufgehellt"

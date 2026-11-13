@@ -317,6 +317,21 @@ pub(super) const MIGRATIONS: &[&str] = &[
         snapshot_id INTEGER,
         created_at  INTEGER NOT NULL
     );",
+    // v30: Objektivkorrektur und Geraderichten/Perspektive tasten bikubisch ab
+    // (schärfer), der Kelvin-Weißabgleich wirkt als volle Matrix – die
+    // Vorschaubilder bearbeiteter RAWs (Objektivkorrektur ist dort Standard)
+    // und gerade gerichteter Rasterbilder neu erzeugen.
+    r#"
+    UPDATE images SET thumb_state = 0
+    WHERE id IN (
+        SELECT image_id FROM edits
+        WHERE is_current = 1
+          AND (images.kind = 'raw'
+               OR COALESCE(json_extract(params, '$.straighten'), 0) != 0
+               OR COALESCE(json_extract(params, '$.perspectiveVertical'), 0) != 0
+               OR COALESCE(json_extract(params, '$.perspectiveHorizontal'), 0) != 0)
+    );
+    "#,
 ];
 
 /// v24: Metadaten, die der Nutzer geändert hat (`imagemeta.rs`). Ein Eintrag

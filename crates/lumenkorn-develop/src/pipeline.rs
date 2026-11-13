@@ -554,11 +554,7 @@ fn render_sanitized(
     let wb = global_white_balance(p, src.as_shot_kelvin);
     let gain = 2f32.powf(p.exposure);
     img.data.par_iter_mut().for_each(|px| {
-        let mut c = [
-            px[0] * wb[0] * gain,
-            px[1] * wb[1] * gain,
-            px[2] * wb[2] * gain,
-        ];
+        let mut c = crate::wb::apply_wb(&wb, *px).map(|v| v * gain);
         c = if raw {
             raw_tone(c)
         } else {
@@ -714,7 +710,7 @@ fn gcd(a: usize, b: usize) -> usize {
 pub(crate) fn haze_level(
     src: &ImageF32,
     p: &DevelopParams,
-    wb: [f32; 3],
+    wb: crate::wb::WbMatrix,
     raw: bool,
     amount: f32,
 ) -> Haze {
@@ -738,11 +734,7 @@ pub(crate) fn haze_level(
         .iter()
         .step_by(step)
         .map(|px| {
-            let c = [
-                px[0] * wb[0] * gain,
-                px[1] * wb[1] * gain,
-                px[2] * wb[2] * gain,
-            ];
+            let c = crate::wb::apply_wb(&wb, *px).map(|v| v * gain);
             let c = if raw {
                 raw_tone(c)
             } else {
@@ -1175,19 +1167,22 @@ fn soft_clip(v: f32) -> f32 {
     }
 }
 
-/// Weißabgleich des ganzen Bildes: Kelvin (wenn gesetzt und die Quelle ihre
-/// Aufnahme-Temperatur kennt) und relativ. Für CPU und GPU dieselben Zahlen.
-pub(crate) fn global_white_balance(p: &DevelopParams, as_shot: Option<f32>) -> [f32; 3] {
+/// Weißabgleich des ganzen Bildes als Matrix (lineares sRGB): Kelvin (wenn
+/// gesetzt und die Quelle ihre Aufnahme-Temperatur kennt, volle Anpassung nach
+/// Bradford), danach relativ (Faktoren je Kanal). Für CPU und GPU dieselben Zahlen.
+pub(crate) fn global_white_balance(p: &DevelopParams, as_shot: Option<f32>) -> crate::wb::WbMatrix {
     let rel = white_balance(p.temperature / 100.0, p.tint / 100.0);
-    match as_shot {
-        Some(k0) if p.kelvin > 0.0 => {
-            let k = crate::wb::kelvin_multipliers(k0, p.kelvin);
-            let m = [rel[0] * k[0], rel[1] * k[1], rel[2] * k[2]];
-            let y = luma(m);
-            m.map(|v| v / y)
+    let k = match as_shot {
+        Some(k0) if p.kelvin > 0.0 => crate::wb::kelvin_matrix(k0, p.kelvin),
+        _ => {
+            return std::array::from_fn(|r| {
+                std::array::from_fn(|c| if r == c { rel[r] } else { 0.0 })
+            });
         }
-        _ => rel,
-    }
+    };
+    let m: crate::wb::WbMatrix = std::array::from_fn(|r| k[r].map(|v| v * rel[r]));
+    let y = luma(crate::wb::apply_wb(&m, [1.0, 1.0, 1.0]));
+    m.map(|r| r.map(|v| v / y))
 }
 
 /// Multiplikatoren für einen relativen Weißabgleich. Die Gesamthelligkeit bleibt gleich.

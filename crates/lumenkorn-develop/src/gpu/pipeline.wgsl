@@ -29,6 +29,8 @@ struct U {
     grade_pw: vec4<f32>,
     // Geraderichten und Perspektive (geometry::Warp::m), je Zeile xyz
     warp: array<vec4<f32>, 3>,
+    // Weißabgleich des ganzen Bildes (pipeline::global_white_balance), je Zeile xyz
+    wbm: array<vec4<f32>, 3>,
 };
 
 const F_RAW: u32 = 1u;
@@ -251,7 +253,7 @@ fn prep(@builtin(global_invocation_id) id: vec3<u32>) {
     if ((u.flags & F_DENOISE) != 0u) {
         c = c + (inb[i].xyz - c) * u.denoise;
     }
-    c = c * vec3<f32>(u.wb_r, u.wb_g, u.wb_b) * u.gain;
+    c = vec3<f32>(dot(u.wbm[0].xyz, c), dot(u.wbm[1].xyz, c), dot(u.wbm[2].xyz, c)) * u.gain;
     if ((u.flags & F_RAW) != 0u) {
         c = raw_tone(c);
     } else {
@@ -619,6 +621,43 @@ fn oriented(xo_in: u32, yo: u32) -> vec3<f32> {
     return ina[sy * u.w + sx].xyz;
 }
 
+// Catmull-Rom-Gewichte (geometry::cubic_weights) für die Nachbarn −1, 0, 1, 2
+fn cubic_w(t: f32) -> vec4<f32> {
+    return vec4<f32>(
+        ((-0.5 * t + 1.0) * t - 0.5) * t,
+        (1.5 * t - 2.5) * t * t + 1.0,
+        ((-1.5 * t + 2.0) * t + 0.5) * t,
+        (0.5 * t - 0.5) * t * t,
+    );
+}
+
+fn clampi(v: i32, hi: u32) -> u32 {
+    return u32(clamp(v, 0, i32(hi) - 1));
+}
+
+// Bikubisch abtasten im gedrehten Bild (ow×oh), begrenzt auf die vier nächsten
+// Pixel – wie geometry::bicubic
+fn bicubic(sx: f32, sy: f32) -> vec3<f32> {
+    let x0 = i32(sx);
+    let y0 = i32(sy);
+    let wx = cubic_w(sx - f32(x0));
+    let wy = cubic_w(sy - f32(y0));
+    var out = vec3<f32>(0.0);
+    for (var j = 0; j < 4; j = j + 1) {
+        var row = vec3<f32>(0.0);
+        let yy = clampi(y0 + j - 1, u.oh);
+        for (var i = 0; i < 4; i = i + 1) {
+            row = row + wx[i] * oriented(clampi(x0 + i - 1, u.ow), yy);
+        }
+        out = out + wy[j] * row;
+    }
+    let a = oriented(clampi(x0, u.ow), clampi(y0, u.oh));
+    let b = oriented(clampi(x0 + 1, u.ow), clampi(y0, u.oh));
+    let c = oriented(clampi(x0, u.ow), clampi(y0 + 1, u.oh));
+    let d = oriented(clampi(x0 + 1, u.ow), clampi(y0 + 1, u.oh));
+    return clamp(out, min(min(a, b), min(c, d)), max(max(a, b), max(c, d)));
+}
+
 // Geometrie: drehen, spiegeln, gerade richten, Perspektive, zuschneiden. ina = Bild,
 // Ausgabe nach outa (Float) oder packed (RGBA8).
 @compute @workgroup_size(16, 16)
@@ -637,19 +676,7 @@ fn geom(@builtin(global_invocation_id) id: vec3<u32>) {
         let z = m2.x * qx + m2.y * qy + m2.z;
         let sx = clamp((m0.x * qx + m0.y * qy + m0.z) / z - 0.5, 0.0, f32(u.ow - 1u));
         let sy = clamp((m1.x * qx + m1.y * qy + m1.z) / z - 0.5, 0.0, f32(u.oh - 1u));
-        let x0 = u32(sx);
-        let y0 = u32(sy);
-        let x1 = min(x0 + 1u, u.ow - 1u);
-        let y1 = min(y0 + 1u, u.oh - 1u);
-        let tx = sx - f32(x0);
-        let ty = sy - f32(y0);
-        let a = oriented(x0, y0);
-        let b = oriented(x1, y0);
-        let cc = oriented(x0, y1);
-        let d = oriented(x1, y1);
-        let top = a + (b - a) * tx;
-        let bot = cc + (d - cc) * tx;
-        c = top + (bot - top) * ty;
+        c = bicubic(sx, sy);
     } else {
         c = oriented(px, py);
     }

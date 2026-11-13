@@ -191,6 +191,9 @@ struct U {
     grade_pw: [f32; 4],
     /// Geraderichten und Perspektive (`geometry::Warp::m`), je Zeile xyz
     warp: [[f32; 4]; 3],
+    /// Weißabgleich des ganzen Bildes (`pipeline::global_white_balance`), je
+    /// Zeile xyz – nur für `prep`; lokale Masken nutzen `wb_r/g/b`
+    wbm: [[f32; 4]; 3],
 }
 
 const F_RAW: u32 = 1;
@@ -1372,9 +1375,7 @@ impl Gpu {
         let (w, h) = (cx.w, cx.h);
         let wb = crate::pipeline::global_white_balance(p, src.as_shot_kelvin);
         let mut u = U {
-            wb_r: wb[0],
-            wb_g: wb[1],
-            wb_b: wb[2],
+            wbm: wb.map(|r| [r[0], r[1], r[2], 0.0]),
             gain: 2f32.powf(p.exposure),
             ..cx.base_u()
         };

@@ -339,7 +339,6 @@ impl Calibration {
 }
 
 const NORM_MIN: f32 = 1.525_878_9e-5;
-const INVERSE_SQRT_3: f32 = 0.577_350_26;
 
 #[inline]
 fn clipneg(v: [f32; 3]) -> [f32; 3] {
@@ -393,32 +392,6 @@ fn gamut_mapping(xyz: [f32; 3]) -> [f32; 3] {
     ]
 }
 
-/// `_luma_chroma` (Version 3) mit Sättigung und Helligkeit 0
-#[inline]
-fn luma_chroma(input: [f32; 3]) -> [f32; 3] {
-    let euclid = |v: [f32; 3]| {
-        (v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
-            .sqrt()
-            .max(NORM_MIN)
-    };
-    let mut norm = euclid(input);
-    let avg = ((input[0] + input[1] + input[2]) / 3.0).max(NORM_MIN);
-    if norm > 0.0 && avg > 0.0 {
-        norm *= INVERSE_SQRT_3;
-        let mut out = input.map(|v| v / norm);
-        // coeff_ratio = 0 → Verhältnisse bleiben (min_ratio wie im Original)
-        for o in &mut out {
-            let min_ratio = if *o < 0.0 { *o } else { 0.0 };
-            *o = (*o).max(min_ratio);
-        }
-        norm /= euclid(out) * INVERSE_SQRT_3;
-        // mix = 0 → Faktor 1
-        out.map(|v| v * norm)
-    } else {
-        input
-    }
-}
-
 /// color calibration für ein Pixel (Arbeits-RGB → Arbeits-RGB), wie
 /// `_loop_switch` mit CAT16, Mischung = Einheit, Beschneiden an.
 #[inline]
@@ -433,7 +406,10 @@ pub(crate) fn calibrate_pixel(c: &Calibration, rgb: [f32; 3]) -> [f32; 3] {
     let xyz = clipneg(apply(&CAT16_LMS_TO_XYZ, lms));
     let xyz = gamut_mapping(xyz);
     let lms = clipneg(apply(&XYZ_TO_CAT16_LMS, xyz));
-    let lms = clipneg(luma_chroma(lms));
+    // Hier folgt in darktable `_luma_chroma`. Mit Sättigung und Helligkeit 0
+    // (wie hier immer) ist es rechnerisch die Einheit: Es teilt durch eine Norm
+    // und multipliziert mit derselben zurück. Weggelassen spart es je RAW mit
+    // 24 MP etwa 20 ms; das Ergebnis weicht nur in der Rundung ab (< 1e-5).
     let xyz = clipneg(apply(&CAT16_LMS_TO_XYZ, lms));
     clipneg(apply(&c.xyz_to_rgb, xyz))
 }

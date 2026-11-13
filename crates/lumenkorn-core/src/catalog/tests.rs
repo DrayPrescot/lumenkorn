@@ -596,6 +596,44 @@ mod migration_tests {
         assert_eq!(ids.map(state), [0, 1, 0]);
     }
 
+    /// v30: Vorschaubilder bearbeiteter RAWs und gerade gerichteter Rasterbilder
+    /// neu, andere bleiben
+    #[test]
+    fn v30_resets_thumbnails_of_affected_edits() {
+        let mut cat = Catalog::open_in_memory().unwrap();
+        let ids = tests_support::insert_dummy_images(&mut cat, 4);
+        cat.conn
+            .execute(
+                "UPDATE images SET kind = 'raw' WHERE id IN (?1, ?2)",
+                [ids[0], ids[1]],
+            )
+            .unwrap();
+        let p = |exposure: f32, straighten: f32| DevelopParams {
+            exposure,
+            straighten,
+            ..Default::default()
+        };
+        cat.save_develop(&[ids[0]], &p(0.5, 0.0)).unwrap();
+        cat.save_develop(&[ids[2]], &p(0.0, 3.0)).unwrap();
+        cat.save_develop(&[ids[3]], &p(0.5, 0.0)).unwrap();
+        cat.conn
+            .execute("UPDATE images SET thumb_state = 1", [])
+            .unwrap();
+        cat.conn.execute_batch(MIGRATIONS[29]).unwrap();
+        let state = |id: i64| -> i64 {
+            cat.conn
+                .query_row("SELECT thumb_state FROM images WHERE id = ?1", [id], |r| {
+                    r.get(0)
+                })
+                .unwrap()
+        };
+        // bearbeitetes RAW, unbearbeitetes RAW, gerade gerichtetes JPEG, nur belichtetes JPEG
+        assert_eq!(
+            ids.iter().map(|i| state(*i)).collect::<Vec<_>>(),
+            [0, 1, 0, 1]
+        );
+    }
+
     /// Katalog einer neueren Version: eigener Fehler (die App bietet dann das
     /// Update an), und der Katalog bleibt unverändert.
     #[test]

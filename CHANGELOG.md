@@ -6,6 +6,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Lens correction, straightening and perspective now sample bicubically instead of bilinearly
+  (as darktable does), so corrected and straightened photos stay sharper. Previews of edited RAW
+  files and straightened photos are created again once.
+- White balance in Kelvin is applied as a full chromatic adaptation (Bradford) instead of one
+  factor per channel. Neutral grey stays the same; strong colours shift more naturally when the
+  correction is large.
+- RAW files load a little faster (about 20 ms less per 24 MP file): a step of the colour
+  calibration that had no effect is skipped.
+
 ## [1.2.10] – 2026-11-11
 
 ### Fixed

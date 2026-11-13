@@ -243,15 +243,65 @@ fn fill_zoom(base: &M3, cx: f64, cy: f64) -> f64 {
     hi
 }
 
-/// Projektive Abbildung mit [`Warp::m`] anwenden. Bilineare Abtastung.
+/// Projektive Abbildung mit [`Warp::m`] anwenden. Bikubische Abtastung
+/// ([`bicubic`]), im Shader `geom` genauso.
 pub fn warp(img: &ImageF32, m: &[f32; 9]) -> ImageF32 {
     ImageF32::from_fn(img.width, img.height, |x, y| {
         let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
         let z = m[6] * px + m[7] * py + m[8];
         let sx = (m[0] * px + m[1] * py + m[2]) / z - 0.5;
         let sy = (m[3] * px + m[4] * py + m[5]) / z - 0.5;
-        bilinear(img, sx, sy)
+        bicubic(img, sx, sy)
     })
+}
+
+/// Gewichte der Catmull-Rom-Kurve (bikubisch, a = −0,5, wie darktables
+/// Standard für Verformungen) für die Nachbarn bei −1, 0, 1, 2 und den Abstand
+/// `t` (0…1) vom Pixel 0. Im Shader `cubic_w` dieselbe Formel.
+#[inline]
+pub(crate) fn cubic_weights(t: f32) -> [f32; 4] {
+    [
+        ((-0.5 * t + 1.0) * t - 0.5) * t,
+        (1.5 * t - 2.5) * t * t + 1.0,
+        ((-1.5 * t + 2.0) * t + 0.5) * t,
+        (0.5 * t - 0.5) * t * t,
+    ]
+}
+
+/// Bikubisch abtasten: schärfer als bilinear, das bei jeder Verformung (Objektiv,
+/// Geraderichten, Perspektive) etwas weichzeichnet – zwei davon hintereinander
+/// addieren sich. Das Ergebnis bleibt im Bereich der vier nächsten Pixel:
+/// Catmull-Rom schwingt an harten Kanten sonst über (helle und dunkle Säume).
+#[inline]
+pub(crate) fn bicubic(img: &ImageF32, x: f32, y: f32) -> [f32; 3] {
+    let (w, h) = (img.width as isize, img.height as isize);
+    let x = x.clamp(0.0, (w - 1) as f32);
+    let y = y.clamp(0.0, (h - 1) as f32);
+    let (x0, y0) = (x as isize, y as isize);
+    let (wx, wy) = (cubic_weights(x - x0 as f32), cubic_weights(y - y0 as f32));
+    let at = |i: isize, j: isize| {
+        img.data[((y0 + j).clamp(0, h - 1) * w + (x0 + i).clamp(0, w - 1)) as usize]
+    };
+    let mut out = [0f32; 3];
+    for (j, wj) in wy.iter().enumerate() {
+        let mut row = [0f32; 3];
+        for (i, wi) in wx.iter().enumerate() {
+            let p = at(i as isize - 1, j as isize - 1);
+            for k in 0..3 {
+                row[k] += wi * p[k];
+            }
+        }
+        for k in 0..3 {
+            out[k] += wj * row[k];
+        }
+    }
+    let (a, b, c, d) = (at(0, 0), at(1, 0), at(0, 1), at(1, 1));
+    for k in 0..3 {
+        let lo = a[k].min(b[k]).min(c[k]).min(d[k]);
+        let hi = a[k].max(b[k]).max(c[k]).max(d[k]);
+        out[k] = out[k].clamp(lo, hi);
+    }
+    out
 }
 
 /// Wie viel größer ein Bild geladen werden muss, damit nach Geraderichten und
@@ -272,28 +322,6 @@ pub fn straighten(img: &ImageF32, deg: f32) -> ImageF32 {
         Some(w) => warp(img, &w.m),
         None => img.clone(),
     }
-}
-
-#[inline]
-fn bilinear(img: &ImageF32, x: f32, y: f32) -> [f32; 3] {
-    let x = x.clamp(0.0, (img.width - 1) as f32);
-    let y = y.clamp(0.0, (img.height - 1) as f32);
-    let (x0, y0) = (x as usize, y as usize);
-    let (x1, y1) = ((x0 + 1).min(img.width - 1), (y0 + 1).min(img.height - 1));
-    let (tx, ty) = (x - x0 as f32, y - y0 as f32);
-    let (a, b, c, d) = (
-        img.get(x0, y0),
-        img.get(x1, y0),
-        img.get(x0, y1),
-        img.get(x1, y1),
-    );
-    let mut out = [0f32; 3];
-    for k in 0..3 {
-        let top = a[k] + (b[k] - a[k]) * tx;
-        let bot = c[k] + (d[k] - c[k]) * tx;
-        out[k] = top + (bot - top) * ty;
-    }
-    out
 }
 
 /// Schätzt, um wie viel Grad das Bild gedreht werden muss, damit Horizont und
@@ -763,6 +791,27 @@ mod tests {
         );
         assert_eq!((c.width, c.height), (3, 5));
         assert_eq!(c.get(0, 0)[0], 52.0);
+    }
+
+    /// Bikubisch: trifft die Pixel genau, gibt lineare Verläufe exakt wieder und
+    /// schwingt an einer harten Kante nicht über die Nachbarn hinaus
+    #[test]
+    fn bicubic_is_exact_on_ramps_and_does_not_ring() {
+        let ramp = ImageF32::from_fn(16, 8, |x, y| [x as f32 * 0.05, y as f32 * 0.1, 0.5]);
+        for (x, y) in [(3.0, 2.0), (5.25, 3.5), (7.8, 1.1)] {
+            let v = bicubic(&ramp, x, y);
+            assert!(
+                (v[0] - x * 0.05).abs() < 1e-5 && (v[1] - y * 0.1).abs() < 1e-5,
+                "{x},{y}: {v:?}"
+            );
+        }
+        let edge = ImageF32::from_fn(16, 4, |x, _| if x < 8 { [0.0; 3] } else { [1.0; 3] });
+        for i in 0..40 {
+            let v = bicubic(&edge, 5.0 + i as f32 * 0.1, 1.5)[0];
+            assert!((0.0..=1.0).contains(&v), "Überschwinger {v}");
+        }
+        let w = cubic_weights(0.3);
+        assert!((w.iter().sum::<f32>() - 1.0).abs() < 1e-6);
     }
 
     /// Hin und zurück ergibt denselben Punkt, und die Ecken landen dort, wo die
