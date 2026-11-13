@@ -183,6 +183,8 @@ export default {
   "{n} Foto importieren": "Import {n} photo",
   "{n} Fotos importieren": "Import {n} photos",
   "Import ist nur in der App verfügbar.": "Import is only available in the app.",
+  "Reparieren ist nur in der App verfügbar.": "Repair is only available in the app.",
+  "Videos speichern ist nur in der App verfügbar.": "Saving videos is only available in the app.",
   "Import fehlgeschlagen": "Import failed",
   "{n} waren schon da": "{n} were already there",
   "{n} Dateien von der Karte gelöscht": "{n} files deleted from the card",

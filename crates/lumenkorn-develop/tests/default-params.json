@@ -1,0 +1,64 @@
+{
+  "blacks": 0.0,
+  "clarity": 0.0,
+  "colorGrade": {
+    "balance": 0.0,
+    "blending": 50.0,
+    "global": {
+      "hue": 0.0,
+      "luminance": 0.0,
+      "saturation": 0.0
+    },
+    "highlights": {
+      "hue": 0.0,
+      "luminance": 0.0,
+      "saturation": 0.0
+    },
+    "midtones": {
+      "hue": 0.0,
+      "luminance": 0.0,
+      "saturation": 0.0
+    },
+    "shadows": {
+      "hue": 0.0,
+      "luminance": 0.0,
+      "saturation": 0.0
+    }
+  },
+  "contrast": 0.0,
+  "crop": null,
+  "dehaze": 0.0,
+  "denoise": null,
+  "exposure": 0.0,
+  "flipHorizontal": false,
+  "highlights": 0.0,
+  "hsl": {
+    "hue": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "luminance": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "saturation": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  },
+  "kelvin": 0.0,
+  "lensCorrection": true,
+  "masks": [],
+  "monochrome": false,
+  "perspectiveHorizontal": 0.0,
+  "perspectiveVertical": 0.0,
+  "repairs": [],
+  "rotate": 0,
+  "saturation": 0.0,
+  "shadows": 0.0,
+  "sharpen": 0.0,
+  "straighten": 0.0,
+  "temperature": 0.0,
+  "tint": 0.0,
+  "toneCurve": {
+    "blue": [],
+    "green": [],
+    "preserveColors": true,
+    "red": [],
+    "rgb": []
+  },
+  "version": 1,
+  "vibrance": 0.0,
+  "whites": 0.0
+}

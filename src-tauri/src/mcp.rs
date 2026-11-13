@@ -1534,6 +1534,28 @@ fn forward(
 mod tests {
     use super::*;
 
+    /// Die Beschreibung von `set_develop_settings` ist für Agenten die einzige Liste der
+    /// Entwicklungswerte. Ein neuer Regler gehört dort hinein.
+    #[test]
+    fn develop_settings_description_names_every_field() {
+        let tool = set_develop_settings_tool();
+        let text = tool["description"].as_str().unwrap();
+        // Masken über `add_mask`; Rauschreduzierung, Reparaturen und Version nicht über MCP
+        let elsewhere = ["version", "masks", "denoise", "repairs"];
+        let defaults = serde_json::to_value(DevelopParams::default()).unwrap();
+        let missing: Vec<&String> = defaults
+            .as_object()
+            .unwrap()
+            .keys()
+            .filter(|k| !elsewhere.contains(&k.as_str()))
+            .filter(|k| !text.contains(k.as_str()))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "in der Beschreibung fehlen: {missing:?}"
+        );
+    }
+
     #[test]
     fn token_is_random_hex_and_compared_exactly() {
         let (a, b) = (new_token(), new_token());

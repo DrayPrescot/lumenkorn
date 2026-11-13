@@ -774,6 +774,46 @@ export const mock = {
         });
         return out(items);
       }
+      case "face_assign": {
+        const name = String(a.name).trim();
+        let person = mockPersons.find((p) => p.name.toLowerCase() === name.toLowerCase());
+        if (!person) mockPersons.push((person = { id: Math.max(0, ...mockPersons.map((p) => p.id)) + 1, name }));
+        for (const f of mockFaces.filter((f) => f.id === a.faceId)) {
+          f.personId = person.id;
+          f.personName = person.name;
+          f.confirmed = true;
+        }
+        return out(person.id);
+      }
+      case "face_hide": {
+        const i = mockFaces.findIndex((f) => f.id === a.faceId);
+        if (i >= 0) mockFaces.splice(i, 1);
+        return out(null);
+      }
+      case "person_delete": {
+        for (const f of mockFaces.filter((f) => f.personId === a.id)) {
+          f.personId = null;
+          f.personName = null;
+          f.confirmed = false;
+        }
+        const i = mockPersons.findIndex((p) => p.id === a.id);
+        if (i >= 0) mockPersons.splice(i, 1);
+        return out(null);
+      }
+      case "people_rescan":
+      case "ai_dismiss_notice":
+      case "import_set_target":
+      case "repair_cancel":
+        return out(null);
+      case "app_restart":
+        location.reload();
+        return out(null);
+      case "repair_compute":
+        throw t("Reparieren ist nur in der App verfügbar.");
+      case "slideshow_video_open":
+        throw t("Videos speichern ist nur in der App verfügbar.");
+      case "slideshow_video_close":
+        return out(null);
       case "import_start":
         throw t("Import ist nur in der App verfügbar.");
       case "import_estimate_shift":
