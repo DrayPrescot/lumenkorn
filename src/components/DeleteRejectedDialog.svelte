@@ -3,6 +3,7 @@
   import { api, imageUrl, type ImageSummary, type RejectedSummary } from "../lib/api";
   import { dev } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
+  import { originals as savedOriginals } from "../lib/originals.svelte";
   import { num, t } from "../lib/i18n";
 
   // Abgelehnte Fotos löschen oder (`originals`) die gesicherten Originale von
@@ -51,7 +52,7 @@
     busy = true;
     if (forOriginals) {
       // Die Fotos selbst bleiben, also auch die Ansicht
-      await lib.deleteOriginals(ids, toTrash);
+      await savedOriginals.delete(ids, toTrash);
       busy = false;
       onclose();
       return;

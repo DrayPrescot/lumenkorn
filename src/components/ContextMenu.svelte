@@ -3,6 +3,7 @@
   // Basis-Einstellungen kopieren und einfügen, Presets anwenden, Fotos zusammenfügen.
   import { dev } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
+  import { originals } from "../lib/originals.svelte";
   import { t } from "../lib/i18n";
   import { keymap } from "../lib/keymap.svelte";
   import type { Preset, TransferGroups } from "../lib/api";
@@ -23,7 +24,7 @@
       lib.mode = "library";
       lib.view = "loupe";
     }
-    await lib.restoreOriginals(ids);
+    await originals.restore(ids);
   }
   const many = $derived(lib.selection.size >= 2);
   const busy = $derived(!!lib.mergeProgress && !lib.mergeProgress.finished);

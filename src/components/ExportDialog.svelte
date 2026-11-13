@@ -4,6 +4,7 @@
   import { prefs } from "../lib/prefs.svelte";
   import { dev } from "../lib/develop.svelte";
   import { lib } from "../lib/store.svelte";
+  import { originals } from "../lib/originals.svelte";
   import PathDialog from "./PathDialog.svelte";
   import { t } from "../lib/i18n";
 
@@ -95,7 +96,7 @@
       lib.mode = "library";
       lib.view = "loupe";
     }
-    const started = await lib.bakeOriginals(ids);
+    const started = await originals.bake(ids);
     baking = false;
     if (started) onclose();
   }

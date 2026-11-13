@@ -1,7 +1,9 @@
 // Zentraler Oberflächenzustand (Svelte-5-Runes).
 
 import { isCanceled, lang, num, t, tc } from "./i18n";
-import { api, listen, type AiSettings, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type AiComponent, type MemorySaver, type DeleteReport, type UpdateInfo, type BakeProgress, type OriginalsReport, type DeleteOriginalsReport, type RenameOptions, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress, type ImportProgress, type ImportDone, type ImageQuery, type LocationItem, type MetaPatch, type MetaReport } from "./api";
+import { hasOriginal, originals } from "./originals.svelte";
+import { removeFromView } from "./removal";
+import { api, listen, type AiSettings, type AiStatus, type Person, type PersonGroup, type PeopleStatus, type AiDownloadEvent, type AiComponent, type MemorySaver, type DeleteReport, type UpdateInfo, type RenameOptions, type FolderNode, type ImageSummary, type Project, type Root, type Scope, type SortOrder, type ScanProgress, type MergeKind, type MergeProgress, type ImportProgress, type ImportDone, type ImageQuery, type LocationItem, type MetaPatch, type MetaReport } from "./api";
 
 class Library {
   roots = $state<Root[]>([]);
@@ -167,7 +169,7 @@ class Library {
       if (changes > 0) this.refreshSoon();
     });
     listen("catalog-updated", () => this.refreshSoon());
-    listen("bake-progress", (p) => this.#onBakeProgress(p));
+    listen("bake-progress", (p) => originals.onProgress(p));
     // Einzelne Schlüssel ändern statt das ganze Objekt zu kopieren (O(1) statt O(n))
     listen("thumbs-ready", ({ ids }) => {
       Library.#bump(this.#thumbV, ids);
@@ -354,7 +356,7 @@ class Library {
       const focusId = keepFocus ? this.focused?.id : undefined;
       this.images = images;
       this.rejectedCount = countRejected(images);
-      this.originalCount = images.filter(hasOriginal).length;
+      originals.count = images.filter(hasOriginal).length;
       this.listVersion++;
       this.layoutVersion++;
       this.focus = focusId !== undefined ? this.images.findIndex((i) => i.id === focusId) : -1;
@@ -860,23 +862,12 @@ class Library {
       if (!r.length) unknownRoot = true;
       for (const x of r) affected.add(x.id);
     }
-    const focusId = this.focused?.id;
-    // Gelöschte vor dem Fokus verschieben ihn nach vorn
-    const before = this.images.slice(0, Math.max(this.focus, 0)).filter((i) => gone.has(i.id)).length;
-    const oldFocus = this.focus - before;
-    this.images = this.images.filter((i) => !gone.has(i.id));
+    const view = removeFromView({ images: this.images, focus: this.focus, selection: this.selection }, gone, this.#singleView());
+    this.images = view.images;
     this.layoutVersion++;
     this.rejectedCount = countRejected(this.images);
-    this.selection = new Set([...this.selection].filter((id) => !gone.has(id)));
-    if (focusId !== undefined && !gone.has(focusId)) {
-      this.focus = this.images.findIndex((i) => i.id === focusId);
-    } else if (this.images.length) {
-      // Fokus auf das Bild, das an die Stelle des gelöschten gerückt ist
-      this.focus = Math.min(Math.max(oldFocus, 0), this.images.length - 1);
-      if (this.#singleView()) this.selection = new Set([this.images[this.focus].id]);
-    } else {
-      this.focus = -1;
-    }
+    this.selection = view.selection;
+    this.focus = view.focus;
     if (this.focus < 0 && this.mode === "develop") this.mode = "library";
     if (this.view === "compare" && this.selection.size < 2) this.view = this.focus >= 0 ? "loupe" : "grid";
     if (this.focus < 0 && this.view === "loupe") this.view = "grid";
@@ -901,91 +892,6 @@ class Library {
     }
     if (gone.size) this.loadRoots(unknownRoot ? undefined : affected).catch(() => {});
     this.refreshPeople();
-    return report;
-  }
-
-  // --- Bearbeitung ins Original übernehmen -----------------------------------
-
-  /** Fotos des aktuellen Bereichs mit gesichertem Original (Knopf „Originale“) */
-  originalCount = $state(0);
-  bakeProgress = $state<BakeProgress | null>(null);
-  #bakeTimer: ReturnType<typeof setTimeout> | undefined;
-
-  /** Fotos mit gesichertem Original im aktuellen Bereich, bei Bedarf gebaut. */
-  originalList(): ImageSummary[] {
-    return this.images.filter(hasOriginal);
-  }
-
-  /** Übernahme starten (läuft im Hintergrund, Fortschritt per `bake-progress`). */
-  async bakeOriginals(ids: number[]): Promise<boolean> {
-    try {
-      await api.bakeOriginals(ids);
-      return true;
-    } catch (e) {
-      this.notify(String(e), "error");
-      return false;
-    }
-  }
-
-  #onBakeProgress(p: BakeProgress) {
-    this.bakeProgress = p;
-    clearTimeout(this.#bakeTimer);
-    if (!p.finished) return;
-    const n = p.baked.length;
-    if (p.failed.length) {
-      this.notify(t("{ok} von {total} Originalen ersetzt. Fehlgeschlagen: {failed}", { ok: n, total: p.total, failed: p.failed.join("; ") }), "error");
-    } else {
-      this.notify(t(n === 1 ? "{n} Original ersetzt, das bisherige liegt im Ordner „Original“." : "{n} Originale ersetzt, die bisherigen liegen im Ordner „Original“.", { n }));
-    }
-    this.#bakeTimer = setTimeout(() => (this.bakeProgress = null), 1500);
-  }
-
-  /** Gesicherte Originale zurücklegen, Bearbeitung von davor wiederherstellen. */
-  async restoreOriginals(ids: number[]) {
-    let report: OriginalsReport;
-    try {
-      report = await api.restoreOriginals(ids);
-    } catch (e) {
-      this.notify(String(e), "error");
-      return;
-    }
-    const n = report.done.length;
-    if (report.failed.length) {
-      this.notify(t("{ok} Originale wiederhergestellt, {failed} nicht: {error}", { ok: n, failed: report.failed.length, error: report.failed[0] }), "error");
-    } else if (n) {
-      this.notify(t(n === 1 ? "{n} Original wiederhergestellt" : "{n} Originale wiederhergestellt", { n }));
-    }
-    await this.loadImages(true);
-  }
-
-  /** Gesicherte Originale löschen (Papierkorb oder endgültig). */
-  async deleteOriginals(ids: number[], toTrash: boolean): Promise<DeleteOriginalsReport | null> {
-    let report: DeleteOriginalsReport;
-    try {
-      report = await api.deleteOriginals(ids, toTrash);
-    } catch (e) {
-      this.notify(String(e), "error");
-      return null;
-    }
-    const mb = num(report.bytes / 1e6, { maximumFractionDigits: report.bytes < 1e7 ? 2 : 0 });
-    const k = report.deleted.length;
-    const originals = t(k === 1 ? "{n} Original" : "{n} Originale", { n: k });
-    if (report.failed.length) {
-      const vars = { originals, failed: report.failed.length, error: report.failed[0] };
-      this.notify(
-        report.toTrash
-          ? t("{originals} in den Papierkorb verschoben, {failed} nicht: {error}", vars)
-          : t("{originals} endgültig gelöscht, {failed} nicht: {error}", vars),
-        "error",
-      );
-    } else {
-      this.notify(
-        report.toTrash
-          ? t("{originals} in den Papierkorb verschoben ({mb} MB)", { originals, mb })
-          : t("{originals} endgültig gelöscht ({mb} MB)", { originals, mb }),
-      );
-    }
-    await this.loadImages(true);
     return report;
   }
 
@@ -1408,7 +1314,6 @@ function loadCollapsed(): Record<string, boolean> {
 const folderKey = (p: string) => p.replace(/[\\/]+$/, "").toLowerCase();
 
 const isRejected = (i: ImageSummary) => i.flag === -1 && !i.missing;
-const hasOriginal = (i: ImageSummary) => !!i.hasOriginal && !i.missing;
 function countRejected(images: ImageSummary[]): number {
   let n = 0;
   for (const i of images) if (isRejected(i)) n++;

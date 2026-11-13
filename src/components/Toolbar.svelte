@@ -1,5 +1,6 @@
 <script lang="ts">
   import { lib } from "../lib/store.svelte";
+  import { originals } from "../lib/originals.svelte";
   import { album } from "../lib/album.svelte";
   import { slideshow } from "../lib/slideshow.svelte";
   import type { Scope } from "../lib/api";
@@ -133,9 +134,9 @@
       <Icon name="trash" size={14} /> {t("{n} abgelehnt", { n: String(lib.rejectedCount) })}
     </button>
   {/if}
-  {#if lib.originalCount && lib.view !== "people"}
+  {#if originals.count && lib.view !== "people"}
     <button class="btn reject-btn" onclick={ondeleteoriginals} title={t("Gesicherte Originale der Fotos dieser Ansicht löschen, deren Bearbeitung übernommen wurde")}>
-      <Icon name="trash" size={14} /> {t(lib.originalCount === 1 ? "{n} Original" : "{n} Originale", { n: lib.originalCount })}
+      <Icon name="trash" size={14} /> {t(originals.count === 1 ? "{n} Original" : "{n} Originale", { n: originals.count })}
     </button>
   {/if}
 

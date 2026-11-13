@@ -35,6 +35,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { dev } from "./lib/develop.svelte";
   import { lib } from "./lib/store.svelte";
+  import { originals } from "./lib/originals.svelte";
   import { t } from "./lib/i18n";
 
   let sidebarOpen = $state(false); // nur schmale Bildschirme
@@ -68,7 +69,7 @@
   let deleteOriginals = $state<ImageSummary[] | null>(null);
 
   function openDeleteOriginals() {
-    if (lib.originalCount) deleteOriginals = lib.originalList();
+    if (originals.count) deleteOriginals = originals.list();
   }
 
   // Beim Verlassen des Entwickeln-Modus offene Änderungen speichern.
@@ -285,9 +286,9 @@
   <div class="toast" role="status">
     {t("Exportiere {done} von {total}", { done: dev.exportProgress.done + 1, total: dev.exportProgress.total })}{dev.exportProgress.current ? `: ${dev.exportProgress.current}` : ""}
   </div>
-{:else if lib.bakeProgress && !lib.bakeProgress.finished}
+{:else if originals.progress && !originals.progress.finished}
   <div class="toast" role="status">
-    {t("Übernehme ins Original {done} von {total}", { done: lib.bakeProgress.done + 1, total: lib.bakeProgress.total })}{lib.bakeProgress.current ? `: ${lib.bakeProgress.current}` : ""}
+    {t("Übernehme ins Original {done} von {total}", { done: originals.progress.done + 1, total: originals.progress.total })}{originals.progress.current ? `: ${originals.progress.current}` : ""}
   </div>
 {:else if lib.importRunning && lib.importProgress && !lib.importOpen}
   <div class="toast" role="status">
