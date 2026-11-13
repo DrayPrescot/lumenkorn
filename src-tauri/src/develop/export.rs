@@ -89,171 +89,227 @@ pub(crate) fn start_export(
         )));
     }
     let claim = crate::task::claim(&app, |t| &t.export)?.full_res()?;
-    // Anzeige des Ziels: gewählter Ordner bzw. die tatsächlich benutzten
-    let chosen = dir.clone();
-    let shown = move |used: &std::collections::BTreeSet<PathBuf>| match (&chosen, used.len()) {
-        (Some(d), _) => d.display().to_string(),
-        (None, 1) => used.first().unwrap().display().to_string(),
-        (None, 0) => tr_s("Unterordner „Export“", "Subfolder “Export”").to_string(),
-        (None, n) => tr!("„Export“ in {n} Ordnern", "“Export” in {n} folders"),
-    };
     claim.spawn("export", move |app, _claim| {
         let state = app.state::<AppState>();
-        // Ohne gewählten Ordner: Unterordner aus den Einstellungen
-        let sub = crate::settings::read(&state.data_dir).export_subfolder;
-        let formats = options.all_formats();
-        let total = ids.len();
-        let mut failed = Vec::new();
-        let mut skipped = 0;
-        let mut used = std::collections::BTreeSet::new();
-        // In diesem Export geschrieben: nie überschreiben (z. B. IMG_1.CR2
-        // und IMG_1.JPG aus demselben Ordner)
-        let mut written = std::collections::HashSet::new();
-        // Die Fotos dieses Exports: nie überschreiben, auch nicht von einem
-        // anderen Foto desselben Laufs (sonst ersetzte IMG_1.CR2 die Datei
-        // IMG_1.JPG, bevor diese selbst exportiert wird). Lässt sich das nicht
-        // lesen, wird nichts Vorhandenes ersetzt.
-        let jobs = state.catalog.locked().thumb_jobs(&ids);
-        let sources = jobs
-            .inspect_err(|e| log::warn!("Quellen des Exports: {e}"))
-            .ok()
-            .map(|jobs| SourceFiles::new(jobs.into_values().map(|j| PathBuf::from(j.path))));
-        let is_protected = |p: &Path| {
-            sources.as_ref().is_none_or(|s| s.contains(p))
-                || (keep == Keep::Library
-                    && state
-                        .catalog
-                        .locked()
-                        .library_paths(&[p.to_string_lossy().into_owned()])
-                        .map_or(true, |found| !found.is_empty()))
-        };
+        let mut run = ExportRun::new(app, &state, &ids, dir, &options, keep);
         for (i, id) in ids.iter().enumerate() {
-            let mut cur_name: Option<String> = None;
+            let mut name = None;
             // Ein Panic bei einem Bild (z. B. in der GPU-Pipeline) darf den
             // Export nicht beenden: Das Bild gilt als fehlgeschlagen.
-            let res = crate::task::catch_panic(|| -> Result<String, Error> {
-                let (job, params, meta) = {
-                    let cat = state.catalog.locked();
-                    // Fehlende Metadaten verhindern den Export nicht
-                    let meta = cat
-                        .export_meta(*id)
-                        .inspect_err(|e| log::warn!("Metadaten für Export {id}: {e}"))
-                        .ok();
-                    (cat.thumb_job(*id)?, cat.develop_params(*id)?, meta)
-                };
-                let name = Path::new(&job.path)
-                    .file_stem()
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| id.to_string());
-                cur_name = Some(name.clone());
-                let _ = app.emit(
-                    "export-progress",
-                    ExportProgress {
-                        done: i,
-                        total,
-                        current: Some(name.clone()),
-                        failed: failed.clone(),
-                        skipped,
-                        finished: false,
-                        dir: shown(&used),
-                    },
-                );
-                let target_dir = match &dir {
-                    Some(d) => d.clone(),
-                    None => lumenkorn_core::scanner::export_dir_for(Path::new(&job.path), &sub)
-                        .map_err(|e| {
-                            Error::Invalid(tr!("Export-Ordner: {e}", "Export folder: {e}"))
-                        })?,
-                };
-                used.insert(target_dir.clone());
-                let orientation = job.orientation.map(|o| o as u16);
-                // Entwickelt wird einmal für alle Formate (außer dem Original-DNG)
-                let mut developed = None;
-                let mut errors = Vec::new();
-                for format in &formats {
-                    let Some(target) = export_target(
-                        &target_dir,
-                        &name,
-                        format.extension(),
-                        options.on_conflict,
-                        &written,
-                        is_protected,
-                    ) else {
-                        skipped += 1;
-                        continue;
-                    };
-                    written.insert(target.clone());
-                    let res = if *format == ExportFormat::Dng && !options.dng_edited {
-                        // Original ohne Bearbeitung: die Szenendaten der Quelle
-                        Source::load(
-                            Path::new(&job.path),
-                            job.kind == ImageKind::Raw,
-                            orientation,
-                            options.long_edge.filter(|m| *m > 0),
-                        )
-                        .and_then(|src| {
-                            output::write_original_dng(&src.image, &target, &options, meta.as_ref())
-                        })
-                        .map_err(Error::from)
-                    } else {
-                        let img = developed.get_or_insert_with(|| {
-                            develop_for_export(&state, &job, &params, options.long_edge)
-                        });
-                        match img {
-                            Ok(img) => {
-                                let opts = ExportOptions {
-                                    format: *format,
-                                    ..options.clone()
-                                };
-                                output::write(img, &target, &opts, meta.as_ref())
-                                    .map_err(Error::from)
-                            }
-                            Err(e) => Err(Error::Invalid(e.to_string())),
-                        }
-                    };
-                    if res.is_ok()
-                        && let Err(e) = state.catalog.locked().record_export(*id, &target)
-                    {
-                        // Nur für späteres Hochladen; der Export selbst gelang
-                        log::warn!("Export nicht eingetragen: {e}");
-                    }
-                    if let Err(e) = res {
-                        errors.push(if formats.len() > 1 {
-                            format!("{}: {e}", format.extension().to_uppercase())
-                        } else {
-                            e.to_string()
-                        });
-                    }
-                }
-                if errors.is_empty() {
-                    Ok(name)
-                } else {
-                    Err(Error::Invalid(errors.join("; ")))
-                }
-            });
+            let res = crate::task::catch_panic(|| run.photo(i, *id, &mut name));
             if let Err(e) = res {
                 log::warn!("Export {id}: {e}");
-                match cur_name {
-                    Some(n) => failed.push(format!("{n}: {e}")),
-                    None => failed.push(format!("{id}: {e}")),
-                }
+                let who = name.unwrap_or_else(|| id.to_string());
+                run.failed.push(format!("{who}: {e}"));
             }
         }
         // Puffer in voller Auflösung nicht bis zum nächsten Export behalten
         lumenkorn_develop::release_large_caches();
-        let _ = app.emit(
+        run.progress(ids.len(), None, true);
+    })
+}
+
+/// Ein laufender Export: Ziele, was schon geschrieben wurde und was schiefging.
+struct ExportRun<'a> {
+    app: &'a AppHandle,
+    state: &'a AppState,
+    options: &'a ExportOptions,
+    formats: Vec<ExportFormat>,
+    /// Gewählter Ordner; ohne ihn der Unterordner `sub` neben jedem Foto
+    dir: Option<PathBuf>,
+    sub: String,
+    keep: Keep,
+    /// Die Fotos dieses Exports: nie überschreiben, auch nicht von einem anderen Foto
+    /// desselben Laufs (sonst ersetzte IMG_1.CR2 die Datei IMG_1.JPG, bevor diese
+    /// selbst exportiert wird). `None`: nicht lesbar, dann wird nichts ersetzt.
+    sources: Option<SourceFiles>,
+    total: usize,
+    failed: Vec<String>,
+    /// Dateien, die schon vorhanden waren und bleiben sollten
+    skipped: usize,
+    /// Tatsächlich benutzte Zielordner (für die Anzeige)
+    used: std::collections::BTreeSet<PathBuf>,
+    /// In diesem Export geschrieben: nie überschreiben (z. B. IMG_1.CR2 und IMG_1.JPG
+    /// aus demselben Ordner)
+    written: std::collections::HashSet<PathBuf>,
+}
+
+impl<'a> ExportRun<'a> {
+    fn new(
+        app: &'a AppHandle,
+        state: &'a AppState,
+        ids: &[i64],
+        dir: Option<PathBuf>,
+        options: &'a ExportOptions,
+        keep: Keep,
+    ) -> Self {
+        let sources = state
+            .catalog
+            .locked()
+            .thumb_jobs(ids)
+            .inspect_err(|e| log::warn!("Quellen des Exports: {e}"))
+            .ok()
+            .map(|jobs| SourceFiles::new(jobs.into_values().map(|j| PathBuf::from(j.path))));
+        ExportRun {
+            app,
+            state,
+            options,
+            formats: options.all_formats(),
+            dir,
+            sub: crate::settings::read(&state.data_dir).export_subfolder,
+            keep,
+            sources,
+            total: ids.len(),
+            failed: Vec::new(),
+            skipped: 0,
+            used: Default::default(),
+            written: Default::default(),
+        }
+    }
+
+    /// Anzeige des Ziels: gewählter Ordner bzw. die tatsächlich benutzten
+    fn shown(&self) -> String {
+        match (&self.dir, self.used.len()) {
+            (Some(d), _) => d.display().to_string(),
+            (None, 1) => self.used.first().unwrap().display().to_string(),
+            (None, 0) => tr_s("Unterordner „Export“", "Subfolder “Export”").to_string(),
+            (None, n) => tr!("„Export“ in {n} Ordnern", "“Export” in {n} folders"),
+        }
+    }
+
+    fn progress(&self, done: usize, current: Option<String>, finished: bool) {
+        let _ = self.app.emit(
             "export-progress",
             ExportProgress {
-                done: total,
-                total,
-                current: None,
-                failed,
-                skipped,
-                finished: true,
-                dir: shown(&used),
+                done,
+                total: self.total,
+                current,
+                failed: self.failed.clone(),
+                skipped: self.skipped,
+                finished,
+                dir: self.shown(),
             },
         );
-    })
+    }
+
+    /// Darf `p` nicht ersetzt werden? (Foto dieses Exports bzw. mit [`Keep::Library`]
+    /// jedes Foto der Bibliothek)
+    fn is_protected(&self, p: &Path) -> bool {
+        self.sources.as_ref().is_none_or(|s| s.contains(p))
+            || (self.keep == Keep::Library
+                && self
+                    .state
+                    .catalog
+                    .locked()
+                    .library_paths(&[p.to_string_lossy().into_owned()])
+                    .map_or(true, |found| !found.is_empty()))
+    }
+
+    /// Foto `id` (das `i`-te) in alle Formate schreiben. `name` bekommt den Dateinamen
+    /// für Fehlermeldungen, sobald er bekannt ist.
+    fn photo(&mut self, i: usize, id: i64, name: &mut Option<String>) -> Result<(), Error> {
+        let (job, params, meta) = {
+            let cat = self.state.catalog.locked();
+            // Fehlende Metadaten verhindern den Export nicht
+            let meta = cat
+                .export_meta(id)
+                .inspect_err(|e| log::warn!("Metadaten für Export {id}: {e}"))
+                .ok();
+            (cat.thumb_job(id)?, cat.develop_params(id)?, meta)
+        };
+        let stem = Path::new(&job.path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| id.to_string());
+        *name = Some(stem.clone());
+        self.progress(i, Some(stem.clone()), false);
+        let target_dir = match &self.dir {
+            Some(d) => d.clone(),
+            None => lumenkorn_core::scanner::export_dir_for(Path::new(&job.path), &self.sub)
+                .map_err(|e| Error::Invalid(tr!("Export-Ordner: {e}", "Export folder: {e}")))?,
+        };
+        self.used.insert(target_dir.clone());
+        // Entwickelt wird einmal für alle Formate (außer dem Original-DNG)
+        let mut developed = None;
+        let mut errors = Vec::new();
+        for format in self.formats.clone() {
+            let Some(target) = export_target(
+                &target_dir,
+                &stem,
+                format.extension(),
+                self.options.on_conflict,
+                &self.written,
+                |p| self.is_protected(p),
+            ) else {
+                self.skipped += 1;
+                continue;
+            };
+            self.written.insert(target.clone());
+            let res = self.write_format(
+                format,
+                &job,
+                &params,
+                meta.as_ref(),
+                &mut developed,
+                &target,
+            );
+            match res {
+                Ok(()) => {
+                    if let Err(e) = self.state.catalog.locked().record_export(id, &target) {
+                        // Nur für späteres Hochladen; der Export selbst gelang
+                        log::warn!("Export nicht eingetragen: {e}");
+                    }
+                }
+                Err(e) if self.formats.len() > 1 => {
+                    errors.push(format!("{}: {e}", format.extension().to_uppercase()))
+                }
+                Err(e) => errors.push(e.to_string()),
+            }
+        }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::Invalid(errors.join("; ")))
+        }
+    }
+
+    /// Eine Zieldatei schreiben. `developed`: das einmal entwickelte Bild, beim ersten
+    /// Format, das es braucht, erzeugt.
+    fn write_format(
+        &self,
+        format: ExportFormat,
+        job: &lumenkorn_core::catalog::ThumbJob,
+        params: &DevelopParams,
+        meta: Option<&output::ExportMeta>,
+        developed: &mut Option<Result<ImageF32, Error>>,
+        target: &Path,
+    ) -> Result<(), Error> {
+        let options = self.options;
+        if format == ExportFormat::Dng && !options.dng_edited {
+            // Original ohne Bearbeitung: die Szenendaten der Quelle
+            let src = Source::load(
+                Path::new(&job.path),
+                job.kind == ImageKind::Raw,
+                job.orientation.map(|o| o as u16),
+                options.long_edge.filter(|m| *m > 0),
+            )?;
+            return Ok(output::write_original_dng(
+                &src.image, target, options, meta,
+            )?);
+        }
+        let img = developed
+            .get_or_insert_with(|| develop_for_export(self.state, job, params, options.long_edge));
+        match img {
+            Ok(img) => {
+                let opts = ExportOptions {
+                    format,
+                    ..options.clone()
+                };
+                Ok(output::write(img, target, &opts, meta)?)
+            }
+            Err(e) => Err(Error::Invalid(e.to_string())),
+        }
+    }
 }
 
 /// Quellfotos eines Exports. Die Zieldatei heißt wie ihr Foto, also kann nur

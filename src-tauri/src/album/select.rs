@@ -805,6 +805,127 @@ fn canceled() -> Error {
     Error::Invalid(tr_s("Abgebrochen", "Canceled").into())
 }
 
+/// Merkmale eines Fotos aus seiner Vorschau (fehlende wird dabei erzeugt).
+/// `None`, wenn sie sich nicht laden lässt.
+fn measure_photo(state: &AppState, img: &lumenkorn_core::ImageSummary) -> Option<Features> {
+    let job = state.catalog.locked().thumb_job(img.id).ok()?;
+    let bytes = state
+        .cache
+        .get_or_render(&state.catalog, Variant::Preview, &job)
+        .ok()?;
+    let dyn_img = image::load_from_memory(&bytes).ok()?;
+    let small = dyn_img.thumbnail(MEASURE_EDGE, MEASURE_EDGE);
+    let gray = small.to_luma8();
+    let (sharp, clip_hi, clip_lo, mean, hash) = measure(&gray);
+    let (luma, color) = signature(&small);
+    let hist = color_hist(&small);
+    Some(Features {
+        id: img.id,
+        time: img
+            .captured_at
+            .as_deref()
+            .and_then(lumenkorn_core::geotime::parse_time),
+        captured_at: img.captured_at.clone(),
+        aspect: dyn_img.width().max(1) as f32 / dyn_img.height().max(1) as f32,
+        sharp,
+        clip_hi,
+        clip_lo,
+        mean,
+        hash,
+        luma,
+        color,
+        hist,
+        rating: img.rating,
+        flag: img.flag,
+        edited: img.edited,
+        pixels: img
+            .width
+            .max(img.height)
+            .and_then(|p| u32::try_from(p).ok()),
+        lat: img.lat,
+        lon: img.lon,
+        ..Default::default()
+    })
+}
+
+/// Gesichter: Anzahl, benannte, Personen und ihre Mitte als Ausschnitt-Vorschlag. Die
+/// Lage bezieht sich aufs unbearbeitete Bild – bei zugeschnittenen Fotos nur ein grober
+/// Anhaltspunkt, die Oberfläche nimmt ihn nur ohne Zuschnitt.
+fn add_faces(state: &AppState, f: &mut [Features], ids: &[i64]) -> Result<(), Error> {
+    let faces = state.catalog.locked().faces_of_images(ids)?;
+    let mut by_image: HashMap<i64, Vec<&lumenkorn_core::people::FaceInfo>> = HashMap::new();
+    for face in &faces {
+        // Kleine Gesichter im Hintergrund zählen nicht
+        if face.rect[2] * face.rect[3] >= 0.004 {
+            by_image.entry(face.image_id).or_default().push(face);
+        }
+    }
+    for x in f.iter_mut() {
+        if let Some(list) = by_image.get(&x.id) {
+            x.faces = list.len() as u32;
+            x.named = list.iter().any(|fc| fc.person_name.is_some());
+            let mut people: Vec<i64> = list.iter().filter_map(|fc| fc.person_id).collect();
+            people.sort_unstable();
+            people.dedup();
+            x.people = people;
+            let n = list.len() as f64;
+            let cx = list
+                .iter()
+                .map(|fc| fc.rect[0] + fc.rect[2] / 2.0)
+                .sum::<f64>()
+                / n;
+            let cy = list
+                .iter()
+                .map(|fc| fc.rect[1] + fc.rect[3] / 2.0)
+                .sum::<f64>()
+                / n;
+            x.focus = Some([cx as f32, cy as f32]);
+        }
+    }
+    Ok(())
+}
+
+/// Beschreibungen für CLIP (englisch) und ob das Thema Menschen bevorzugt.
+fn theme_prompts(req: &AlbumRequest) -> (Vec<String>, bool) {
+    let theme = THEMES.iter().find(|t| t.key == req.theme);
+    let prompts = match (theme, req.custom_theme.as_deref().map(str::trim)) {
+        (Some(t), _) => t.prompts.iter().map(|s| s.to_string()).collect(),
+        (None, Some(c)) if !c.is_empty() => {
+            let en = lumenkorn_ai::vocab::translate_query(c);
+            vec![format!("a photo of {en}"), en]
+        }
+        _ => vec![],
+    };
+    (prompts, theme.is_some_and(|t| t.people))
+}
+
+/// Themen- und Ausschlusswerte und CLIP-Vektoren aus dem Suchindex. Liefert (Fotos
+/// ohne Analyse, Thema benutzt). Ohne KI geht es auch, nur ohne Thema.
+fn add_theme(
+    state: &AppState,
+    f: &mut [Features],
+    prompts: &[String],
+    ids: &[i64],
+) -> (usize, bool) {
+    let clip = match crate::ai::theme_scores(state, prompts, NEGATIVES, ids) {
+        Ok(s) => s,
+        Err(e) => {
+            log::warn!("Fotoalbum: KI nicht nutzbar: {e}");
+            None
+        }
+    };
+    let Some(mut c) = clip else {
+        return (f.len(), false);
+    };
+    let unanalyzed = f.iter().filter(|x| !c.vectors.contains_key(&x.id)).count();
+    for x in f.iter_mut() {
+        x.theme = c.theme.get(&x.id).copied();
+        x.negative = c.negative.get(&x.id).copied();
+        x.vector = c.vectors.remove(&x.id);
+    }
+    (unanalyzed, !prompts.is_empty())
+}
+
 fn suggest(state: &AppState, app: &AppHandle, req: AlbumRequest) -> Result<AlbumSuggestion, Error> {
     let images = {
         let mut q = ImageQuery::new(req.scope.clone());
@@ -828,46 +949,7 @@ fn suggest(state: &AppState, app: &AppHandle, req: AlbumRequest) -> Result<Album
                 if CANCEL.load(Ordering::Relaxed) {
                     return None;
                 }
-                let r = (|| -> Option<Features> {
-                    let job = state.catalog.locked().thumb_job(img.id).ok()?;
-                    let bytes = state
-                        .cache
-                        .get_or_render(&state.catalog, Variant::Preview, &job)
-                        .ok()?;
-                    let dyn_img = image::load_from_memory(&bytes).ok()?;
-                    let small = dyn_img.thumbnail(MEASURE_EDGE, MEASURE_EDGE);
-                    let gray = small.to_luma8();
-                    let (sharp, clip_hi, clip_lo, mean, hash) = measure(&gray);
-                    let (luma, color) = signature(&small);
-                    let hist = color_hist(&small);
-                    Some(Features {
-                        id: img.id,
-                        time: img
-                            .captured_at
-                            .as_deref()
-                            .and_then(lumenkorn_core::geotime::parse_time),
-                        captured_at: img.captured_at.clone(),
-                        aspect: dyn_img.width().max(1) as f32 / dyn_img.height().max(1) as f32,
-                        sharp,
-                        clip_hi,
-                        clip_lo,
-                        mean,
-                        hash,
-                        luma,
-                        color,
-                        hist,
-                        rating: img.rating,
-                        flag: img.flag,
-                        edited: img.edited,
-                        pixels: img
-                            .width
-                            .max(img.height)
-                            .and_then(|p| u32::try_from(p).ok()),
-                        lat: img.lat,
-                        lon: img.lon,
-                        ..Default::default()
-                    })
-                })();
+                let r = measure_photo(state, img);
                 let n = done.fetch_add(1, Ordering::Relaxed) + 1;
                 if n.is_multiple_of(8) || n == total {
                     let _ = app.emit("album-progress", Progress { done: n, total });
@@ -889,71 +971,11 @@ fn suggest(state: &AppState, app: &AppHandle, req: AlbumRequest) -> Result<Album
             .into(),
         ));
     }
-    // Gesichter: Anzahl, benannte, Mitte als Ausschnitt-Vorschlag. Die Lage
-    // bezieht sich aufs unbearbeitete Bild – bei zugeschnittenen Fotos nur ein
-    // grober Anhaltspunkt, die Oberfläche nimmt ihn nur ohne Zuschnitt.
     let ids: Vec<i64> = f.iter().map(|x| x.id).collect();
-    let faces = state.catalog.locked().faces_of_images(&ids)?;
+    add_faces(state, &mut f, &ids)?;
     let mut places = state.catalog.locked().places(&ids)?;
-    let mut by_image: HashMap<i64, Vec<&lumenkorn_core::people::FaceInfo>> = HashMap::new();
-    for face in &faces {
-        // Kleine Gesichter im Hintergrund zählen nicht
-        if face.rect[2] * face.rect[3] >= 0.004 {
-            by_image.entry(face.image_id).or_default().push(face);
-        }
-    }
-    for x in &mut f {
-        if let Some(list) = by_image.get(&x.id) {
-            x.faces = list.len() as u32;
-            x.named = list.iter().any(|fc| fc.person_name.is_some());
-            let mut people: Vec<i64> = list.iter().filter_map(|fc| fc.person_id).collect();
-            people.sort_unstable();
-            people.dedup();
-            x.people = people;
-            let n = list.len() as f64;
-            let cx = list
-                .iter()
-                .map(|fc| fc.rect[0] + fc.rect[2] / 2.0)
-                .sum::<f64>()
-                / n;
-            let cy = list
-                .iter()
-                .map(|fc| fc.rect[1] + fc.rect[3] / 2.0)
-                .sum::<f64>()
-                / n;
-            x.focus = Some([cx as f32, cy as f32]);
-        }
-    }
-    // Thema über CLIP
-    let theme = THEMES.iter().find(|t| t.key == req.theme);
-    let prompts: Vec<String> = match (theme, req.custom_theme.as_deref().map(str::trim)) {
-        (Some(t), _) => t.prompts.iter().map(|s| s.to_string()).collect(),
-        (None, Some(c)) if !c.is_empty() => {
-            let en = lumenkorn_ai::vocab::translate_query(c);
-            vec![format!("a photo of {en}"), en]
-        }
-        _ => vec![],
-    };
-    let people = theme.is_some_and(|t| t.people);
-    let clip = match crate::ai::theme_scores(state, &prompts, NEGATIVES, &ids) {
-        Ok(s) => s,
-        Err(e) => {
-            // Ohne KI geht es auch, nur ohne Thema
-            log::warn!("Fotoalbum: KI nicht nutzbar: {e}");
-            None
-        }
-    };
-    let mut unanalyzed = f.len();
-    let mut theme_used = false;
-    if let Some(mut c) = clip {
-        unanalyzed = f.iter().filter(|x| !c.vectors.contains_key(&x.id)).count();
-        theme_used = !prompts.is_empty();
-        for x in &mut f {
-            x.theme = c.theme.get(&x.id).copied();
-            x.negative = c.negative.get(&x.id).copied();
-            x.vector = c.vectors.remove(&x.id);
-        }
-    }
+    let (prompts, people) = theme_prompts(&req);
+    let (unanalyzed, theme_used) = add_theme(state, &mut f, &prompts, &ids);
     let (scores, sharp) = score(&f, people);
     let (event, group) = groups(&f);
     let chosen = pick(&f, &scores, &event, &group, req.count.max(1));
