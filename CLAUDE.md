@@ -177,8 +177,9 @@ auch, wenn eine Änderung gerade anders einfacher wäre. Bevor du etwas in diese
   lokale Masken → Schwarzweiß → Schärfen → Geometrie.
 - `crates/lumenkorn-ai`: ONNX-Modelle (CLIP, IS-Net, SAM, skyseg, OWLv2,
   MediaPipe, YuNet/SFace, DRUNet, LaMa), Downloads in `models.rs`.
-- `src-tauri`: Tauri-Befehle (`commands.rs`, `develop.rs`, `ai.rs`,
-  `people.rs` …), Updater (`updater.rs`), MCP-Server für KI-Agenten (`mcp.rs`).
+- `src-tauri`: Tauri-Befehle (`commands.rs`, `develop/`, `ai/`,
+  `people.rs` …), Updater (`updater.rs`), MCP-Server für KI-Agenten (`mcp/`).
+  Hintergrundarbeiten, die nur einmal laufen dürfen, über `task.rs` (`AppState::tasks`).
 - `src`: Svelte-Oberfläche; Zustand in `src/lib/store.svelte.ts` (Bibliothek)
   und `src/lib/develop.svelte.ts` (Entwickeln), Backend-Aufrufe in
   `src/lib/api.ts`, Browser-Attrappe in `src/lib/mock.ts`.
