@@ -6,7 +6,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.11] – 2026-11-13
+
 ### Changed
+- Messages like “An export is already running” no longer start with “Invalid input:”.
+- After an export, noise reduction or repair, Lumenkorn hands the memory back to the system
+  (before, only merging did).
 - Lens correction, straightening and perspective now sample bicubically instead of bilinearly
   (as darktable does), so corrected and straightened photos stay sharper. Previews of edited RAW
   files and straightened photos are created again once.
