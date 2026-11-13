@@ -26,6 +26,8 @@ import {
   transferParams,
 } from "./api";
 import { lib } from "./store.svelte";
+import { History } from "./history";
+import { SaveQueue } from "./saveQueue";
 import type { ImageSummary } from "./api";
 import { editAspect } from "./layout";
 import { MAX_PER_KIND, solveGuides, type Guide } from "./guides";
@@ -183,16 +185,10 @@ class Develop {
   maskBusy = $state<string | null>(null);
   exportProgress = $state<ExportProgress | null>(null);
 
-  // Verlauf als JSON-Zeichenketten: Die Länge ist die exakte Größe, Pinsel-
-  // masken mit tausenden Punkten belegen als Objekte ein Vielfaches, und
-  // geparst wird nur bei Rückgängig/Wiederholen.
-  #undo: string[] = [];
-  #redo: string[] = [];
+  #history = new History(200, UNDO_MAX_CHARS);
   /** Letzter Verlaufsschritt (JSON) */
   #committedJson = DEFAULT_JSON;
-  /** Zuletzt gespeicherter Stand (JSON); "" erzwingt das nächste Speichern */
-  #savedJson = DEFAULT_JSON;
-  #saving: Promise<unknown> = Promise.resolve();
+  #queue = new SaveQueue<DevelopParams>((id, p) => api.developSave([id], p), DEFAULT_JSON);
   #lastOpen = -Infinity;
   #inFlight = false;
   /** Nummer der neuesten Vorschau-Anfrage: Beim Fotowechsel ruft open()
@@ -269,7 +265,7 @@ class Develop {
         // Inzwischen anderes Bild offen: direkt speichern
         try {
           // Erst warten, dann lesen: Ein noch laufendes Speichern gehört zum Stand dazu
-          await this.#saving;
+          await this.#queue.idle();
           // Nur die Einstellungen lesen – das RAW nicht dekodieren
           const saved = { ...clone(DEFAULT_PARAMS), ...(await api.developParams(e.imageId)) };
           const denoise = { id: e.denoiseId, amount: saved.denoise?.amount ?? 100 };
@@ -314,14 +310,13 @@ class Develop {
     const token = ++this.#loadToken;
     await this.flush();
     // Auch ein Wiederholversuch für genau dieses Foto muss durch sein
-    await this.#saving;
+    await this.#queue.idle();
     if (token !== this.#loadToken) return;
     this.#dropPreview();
     this.imageId = id;
     this.#paramsFor = null;
     this.loading = true;
-    this.#undo = [];
-    this.#redo = [];
+    this.#history.clear();
     this.activeMask = null;
     this.tool = null;
     this.showOverlay = false;
@@ -347,7 +342,7 @@ class Develop {
       this.#paramsFor = id;
       const json = JSON.stringify(p);
       this.#setCommitted(json);
-      this.#savedJson = json;
+      this.#queue.saved = json;
       this.raw = info.raw;
       this.asShotKelvin = info.asShotKelvin ?? null;
       this.lensInfo = info.lens ?? null;
@@ -376,8 +371,7 @@ class Develop {
     this.imageId = null;
     this.#paramsFor = null;
     this.revoke();
-    this.#undo = [];
-    this.#redo = [];
+    this.#history.clear();
     // Nicht freigeben, wenn inzwischen wieder ein Bild geöffnet wurde
     if (wasOpen)
       Promise.resolve(saved).finally(() => {
@@ -465,16 +459,7 @@ class Develop {
     // Nur einmal serialisieren: Vergleich, Verlauf und Standard-Prüfung nutzen dieselbe Zeichenkette
     const json = JSON.stringify($state.snapshot(this.params));
     if (json === this.#committedJson) return;
-    this.#undo.push(this.#committedJson);
-    // Verlauf nach Anzahl und Gesamtgröße begrenzen (älteste zuerst);
-    // der jüngste Schritt bleibt immer erhalten.
-    let total = 0;
-    for (const e of this.#undo) total += e.length;
-    while (this.#undo.length > 1 && (this.#undo.length > 200 || total > UNDO_MAX_CHARS)) {
-      total -= this.#undo[0].length;
-      this.#undo.shift();
-    }
-    this.#redo = [];
+    this.#history.push(this.#committedJson);
     this.#setCommitted(json);
     this.scheduleSave();
   }
@@ -497,9 +482,8 @@ class Develop {
   }
 
   undo() {
-    const prev = this.#undo.pop();
+    const prev = this.#history.undo(JSON.stringify($state.snapshot(this.params)));
     if (!prev) return;
-    this.#redo.push(JSON.stringify($state.snapshot(this.params)));
     const old = this.params;
     this.params = JSON.parse(prev) as DevelopParams;
     this.#setCommitted(prev);
@@ -509,9 +493,8 @@ class Develop {
   }
 
   redo() {
-    const next = this.#redo.pop();
+    const next = this.#history.redo(JSON.stringify($state.snapshot(this.params)));
     if (!next) return;
-    this.#undo.push(JSON.stringify($state.snapshot(this.params)));
     const old = this.params;
     this.params = JSON.parse(next) as DevelopParams;
     this.#setCommitted(next);
@@ -1044,51 +1027,20 @@ class Develop {
   async flushForClose(): Promise<boolean> {
     if (this.cropMode) this.applyCrop();
     await this.flush();
-    await this.#saving;
-    return this.#unsaved.size === 0;
-  }
-
-  /** Speichern fehlgeschlagen: der Stand je Foto, beim nächsten Anlass neu versucht.
-   *  Sonst wäre er verloren, sobald ein anderes Foto geöffnet wird. */
-  #unsaved = new Map<number, DevelopParams>();
-
-  #retryUnsaved() {
-    for (const [id, p] of [...this.#unsaved]) {
-      // Das offene Foto speichert gleich seinen aktuellen Stand
-      if (id === this.imageId) {
-        this.#unsaved.delete(id);
-        continue;
-      }
-      const run = this.#saving.then(() => api.developSave([id], p));
-      this.#saving = run.catch(() => {});
-      run.then(
-        () => {
-          if (this.#unsaved.get(id) === p) this.#unsaved.delete(id);
-        },
-        (e) => console.error(`Foto ${id} weiter nicht gespeichert`, e),
-      );
-    }
+    await this.#queue.idle();
+    return this.#queue.unsavedCount === 0;
   }
 
   async flush() {
     clearTimeout(this.#saveTimer);
-    this.#retryUnsaved();
+    this.#queue.retry(this.imageId);
     const id = this.imageId;
     if (id === null || !this.ready) return;
     // Eine Preset-Vorschau wird nie gespeichert
     const p = this.#hoverBase ?? ($state.snapshot(this.params) as DevelopParams);
     const json = JSON.stringify(p);
-    if (json === this.#savedJson) return;
-    this.#savedJson = json;
-    // Speichervorgänge strikt nacheinander: Die Befehle laufen im Backend
-    // parallel, ein älterer Stand dürfte sonst einen neueren überschreiben.
-    const run = this.#saving.then(() => api.developSave([id], p));
-    this.#saving = run.catch(() => {});
     try {
-      await run;
-      // Ein früher gescheiterter Stand dieses Fotos ist jetzt überholt (gespeichert
-      // wird der Reihe nach: Was davor scheiterte, ist älter)
-      this.#unsaved.delete(id);
+      if (!(await this.#queue.save(id, p, json))) return;
       const edited = json !== DEFAULT_JSON;
       // Nur bei Änderung neu zuweisen – sonst rechnet das Raster bei jedem Speichern neu
       const im = lib.images.find((i) => i.id === id);
@@ -1101,8 +1053,7 @@ class Develop {
       }
     } catch (e) {
       // Beim nächsten Anlass erneut versuchen
-      if (this.imageId === id) this.#savedJson = "";
-      this.#unsaved.set(id, p);
+      if (this.imageId === id) this.#queue.saved = "";
       lib.notify(t("Speichern fehlgeschlagen: {error}", { error: String(e) }), "error");
     }
   }
@@ -1154,7 +1105,7 @@ class Develop {
     if (others.length) {
       try {
         // Nach laufenden Speichervorgängen – sonst überschreibt ein älterer Stand das Einfügen
-        await this.#saving;
+        await this.#queue.idle();
         await api.developTransfer(others, src, groups);
       } catch (e) {
         lib.notify(String(e), "error");
@@ -1378,8 +1329,8 @@ class Develop {
     const id = this.imageId;
     try {
       // Der Schnappschuss hält den gespeicherten Stand fest: Der muss es sein
-      await this.#saving;
-      if (this.#unsaved.has(id)) throw t("Die Bearbeitung ist noch nicht gespeichert.");
+      await this.#queue.idle();
+      if (this.#queue.isUnsaved(id)) throw t("Die Bearbeitung ist noch nicht gespeichert.");
       const list = await api.developSnapshot(id, name);
       if (this.imageId === id) this.snapshots = list;
       return true;
@@ -1393,7 +1344,7 @@ class Develop {
     if (!this.ready) return;
     const id = this.imageId;
     await this.flush();
-    await this.#saving;
+    await this.#queue.idle();
     let p: DevelopParams;
     try {
       p = await api.developRestore(edit.id);
@@ -1404,7 +1355,7 @@ class Develop {
     // Inzwischen anderes Foto geöffnet: Stand nicht übernehmen
     if (this.imageId !== id || !this.ready) return;
     this.replace({ ...clone(DEFAULT_PARAMS), ...p });
-    this.#savedJson = JSON.stringify(this.params);
+    this.#queue.saved = JSON.stringify(this.params);
   }
 
   async deleteSnapshot(edit: Edit) {

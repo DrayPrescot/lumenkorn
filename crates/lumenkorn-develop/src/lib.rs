@@ -42,6 +42,8 @@ pub mod lensfun;
 mod local;
 pub mod masks;
 pub mod merge;
+#[cfg(test)]
+mod mirrors;
 pub mod output;
 pub mod params;
 pub mod pipeline;

@@ -64,3 +64,42 @@ it("DEFAULT_PARAMS entspricht den Standardwerten in Rust", () => {
   const shared = JSON.parse(read("crates/lumenkorn-develop/tests/default-params.json"));
   expect(DEFAULT_PARAMS).toEqual(shared);
 });
+
+describe("Rechnungen, die src/lib aus Rust nachbaut", () => {
+  // Erwartete Werte rechnet crates/lumenkorn-develop/src/mirrors.rs
+  const rust = JSON.parse(read("crates/lumenkorn-develop/tests/mirrors.json"));
+  const near = (a, b, tol = 1e-4) => expect(Math.abs(a - b)).toBeLessThanOrEqual(tol);
+
+  it("Gradationskurve (curve.ts ↔ curve.rs)", async () => {
+    const { spline } = await import("../src/lib/curve.ts");
+    for (const c of rust.curves) {
+      const f = spline(c.points);
+      c.x.forEach((x, i) => near(f(x), c.y[i]));
+    }
+  });
+
+  it("HSL-Bereiche (hsl.ts ↔ color.rs)", async () => {
+    const { hslWeights } = await import("../src/lib/hsl.ts");
+    for (const { hue, weights } of rust.hsl) hslWeights(hue).forEach((w, i) => near(w, weights[i]));
+  });
+
+  it("Geraderichten und Perspektive (frame.ts ↔ geometry.rs)", async () => {
+    const { straightenScale, warpOf } = await import("../src/lib/frame.ts");
+    for (const s of rust.straighten) near(straightenScale(s.w, s.h, s.deg), s.scale);
+    for (const w of rust.warps) {
+      const geo = { straighten: w.straighten, perspectiveVertical: w.vertical, perspectiveHorizontal: w.horizontal };
+      const out = warpOf(geo, w.w, w.h);
+      const m = out.m.flat();
+      m.forEach((v, i) => near(v / m[8], w.m[i], Math.max(1e-4, Math.abs(w.m[i]) * 1e-4)));
+      near(out.zoom, w.zoom);
+    }
+  });
+
+  it("Dateitypen, die als einer gelten (filetypes.ts ↔ formats.rs)", async () => {
+    const { typeExts } = await import("../src/lib/filetypes.ts");
+    const src = read("crates/lumenkorn-core/src/formats.rs").match(/const SAME_TYPE: [^=]*= &\[([\s\S]*?)\];/)[1];
+    const groups = [...src.matchAll(/&\[([^\]]*)\]/g)].map((g) => [...g[1].matchAll(/"(\w+)"/g)].map((x) => x[1]));
+    expect(groups.length).toBeGreaterThan(0);
+    for (const g of groups) for (const e of g) expect(typeExts(e)).toEqual(g);
+  });
+});

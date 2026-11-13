@@ -81,7 +81,7 @@ pub(crate) fn curve_px(c: [f32; 3], l: &CurveLut) -> [f32; 3] {
 
 /// Monotoner kubischer Hermite-Spline durch die Stützpunkte (nach x sortiert,
 /// siehe `ToneCurve::sanitized`). Ohne Punkte: die Gerade y = x.
-struct Spline {
+pub(crate) struct Spline {
     x: Vec<f32>,
     y: Vec<f32>,
     /// Steigungen in den Punkten
@@ -89,7 +89,7 @@ struct Spline {
 }
 
 impl Spline {
-    fn new(points: &[[f32; 2]]) -> Self {
+    pub(crate) fn new(points: &[[f32; 2]]) -> Self {
         if points.len() < 2 {
             return Spline {
                 x: vec![0.0, 1.0],
@@ -133,7 +133,7 @@ impl Spline {
         Spline { x, y, m }
     }
 
-    fn eval(&self, v: f32) -> f32 {
+    pub(crate) fn eval(&self, v: f32) -> f32 {
         let n = self.x.len();
         if v <= self.x[0] {
             return self.y[0];
