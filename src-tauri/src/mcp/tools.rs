@@ -1,217 +1,14 @@
-//! MCP-Schnittstelle: KI-Agenten (Claude, ChatGPT/Codex, …) bedienen
-//! Lumenkorn über das Model Context Protocol.
-//!
-//! - **HTTP** („Streamable HTTP“, nur JSON-Antworten): Die laufende App hört
-//!   auf `http://127.0.0.1:<port>/mcp`. Jede Anfrage braucht den Schlüssel aus
-//!   `mcp.json` im Datenordner (`Authorization: Bearer …`); Anfragen von
-//!   Webseiten (fremder `Origin`) werden abgewiesen.
-//! - **stdio**: `lumenkorn --mcp` ist eine Brücke für Agenten, die Server als
-//!   Programm starten (Claude Desktop, Codex CLI …). Sie liest Port und
-//!   Schlüssel aus `mcp.json`, startet Lumenkorn bei Bedarf und reicht jede
-//!   Zeile an die laufende App weiter.
-//!
-//! Standardmäßig aus; eingeschaltet wird im KI-Dialog. Die Werkzeuge lesen,
-//! bewerten, verschlagworten, entwickeln und exportieren – Fotos löschen oder
-//! Ordner entfernen können sie nicht. Änderungen erscheinen sofort in der
-//! Oberfläche und lassen sich bei geöffnetem Foto mit Strg+Z zurücknehmen.
+//! Die Werkzeuge: Beschreibung (`*_tool`) und Ausführung je Werkzeug, dazu die
+//! Prüfung von Exportordnern.
 
-use crate::AppState;
-use lumenkorn_core::Error;
-use lumenkorn_core::LockExt;
-use lumenkorn_core::model::{ImageQuery, Scope, SortOrder};
-use lumenkorn_develop::DevelopParams;
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
-use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager};
-
-/// Bevorzugter Port; ist er belegt, nimmt die App einen freien.
-const PORT: u16 = 47_823;
-const PROTOCOL: &str = "2025-06-18";
-/// Ältere Protokollstände, die genauso funktionieren (nur Werkzeuge)
-const PROTOCOLS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const FILE: &str = "mcp.json";
-const IDENTIFIER: &str = "io.github.drayprescot.lumenkorn";
-
-/// Einstellungen und Zugangsdaten (Datenordner/mcp.json)
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase", default)]
-pub struct McpConfig {
-    pub enabled: bool,
-    /// Port, auf dem die App gerade hört (0 = keiner)
-    pub port: u16,
-    pub token: String,
-}
-
-#[derive(Default)]
-pub struct McpState {
-    server: Mutex<Option<std::sync::Arc<tiny_http::Server>>>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct McpStatus {
-    enabled: bool,
-    running: bool,
-    url: Option<String>,
-    token: String,
-    /// Programm für die stdio-Brücke (`<exe> --mcp`)
-    command: String,
-}
-
-fn config_path(data_dir: &Path) -> PathBuf {
-    data_dir.join(FILE)
-}
-
-fn load(data_dir: &Path) -> McpConfig {
-    lumenkorn_develop::fsutil::load_json_or_default(&config_path(data_dir))
-}
-
-fn save(data_dir: &Path, c: &McpConfig) {
-    if let Err(e) = lumenkorn_develop::fsutil::save_json(&config_path(data_dir), c) {
-        log::warn!("MCP-Einstellungen nicht gespeichert: {e}");
-    }
-    // Enthält den Schlüssel: Andere Benutzer des Rechners sollen ihn nicht lesen.
-    // Unter Windows schützt das Benutzerprofil (%APPDATA%) die Datei schon.
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let only_owner = std::fs::Permissions::from_mode(0o600);
-        if let Err(e) = std::fs::set_permissions(config_path(data_dir), only_owner) {
-            log::warn!("Rechte von {FILE} nicht gesetzt: {e}");
-        }
-    }
-}
-
-/// Zufälliger Schlüssel: 256 Bit vom Zufallsgenerator des Betriebssystems, hex.
-fn new_token() -> String {
-    let mut b = [0u8; 32];
-    if getrandom::fill(&mut b).is_err() {
-        // Ohne Zufallsquelle gibt es keinen brauchbaren Schlüssel
-        log::error!("MCP: keine Zufallsquelle für den Schlüssel");
-        return String::new();
-    }
-    b.iter().map(|x| format!("{x:02x}")).collect()
-}
-
-/// Vergleich ohne vorzeitigen Abbruch (Laufzeit hängt nicht vom Treffer ab)
-fn same_token(a: &str, b: &str) -> bool {
-    let (a, b) = (a.as_bytes(), b.as_bytes());
-    let mut diff = a.len() ^ b.len();
-    for i in 0..a.len().max(b.len()) {
-        diff |= (a.get(i).copied().unwrap_or(0) ^ b.get(i).copied().unwrap_or(0)) as usize;
-    }
-    diff == 0
-}
-
-fn exe() -> String {
-    std::env::current_exe()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| "lumenkorn".into())
-}
-
-/// Beim Start: Server starten, falls eingeschaltet.
-pub fn start_if_enabled(app: &AppHandle) {
-    let state = app.state::<AppState>();
-    if load(&state.data_dir).enabled
-        && let Err(e) = start(app)
-    {
-        log::warn!("MCP-Server nicht gestartet: {e}");
-    }
-}
-
-fn start(app: &AppHandle) -> Result<(), Error> {
-    let state = app.state::<AppState>();
-    let mut slot = state.mcp.server.locked();
-    if slot.is_some() {
-        return Ok(());
-    }
-    let server = tiny_http::Server::http(("127.0.0.1", PORT))
-        .or_else(|_| tiny_http::Server::http(("127.0.0.1", 0)))
-        .map_err(|e| Error::Invalid(format!("MCP: {e}")))?;
-    let port = server.server_addr().to_ip().map_or(0, |a| a.port());
-    let server = std::sync::Arc::new(server);
-    let mut cfg = load(&state.data_dir);
-    if cfg.token.is_empty() {
-        cfg.token = new_token();
-    }
-    cfg.enabled = true;
-    cfg.port = port;
-    save(&state.data_dir, &cfg);
-    let (srv, handle, token) = (server.clone(), app.clone(), cfg.token.clone());
-    std::thread::Builder::new()
-        .name("lumenkorn-mcp".into())
-        .spawn(move || {
-            for req in srv.incoming_requests() {
-                handle_http(&handle, &token, port, req);
-            }
-        })
-        .map_err(|e| Error::Invalid(e.to_string()))?;
-    log::info!("MCP-Server auf http://127.0.0.1:{port}/mcp");
-    *slot = Some(server);
-    Ok(())
-}
-
-fn stop(app: &AppHandle) {
-    let state = app.state::<AppState>();
-    if let Some(s) = state.mcp.server.locked().take() {
-        s.unblock();
-    }
-    let mut cfg = load(&state.data_dir);
-    cfg.enabled = false;
-    cfg.port = 0;
-    save(&state.data_dir, &cfg);
-}
-
-#[tauri::command]
-pub fn mcp_status(app: AppHandle) -> McpStatus {
-    let state = app.state::<AppState>();
-    let cfg = load(&state.data_dir);
-    let running = state.mcp.server.locked().is_some();
-    McpStatus {
-        enabled: cfg.enabled,
-        running,
-        url: (running && cfg.port > 0).then(|| format!("http://127.0.0.1:{}/mcp", cfg.port)),
-        token: cfg.token,
-        command: exe(),
-    }
-}
-
-#[tauri::command]
-pub fn mcp_set_enabled(app: AppHandle, enabled: bool) -> Result<McpStatus, Error> {
-    if enabled {
-        start(&app)?;
-    } else {
-        stop(&app);
-    }
-    Ok(mcp_status(app))
-}
-
-/// Neuer Schlüssel – alte Zugänge gelten danach nicht mehr (Neustart des
-/// Servers nötig, damit er greift).
-#[tauri::command]
-pub fn mcp_new_token(app: AppHandle) -> Result<McpStatus, Error> {
-    let state = app.state::<AppState>();
-    let mut cfg = load(&state.data_dir);
-    cfg.token = new_token();
-    save(&state.data_dir, &cfg);
-    let was = state.mcp.server.locked().is_some();
-    if was {
-        stop(&app);
-        start(&app)?;
-    }
-    Ok(mcp_status(app))
-}
-
-// --- HTTP ------------------------------------------------------------------------
+use super::*;
 
 /// Höchstzahl Fotos je Export-Aufruf
-const MAX_EXPORT: usize = 500;
+pub(super) const MAX_EXPORT: usize = 500;
 
 /// Pfad als Bestandteile: ohne `\\?\`-Präfix, `.` und `..` aufgelöst, unter
 /// Windows ohne Groß/Klein-Unterschied.
-fn path_parts(p: &str) -> Vec<String> {
+pub(super) fn path_parts(p: &str) -> Vec<String> {
     let p = p.strip_prefix(r"\\?\").unwrap_or(p);
     let mut out: Vec<String> = Vec::new();
     for part in p.split(['/', '\\']) {
@@ -229,14 +26,17 @@ fn path_parts(p: &str) -> Vec<String> {
 
 /// Liegt `child` in `parent` (oder ist es selbst)? Komponentenweise, damit
 /// `C:\Bilder2` nicht als in `C:\Bilder` gilt.
-fn path_inside(child: &str, parent: &str) -> bool {
+pub(super) fn path_inside(child: &str, parent: &str) -> bool {
     let (c, p) = (path_parts(child), path_parts(parent));
     !p.is_empty() && c.starts_with(&p)
 }
 
 /// Prüft den Zielordner eines Exports: absolut, vorhanden und (nach
 /// Auflösen von Verknüpfungen) innerhalb eines der erlaubten Ordner.
-fn check_export_folder(folder: &str, allowed: &[std::path::PathBuf]) -> Result<String, String> {
+pub(super) fn check_export_folder(
+    folder: &str,
+    allowed: &[std::path::PathBuf],
+) -> Result<String, String> {
     const MSG: &str =
         "folder must be inside one of the library folders; omit it to export next to the originals";
     let path = std::path::Path::new(folder);
@@ -259,193 +59,13 @@ fn check_export_folder(folder: &str, allowed: &[std::path::PathBuf]) -> Result<S
     }
 }
 
-/// `Host` nur 127.0.0.1, localhost oder [::1] mit dem gebundenen Port
-/// (zweite Verteidigung gegen DNS-Rebinding).
-fn local_host(host: &str, port: u16) -> bool {
-    let host = host.trim().to_ascii_lowercase();
-    ["127.0.0.1", "localhost", "[::1]"]
-        .iter()
-        .any(|h| host == format!("{h}:{port}"))
-}
-
-/// Origin einer lokalen Seite: genau 127.0.0.1 bzw. localhost, mit oder ohne
-/// Port – nicht etwa `http://localhost.example.com`. `Origin: null` (Datei,
-/// Sandbox-iframe) kann jede fremde Seite erzeugen und gilt nicht als lokal.
-fn local_origin(origin: &str) -> bool {
-    let Some(rest) = origin.strip_prefix("http://") else {
-        return false;
-    };
-    let host = match rest.split_once(':') {
-        Some((h, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => h,
-        Some(_) => return false,
-        None => rest,
-    };
-    host == "127.0.0.1" || host == "localhost"
-}
-
-/// Größte angenommene Anfrage (Bytes)
-const MAX_BODY: usize = 4 << 20;
-
-fn handle_http(app: &AppHandle, token: &str, port: u16, mut req: tiny_http::Request) {
-    use tiny_http::{Header, Method, Response};
-    let header = |name: &str| {
-        req.headers()
-            .iter()
-            .find(|h| h.field.as_str().as_str().eq_ignore_ascii_case(name))
-            .map(|h| h.value.as_str().to_string())
-    };
-    let json_header = Header::from_bytes("Content-Type", "application/json").unwrap();
-    let reply = |req: tiny_http::Request, code: u16, body: String| {
-        let _ = req.respond(
-            Response::from_string(body)
-                .with_status_code(code)
-                .with_header(json_header.clone()),
-        );
-    };
-    // Host muss auf uns selbst zeigen (DNS-Rebinding)
-    if let Some(host) = header("Host")
-        && !local_host(&host, port)
-    {
-        return reply(req, 403, r#"{"error":"host not allowed"}"#.into());
-    }
-    // Nur lokale Webseiten dürfen (Schutz vor DNS-Rebinding)
-    if let Some(origin) = header("Origin")
-        && !local_origin(&origin)
-    {
-        return reply(req, 403, r#"{"error":"origin not allowed"}"#.into());
-    }
-    // Ein leerer Schlüssel (keine Zufallsquelle) lässt nie jemanden herein
-    let auth_ok = !token.is_empty()
-        && header("Authorization").is_some_and(|a| {
-            a.strip_prefix("Bearer ")
-                .is_some_and(|t| same_token(t.trim(), token))
-        });
-    if !auth_ok {
-        return reply(req, 401, r#"{"error":"missing or wrong token"}"#.into());
-    }
-    if req.url().split('?').next() != Some("/mcp") {
-        return reply(req, 404, r#"{"error":"use /mcp"}"#.into());
-    }
-    match req.method() {
-        Method::Post => {}
-        // Kein Ereignisstrom vom Server aus (erlaubt laut Protokoll)
-        Method::Get => return reply(req, 405, String::new()),
-        Method::Delete => return reply(req, 200, String::new()),
-        _ => return reply(req, 405, String::new()),
-    }
-    let mut body = String::new();
-    let limit = MAX_BODY as u64 + 1;
-    if std::io::Read::read_to_string(&mut std::io::Read::take(req.as_reader(), limit), &mut body)
-        .is_err()
-    {
-        return reply(req, 400, String::new());
-    }
-    if body.len() > MAX_BODY {
-        return reply(req, 413, r#"{"error":"request too large"}"#.into());
-    }
-    match handle_body(app, &body) {
-        Some(out) => reply(req, 200, out),
-        // Nur Benachrichtigungen: angenommen, keine Antwort
-        None => reply(req, 202, String::new()),
-    }
-}
-
-/// JSON-RPC (einzeln oder als Liste). `None`, wenn nichts zu antworten ist.
-pub(crate) fn handle_body(app: &AppHandle, body: &str) -> Option<String> {
-    handle_body_with(body, &|name, args| {
-        tauri::async_runtime::block_on(call(app, name, args))
-    })
-}
-
-/// Werkzeugaufruf: Name und Argumente → Inhalt
-type Caller<'a> = &'a dyn Fn(&str, &Value) -> ToolResult;
-
-fn handle_body_with(body: &str, call: Caller) -> Option<String> {
-    let msg: Value = match serde_json::from_str(body) {
-        Ok(v) => v,
-        Err(e) => {
-            return Some(
-                json!({"jsonrpc": "2.0", "id": null, "error": {"code": -32700, "message": e.to_string()}})
-                    .to_string(),
-            );
-        }
-    };
-    if let Value::Array(list) = msg {
-        let out: Vec<Value> = list
-            .into_iter()
-            .filter_map(|m| handle_msg(m, call))
-            .collect();
-        return (!out.is_empty()).then(|| Value::Array(out).to_string());
-    }
-    handle_msg(msg, call).map(|v| v.to_string())
-}
-
-fn handle_msg(msg: Value, call: Caller) -> Option<Value> {
-    let id = msg.get("id").cloned();
-    let method = msg.get("method").and_then(Value::as_str).unwrap_or("");
-    // Benachrichtigungen (ohne id) und Antworten des Clients
-    let id = id?;
-    let params = msg.get("params").cloned().unwrap_or(Value::Null);
-    let result = match method {
-        "initialize" => {
-            let asked = params
-                .get("protocolVersion")
-                .and_then(Value::as_str)
-                .unwrap_or(PROTOCOL);
-            let version = if PROTOCOLS.contains(&asked) {
-                asked
-            } else {
-                PROTOCOL
-            };
-            Ok(json!({
-                "protocolVersion": version,
-                "capabilities": { "tools": { "listChanged": false } },
-                "serverInfo": {
-                    "name": "lumenkorn",
-                    "title": "Lumenkorn",
-                    "version": env!("CARGO_PKG_VERSION"),
-                },
-                "instructions": INSTRUCTIONS,
-            }))
-        }
-        "ping" => Ok(json!({})),
-        "tools/list" => Ok(json!({ "tools": tools() })),
-        "tools/call" => {
-            let name = params.get("name").and_then(Value::as_str).unwrap_or("");
-            let args = params.get("arguments").cloned().unwrap_or(json!({}));
-            let out = call(name, &args);
-            Ok(match out {
-                Ok(content) => json!({ "content": content, "isError": false }),
-                Err(e) => json!({
-                    "content": [{ "type": "text", "text": e }],
-                    "isError": true,
-                }),
-            })
-        }
-        "resources/list" => Ok(json!({ "resources": [] })),
-        "resources/templates/list" => Ok(json!({ "resourceTemplates": [] })),
-        "prompts/list" => Ok(json!({ "prompts": [] })),
-        _ => Err((-32601, format!("method not found: {method}"))),
-    };
-    Some(match result {
-        Ok(r) => json!({ "jsonrpc": "2.0", "id": id, "result": r }),
-        Err((code, m)) => {
-            json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": m } })
-        }
-    })
-}
-
-const INSTRUCTIONS: &str = "Lumenkorn is a local photo library and RAW developer. \
-Find photos with search_photos (text, folder, project, person, rating), look at them with \
-view_photo, then rate, flag, tag, develop (set_develop_settings, auto_tone, apply_preset, \
-add_mask) or export them. Photo ids come from search_photos. Develop values use the same \
-ranges as the app's sliders (most −100…100, exposure −5…5 EV). Changes show up in the \
-app immediately. Before develop settings change, the previous ones are kept as a snapshot \
-that the user can restore in the app. Nothing here deletes files.";
-
-// --- Werkzeuge ------------------------------------------------------------------
-
-fn tool(name: &str, title: &str, description: &str, schema: Value, read_only: bool) -> Value {
+pub(super) fn tool(
+    name: &str,
+    title: &str,
+    description: &str,
+    schema: Value,
+    read_only: bool,
+) -> Value {
     // Ersetzt vorhandene Bearbeitungen bzw. (Export „overwrite“) Dateien. Bearbeitungen
     // kommen vorher in einen Schnappschuss, sind aber ohne Zutun des Nutzers weg.
     let destructive = matches!(
@@ -466,11 +86,11 @@ fn tool(name: &str, title: &str, description: &str, schema: Value, read_only: bo
     })
 }
 
-fn ids_schema() -> Value {
+pub(super) fn ids_schema() -> Value {
     json!({ "type": "array", "items": { "type": "integer" }, "minItems": 1, "description": "Photo ids" })
 }
 
-fn tools() -> Vec<Value> {
+pub(super) fn tools() -> Vec<Value> {
     vec![
         list_library_tool(),
         search_photos_tool(),
@@ -492,24 +112,24 @@ fn tools() -> Vec<Value> {
     ]
 }
 
-type ToolResult = Result<Vec<Value>, String>;
+pub(super) type ToolResult = Result<Vec<Value>, String>;
 
-fn text(v: impl Serialize) -> ToolResult {
+pub(super) fn text(v: impl Serialize) -> ToolResult {
     Ok(vec![json!({
         "type": "text",
         "text": serde_json::to_string_pretty(&v).unwrap_or_default(),
     })])
 }
 
-fn arg<'a>(a: &'a Value, k: &str) -> Option<&'a Value> {
+pub(super) fn arg<'a>(a: &'a Value, k: &str) -> Option<&'a Value> {
     a.get(k).filter(|v| !v.is_null())
 }
-fn int(a: &Value, k: &str) -> Result<i64, String> {
+pub(super) fn int(a: &Value, k: &str) -> Result<i64, String> {
     arg(a, k)
         .and_then(Value::as_i64)
         .ok_or_else(|| format!("`{k}` (integer) is required"))
 }
-fn ids(a: &Value, k: &str) -> Result<Vec<i64>, String> {
+pub(super) fn ids(a: &Value, k: &str) -> Result<Vec<i64>, String> {
     let v: Vec<i64> = arg(a, k)
         .and_then(Value::as_array)
         .map(|l| l.iter().filter_map(Value::as_i64).collect())
@@ -519,14 +139,14 @@ fn ids(a: &Value, k: &str) -> Result<Vec<i64>, String> {
     }
     Ok(v)
 }
-fn e(err: Error) -> String {
+pub(super) fn e(err: Error) -> String {
     err.to_string()
 }
 
 /// Bevor ein Werkzeug Bearbeitungen ändert: Schnappschuss der jetzigen, damit sie
 /// sich im Entwickeln wiederherstellen lassen (Rückgängig gibt es nur für das
 /// geöffnete Foto).
-fn keep_edits(app: &AppHandle, ids: &[i64]) -> Result<(), String> {
+pub(super) fn keep_edits(app: &AppHandle, ids: &[i64]) -> Result<(), String> {
     let name =
         lumenkorn_develop::i18n::tr_s("Vor Änderung durch KI-Agent", "Before change by AI agent");
     app.state::<AppState>()
@@ -538,14 +158,14 @@ fn keep_edits(app: &AppHandle, ids: &[i64]) -> Result<(), String> {
 }
 
 /// Oberfläche über Änderungen informieren
-fn changed(app: &AppHandle, develop: &[i64]) {
+pub(super) fn changed(app: &AppHandle, develop: &[i64]) {
     let _ = app.emit("catalog-updated", ());
     if !develop.is_empty() {
         let _ = app.emit("develop-external", json!({ "ids": develop }));
     }
 }
 
-async fn call(app: &AppHandle, name: &str, a: &Value) -> ToolResult {
+pub(super) async fn call(app: &AppHandle, name: &str, a: &Value) -> ToolResult {
     log::info!("MCP: {name}");
     match name {
         "list_library" => list_library(app, a).await,
@@ -569,7 +189,7 @@ async fn call(app: &AppHandle, name: &str, a: &Value) -> ToolResult {
     }
 }
 
-fn list_library_tool() -> Value {
+pub(super) fn list_library_tool() -> Value {
     tool(
         "list_library",
         "List folders, projects and people",
@@ -581,7 +201,7 @@ fn list_library_tool() -> Value {
     )
 }
 
-async fn list_library(app: &AppHandle, a: &Value) -> ToolResult {
+pub(super) async fn list_library(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let max = arg(a, "max_folders").and_then(Value::as_u64).unwrap_or(300) as usize;
     let roots = crate::commands::list_roots(state.clone()).map_err(e)?;
@@ -607,7 +227,7 @@ async fn list_library(app: &AppHandle, a: &Value) -> ToolResult {
     }))
 }
 
-fn search_photos_tool() -> Value {
+pub(super) fn search_photos_tool() -> Value {
     tool(
         "search_photos",
         "Search photos",
@@ -631,7 +251,7 @@ fn search_photos_tool() -> Value {
     )
 }
 
-fn get_photo_tool() -> Value {
+pub(super) fn get_photo_tool() -> Value {
     tool(
         "get_photo",
         "Photo details",
@@ -641,7 +261,7 @@ fn get_photo_tool() -> Value {
     )
 }
 
-async fn get_photo(app: &AppHandle, a: &Value) -> ToolResult {
+pub(super) async fn get_photo(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let id = int(a, "id")?;
     let detail = crate::commands::image_detail(state.clone(), id).map_err(e)?;
@@ -658,7 +278,7 @@ async fn get_photo(app: &AppHandle, a: &Value) -> ToolResult {
     text(v)
 }
 
-fn view_photo_tool() -> Value {
+pub(super) fn view_photo_tool() -> Value {
     tool(
         "view_photo",
         "Look at a photo",
@@ -671,7 +291,7 @@ fn view_photo_tool() -> Value {
     )
 }
 
-async fn view_photo(app: &AppHandle, a: &Value) -> ToolResult {
+pub(super) async fn view_photo(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let id = int(a, "id")?;
     let size = arg(a, "size")
@@ -707,7 +327,7 @@ async fn view_photo(app: &AppHandle, a: &Value) -> ToolResult {
     ])
 }
 
-fn rate_photos_tool() -> Value {
+pub(super) fn rate_photos_tool() -> Value {
     tool(
         "rate_photos",
         "Rate photos",
@@ -720,7 +340,7 @@ fn rate_photos_tool() -> Value {
     )
 }
 
-async fn rate_photos(app: &AppHandle, a: &Value) -> ToolResult {
+pub(super) async fn rate_photos(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let ids = ids(a, "ids")?;
     let r = int(a, "rating")?.clamp(0, 5);
@@ -730,7 +350,7 @@ async fn rate_photos(app: &AppHandle, a: &Value) -> ToolResult {
     text(json!({ "rated": ids.len(), "rating": r }))
 }
 
-fn flag_photos_tool() -> Value {
+pub(super) fn flag_photos_tool() -> Value {
     tool(
         "flag_photos",
         "Flag photos",
@@ -743,7 +363,7 @@ fn flag_photos_tool() -> Value {
     )
 }
 
-async fn flag_photos(app: &AppHandle, a: &Value) -> ToolResult {
+pub(super) async fn flag_photos(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let ids = ids(a, "ids")?;
     let f = match arg(a, "flag").and_then(Value::as_str) {
@@ -758,7 +378,7 @@ async fn flag_photos(app: &AppHandle, a: &Value) -> ToolResult {
     text(json!({ "flagged": ids.len() }))
 }
 
-fn tag_photos_tool() -> Value {
+pub(super) fn tag_photos_tool() -> Value {
     tool(
         "tag_photos",
         "Add or remove keywords",
@@ -772,7 +392,7 @@ fn tag_photos_tool() -> Value {
     )
 }
 
-async fn tag_photos(app: &AppHandle, a: &Value) -> ToolResult {
+pub(super) async fn tag_photos(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let ids = ids(a, "ids")?;
     let list = |k| -> Vec<String> {
@@ -799,7 +419,7 @@ async fn tag_photos(app: &AppHandle, a: &Value) -> ToolResult {
     text(json!({ "photos": ids.len(), "added": add, "removed": remove }))
 }
 
-fn edit_metadata_tool() -> Value {
+pub(super) fn edit_metadata_tool() -> Value {
     tool(
         "edit_metadata",
         "Edit photo metadata",
@@ -823,7 +443,7 @@ fn edit_metadata_tool() -> Value {
     )
 }
 
-async fn edit_metadata(app: &AppHandle, a: &Value) -> ToolResult {
+pub(super) async fn edit_metadata(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let ids = ids(a, "ids")?;
     let change = if let Some(by) = arg(a, "shift_seconds").and_then(Value::as_i64) {
@@ -864,7 +484,7 @@ async fn edit_metadata(app: &AppHandle, a: &Value) -> ToolResult {
     text(report)
 }
 
-fn get_develop_settings_tool() -> Value {
+pub(super) fn get_develop_settings_tool() -> Value {
     tool(
         "get_develop_settings",
         "Read develop settings",
@@ -874,13 +494,13 @@ fn get_develop_settings_tool() -> Value {
     )
 }
 
-async fn get_develop_settings(app: &AppHandle, a: &Value) -> ToolResult {
+pub(super) async fn get_develop_settings(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let id = int(a, "id")?;
     text(crate::develop::develop_params(state.clone(), id).map_err(e)?)
 }
 
-fn set_develop_settings_tool() -> Value {
+pub(super) fn set_develop_settings_tool() -> Value {
     tool(
         "set_develop_settings",
         "Change develop settings",
@@ -893,7 +513,7 @@ fn set_develop_settings_tool() -> Value {
     )
 }
 
-async fn set_develop_settings(app: &AppHandle, a: &Value) -> ToolResult {
+pub(super) async fn set_develop_settings(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let ids = ids(a, "ids")?;
     let patch = arg(a, "settings")
@@ -919,7 +539,7 @@ async fn set_develop_settings(app: &AppHandle, a: &Value) -> ToolResult {
     text(json!({ "updated": ids.len(), "ignoredUnknownKeys": unknown }))
 }
 
-fn auto_tone_tool() -> Value {
+pub(super) fn auto_tone_tool() -> Value {
     tool(
         "auto_tone",
         "Auto tone",
@@ -929,7 +549,7 @@ fn auto_tone_tool() -> Value {
     )
 }
 
-async fn auto_tone(app: &AppHandle, a: &Value) -> ToolResult {
+pub(super) async fn auto_tone(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let ids = ids(a, "ids")?;
     keep_edits(app, &ids)?;
@@ -947,7 +567,7 @@ async fn auto_tone(app: &AppHandle, a: &Value) -> ToolResult {
     text(out)
 }
 
-fn reset_photos_tool() -> Value {
+pub(super) fn reset_photos_tool() -> Value {
     tool(
         "reset_photos",
         "Reset to original",
@@ -957,7 +577,7 @@ fn reset_photos_tool() -> Value {
     )
 }
 
-async fn reset_photos(app: &AppHandle, a: &Value) -> ToolResult {
+pub(super) async fn reset_photos(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let ids = ids(a, "ids")?;
     keep_edits(app, &ids)?;
@@ -972,7 +592,7 @@ async fn reset_photos(app: &AppHandle, a: &Value) -> ToolResult {
     text(json!({ "reset": ids.len() }))
 }
 
-fn apply_preset_tool() -> Value {
+pub(super) fn apply_preset_tool() -> Value {
     tool(
         "apply_preset",
         "Apply a preset",
@@ -985,7 +605,7 @@ fn apply_preset_tool() -> Value {
     )
 }
 
-async fn apply_preset(app: &AppHandle, a: &Value) -> ToolResult {
+pub(super) async fn apply_preset(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let ids = ids(a, "ids")?;
     let presets = crate::develop::preset_list(state.clone()).map_err(e)?;
@@ -1018,7 +638,7 @@ async fn apply_preset(app: &AppHandle, a: &Value) -> ToolResult {
     text(json!({ "preset": p.name, "applied": ids.len() }))
 }
 
-fn copy_settings_tool() -> Value {
+pub(super) fn copy_settings_tool() -> Value {
     tool(
         "copy_settings",
         "Copy develop settings",
@@ -1032,7 +652,7 @@ fn copy_settings_tool() -> Value {
     )
 }
 
-async fn copy_settings(app: &AppHandle, a: &Value) -> ToolResult {
+pub(super) async fn copy_settings(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let from = int(a, "from_id")?;
     let to = ids(a, "to_ids")?;
@@ -1065,7 +685,7 @@ async fn copy_settings(app: &AppHandle, a: &Value) -> ToolResult {
     text(json!({ "copiedTo": to.len() }))
 }
 
-fn add_mask_tool() -> Value {
+pub(super) fn add_mask_tool() -> Value {
     tool(
         "add_mask",
         "Add an AI mask with local adjustments",
@@ -1086,7 +706,7 @@ fn add_mask_tool() -> Value {
     )
 }
 
-fn export_photos_tool() -> Value {
+pub(super) fn export_photos_tool() -> Value {
     tool(
         "export_photos",
         "Export photos",
@@ -1105,7 +725,7 @@ fn export_photos_tool() -> Value {
     )
 }
 
-async fn export_photos(app: &AppHandle, a: &Value) -> ToolResult {
+pub(super) async fn export_photos(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let ids = ids(a, "ids")?;
     let name = |f: &str| match f {
@@ -1169,7 +789,7 @@ async fn export_photos(app: &AppHandle, a: &Value) -> ToolResult {
     }))
 }
 
-fn show_photo_tool() -> Value {
+pub(super) fn show_photo_tool() -> Value {
     tool(
         "show_photo",
         "Show a photo in the app",
@@ -1182,7 +802,7 @@ fn show_photo_tool() -> Value {
     )
 }
 
-async fn show_photo(app: &AppHandle, a: &Value) -> ToolResult {
+pub(super) async fn show_photo(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let id = int(a, "id")?;
     state.catalog.locked().thumb_job(id).map_err(e)?;
@@ -1195,7 +815,12 @@ async fn show_photo(app: &AppHandle, a: &Value) -> ToolResult {
     text(json!({ "shown": id }))
 }
 
-fn flatten(n: &lumenkorn_core::model::FolderNode, depth: usize, out: &mut Vec<Value>, max: usize) {
+pub(super) fn flatten(
+    n: &lumenkorn_core::model::FolderNode,
+    depth: usize,
+    out: &mut Vec<Value>,
+    max: usize,
+) {
     if out.len() >= max {
         return;
     }
@@ -1208,7 +833,7 @@ fn flatten(n: &lumenkorn_core::model::FolderNode, depth: usize, out: &mut Vec<Va
 }
 
 /// JSON Merge Patch (RFC 7396): Objekte zusammenführen, alles andere ersetzen
-fn merge(target: &mut Value, patch: &Value) {
+pub(super) fn merge(target: &mut Value, patch: &Value) {
     match (target, patch) {
         (Value::Object(t), Value::Object(p)) => {
             for (k, v) in p {
@@ -1229,7 +854,7 @@ fn merge(target: &mut Value, patch: &Value) {
 }
 
 /// Nur die Einstellungen, die vom Standard abweichen (Masken als Anzahl)
-fn non_default(p: &DevelopParams) -> Value {
+pub(super) fn non_default(p: &DevelopParams) -> Value {
     let cur = serde_json::to_value(p).unwrap_or_default();
     let def = serde_json::to_value(DevelopParams::default()).unwrap_or_default();
     let mut out = serde_json::Map::new();
@@ -1248,7 +873,7 @@ fn non_default(p: &DevelopParams) -> Value {
     Value::Object(out)
 }
 
-async fn search(app: &AppHandle, a: &Value) -> ToolResult {
+pub(super) async fn search(app: &AppHandle, a: &Value) -> ToolResult {
     let state = app.state::<AppState>();
     let scope = if let Some(f) = arg(a, "folder").and_then(Value::as_str) {
         Scope::Folder {
@@ -1330,7 +955,7 @@ async fn search(app: &AppHandle, a: &Value) -> ToolResult {
     text(json!({ "total": total, "offset": offset, "photos": page }))
 }
 
-async fn add_mask(app: &AppHandle, a: &Value) -> ToolResult {
+pub(super) async fn add_mask(app: &AppHandle, a: &Value) -> ToolResult {
     use lumenkorn_develop::params::{LocalAdjust, MaskLayer, MaskShape};
     let state = app.state::<AppState>();
     let id = int(a, "id")?;
@@ -1402,396 +1027,4 @@ async fn add_mask(app: &AppHandle, a: &Value) -> ToolResult {
     crate::develop::develop_save(app.clone(), state.clone(), vec![id], p).map_err(e)?;
     changed(app, &[id]);
     text(json!({ "added": kind, "coverage": (r.coverage * 1000.0).round() / 1000.0 }))
-}
-
-// --- stdio-Brücke ---------------------------------------------------------------
-
-/// `lumenkorn --mcp`: reicht JSON-RPC-Zeilen von stdin an die laufende App
-/// weiter und deren Antworten an stdout. Startet Lumenkorn, falls es nicht
-/// läuft. Kehrt zurück, wenn stdin endet.
-pub fn run_stdio() {
-    use std::io::{BufRead, Write};
-    let Some(data) = dirs::data_dir().map(|d| d.join(IDENTIFIER)) else {
-        eprintln!("Lumenkorn: no data folder");
-        return;
-    };
-    let stdin = std::io::stdin();
-    let mut out = std::io::stdout();
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .timeout_global(Some(std::time::Duration::from_secs(600)))
-        .http_status_as_error(false)
-        .build()
-        .into();
-    let mut launched = false;
-    for line in stdin.lock().lines() {
-        let Ok(line) = line else { break };
-        if line.trim().is_empty() {
-            continue;
-        }
-        let reply = forward(&agent, &data, &line, &mut launched);
-        match reply {
-            Ok(Some(body)) => {
-                let _ = writeln!(out, "{}", body.trim());
-                let _ = out.flush();
-            }
-            Ok(None) => {}
-            Err(msg) => {
-                // Fehler als JSON-RPC-Antwort, damit der Agent ihn anzeigt
-                if let Ok(v) = serde_json::from_str::<Value>(&line)
-                    && let Some(id) = v.get("id").filter(|i| !i.is_null())
-                {
-                    let err = json!({ "jsonrpc": "2.0", "id": id, "error": { "code": -32000, "message": msg } });
-                    let _ = writeln!(out, "{err}");
-                    let _ = out.flush();
-                } else {
-                    eprintln!("Lumenkorn: {msg}");
-                }
-            }
-        }
-    }
-}
-
-/// Die Verbindung kam gar nicht zustande (die Anfrage wurde nie gesendet).
-fn not_reached(e: &ureq::Error) -> bool {
-    use std::io::ErrorKind;
-    match e {
-        ureq::Error::ConnectionFailed | ureq::Error::HostNotFound => true,
-        ureq::Error::Io(io) => matches!(
-            io.kind(),
-            ErrorKind::ConnectionRefused | ErrorKind::AddrNotAvailable | ErrorKind::NotConnected
-        ),
-        _ => false,
-    }
-}
-
-fn forward(
-    agent: &ureq::Agent,
-    data: &Path,
-    line: &str,
-    launched: &mut bool,
-) -> Result<Option<String>, String> {
-    for attempt in 0..60 {
-        let cfg = load(data);
-        // Ausgeschaltet: nichts starten (die App kann schon laufen)
-        if !cfg.enabled {
-            return Err(
-                "The MCP interface is switched off. Turn it on in Lumenkorn: AI (bottom left) → AI agents (MCP)."
-                    .into(),
-            );
-        }
-        if cfg.port > 0 {
-            let res = agent
-                .post(&format!("http://127.0.0.1:{}/mcp", cfg.port))
-                .header("Authorization", &format!("Bearer {}", cfg.token))
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json, text/event-stream")
-                .send(line);
-            match res {
-                Ok(mut r) => {
-                    let status = r.status().as_u16();
-                    let body = match r.body_mut().read_to_string() {
-                        Ok(b) => b,
-                        // Antwort abgebrochen: der Aufruf lief womöglich schon,
-                        // also nicht noch einmal senden
-                        Err(e) => return Err(format!("Lumenkorn: reading the answer failed: {e}")),
-                    };
-                    return match status {
-                        200 => Ok(Some(body)),
-                        202 => Ok(None),
-                        401 => {
-                            // Schlüssel geändert: gleich noch einmal mit dem neuen
-                            if attempt == 0 {
-                                continue;
-                            }
-                            Err("Lumenkorn rejected the access key.".into())
-                        }
-                        s => Err(format!("Lumenkorn answered HTTP {s}: {body}")),
-                    };
-                }
-                // Nicht erreichbar: Lumenkorn läuft nicht (mehr) – starten, warten
-                Err(e) if not_reached(&e) => {}
-                // Zeitüberschreitung oder Abbruch mitten im Aufruf: nicht erneut
-                // senden (ein Werkzeug könnte doppelt laufen)
-                Err(e) => return Err(format!("Lumenkorn: request failed: {e}")),
-            }
-        }
-        if !*launched {
-            *launched = true;
-            if let Ok(me) = std::env::current_exe() {
-                let _ = std::process::Command::new(me)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn();
-            }
-        }
-        std::thread::sleep(std::time::Duration::from_millis(500));
-    }
-    Err("Lumenkorn is not reachable. Start Lumenkorn and turn on AI → AI agents (MCP).".into())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Die Beschreibung von `set_develop_settings` ist für Agenten die einzige Liste der
-    /// Entwicklungswerte. Ein neuer Regler gehört dort hinein.
-    #[test]
-    fn develop_settings_description_names_every_field() {
-        let tool = set_develop_settings_tool();
-        let text = tool["description"].as_str().unwrap();
-        // Masken über `add_mask`; Rauschreduzierung, Reparaturen und Version nicht über MCP
-        let elsewhere = ["version", "masks", "denoise", "repairs"];
-        let defaults = serde_json::to_value(DevelopParams::default()).unwrap();
-        let missing: Vec<&String> = defaults
-            .as_object()
-            .unwrap()
-            .keys()
-            .filter(|k| !elsewhere.contains(&k.as_str()))
-            .filter(|k| !text.contains(k.as_str()))
-            .collect();
-        assert!(
-            missing.is_empty(),
-            "in der Beschreibung fehlen: {missing:?}"
-        );
-    }
-
-    #[test]
-    fn token_is_random_hex_and_compared_exactly() {
-        let (a, b) = (new_token(), new_token());
-        assert_eq!(a.len(), 64);
-        assert!(a.bytes().all(|c| c.is_ascii_hexdigit()));
-        assert_ne!(a, b);
-        assert!(same_token(&a, &a));
-        assert!(!same_token(&a, &b));
-        assert!(!same_token(&a, &a[..63]));
-        assert!(!same_token("", &a));
-    }
-
-    #[test]
-    fn only_exact_local_origins() {
-        for ok in ["http://localhost", "http://127.0.0.1:5173"] {
-            assert!(local_origin(ok), "{ok}");
-        }
-        for bad in [
-            "null",
-            "http://localhost.evil.com",
-            "http://127.0.0.1.evil.com:80",
-            "http://localhost:80@evil.com",
-            "https://evil.com",
-        ] {
-            assert!(!local_origin(bad), "{bad}");
-        }
-    }
-
-    #[test]
-    fn host_header_must_be_local_with_our_port() {
-        for ok in [
-            "127.0.0.1:47800",
-            "localhost:47800",
-            "[::1]:47800",
-            "LocalHost:47800",
-        ] {
-            assert!(local_host(ok, 47800), "{ok}");
-        }
-        for bad in [
-            "evil.com",
-            "evil.com:47800",
-            "127.0.0.1",
-            "127.0.0.1:1",
-            "localhost.evil.com:47800",
-            "127.0.0.1:47800.evil.com",
-        ] {
-            assert!(!local_host(bad, 47800), "{bad}");
-        }
-    }
-
-    #[test]
-    fn path_inside_is_component_wise() {
-        assert!(path_inside(r"C:\Bilder\Urlaub", r"C:\Bilder"));
-        assert!(path_inside(r"C:\Bilder", r"C:\Bilder"));
-        assert!(!path_inside(r"C:\Bilder2", r"C:\Bilder"));
-        assert!(!path_inside(r"C:\Bilder\..\Windows", r"C:\Bilder"));
-        assert!(!path_inside(r"C:\Bilder\..\..\Windows", r"C:\Bilder"));
-        assert!(path_inside(r"C:\Bilder\a\..\b", r"C:\Bilder"));
-        assert!(!path_inside(r"C:\Bilder", r"C:\Bilder\Urlaub"));
-        assert!(!path_inside("/a/b", ""));
-        assert!(path_inside(r"\\?\C:\Bilder\x", r"C:\Bilder"));
-        if cfg!(windows) {
-            assert!(path_inside(r"c:\bilder\x", r"C:\Bilder"));
-        }
-    }
-
-    #[test]
-    fn export_folder_is_checked() {
-        let base = std::env::temp_dir().join(format!("lk_mcp_{}", std::process::id()));
-        let (root, root2) = (base.join("Bilder"), base.join("Bilder2"));
-        std::fs::create_dir_all(root.join("sub")).unwrap();
-        std::fs::create_dir_all(&root2).unwrap();
-        let allowed = vec![root.clone()];
-        let s = |p: &std::path::Path| p.to_string_lossy().into_owned();
-        assert!(check_export_folder(&s(&root), &allowed).is_ok());
-        assert!(check_export_folder(&s(&root.join("sub")), &allowed).is_ok());
-        assert!(check_export_folder(&s(&root.join("sub").join("..")), &allowed).is_ok());
-        assert!(check_export_folder(&s(&root2), &allowed).is_err());
-        assert!(check_export_folder(&s(&root.join("..").join("Bilder2")), &allowed).is_err());
-        assert!(check_export_folder(&s(&root.join("fehlt")), &allowed).is_err());
-        assert!(check_export_folder("Export", &allowed).is_err());
-        assert!(check_export_folder("..", &allowed).is_err());
-        let _ = std::fs::remove_dir_all(&base);
-    }
-
-    fn rpc(body: Value) -> Option<Value> {
-        let echo = |name: &str, args: &Value| -> ToolResult {
-            if name == "fail" {
-                return Err("kaputt".into());
-            }
-            text(json!({ "tool": name, "args": args }))
-        };
-        handle_body_with(&body.to_string(), &echo).map(|s| serde_json::from_str(&s).unwrap())
-    }
-
-    #[test]
-    fn speaks_mcp_initialize_list_and_call() {
-        let init = rpc(json!({"jsonrpc":"2.0","id":1,"method":"initialize",
-            "params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}))
-        .unwrap();
-        assert_eq!(init["result"]["protocolVersion"], "2025-03-26");
-        assert_eq!(init["result"]["serverInfo"]["name"], "lumenkorn");
-        assert!(init["result"]["capabilities"]["tools"].is_object());
-        // Unbekannte Version: unsere
-        let init = rpc(json!({"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":"1999-01-01"}})).unwrap();
-        assert_eq!(init["result"]["protocolVersion"], PROTOCOL);
-        // Benachrichtigung: keine Antwort
-        assert!(rpc(json!({"jsonrpc":"2.0","method":"notifications/initialized"})).is_none());
-
-        let list = rpc(json!({"jsonrpc":"2.0","id":3,"method":"tools/list"})).unwrap();
-        let tools = list["result"]["tools"].as_array().unwrap();
-        assert!(tools.len() >= 15);
-        for t in tools {
-            assert!(
-                t["name"]
-                    .as_str()
-                    .unwrap()
-                    .chars()
-                    .all(|c| c.is_ascii_lowercase() || c == '_')
-            );
-            assert_eq!(t["inputSchema"]["type"], "object", "{}", t["name"]);
-            assert!(t["description"].as_str().unwrap().len() > 20);
-        }
-
-        let ok = rpc(json!({"jsonrpc":"2.0","id":"a","method":"tools/call","params":{"name":"rate_photos","arguments":{"ids":[1],"rating":3}}})).unwrap();
-        assert_eq!(ok["id"], "a");
-        assert_eq!(ok["result"]["isError"], false);
-        assert!(
-            ok["result"]["content"][0]["text"]
-                .as_str()
-                .unwrap()
-                .contains("rate_photos")
-        );
-        let bad =
-            rpc(json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"fail"}}))
-                .unwrap();
-        assert_eq!(bad["result"]["isError"], true);
-        let none = rpc(json!({"jsonrpc":"2.0","id":5,"method":"nope"})).unwrap();
-        assert_eq!(none["error"]["code"], -32601);
-        // Liste von Nachrichten
-        let batch = rpc(json!([{"jsonrpc":"2.0","id":6,"method":"ping"},{"jsonrpc":"2.0","method":"notifications/x"}])).unwrap();
-        assert_eq!(batch.as_array().unwrap().len(), 1);
-        let parse = handle_body_with("{kaputt", &|_, _| Ok(vec![])).unwrap();
-        assert!(parse.contains("-32700"));
-    }
-
-    #[test]
-    fn merge_patch_changes_only_given_keys() {
-        let mut p = serde_json::to_value(DevelopParams {
-            exposure: 0.5,
-            contrast: 10.0,
-            ..Default::default()
-        })
-        .unwrap();
-        merge(
-            &mut p,
-            &json!({ "contrast": 25, "hsl": { "saturation": [0, 0, 0, 0, 0, -50, 0, 0] } }),
-        );
-        let out: DevelopParams = serde_json::from_value(p).unwrap();
-        assert_eq!((out.exposure, out.contrast), (0.5, 25.0));
-        assert_eq!(out.hsl.saturation[5], -50.0);
-        assert_eq!(out.hsl.hue, [0.0; 8], "Geschwister im Objekt bleiben");
-        let changes = non_default(&out);
-        assert_eq!(changes["contrast"], 25.0);
-        assert!(changes.get("temperature").is_none());
-    }
-
-    /// Brücke stdio → HTTP gegen einen echten Server mit Schlüssel
-    #[test]
-    fn stdio_bridge_forwards_to_the_running_app() {
-        let dir = tempfile::tempdir().unwrap();
-        let server = std::sync::Arc::new(tiny_http::Server::http("127.0.0.1:0").unwrap());
-        let port = server.server_addr().to_ip().unwrap().port();
-        let cfg = McpConfig {
-            enabled: true,
-            port,
-            token: "geheim".into(),
-        };
-        save(dir.path(), &cfg);
-        let srv = server.clone();
-        std::thread::spawn(move || {
-            for mut req in srv.incoming_requests() {
-                let auth = req.headers().iter().any(|h| {
-                    h.field
-                        .as_str()
-                        .as_str()
-                        .eq_ignore_ascii_case("authorization")
-                        && h.value.as_str() == "Bearer geheim"
-                });
-                let mut body = String::new();
-                std::io::Read::read_to_string(req.as_reader(), &mut body).unwrap();
-                let out = handle_body_with(&body, &|n, _| text(n));
-                let (code, body) = match (auth, out) {
-                    (false, _) => (401, String::new()),
-                    (true, Some(b)) => (200, b),
-                    (true, None) => (202, String::new()),
-                };
-                let _ = req.respond(tiny_http::Response::from_string(body).with_status_code(code));
-            }
-        });
-        let agent: ureq::Agent = ureq::Agent::config_builder()
-            .http_status_as_error(false)
-            .build()
-            .into();
-        let mut launched = true; // nichts starten
-        let r = forward(
-            &agent,
-            dir.path(),
-            r#"{"jsonrpc":"2.0","id":7,"method":"ping"}"#,
-            &mut launched,
-        )
-        .unwrap();
-        assert!(r.unwrap().contains("\"id\":7"));
-        let n = forward(
-            &agent,
-            dir.path(),
-            r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
-            &mut launched,
-        )
-        .unwrap();
-        assert!(n.is_none());
-        // Ausgeschaltet: klare Meldung statt Warten
-        save(
-            dir.path(),
-            &McpConfig {
-                enabled: false,
-                ..cfg
-            },
-        );
-        let off = forward(
-            &agent,
-            dir.path(),
-            r#"{"jsonrpc":"2.0","id":8,"method":"ping"}"#,
-            &mut launched,
-        );
-        assert!(off.unwrap_err().contains("switched off"));
-        server.unblock();
-    }
 }
