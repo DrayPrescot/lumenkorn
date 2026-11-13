@@ -14,8 +14,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Ein Zellrand näher als so viel am Seitenrand gilt als randbündig (mm).
 const EDGE_TOL_MM: f64 = 0.5;
@@ -23,8 +22,6 @@ const JPEG_QUALITY: u8 = 92;
 const MAX_PAGE_PX: f64 = 20000.0;
 /// Längste erlaubte Base64-Ebene je Seite (Zeichen).
 const MAX_OVERLAY_B64: usize = 64 * 1024 * 1024;
-
-static CANCEL: AtomicBool = AtomicBool::new(false);
 
 // --- Geometrie ------------------------------------------------------------------
 
@@ -378,63 +375,50 @@ pub fn album_export(app: AppHandle, doc: AlbumDoc, path: String) -> Result<(), E
             parent.display()
         )));
     }
-    let Some(running) = crate::busy::claim_in(&app, |s| &s.develop.exporting) else {
-        return Err(Error::Invalid(
-            tr_s(
-                "Es läuft bereits ein Export – bitte warten, bis er fertig ist.",
-                "An export is already running – please wait until it has finished.",
-            )
-            .into(),
-        ));
-    };
-    CANCEL.store(false, Ordering::SeqCst);
+    let claim = crate::task::claim(&app, |t| &t.export)?;
     let dir = unique_dir(&parent, &stem);
-    std::thread::Builder::new()
-        .name("lumenkorn-album".into())
-        .spawn(move || {
-            let _running = running;
-            let total = doc.pages.len();
-            let mut failed = Vec::new();
-            let emit = |done: usize, finished: bool, failed: &[String], error: Option<String>| {
-                let _ = app.emit(
-                    "album-export-progress",
-                    AlbumProgress {
-                        done,
-                        total,
-                        finished,
-                        failed: failed.to_vec(),
-                        error,
-                        pdf: pdf.display().to_string(),
-                        dir: dir.display().to_string(),
-                    },
-                );
-            };
-            emit(0, false, &failed, None);
-            let result = run_export(&app, &doc, &pdf, &dir, &mut failed, |done, failed| {
-                emit(done, false, failed, None)
-            });
-            lumenkorn_develop::release_large_caches();
-            match result {
-                Ok(true) => emit(total, true, &failed, None),
-                Ok(false) => emit(
-                    0,
-                    true,
-                    &failed,
-                    Some(tr_s("Abgebrochen", "Canceled").into()),
-                ),
-                Err(e) => {
-                    log::warn!("Album-Export: {e}");
-                    emit(0, true, &failed, Some(e.to_string()))
-                }
+    claim.spawn("album", move |app, _claim| {
+        let total = doc.pages.len();
+        let mut failed = Vec::new();
+        let emit = |done: usize, finished: bool, failed: &[String], error: Option<String>| {
+            let _ = app.emit(
+                "album-export-progress",
+                AlbumProgress {
+                    done,
+                    total,
+                    finished,
+                    failed: failed.to_vec(),
+                    error,
+                    pdf: pdf.display().to_string(),
+                    dir: dir.display().to_string(),
+                },
+            );
+        };
+        emit(0, false, &failed, None);
+        let result = run_export(app, &doc, &pdf, &dir, &mut failed, |done, failed| {
+            emit(done, false, failed, None)
+        });
+        lumenkorn_develop::release_large_caches();
+        match result {
+            Ok(true) => emit(total, true, &failed, None),
+            Ok(false) => emit(
+                0,
+                true,
+                &failed,
+                Some(tr_s("Abgebrochen", "Canceled").into()),
+            ),
+            Err(e) => {
+                log::warn!("Album-Export: {e}");
+                emit(0, true, &failed, Some(e.to_string()))
             }
-        })?;
-    Ok(())
+        }
+    })
 }
 
 /// Bricht den laufenden Album-Export vor der nächsten Seite ab.
 #[tauri::command]
-pub fn album_export_cancel() {
-    CANCEL.store(true, Ordering::SeqCst);
+pub fn album_export_cancel(state: State<AppState>) {
+    state.tasks.export.cancel();
 }
 
 /// Rendert alle Seiten. `Ok(true)` = fertig, `Ok(false)` = abgebrochen.
@@ -488,7 +472,7 @@ fn write_pages(
     let pt = |mm: f64| mm * 72.0 / 25.4;
     let page_label = tr_s("Seite", "Page");
     for (n, page) in doc.pages.iter().enumerate() {
-        if CANCEL.load(Ordering::SeqCst) {
+        if state.tasks.export.cancelled() {
             return Ok(false);
         }
         let mut img = RgbImage::from_pixel(page_px.0, page_px.1, image::Rgb(doc.background));
@@ -515,14 +499,8 @@ fn write_pages(
                     .unwrap_or(1);
                 let mut name = cell.id.to_string();
                 // Ein Panic bei einem Foto darf den Export nicht beenden.
-                let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    render_photo(&state, cell.id, need, &mut name)
-                }))
-                .unwrap_or_else(|_| {
-                    Err(Error::Invalid(
-                        tr_s("Interner Fehler", "Internal error").into(),
-                    ))
-                });
+                let res =
+                    crate::task::catch_panic(|| render_photo(&state, cell.id, need, &mut name));
                 let photo = match res {
                     Ok(p) => Some(p),
                     Err(e) => {

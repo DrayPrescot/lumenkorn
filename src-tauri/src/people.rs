@@ -12,7 +12,6 @@ use lumenkorn_core::thumbs::decode_for_analysis;
 use lumenkorn_develop::i18n::tr_s;
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -79,7 +78,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
         s.enabled && s.faces
     };
     if !on
-        || state.ai.downloading.load(Ordering::Relaxed)
+        || state.tasks.download.is_running()
         || !models::status(&state.data_dir).faces_ready
         || state.people.load_error.locked().is_some()
     {

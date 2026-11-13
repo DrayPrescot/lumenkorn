@@ -2,7 +2,6 @@
 
 mod ai;
 mod album;
-mod busy;
 mod commands;
 mod cull;
 mod cull_assist;
@@ -27,6 +26,7 @@ mod repair;
 mod settings;
 mod slideshow;
 mod style;
+mod task;
 mod updater;
 mod worker;
 
@@ -72,11 +72,12 @@ pub struct AppState {
     pub denoised_dir: PathBuf,
     /// Wann KI-Modelle zuletzt gebraucht wurden (zum Entladen)
     pub usage: memory::Usage,
-    pub merge: merge::MergeState,
     pub import: import::ImportState,
     pub mcp: mcp::McpState,
     /// „Auto nach deinem Stil“
     pub style: style::StyleState,
+    /// Hintergrundarbeiten, die nur einmal gleichzeitig laufen
+    pub tasks: task::Tasks,
 }
 
 /// Der Katalog stammt von einer neueren Version: Die App startet ohne
@@ -214,10 +215,10 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         masks,
         denoised_dir,
         usage: memory::Usage::default(),
-        merge: merge::MergeState::default(),
         import: import::ImportState::default(),
         mcp: mcp::McpState::default(),
         style: style_state,
+        tasks: task::Tasks::default(),
     });
     style::start(app.handle());
     mcp::start_if_enabled(app.handle());

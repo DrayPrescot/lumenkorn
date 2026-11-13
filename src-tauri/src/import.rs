@@ -8,7 +8,7 @@ use lumenkorn_core::{Error, LockExt};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use tauri::ipc::Response;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -27,8 +27,6 @@ pub struct ImportState {
     /// Öffnen, dann gleich eine andere Quelle gewählt) die angezeigte Auswahl, und
     /// der Import kopierte – und löschte mit „Danach löschen“ – andere Dateien.
     scans: std::sync::atomic::AtomicU64,
-    pub(crate) running: AtomicBool,
-    cancel: AtomicBool,
 }
 
 /// Zuletzt eingelesene Quelle
@@ -320,16 +318,7 @@ pub async fn import_start(
             .into(),
         ));
     }
-    let Some(running) = crate::busy::claim_in(&app, |s| &s.import.running) else {
-        return Err(Error::Invalid(
-            lumenkorn_develop::i18n::tr_s(
-                "Es läuft bereits ein Import.",
-                "An import is already running.",
-            )
-            .into(),
-        ));
-    };
-    state.import.cancel.store(false, Ordering::SeqCst);
+    let claim = crate::task::claim(&app, |t| &t.import)?;
     // Einstellungen für das nächste Mal
     let mut settings = load_settings(&state);
     settings.source = s
@@ -343,11 +332,7 @@ pub async fn import_start(
     if let Err(e) = lumenkorn_develop::fsutil::save_json(&settings_path(&state), &settings) {
         log::warn!("Import-Einstellungen nicht gespeichert: {e}");
     }
-    let app2 = app.clone();
-    std::thread::Builder::new()
-        .name("lumenkorn-import".into())
-        .spawn(move || {
-            let _running = running;
+    claim.spawn("import", move |app2, claim| {
             let state = app2.state::<AppState>();
             let picked: Vec<(&Candidate, String, i64)> = ids
                 .iter()
@@ -366,7 +351,7 @@ pub async fn import_start(
                 &target,
                 &event,
                 delete_after,
-                &state.import.cancel,
+                claim.task().cancel_flag(),
                 &|p| {
                     // Fortschritt höchstens alle 100 ms (und am Ende jeder Aufnahme)
                     let mut l = last.locked();
@@ -399,8 +384,6 @@ pub async fn import_start(
                 },
             );
         })
-        .map_err(|e| Error::Invalid(e.to_string()))?;
-    Ok(())
 }
 
 /// Sorgt dafür, dass die importierten Ordner im Katalog erscheinen: im
@@ -445,10 +428,7 @@ fn register(state: &AppState, target: &Path, dirs: &[PathBuf]) -> (bool, bool) {
 
 #[tauri::command]
 pub fn import_cancel(app: AppHandle) {
-    app.state::<AppState>()
-        .import
-        .cancel
-        .store(true, Ordering::SeqCst);
+    app.state::<AppState>().tasks.import.cancel();
 }
 
 /// Schließt den Import-Dialog: verwirft die eingelesene Quelle samt
@@ -456,7 +436,7 @@ pub fn import_cancel(app: AppHandle) {
 #[tauri::command]
 pub fn import_close(app: AppHandle) {
     let state = app.state::<AppState>();
-    if !state.import.running.load(Ordering::SeqCst) {
+    if !state.tasks.import.is_running() {
         *state.import.session.locked() = None;
     }
 }

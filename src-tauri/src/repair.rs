@@ -13,20 +13,17 @@ use lumenkorn_develop::i18n::tr_s;
 use lumenkorn_develop::{DenoiseRef, MaskLayer, MaskShape, Source};
 use serde::Serialize;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, State};
 
 #[derive(Default)]
 pub struct RepairState {
     model: Mutex<Option<Arc<Inpainter>>>,
-    cancel: AtomicBool,
-    busy: AtomicBool,
 }
 
 /// Entlädt LaMa, wenn gerade keine Reparatur läuft.
 pub(crate) fn release_model(state: &AppState) -> bool {
-    !state.repair.busy.load(Ordering::SeqCst) && crate::ai::drop_if_unused(&state.repair.model)
+    !state.tasks.repair.is_running() && crate::ai::drop_if_unused(&state.repair.model)
 }
 
 fn inpainter(state: &AppState) -> Result<Arc<Inpainter>, Error> {
@@ -73,18 +70,8 @@ pub async fn repair_compute(
     // Fortschritt wird über `app` gemeldet
     let events = app.clone();
     crate::blocking(app, move |state| {
-        // Gibt `busy` auch nach Fehlern und Panics in `compute` wieder frei
-        let Some(_busy) = crate::busy::claim(&state.repair.busy) else {
-            return Err(Error::Invalid(
-                tr_s(
-                    "Es läuft bereits eine Reparatur.",
-                    "A repair is already running.",
-                )
-                .into(),
-            ));
-        };
-        let _full_res = crate::busy::full_res()?;
-        state.repair.cancel.store(false, Ordering::SeqCst);
+        // Wird auch nach Fehlern und Panics in `compute` wieder frei
+        let _claim = crate::task::claim(&events, |t| &t.repair)?.full_res()?;
         compute(
             &events,
             state,
@@ -153,7 +140,12 @@ fn compute(
     let patch = {
         let _g = analysis_guard(state, tr_s("Reparatur", "Repair"));
         model
-            .repair(&src.image, &alpha, &progress, &state.repair.cancel)
+            .repair(
+                &src.image,
+                &alpha,
+                &progress,
+                state.tasks.repair.cancel_flag(),
+            )
             .map_err(err)?
     };
     let id = MaskFiles::new_id(image_id, "rep");
@@ -170,5 +162,5 @@ fn compute(
 
 #[tauri::command]
 pub fn repair_cancel(state: State<AppState>) {
-    state.repair.cancel.store(true, Ordering::SeqCst);
+    state.tasks.repair.cancel();
 }

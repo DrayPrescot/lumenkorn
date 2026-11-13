@@ -47,50 +47,47 @@ pub fn ai_download(app: AppHandle, component: Option<Component>) -> Result<(), E
     if downloads.current != Some(component) && !downloads.queue.contains(&component) {
         downloads.queue.push_back(component);
     }
-    // Setzt `downloading` auch zurück, wenn der Download-Thread panisch endet
-    // oder gar nicht erst startet – sonst blieben Analyse und Gesichter-
-    // erkennung bis zum Neustart blockiert.
-    let Some(done) = crate::busy::claim_in(&app, |s| &s.ai.downloading) else {
+    // Wird auch frei, wenn der Download-Thread panisch endet oder gar nicht erst
+    // startet – sonst blieben Analyse und Gesichtererkennung bis zum Neustart blockiert.
+    let Ok(claim) = crate::task::claim(&app, |t| &t.download) else {
+        // Läuft schon: Der laufende Thread nimmt `component` aus der Warteschlange
         drop(downloads);
         let _ = app.emit("ai-download", download_event(&state, None));
         return Ok(());
     };
     drop(downloads);
-    std::thread::Builder::new()
-        .name("lumenkorn-download".into())
-        .spawn(move || {
-            let state = app.state::<AppState>();
-            loop {
-                let component = {
-                    let mut d = state.ai.downloads.locked();
-                    let next = d.queue.pop_front();
-                    d.current = next;
-                    match next {
-                        Some(c) => c,
-                        None => {
-                            drop(done);
-                            // Erst jetzt: Solange „lädt herunter“ gilt, brechen
-                            // Analyse und Gesichtserkennung sofort ab
-                            state.worker.submit(Job::Ai);
-                            state.worker.submit(Job::Faces);
-                            return;
-                        }
+    claim.spawn("download", move |app, claim| {
+        let state = app.state::<AppState>();
+        loop {
+            let component = {
+                let mut d = state.ai.downloads.locked();
+                let next = d.queue.pop_front();
+                d.current = next;
+                match next {
+                    Some(c) => c,
+                    None => {
+                        drop(claim);
+                        // Erst jetzt: Solange „lädt herunter“ gilt, brechen
+                        // Analyse und Gesichtserkennung sofort ab
+                        state.worker.submit(Job::Ai);
+                        state.worker.submit(Job::Faces);
+                        return;
                     }
-                };
-                state.ai.cancel.store(false, Ordering::SeqCst);
-                let _ = app.emit("ai-download", download_event(&state, None));
-                let error = download_one(&app, &state, component);
-                let _ = app.emit(
-                    "ai-download",
-                    DownloadEvent {
-                        finished: true,
-                        error,
-                        ..download_event(&state, None)
-                    },
-                );
-            }
-        })?;
-    Ok(())
+                }
+            };
+            state.tasks.download.uncancel();
+            let _ = app.emit("ai-download", download_event(&state, None));
+            let error = download_one(app, &state, component);
+            let _ = app.emit(
+                "ai-download",
+                DownloadEvent {
+                    finished: true,
+                    error,
+                    ..download_event(&state, None)
+                },
+            );
+        }
+    })
 }
 
 /// Ein Download samt Laden der Modelle; liefert die Fehlermeldung.
@@ -104,7 +101,12 @@ pub(super) fn download_one(
     };
     // Ein Panic im Download soll als Fehler enden, nicht als ewiges „läuft“
     let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        models::download_missing(&state.data_dir, component, &progress, &state.ai.cancel)
+        models::download_missing(
+            &state.data_dir,
+            component,
+            &progress,
+            state.tasks.download.cancel_flag(),
+        )
     }))
     .unwrap_or_else(|_| {
         Err(lumenkorn_ai::Error::Download(
@@ -151,5 +153,5 @@ pub(super) fn download_one(
 pub fn ai_cancel_download(state: State<AppState>) {
     // Auch alles Eingereihte – „Abbrechen“ meint den ganzen Download
     state.ai.downloads.locked().queue.clear();
-    state.ai.cancel.store(true, Ordering::SeqCst);
+    state.tasks.download.cancel();
 }

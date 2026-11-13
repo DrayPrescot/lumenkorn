@@ -100,10 +100,6 @@ pub struct DevelopCache {
     /// Bild dekodieren es nur einmal, andere Bilder warten nicht darauf.
     proxy_loading: Mutex<Vec<(i64, Arc<Mutex<()>>)>>,
     full_denoised: Mutex<Option<FullDenoised>>,
-    /// Ein Export läuft. Zwei gleichzeitig verdoppelten den Speicherbedarf
-    /// (volle Auflösung), und das Aufräumen am Ende des ersten gäbe Puffer
-    /// des zweiten frei.
-    pub(crate) exporting: std::sync::atomic::AtomicBool,
 }
 
 /// Entrauschte Fassung in voller Auflösung samt zuletzt verkleinerter.

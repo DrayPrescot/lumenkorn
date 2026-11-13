@@ -111,16 +111,8 @@ struct BakeProgress {
 /// entwickeln in voller Auflösung). Liefen Übernehmen und Wiederherstellen
 /// gleichzeitig, könnte das eine die Sicherung löschen, während das andere die
 /// Datei ohne neue Sicherung ersetzt.
-fn claim_files(app: &AppHandle) -> Result<impl Drop + Send + 'static, Error> {
-    crate::busy::claim_in(app, |s| &s.develop.exporting).ok_or_else(|| {
-        Error::Invalid(
-            tr_s(
-                "Es läuft bereits ein Export oder eine Übernahme ins Original – bitte warten, bis er fertig ist.",
-                "An export or an apply to originals is already running – please wait until it has finished.",
-            )
-            .into(),
-        )
-    })
+fn claim_files(app: &AppHandle) -> Result<crate::task::Claim, Error> {
+    crate::task::claim(app, |t| &t.export)
 }
 
 /// Übernimmt die Bearbeitung der Fotos `ids` in ihre Dateien, im Hintergrund.
@@ -128,13 +120,9 @@ fn claim_files(app: &AppHandle) -> Result<impl Drop + Send + 'static, Error> {
 /// …), werden ausgelassen.
 #[tauri::command(async)]
 pub fn bake_originals(app: AppHandle, ids: Vec<i64>) -> Result<(), Error> {
-    let running = claim_files(&app)?;
-    let full_res = crate::busy::full_res()?;
-    std::thread::Builder::new()
-        .name("lumenkorn-bake".into())
-        .spawn(move || {
-            let _running = running;
-            let _full_res = full_res;
+    claim_files(&app)?
+        .full_res()?
+        .spawn("bake", move |app, _claim| {
             let state = app.state::<AppState>();
             let snapshot = tr_s(
                 "Vor Übernahme ins Original",
@@ -167,10 +155,7 @@ pub fn bake_originals(app: AppHandle, ids: Vec<i64>) -> Result<(), Error> {
                     },
                 );
                 // Ein Panic (z. B. in der GPU-Pipeline) beendet nicht den ganzen Lauf
-                let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    bake_one(&state, *id, snapshot)
-                }))
-                .unwrap_or_else(|_| Err(tr_s("Interner Fehler", "Internal error").into()));
+                let res = crate::task::catch_panic(|| bake_one(&state, *id, snapshot));
                 match res {
                     Ok(true) => baked.push(*id),
                     Ok(false) => {}
@@ -202,8 +187,7 @@ pub fn bake_originals(app: AppHandle, ids: Vec<i64>) -> Result<(), Error> {
                     finished: true,
                 },
             );
-        })?;
-    Ok(())
+        })
 }
 
 /// Ein Foto übernehmen. `Ok(false)`: geht nicht (RAW, unbearbeitet …).

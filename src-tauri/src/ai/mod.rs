@@ -22,7 +22,7 @@ use lumenkorn_develop::{DevelopParams, PromptPoint, Source, tr};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, RwLock};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -81,11 +81,9 @@ pub struct AiState {
     bioclip: Mutex<Option<Arc<BioAnimals>>>,
     /// Letzte Benutzung des Suchindex; der Hausmeister gibt ihn danach frei
     index_used: Mutex<std::time::Instant>,
-    pub(crate) downloading: AtomicBool,
     /// Gewünschte Downloads: Sie laufen nacheinander, ein weiterer Klick
     /// während eines Downloads reiht sich ein
     downloads: Mutex<Downloads>,
-    cancel: AtomicBool,
     settings_path: PathBuf,
     pub(crate) settings: Mutex<AiSettings>,
     /// Hält, wer die Einstellungen ändert (lesen, ergänzen, speichern)
@@ -103,9 +101,6 @@ pub struct AiState {
     /// Haare, Augen, Lippen … nacheinander brauchen sie nicht jedes Mal neu.
     detect_cache: Mutex<Option<(SamKey, parts::DetectCache)>>,
     denoiser: Mutex<Option<Arc<lumenkorn_ai::denoise::Denoiser>>>,
-    /// Es wird gerade ein Bild entrauscht (hält DRUNet geladen)
-    denoising: AtomicBool,
-    denoise_cancel: AtomicBool,
     /// Ordner für Absturz-Markierungen (der KI-Ordner)
     pub(crate) guard_dir: PathBuf,
     /// Meldung, wenn Lumenkorn beim letzten Start abgestürzt ist
@@ -328,9 +323,7 @@ impl AiState {
             animal_backfill: Mutex::new(animal_backfill),
             bioclip: Mutex::new(None),
             index_used: Mutex::new(std::time::Instant::now()),
-            downloading: AtomicBool::new(false),
             downloads: Mutex::new(Downloads::default()),
-            cancel: AtomicBool::new(false),
             settings_path,
             settings: Mutex::new(settings),
             settings_write: Mutex::new(()),
@@ -343,8 +336,6 @@ impl AiState {
             sam_embedding: Mutex::new(None),
             detect_cache: Mutex::new(None),
             denoiser: Mutex::new(None),
-            denoising: AtomicBool::new(false),
-            denoise_cancel: AtomicBool::new(false),
         }
     }
 }
@@ -488,7 +479,7 @@ pub(crate) fn release_models(
         if ai.owl.locked().is_none() || ai.mesh.locked().is_none() {
             *ai.detect_cache.locked() = None;
         }
-        if !ai.denoising.load(Ordering::SeqCst) && drop_if_unused(&ai.denoiser) {
+        if !state.tasks.denoise.is_running() && drop_if_unused(&ai.denoiser) {
             out.push("DRUNet");
         }
     }
@@ -617,7 +608,7 @@ pub fn ai_status(state: State<AppState>) -> Result<AiStatus, Error> {
         crash_notice: state.ai.crash_notice.locked().clone(),
         accel: accel_status(&state),
         files: models::status(&state.data_dir),
-        downloading: state.ai.downloading.load(Ordering::Relaxed),
+        downloading: state.tasks.download.is_running(),
         loaded: state.ai.loaded.locked().is_some(),
         error: state.ai.load_error.locked().clone(),
         analyzed,
@@ -658,7 +649,7 @@ pub fn ai_set_settings(state: State<AppState>, settings: serde_json::Value) -> R
     if was_enabled && !now_enabled {
         // Ausgeschaltet: Modelle und Suchindex sofort freigeben. Was gerade
         // rechnet, behält seine Kopie und lässt sie danach los.
-        state.ai.denoise_cancel.store(true, Ordering::SeqCst);
+        state.tasks.denoise.cancel();
         unload_models(&state);
         *state.ai.bioclip.locked() = None;
         *state.ai.animals.locked() = None;
@@ -691,8 +682,8 @@ pub fn ai_dismiss_notice(state: State<AppState>) {
 #[tauri::command]
 pub fn app_restart(app: AppHandle) {
     let state = app.state::<AppState>();
-    state.ai.denoise_cancel.store(true, Ordering::SeqCst);
-    state.ai.cancel.store(true, Ordering::SeqCst);
+    state.tasks.denoise.cancel();
+    state.tasks.download.cancel();
     clear_crash_markers(&state);
     crate::exit::restart(&app);
 }

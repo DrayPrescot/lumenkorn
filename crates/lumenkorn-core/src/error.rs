@@ -19,6 +19,10 @@ pub enum Error {
     NotFound(String),
     #[error("{p}: {0}", p = tr_s("Ungültige Eingabe", "Invalid input"))]
     Invalid(String),
+    /// Eine Arbeit läuft schon (oder eine andere, die nicht gleichzeitig laufen darf).
+    /// Die Meldung steht für sich, ohne Vorsatz.
+    #[error("{0}")]
+    Busy(String),
     #[error("{p}: {0}", p = tr_s("XMP-Begleitdatei", "XMP sidecar"))]
     Xmp(String),
     #[error("{p}: {0}", p = tr_s("Keine Vorschau im RAW gefunden", "No preview found in RAW"))]

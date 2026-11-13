@@ -303,7 +303,7 @@ pub fn run_batch(app: &AppHandle) -> Result<bool, Error> {
         let s = state.ai.settings.locked();
         s.enabled && s.auto_tag
     };
-    if !on || state.ai.downloading.load(Ordering::Relaxed) {
+    if !on || state.tasks.download.is_running() {
         return Ok(false);
     }
     if !models::status(&state.data_dir).model_ready || state.ai.load_error.locked().is_some() {

@@ -19,7 +19,7 @@ use lumenkorn_develop::{i18n::tr_s, tr};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -969,13 +969,10 @@ struct Progress {
     share_url: Option<String>,
 }
 
-static UPLOADING: AtomicBool = AtomicBool::new(false);
-static UPLOAD_CANCEL: AtomicBool = AtomicBool::new(false);
-
 /// Laufendes Hochladen vor der nächsten Datei beenden
 #[tauri::command]
-pub fn nc_upload_cancel() {
-    UPLOAD_CANCEL.store(true, Ordering::SeqCst);
+pub fn nc_upload_cancel(state: State<AppState>) {
+    state.tasks.upload.cancel();
 }
 
 /// Lädt die Exporte bzw. Originale des Projekts hoch (gleicht ab) und teilt
@@ -997,37 +994,18 @@ pub fn nc_upload_project(
             "Invalid date: {e}"
         )));
     }
-    let Some(running) = crate::busy::claim(&UPLOADING) else {
-        return Err(Error::Invalid(
-            tr_s(
-                "Es läuft bereits ein Hochladen.",
-                "An upload is already running.",
-            )
-            .into(),
-        ));
-    };
-    UPLOAD_CANCEL.store(false, Ordering::SeqCst);
-    std::thread::spawn(move || {
-        // Gibt die Markierung auch nach einem Panic frei
-        let _running = running;
+    let claim = crate::task::claim(&app, |t| &t.upload)?;
+    claim.spawn("upload", move |app, _claim| {
         let mut p = Progress::default();
         // Ein Panic endet als Fehler, sonst zeigte der Dialog ewig „läuft“
-        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            upload(&app, project_id, &options, &parts, &mut p)
-        }))
-        .unwrap_or_else(|_| {
-            Err(Error::Invalid(
-                tr_s("Interner Fehler", "Internal error").into(),
-            ))
-        });
+        let res = crate::task::catch_panic(|| upload(app, project_id, &options, &parts, &mut p));
         p.finished = true;
         p.current = None;
         if let Err(e) = res {
             p.error = Some(e.to_string());
         }
         let _ = app.emit("nextcloud-progress", p);
-    });
-    Ok(())
+    })
 }
 
 fn upload(
@@ -1048,7 +1026,7 @@ fn upload(
     conn.mkdirs(parts)?;
     let remote = conn.list(parts)?;
     for (file, name) in files.iter().zip(&names) {
-        if UPLOAD_CANCEL.load(Ordering::SeqCst) {
+        if state.tasks.upload.cancelled() {
             return Err(Error::Invalid(
                 tr_s(
                     "Abgebrochen – bis dahin hochgeladene Dateien bleiben.",

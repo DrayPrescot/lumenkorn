@@ -17,12 +17,6 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-#[derive(Default)]
-pub struct MergeState {
-    running: AtomicBool,
-    cancel: AtomicBool,
-}
-
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MergeKind {
@@ -90,104 +84,75 @@ pub fn merge_start(
             .into(),
         ));
     }
-    // Gibt `running` wieder frei, auch wenn der Thread nicht startet
-    let Some(running) = crate::busy::claim_in(&app, |s| &s.merge.running) else {
-        return Err(Error::Invalid(
-            tr_s(
-                "Es werden bereits Fotos zusammengefügt.",
-                "Photos are already being merged.",
-            )
-            .into(),
-        ));
-    };
-    let full_res = crate::busy::full_res()?;
-    let state = app.state::<AppState>();
-    state.merge.cancel.store(false, Ordering::SeqCst);
+    let claim = crate::task::claim(&app, |t| &t.merge)?.full_res()?;
     let options = options.unwrap_or_default();
-    let handle = app.clone();
-    std::thread::Builder::new()
-        .name("lumenkorn-merge".into())
-        .spawn(move || {
-            let app = handle;
-            let state = app.state::<AppState>();
-            let emit = |ev: MergeEvent| {
-                let _ = app.emit("merge-progress", ev);
-            };
-            let t = std::time::Instant::now();
-            // Auch nach einer Panik (z. B. ein Dekoder an einer kaputten Datei)
-            // muss die Funktion wieder frei werden und die Oberfläche es erfahren.
-            let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run(&app, &state, kind, &ids, &options)
-            }))
-            .unwrap_or_else(|_| {
-                Err(Error::Invalid(
-                    tr_s(
-                        "Interner Fehler beim Zusammenfügen (Details im Protokoll)",
-                        "Internal error while merging (details in the log)",
-                    )
-                    .into(),
-                ))
-            });
-            let cancelled = state.merge.cancel.load(Ordering::SeqCst);
-            drop(running);
-            drop(full_res);
-            // Große Zwischenpuffer dem Betriebssystem zurückgeben
-            crate::memory::trim_heap();
-            // Abbrechen ist kein Fehler: „Abgebrochen“/„Canceled“ melden (die Oberfläche schweigt dann)
-            match res {
-                Err(_) if cancelled => emit(MergeEvent {
+    claim.spawn("merge", move |app, claim| {
+        let state = app.state::<AppState>();
+        let emit = |ev: MergeEvent| {
+            let _ = app.emit("merge-progress", ev);
+        };
+        let t = std::time::Instant::now();
+        // Auch nach einer Panik (z. B. ein Dekoder an einer kaputten Datei)
+        // muss die Funktion wieder frei werden und die Oberfläche es erfahren.
+        let res = crate::task::catch_panic(|| run(app, &state, claim.task(), kind, &ids, &options));
+        let cancelled = claim.task().cancelled();
+        // Vor der Meldung freigeben: Die Oberfläche darf gleich neu starten
+        drop(claim);
+        // Abbrechen ist kein Fehler: „Abgebrochen“/„Canceled“ melden (die Oberfläche schweigt dann)
+        match res {
+            Err(_) if cancelled => emit(MergeEvent {
+                stage: String::new(),
+                done: 0,
+                total: 0,
+                finished: true,
+                error: Some(lumenkorn_develop::i18n::tr_s("Abgebrochen", "Canceled").into()),
+                image_id: None,
+                file_name: None,
+                unaligned: vec![],
+            }),
+            Ok((id, name, unaligned)) => {
+                log::info!(
+                    "{kind:?} aus {} Fotos in {:.1?}: {name}",
+                    ids.len(),
+                    t.elapsed()
+                );
+                emit(MergeEvent {
+                    stage: tr_s("Fertig", "Done").into(),
+                    done: 1,
+                    total: 1,
+                    finished: true,
+                    error: None,
+                    image_id: id,
+                    file_name: Some(name),
+                    unaligned: unaligned.iter().map(|i| i + 1).collect(),
+                })
+            }
+            Err(e) => {
+                log::warn!("{kind:?} fehlgeschlagen: {e}");
+                emit(MergeEvent {
                     stage: String::new(),
                     done: 0,
                     total: 0,
                     finished: true,
-                    error: Some(lumenkorn_develop::i18n::tr_s("Abgebrochen", "Canceled").into()),
+                    error: Some(e.to_string()),
                     image_id: None,
                     file_name: None,
                     unaligned: vec![],
-                }),
-                Ok((id, name, unaligned)) => {
-                    log::info!(
-                        "{kind:?} aus {} Fotos in {:.1?}: {name}",
-                        ids.len(),
-                        t.elapsed()
-                    );
-                    emit(MergeEvent {
-                        stage: tr_s("Fertig", "Done").into(),
-                        done: 1,
-                        total: 1,
-                        finished: true,
-                        error: None,
-                        image_id: id,
-                        file_name: Some(name),
-                        unaligned: unaligned.iter().map(|i| i + 1).collect(),
-                    })
-                }
-                Err(e) => {
-                    log::warn!("{kind:?} fehlgeschlagen: {e}");
-                    emit(MergeEvent {
-                        stage: String::new(),
-                        done: 0,
-                        total: 0,
-                        finished: true,
-                        error: Some(e.to_string()),
-                        image_id: None,
-                        file_name: None,
-                        unaligned: vec![],
-                    })
-                }
+                })
             }
-        })?;
-    Ok(())
+        }
+    })
 }
 
 #[tauri::command]
 pub fn merge_cancel(state: State<AppState>) {
-    state.merge.cancel.store(true, Ordering::SeqCst);
+    state.tasks.merge.cancel();
 }
 
 fn run(
     app: &AppHandle,
     state: &AppState,
+    task: &crate::task::Task,
     kind: MergeKind,
     ids: &[i64],
     options: &MergeOptions,
@@ -242,7 +207,7 @@ fn run(
             );
         }
     };
-    let cancel = &state.merge.cancel;
+    let cancel = task.cancel_flag();
     let n = jobs.len();
     // Referenzfoto (Index in `ids`), dessen Aufnahmedaten übernommen werden:
     // HDR ist auf die mittlere Belichtung skaliert (nicht auf das erste Foto,
@@ -262,7 +227,7 @@ fn run(
             (m.image, n / 2, m.unaligned)
         }
     };
-    if cancel.load(Ordering::SeqCst) {
+    if task.cancelled() {
         return Err(Error::Invalid(tr_s("abgebrochen", "canceled").into()));
     }
 
