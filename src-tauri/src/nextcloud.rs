@@ -99,8 +99,40 @@ fn save(data_dir: &Path, c: &Config) -> Result<(), Error> {
     )?)
 }
 
-fn keyring_entry(c: &Config) -> Result<keyring::Entry, Error> {
-    keyring::Entry::new(KEYRING_SERVICE, &format!("{}@{}", c.login_name, c.server))
+/// Richtet einmal je Prozess den Anmeldespeicher des Systems ein: Windows-
+/// Anmeldeinformationsverwaltung, macOS-Schlüsselbund, unter Linux Secret
+/// Service über libdbus. Die Einträge heißen wie bei keyring 3 (Windows
+/// `{user}.{service}`, sonst Dienst und Benutzer als Attribute), schon
+/// gespeicherte App-Passwörter werden also weiter gefunden.
+fn credential_store() -> Result<(), Error> {
+    static INIT: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
+    INIT.get_or_init(|| {
+        #[cfg(windows)]
+        let store = windows_native_keyring_store::Store::new();
+        #[cfg(target_os = "macos")]
+        let store = apple_native_keyring_store::keychain::Store::new();
+        #[cfg(all(
+            unix,
+            not(any(target_os = "macos", target_os = "ios", target_os = "android"))
+        ))]
+        let store = dbus_secret_service_keyring_store::Store::new();
+        #[cfg(any(target_os = "ios", target_os = "android"))]
+        let store: Result<std::sync::Arc<keyring_core::mock::Store>, String> = Err(tr_s(
+            "Auf diesem System gibt es keinen unterstützten Anmeldespeicher.",
+            "There is no supported credential store on this system.",
+        )
+        .into());
+        let store = store.map_err(|e| e.to_string())?;
+        keyring_core::set_default_store(store);
+        Ok(())
+    })
+    .clone()
+    .map_err(Error::Invalid)
+}
+
+fn keyring_entry(c: &Config) -> Result<keyring_core::Entry, Error> {
+    credential_store()?;
+    keyring_core::Entry::new(KEYRING_SERVICE, &format!("{}@{}", c.login_name, c.server))
         .map_err(|e| Error::Invalid(e.to_string()))
 }
 

@@ -748,7 +748,7 @@ The same list is shown in the app: click ⓘ (**About Lumenkorn**) at the bottom
 | [trash](https://github.com/Byron/trash-rs) | moving files to the system trash | MIT |
 | [ureq](https://github.com/algesten/ureq) | model downloads, map, Nextcloud | MIT or Apache-2.0 |
 | [quick-xml](https://github.com/tafia/quick-xml) | XMP sidecars, Nextcloud (WebDAV) | MIT |
-| [keyring](https://github.com/open-source-cooperative/keyring-rs) | Nextcloud app password in the system credential store | MIT or Apache-2.0 |
+| [keyring-core](https://github.com/open-source-cooperative/keyring-core) and its Windows, macOS and Secret Service stores | Nextcloud app password in the system credential store | MIT or Apache-2.0 |
 | [fontdb](https://github.com/RazrFalcon/fontdb) | list of system fonts for the photo album | MIT |
 | [tiny_http](https://github.com/tiny-http/tiny-http) | interface for AI agents (MCP) | MIT or Apache-2.0 |
 | [serde](https://github.com/serde-rs/serde), [serde_json](https://github.com/serde-rs/json) | settings, edits, IPC | MIT or Apache-2.0 |

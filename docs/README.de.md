@@ -901,7 +901,7 @@ die Kameradaten von [rawspeed](https://github.com/darktable-org/rawspeed) (LGPL-
 [trash](https://github.com/Byron/trash-rs) (MIT),
 [ureq](https://github.com/algesten/ureq) (MIT/Apache-2.0),
 [quick-xml](https://github.com/tafia/quick-xml) für XMP-Dateien und Nextcloud (MIT),
-[keyring](https://github.com/open-source-cooperative/keyring-rs) für das Nextcloud-App-Passwort (MIT/Apache-2.0),
+[keyring-core](https://github.com/open-source-cooperative/keyring-core) mit den Speichern für Windows, macOS und Secret Service für das Nextcloud-App-Passwort (MIT/Apache-2.0),
 [fontdb](https://github.com/RazrFalcon/fontdb) für die Liste der Systemschriften im Fotoalbum (MIT),
 [tiny_http](https://github.com/tiny-http/tiny-http) für die Schnittstelle für KI-Agenten (MIT/Apache-2.0),
 [serde](https://github.com/serde-rs/serde) und [serde_json](https://github.com/serde-rs/json) (MIT/Apache-2.0),

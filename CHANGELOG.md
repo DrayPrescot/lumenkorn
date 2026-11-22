@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.12] – 2026-11-22
+
 ### Added
 - RAW exposure makes up for the camera's highlight protection, as darktable does since 5.4:
   Canon Auto Lighting Optimizer, Fujifilm DR200/DR400, Nikon HLG, Olympus gradation (Auto and
@@ -15,6 +17,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   made with earlier versions keep their look; “Reset” switches the compensation on.
 
 ### Changed
+- The Nextcloud app password is kept in the system's credential store through keyring-core
+  instead of keyring 3, which pulled in unmaintained packages. Passwords saved before stay
+  where they are and keep working.
 - “Object” masks use Segment Anything 2.1 (Hiera Base+) instead of Segment Anything ViT-B. The
   masks are cleaner (no grid patterns or holes on soft backgrounds), and on the GPU the
   preparation of a photo takes about 0.1 s instead of 1.5 s. The new model (164 MB) is downloaded
