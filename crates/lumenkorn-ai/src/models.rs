@@ -11,8 +11,8 @@
 //! <daten>/ki/clip-vit-b32/vocab.json
 //! <daten>/ki/clip-vit-b32/merges.txt
 //! <daten>/ki/masken/subject.onnx            (IS-Net, „Motiv auswählen“)
-//! <daten>/ki/masken/sam-encoder.onnx        (Segment Anything, Objekt per Klick)
-//! <daten>/ki/masken/sam-decoder.onnx
+//! <daten>/ki/masken/sam2-encoder.onnx       (Segment Anything 2.1, Objekt per Klick;
+//! <daten>/ki/masken/sam2-decoder.onnx        Gewichte in den *.onnx_data daneben)
 //! <daten>/ki/masken/sky.onnx                (skyseg/U²-Net, „Himmel“)
 //! <daten>/ki/entrauschen/drunet.onnx        (DRUNet, aus drunet_color.pth erzeugt)
 //! <daten>/ki/gesichter/yunet.onnx           (Gesichter finden)
@@ -46,6 +46,23 @@ pub const SKY_MODEL: &str = "sky.onnx";
 const OWLV2: &str = "https://huggingface.co/Xenova/owlv2-base-patch16-ensemble/resolve/3e255bc9bf304b3358a8c1945c0a9514eefe7f10";
 /// Frühere OWLv2-Datei: Nach dem Laden der neuen wird sie gelöscht.
 const OLD_OWL_FILE: &str = "owlv2.onnx";
+/// Segment Anything 2.1 Hiera Base+ (Meta, Apache 2.0), ONNX-Export von
+/// onnx-community in fp16. Die Gewichte liegen in eigenen Dateien, deren Namen
+/// die Modelle festlegen (`*.onnx_data`).
+const SAM2: &str = "https://huggingface.co/onnx-community/sam2.1-hiera-base-plus-ONNX/resolve/bab18593f44e652f04cf18b60b3690f60e8996b0/onnx";
+/// Dateinamen von Segment Anything 2.1 im Maskenordner
+pub const SAM_ENCODER: &str = "sam2-encoder.onnx";
+pub const SAM_DECODER: &str = "sam2-decoder.onnx";
+/// Gewichte zu Encoder und Decoder (Namen von den Modellen vorgegeben)
+pub const SAM_ENCODER_DATA: &str = "vision_encoder_fp16.onnx_data";
+pub const SAM_DECODER_DATA: &str = "prompt_encoder_mask_decoder_fp16.onnx_data";
+/// Alle Dateien von Segment Anything 2.1
+pub const SAM_FILES: [&str; 4] = [SAM_ENCODER, SAM_ENCODER_DATA, SAM_DECODER, SAM_DECODER_DATA];
+/// Frühere SAM-1-Dateien (ViT-B): gelöscht, sobald SAM 2.1 da ist.
+const OLD_SAM_FILES: [&str; 2] = ["sam-encoder.onnx", "sam-decoder.onnx"];
+/// Größte Datei, die aus einem Archiv entpackt wird (Schutz vor Archiven, die
+/// beim Entpacken ein Vielfaches ihrer Größe ergeben)
+const MAX_EXTRACT: u64 = 4 << 30;
 /// MediaPipe Selfie Multiclass (Google, Apache 2.0), unverändert nach ONNX umgewandelt
 const SELFIE_MULTICLASS: &str = "https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX/resolve/6db8421a7150ac20558f2c24675078eb3a1a04d0/onnx/model.onnx";
 /// MediaPipe Face Mesh V2 (Google, Apache 2.0), unverändert nach ONNX umgewandelt
@@ -306,17 +323,29 @@ fn default_masks() -> Vec<FileSpec> {
             178_648_008,
             "60920e99c45464f2ba57bee2ad08c919a52bbf852739e96947fbb4358c0d964a",
         ),
-        f(
-            "sam-encoder.onnx",
-            "vit_b-encoder-quant.onnx",
-            99_827_815,
-            "cf99a3b79eea0ac4f7c9b06cdce5b2763ff41a3f631213c748d497cba233df6a",
+        FileSpec::pinned(
+            SAM_ENCODER,
+            format!("{SAM2}/vision_encoder_fp16.onnx"),
+            643_078,
+            "cb9324a431bfb78c70e4ead1ffb80766e236b50decd55c236c8eada4f0afde96",
         ),
-        f(
-            "sam-decoder.onnx",
-            "vit_b-decoder-quant.onnx",
-            8_742_591,
-            "40b02c2f694bb87b8360bb04ad8aaa84eab9673f4092b4911e0513890812b42e",
+        FileSpec::pinned(
+            SAM_ENCODER_DATA,
+            format!("{SAM2}/{SAM_ENCODER_DATA}"),
+            152_780_640,
+            "78be422d399181ce3af00130409ebe32eb5b95825e7fe290440fbfaac70b99b4",
+        ),
+        FileSpec::pinned(
+            SAM_DECODER,
+            format!("{SAM2}/prompt_encoder_mask_decoder_fp16.onnx"),
+            229_799,
+            "3c303a6ee7359bfd56dd767f69ce46948d0ce47465ad0396281d533dca3bc422",
+        ),
+        FileSpec::pinned(
+            SAM_DECODER_DATA,
+            format!("{SAM2}/{SAM_DECODER_DATA}"),
+            10_454_016,
+            "5f49783081ae45a100b62931ae02f362fd15702abf6a51e993353bc3a92618c0",
         ),
         FileSpec::pinned(
             SKY_MODEL,
@@ -584,6 +613,8 @@ pub struct Status {
     /// Personen und Tiere (OWLv2, Selfie Multiclass, Face Mesh) – wie der
     /// Himmel mit den Masken nachgeladen
     pub parts_ready: bool,
+    /// Segment Anything 2.1 („Objekt per Klick“; auch für Person und Tier)
+    pub sam_ready: bool,
     /// Downloadgröße für die Maskenmodelle (inkl. Laufzeit, falls sie fehlt)
     pub masks_download_size: u64,
     pub denoise_ready: bool,
@@ -610,18 +641,28 @@ pub struct GpuRuntimeStatus {
     pub download_size: u64,
 }
 
-/// Die frühere OWLv2-Datei löschen, sobald die neue da ist. Eine eigene
-/// `quellen.json` darf den alten Namen weiter benutzen.
-fn remove_old_owl(manifest: &Manifest, dir: &Path) {
-    if !dir.join(crate::parts::OWL_FILE).is_file()
-        || manifest.masks.iter().any(|f| f.name == OLD_OWL_FILE)
-    {
-        return;
-    }
-    if let Err(e) = std::fs::remove_file(dir.join(OLD_OWL_FILE))
-        && e.kind() != std::io::ErrorKind::NotFound
-    {
-        log::warn!("{OLD_OWL_FILE} nicht gelöscht: {e}");
+/// Frühere Modelldateien löschen, sobald ihre Nachfolger da sind (OWLv2,
+/// SAM 1 → SAM 2.1). Eine eigene `quellen.json` darf die alten Namen weiter
+/// benutzen.
+fn remove_old_mask_files(manifest: &Manifest, dir: &Path) {
+    let replaced: [(&[&str], &[&str]); 2] = [
+        (&[crate::parts::OWL_FILE], &[OLD_OWL_FILE]),
+        (&SAM_FILES, &OLD_SAM_FILES),
+    ];
+    for (new, old) in replaced {
+        if !new.iter().all(|f| dir.join(f).is_file()) {
+            continue;
+        }
+        for name in old {
+            if manifest.masks.iter().any(|f| f.name == *name) {
+                continue;
+            }
+            if let Err(e) = std::fs::remove_file(dir.join(name))
+                && e.kind() != std::io::ErrorKind::NotFound
+            {
+                log::warn!("{name} nicht gelöscht: {e}");
+            }
+        }
     }
 }
 
@@ -657,11 +698,17 @@ pub fn status(data_dir: &Path) -> Status {
     let (_, masks_download_size) = need(Component::Masks);
     let masks = masks_dir(data_dir);
     let sky_ready = masks.join(SKY_MODEL).is_file();
-    let parts_ready = crate::parts::FILES.iter().all(|f| masks.join(f).is_file());
+    // SAM 2.1 hat einen eigenen Status: Nach dem Wechsel von SAM 1 bleiben Motiv
+    // und Himmel nutzbar, bis es geladen ist. Person und Tier brauchen es mit.
+    let sam_ready = SAM_FILES.iter().all(|f| masks.join(f).is_file());
+    let parts_ready = sam_ready && crate::parts::FILES.iter().all(|f| masks.join(f).is_file());
+    let separate = |name: &str| {
+        name == SKY_MODEL || SAM_FILES.contains(&name) || crate::parts::FILES.contains(&name)
+    };
     let masks_ready = manifest
         .masks
         .iter()
-        .filter(|f| f.name != SKY_MODEL && !crate::parts::FILES.contains(&f.name.as_str()))
+        .filter(|f| !separate(&f.name))
         .all(|f| masks.join(&f.name).is_file());
     let (faces_ready, faces_download_size) = need(Component::Faces);
     let (repair_ready, repair_download_size) = need(Component::Repair);
@@ -702,6 +749,7 @@ pub fn status(data_dir: &Path) -> Status {
         masks_ready,
         sky_ready,
         parts_ready,
+        sam_ready,
         masks_download_size,
         runtime_path: runtime.map(|p| p.display().to_string()),
         runtime_downloadable: manifest.runtime.is_some(),
@@ -796,40 +844,14 @@ pub fn download_missing(
 
     for f in files {
         index += 1;
-        let target = dir.join(&f.name);
         let tmp = dir.join(format!("{}.part", f.name));
-        let expect = f.sha256.clone().or(f.size.map(|n| n.to_string()));
-        download_part(
-            &f.url,
-            expect.as_deref(),
-            &tmp,
-            &|done, total| {
-                progress(Progress {
-                    item: f.name.clone(),
-                    index,
-                    count,
-                    done,
-                    total: total.or(f.size),
-                })
-            },
-            cancel,
-        )?;
-        // Mit Prüfsumme gilt sie (nur für frische Downloads – schon vorhandene
-        // Dateien werden oben übersprungen und nie nachträglich geprüft)
-        let checked = match &f.sha256 {
-            Some(sha) => accel::verify_sha256(&tmp, sha),
-            None => check_length(&tmp, f.size),
-        };
-        if let Err(e) = checked {
-            discard_part(&tmp);
-            return Err(e);
-        }
-        std::fs::rename(&tmp, &target)?;
+        fetch_checked(f, &tmp, index, count, progress, cancel)?;
+        std::fs::rename(&tmp, dir.join(&f.name))?;
         let _ = std::fs::remove_file(part_marker(&tmp));
     }
 
     if component == Component::Masks {
-        remove_old_owl(&manifest, &dir);
+        remove_old_mask_files(&manifest, &dir);
     }
 
     // DRUNet: Original-Gewichte lokal in ONNX übersetzen, dann aufräumen.
@@ -1327,6 +1349,60 @@ impl ureq::unversioned::transport::Transport for StallTransport {
 
 /// Holt eine einzelne Datei aus einem .tgz- oder .zip-Archiv. Der Eintrag wird
 /// über das Pfadende gefunden, damit der Ordnername im Archiv egal ist.
+/// Lädt `f` nach `tmp` und prüft Prüfsumme bzw. Länge. Scheitert die Prüfung,
+/// wird die Teildatei verworfen.
+fn fetch_checked(
+    f: &FileSpec,
+    tmp: &Path,
+    index: usize,
+    count: usize,
+    progress: &dyn Fn(Progress),
+    cancel: &AtomicBool,
+) -> Result<()> {
+    let expect = f.sha256.clone().or(f.size.map(|n| n.to_string()));
+    download_part(
+        &f.url,
+        expect.as_deref(),
+        tmp,
+        &|done, total| {
+            progress(Progress {
+                item: f.name.clone(),
+                index,
+                count,
+                done,
+                total: total.or(f.size),
+            })
+        },
+        cancel,
+    )?;
+    // Mit Prüfsumme gilt sie (nur für frische Downloads – schon vorhandene
+    // Dateien werden übersprungen und nie nachträglich geprüft)
+    let checked = match &f.sha256 {
+        Some(sha) => accel::verify_sha256(tmp, sha),
+        None => check_length(tmp, f.size),
+    };
+    if let Err(e) = checked {
+        discard_part(tmp);
+        return Err(e);
+    }
+    Ok(())
+}
+
+/// Kopiert höchstens [`MAX_EXTRACT`] Bytes; mehr ist ein Fehler (und die
+/// Teildatei wird gelöscht).
+fn copy_limited(r: &mut impl Read, tmp: &Path) -> Result<()> {
+    let mut out = File::create(tmp)?;
+    let n = std::io::copy(&mut r.take(MAX_EXTRACT + 1), &mut out)?;
+    if n > MAX_EXTRACT {
+        drop(out);
+        let _ = std::fs::remove_file(tmp);
+        return Err(Error::Download(
+            tr_s("Archiveintrag ist zu groß", "Archive entry is too large").into(),
+        ));
+    }
+    Ok(())
+}
+
 fn extract_entry(archive: &Path, url: &str, entry: &str, target: &Path) -> Result<()> {
     let tmp = target.with_file_name(format!(
         "{}.part",
@@ -1346,7 +1422,7 @@ fn extract_entry(archive: &Path, url: &str, entry: &str, target: &Path) -> Resul
                 let mut f = zip
                     .by_name(&n)
                     .map_err(|e| Error::Download(e.to_string()))?;
-                std::io::copy(&mut f, &mut File::create(&tmp)?)?;
+                copy_limited(&mut f, &tmp)?;
                 true
             }
             None => false,
@@ -1359,7 +1435,7 @@ fn extract_entry(archive: &Path, url: &str, entry: &str, target: &Path) -> Resul
             let mut e = e?;
             let path = e.path()?.to_string_lossy().into_owned();
             if path.ends_with(entry) && e.header().entry_type().is_file() {
-                std::io::copy(&mut e, &mut File::create(&tmp)?)?;
+                copy_limited(&mut e, &tmp)?;
                 found = true;
                 break;
             }

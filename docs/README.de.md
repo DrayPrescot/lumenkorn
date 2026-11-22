@@ -537,7 +537,7 @@ Im KI-Dialog unter „Grafikkarte“. Zwei Teile, die unabhängig voneinander la
 - **KI:** Ein Klick lädt die WebGPU-Fassung von ONNX Runtime. Sie läuft auf AMD, NVIDIA und Intel über
   den normalen Treiber, ohne CUDA oder ROCm. Ein Modell läuft nur dann auf der GPU, wenn alle seine
   Operationen dort laufen können, sonst ganz auf der CPU; der Dialog zeigt pro Modell, wo es rechnet.
-  Die quantisierten Modelle (Segment Anything, CLIP-Text) bleiben auf der CPU.
+  Die quantisierten Modelle (CLIP-Text) bleiben auf der CPU.
 - **Absturzschutz:** Vor riskanten Schritten wie dem Laden einer GPU-Laufzeit legt Lumenkorn eine
   Markierung an. Stürzt die App dabei ab, schaltet der nächste Start den Auslöser ab und erklärt im
   KI-Dialog, was passiert ist.
@@ -929,7 +929,7 @@ Nominatim. Der Hinweis „© OpenStreetMap contributors“ steht auf der Karte.
 | Dawn, DirectX Shader Compiler (in der WebGPU-Fassung von ONNX Runtime enthalten) | [Google](https://dawn.googlesource.com/dawn), [Microsoft](https://github.com/microsoft/DirectXShaderCompiler) | mit ONNX Runtime | BSD-3-Clause, NCSA (`dxil.dll`: Microsoft-Lizenz) |
 | CLIP ViT-B/32 | OpenAI, ONNX-Fassung von [Xenova](https://huggingface.co/Xenova/clip-vit-base-patch32) | Hugging Face | MIT |
 | IS-Net / DIS | [Xuebin Qin u. a.](https://github.com/xuebinqin/DIS) | Releases von [rembg](https://github.com/danielgatis/rembg) | Apache-2.0 |
-| Segment Anything ViT-B | [Meta AI](https://github.com/facebookresearch/segment-anything) | Releases von rembg | Apache-2.0 |
+| Segment Anything 2.1 (Hiera Base+, fp16) | [Meta AI](https://github.com/facebookresearch/sam2) | ONNX-Export von onnx-community (Hugging Face) | Apache-2.0 |
 | skyseg (U²-Net) | [xiongzhu666](https://github.com/xiongzhu666/Sky-Segmentation-and-Post-processing), auf Basis von [U²-Net](https://github.com/xuebinqin/U-2-Net) | [Hugging Face](https://huggingface.co/JianyuanWang/skyseg) | MIT |
 | OWLv2 (base, patch16, ensemble) | [Google Research](https://github.com/google-research/scenic/tree/main/scenic/projects/owl_vit), ONNX-Fassung von [Xenova](https://huggingface.co/Xenova/owlv2-base-patch16-ensemble) | Hugging Face | Apache-2.0 |
 | MediaPipe Selfie Multiclass | [Google](https://ai.google.dev/edge/mediapipe/solutions/vision/image_segmenter), ONNX-Umwandlung von [senty-au](https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX) | Hugging Face | Apache-2.0 |

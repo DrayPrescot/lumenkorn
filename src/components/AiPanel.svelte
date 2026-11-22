@@ -53,7 +53,7 @@
     if (!s) return [] as AiComponent[];
     const m: AiComponent[] = [];
     if (!s.modelReady || !s.runtimePath) m.push("clip");
-    if (!(s.masksReady && s.skyReady && s.partsReady)) m.push("masks");
+    if (!(s.masksReady && s.skyReady && s.partsReady && s.samReady)) m.push("masks");
     if (!s.denoiseReady) m.push("denoise");
     if (ps && !ps.ready) m.push("faces");
     if (!s.repairReady) m.push("repair");
@@ -98,7 +98,7 @@
   const MODEL_LABELS: Record<string, string> = {
     "drunet.onnx": t("Rauschreduzierung"),
     "subject.onnx": t("Motiv"),
-    "sam-encoder.onnx": t("Objekt per Klick"),
+    "sam2-encoder.onnx": t("Objekt per Klick"),
     "owlv2-ensemble.onnx": t("Personen und Tiere"),
     "vision.onnx": t("Schlagworte"),
     "bioclip2-vision-fp16.onnx": t("Tierarten"),
@@ -338,7 +338,7 @@
     {#if s}
       <div class="sep"></div>
       <h4>{t("KI-Masken")}</h4>
-      {#if s.masksReady && s.skyReady && s.partsReady}
+      {#if s.masksReady && s.skyReady && s.partsReady && s.samReady}
         <p class="muted">{t("Installiert: „Motiv“, „Objekt per Klick“, KI-„Himmel“, „Person“ und „Tier“ im Entwickeln-Modus unter „Masken“.")}</p>
       {:else}
         <div class="box">

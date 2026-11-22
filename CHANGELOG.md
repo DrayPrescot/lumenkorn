@@ -15,6 +15,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
   made with earlier versions keep their look; “Reset” switches the compensation on.
 
 ### Changed
+- “Object” masks use Segment Anything 2.1 (Hiera Base+) instead of Segment Anything ViT-B. The
+  masks are cleaner (no grid patterns or holes on soft backgrounds), and on the GPU the
+  preparation of a photo takes about 0.1 s instead of 1.5 s. The new model (164 MB) is downloaded
+  once via “AI”; until then “Subject” and “Sky” keep working. The old files are removed after
+  the download.
+- Search by content understands more German words (for example “Brautpaar”, “Burg”,
+  “Spiegelung”, “Flug”, “Kirschblüte”); before, they reached the English model untranslated.
 - Highlight reconstruction (“inpaint opposed”) and RCD demosaicing follow darktable 5.6. For
   Fujifilm X-Trans files, the colour correction of reconstructed highlights used the wrong
   colours before; Bayer files change only slightly where highlights are clipped. Previews of

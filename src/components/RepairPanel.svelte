@@ -15,6 +15,7 @@
   let renaming = $state<number | null>(null);
 
   const segReady = $derived(lib.aiOn && !!lib.ai?.masksReady);
+  const samReady = $derived(segReady && !!lib.ai?.samReady);
   const ready = $derived(!!lib.ai?.repairReady);
   // KI ausgeschaltet: vorhandene Reparaturen bleiben sichtbar, neue gibt es nicht
   const canRun = $derived(ready && lib.aiOn);
@@ -208,7 +209,7 @@
 {#snippet kindMenu()}
   <div class="menu" role="menu" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
     {#each kinds as k (k.kind)}
-      {@const disabled = k.ai && !segReady}
+      {@const disabled = k.ai && !(k.kind === "object" ? samReady : segReady)}
       <button role="menuitem" {disabled} onclick={() => pick(k.kind)} title={disabled ? (lib.aiOn ? t("Benötigt die KI-Masken (unten links unter „KI“)") : t("Die KI ist in den Einstellungen ausgeschaltet")) : k.hint}>
         {#if k.ai}<Icon name="sparkle" size={12} />{:else}<span class="sp"></span>{/if}
         <span class="l">{k.label}</span>

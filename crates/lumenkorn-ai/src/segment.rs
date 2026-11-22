@@ -1,4 +1,4 @@
-//! KI-Masken: Motiv (IS-Net), Objekt per Klick (Segment Anything) und Himmel.
+//! KI-Masken: Motiv (IS-Net), Objekt per Klick (Segment Anything 2.1) und Himmel.
 //!
 //! Alle Masken entstehen als Graustufenbild im Seitenverhältnis des Fotos
 //! (längste Kante höchstens [`MASK_EDGE`]) und werden über normierte
@@ -97,15 +97,23 @@ impl SubjectModel {
 
 // --- Segment Anything -----------------------------------------------------
 
-/// Bild-Embedding von SAM. Teuer (Sekunden) – einmal pro Bild berechnen und für
-/// alle Klicks wiederverwenden.
+/// Kantenlänge der Modelleingabe von SAM 2.1
+const SAM_INPUT: usize = 1024;
+/// Kante der Masken, die der Decoder liefert (über dem 1024er-Quadrat)
+const SAM_LOW: usize = 256;
+
+/// Bild-Merkmale von SAM 2.1. Teuer (auf der GPU etwa 0,1 s, auf der CPU um
+/// 1,5 s) – einmal pro Bild berechnen und für alle Klicks wiederverwenden.
 pub struct SamEmbedding {
-    data: Vec<f32>,
-    /// Bildgröße, für die das Embedding berechnet wurde
+    /// `image_embeddings.0` 1×32×256×256
+    feats0: Vec<f32>,
+    /// `image_embeddings.1` 1×64×128×128
+    feats1: Vec<f32>,
+    /// `image_embeddings.2` 1×256×64×64
+    embed: Vec<f32>,
+    /// Maskengröße für dieses Bild
     width: u32,
     height: u32,
-    /// Skalierung auf die 1024er-Eingabe
-    scale: f32,
 }
 
 impl SamEmbedding {
@@ -115,20 +123,16 @@ impl SamEmbedding {
     }
 }
 
+/// Segment Anything 2.1 (Hiera Base+, Meta, Apache 2.0) im ONNX-Export von
+/// onnx-community (Transformers.js): Encoder mit drei Merkmalsstufen, Decoder
+/// für Punkte und Rahmen mit drei Maskenvorschlägen samt geschätzter Güte.
+///
+/// Nicht der Export von samexporter: Dessen Encoder lieferte unter ONNX Runtime
+/// je Sitzung zufällig eines von mehreren Ergebnissen, nur eines davon richtig.
 pub struct Sam {
     encoder: Model,
     decoder: Model,
-    /// Der Decoder liefert `low_res_masks` (256×256 über dem aufgefüllten
-    /// 1024er-Quadrat). Daraus wird die Maske selbst zugeschnitten: Der
-    /// offizielle ONNX-Export hat den Zuschnitt in `masks` beim Tracing mit
-    /// der Beispielgröße 1500×2250 festgeschrieben (683×1024, 3:2 quer) –
-    /// bei jedem anderen Seitenverhältnis, besonders im Hochformat, wäre die
-    /// Maske verzerrt und Richtung unten links verschoben.
-    low_res: bool,
 }
-
-/// Kante von `low_res_masks`
-const SAM_LOW: usize = 256;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Point {
@@ -141,58 +145,60 @@ pub struct Point {
 impl Sam {
     pub fn load(encoder: &Path, decoder: &Path) -> Result<Self> {
         let mut decoder = crate::accel::open_model(decoder)?;
-        let low_res = decoder
+        let expected = decoder
             .inspect()
-            .outputs()
+            .inputs()
             .iter()
-            .any(|o| o.name() == "low_res_masks");
-        if !low_res {
-            log::warn!("SAM-Decoder ohne low_res_masks – Masken nur bei 3:2 quer passgenau");
+            .any(|i| i.name() == "input_boxes");
+        // Ein Decoder in anderem Format (z. B. SAM 1 aus einer eigenen quellen.json)
+        if !expected {
+            return Err(Error::ModelFormat(
+                tr_s(
+                    "Der SAM-Decoder hat nicht das erwartete Format (SAM 2.1)",
+                    "The SAM decoder does not have the expected format (SAM 2.1)",
+                )
+                .into(),
+            ));
         }
         Ok(Self {
             encoder: crate::accel::open_model(encoder)?,
             decoder,
-            low_res,
         })
     }
 
     pub fn embed(&self, img: &DynamicImage) -> Result<SamEmbedding> {
-        const S: u32 = 1024;
+        const S: u32 = SAM_INPUT as u32;
         let (w, h) = mask_size(img.width(), img.height());
-        let scale = S as f32 / w.max(h) as f32;
-        let (nw, nh) = (
-            ((w as f32 * scale).round() as u32).min(S),
-            ((h as f32 * scale).round() as u32).min(S),
-        );
-        let rgb = img.resize_exact(nw, nh, FilterType::Triangle).to_rgb8();
-        const MEAN: [f32; 3] = [123.675, 116.28, 103.53];
-        const STD: [f32; 3] = [58.395, 57.12, 57.375];
-        let n = (S * S) as usize;
-        // Rechts und unten mit Nullen auffüllen (entspricht dem Mittelwert nach Normierung).
+        // SAM 2.1 skaliert auf das volle Quadrat (ohne Auffüllen), Normierung
+        // wie ImageNet
+        let rgb = img.resize_exact(S, S, FilterType::Triangle).to_rgb8();
+        const MEAN: [f32; 3] = [0.485, 0.456, 0.406];
+        const STD: [f32; 3] = [0.229, 0.224, 0.225];
+        let n = SAM_INPUT * SAM_INPUT;
         let mut data = vec![0f32; 3 * n];
-        for (x, y, p) in rgb.enumerate_pixels() {
-            let i = (y * S + x) as usize;
+        for (i, p) in rgb.pixels().enumerate() {
             for c in 0..3 {
-                data[c * n + i] = (p[c] as f32 - MEAN[c]) / STD[c];
+                data[c * n + i] = (p[c] as f32 / 255.0 - MEAN[c]) / STD[c];
             }
         }
-        let input = Tensor::from_array(([1usize, 3, S as usize, S as usize], data))?;
+        let input = Tensor::from_array(([1usize, 3, SAM_INPUT, SAM_INPUT], data))?;
         let mut enc = self.encoder.lock();
-        let name = enc.inputs()[0].name().to_string();
-        let out_name = enc.outputs()[0].name().to_string();
-        let outputs = enc.run(vec![(name.as_str(), input.into_dyn())])?;
-        let (_, emb) = crate::accel::output_f32(&outputs, &out_name)?;
-        // Das Embedding wird später als 1×256×64×64 an den Decoder gegeben
-        if emb.len() != 256 * 64 * 64 {
-            return Err(Error::ModelFormat(
-                tr_s("unerwartete Ausgabegröße", "unexpected output size").into(),
-            ));
-        }
+        let outputs = enc.run(vec![("pixel_values", input.into_dyn())])?;
+        let take = |out: &str, len: usize| -> Result<Vec<f32>> {
+            let (_, v) = crate::accel::output_f32(&outputs, out)?;
+            if v.len() != len {
+                return Err(Error::ModelFormat(
+                    tr_s("unerwartete Ausgabegröße", "unexpected output size").into(),
+                ));
+            }
+            Ok(v.to_vec())
+        };
         Ok(SamEmbedding {
-            data: emb.to_vec(),
+            feats0: take("image_embeddings.0", 32 * 256 * 256)?,
+            feats1: take("image_embeddings.1", 64 * 128 * 128)?,
+            embed: take("image_embeddings.2", 256 * 64 * 64)?,
             width: w,
             height: h,
-            scale,
         })
     }
 
@@ -202,119 +208,113 @@ impl Sam {
         if points.is_empty() {
             return Err(Error::ModelFormat(tr_s("keine Punkte", "no points").into()));
         }
-        let mut coords = Vec::with_capacity((points.len() + 1) * 2);
-        let mut labels = Vec::with_capacity(points.len() + 1);
+        let s = SAM_INPUT as f32;
+        let mut coords = Vec::with_capacity(points.len() * 2);
+        let mut labels = Vec::with_capacity(points.len());
         for p in points {
-            coords.push(p.x * emb.width as f32 * emb.scale);
-            coords.push(p.y * emb.height as f32 * emb.scale);
-            labels.push(if p.positive { 1.0f32 } else { 0.0 });
+            coords.push(p.x * s);
+            coords.push(p.y * s);
+            labels.push(i64::from(p.positive));
         }
-        // Füllpunkt, wie es der ONNX-Export ohne Rahmen erwartet
-        coords.extend([0.0, 0.0]);
-        labels.push(-1.0);
-        self.decode(emb, coords, labels)
+        self.decode(emb, coords, labels, None)
     }
 
     /// Maske für einen Rahmen (normiert: x0, y0, x1, y1) – „das Objekt in
-    /// diesem Rechteck“; SAM bekommt die Ecken als Punkte mit Kennung 2 und 3.
+    /// diesem Rechteck“.
     pub fn predict_box(&self, emb: &SamEmbedding, rect: [f32; 4]) -> Result<GrayImage> {
-        let (sx, sy) = (emb.width as f32 * emb.scale, emb.height as f32 * emb.scale);
-        let coords = vec![rect[0] * sx, rect[1] * sy, rect[2] * sx, rect[3] * sy];
-        self.decode(emb, coords, vec![2.0, 3.0])
+        let s = SAM_INPUT as f32;
+        self.decode(emb, Vec::new(), Vec::new(), Some(rect.map(|v| v * s)))
     }
 
-    fn decode(&self, emb: &SamEmbedding, coords: Vec<f32>, labels: Vec<f32>) -> Result<GrayImage> {
+    /// `coords`/`labels`: Punkte in Koordinaten der 1024er-Eingabe; `rect`:
+    /// optional ein Rahmen ebenso.
+    fn decode(
+        &self,
+        emb: &SamEmbedding,
+        coords: Vec<f32>,
+        labels: Vec<i64>,
+        rect: Option<[f32; 4]>,
+    ) -> Result<GrayImage> {
         let n = labels.len();
-
-        let owned = |t: Tensor<f32>| SessionInputValue::from(t.into_dyn());
+        let boxes: Vec<f32> = rect.map(|r| r.to_vec()).unwrap_or_default();
+        let nb = boxes.len() / 4;
+        // Ohne Kopie: die Merkmale (17 MB) werden bei jedem Klick gebraucht
+        fn view(shape: [usize; 4], data: &[f32]) -> Result<SessionInputValue<'_>> {
+            Ok(TensorRef::from_array_view((shape, data))?.into_dyn().into())
+        }
         let inputs: Vec<(&str, SessionInputValue)> = vec![
-            // Ohne Kopie: das Embedding (4 MB) wird bei jedem Klick gebraucht
             (
-                "image_embeddings",
-                TensorRef::from_array_view(([1usize, 256, 64, 64], emb.data.as_slice()))?
-                    .into_dyn()
-                    .into(),
+                "input_points",
+                SessionInputValue::from(
+                    Tensor::from_array(([1usize, 1, n, 2], coords))?.into_dyn(),
+                ),
             ),
             (
-                "point_coords",
-                owned(Tensor::from_array(([1usize, n, 2], coords))?),
+                "input_labels",
+                SessionInputValue::from(Tensor::from_array(([1usize, 1, n], labels))?.into_dyn()),
             ),
             (
-                "point_labels",
-                owned(Tensor::from_array(([1usize, n], labels))?),
+                "input_boxes",
+                SessionInputValue::from(Tensor::from_array(([1usize, nb, 4], boxes))?.into_dyn()),
             ),
-            (
-                "mask_input",
-                owned(Tensor::from_array((
-                    [1usize, 1, 256, 256],
-                    vec![0f32; 256 * 256],
-                ))?),
-            ),
-            (
-                "has_mask_input",
-                owned(Tensor::from_array(([1usize], vec![0f32]))?),
-            ),
-            (
-                "orig_im_size",
-                owned(Tensor::from_array((
-                    [2usize],
-                    vec![emb.height as f32, emb.width as f32],
-                ))?),
-            ),
+            ("image_embeddings.0", view([1, 32, 256, 256], &emb.feats0)?),
+            ("image_embeddings.1", view([1, 64, 128, 128], &emb.feats1)?),
+            ("image_embeddings.2", view([1, 256, 64, 64], &emb.embed)?),
         ];
         let mut dec = self.decoder.lock();
         let outputs = dec.run(inputs)?;
-        let name = if self.low_res {
-            "low_res_masks"
-        } else {
-            "masks"
-        };
-        let (shape, masks) = crate::accel::output_f32(&outputs, name)?;
-        let (_, iou) = crate::accel::output_f32(&outputs, "iou_predictions")?;
-        let count = shape.get(1).copied().unwrap_or(1).max(1) as usize;
-        let best = (0..count.min(iou.len()))
-            .max_by(|a, b| iou[*a].total_cmp(&iou[*b]))
-            .unwrap_or(0);
-        let (w, h) = (emb.width, emb.height);
-        let plane = if self.low_res {
-            SAM_LOW * SAM_LOW
-        } else {
-            (w * h) as usize
-        };
-        if masks.len() < (best + 1) * plane {
+        // pred_masks 1×1×3×256×256 (Logits), iou_scores 1×1×3
+        let (shape, masks) = crate::accel::output_f32(&outputs, "pred_masks")?;
+        let (_, iou) = crate::accel::output_f32(&outputs, "iou_scores")?;
+        let plane = SAM_LOW * SAM_LOW;
+        let count = shape.get(2).copied().unwrap_or(1).max(1) as usize;
+        if shape.len() != 5
+            || shape[3] as usize != SAM_LOW
+            || shape[4] as usize != SAM_LOW
+            || masks.len() < count * plane
+            || iou.len() < count
+        {
             return Err(Error::ModelFormat(tr!(
                 "unerwartete Maskenform {shape:?}",
                 "unexpected mask shape {shape:?}"
             )));
         }
+        let best = (0..count)
+            .filter(|k| iou[*k].is_finite())
+            .max_by(|a, b| iou[*a].total_cmp(&iou[*b]))
+            .unwrap_or(0);
         let m = &masks[best * plane..(best + 1) * plane];
-        // Logits → weiche, aber schmale Kante um 0; Reste weit außerhalb auf 0
-        let alpha = |v: f32| {
-            let a = 1.0 / (1.0 + (-v * 4.0).exp());
-            Luma([if a < 0.03 { 0 } else { (a * 255.0) as u8 }])
-        };
-        let mut out = if self.low_res {
-            // Maskenpixel → 1024er-Eingabe (× scale) → 256er-Raster (÷ 4),
-            // bilinear in Pixelmitten wie F.interpolate im Modell
-            let k = emb.scale * SAM_LOW as f32 / 1024.0;
-            let last = (SAM_LOW - 1) as f32;
-            GrayImage::from_fn(w, h, |x, y| {
-                let fx = ((x as f32 + 0.5) * k - 0.5).clamp(0.0, last);
-                let fy = ((y as f32 + 0.5) * k - 0.5).clamp(0.0, last);
-                let (x0, y0) = (fx as usize, fy as usize);
-                let (x1, y1) = ((x0 + 1).min(SAM_LOW - 1), (y0 + 1).min(SAM_LOW - 1));
-                let (ax, ay) = (fx - x0 as f32, fy - y0 as f32);
-                let v = |x: usize, y: usize| m[y * SAM_LOW + x];
-                let top = v(x0, y0) + (v(x1, y0) - v(x0, y0)) * ax;
-                let bot = v(x0, y1) + (v(x1, y1) - v(x0, y1)) * ax;
-                alpha(top + (bot - top) * ay)
-            })
-        } else {
-            GrayImage::from_fn(w, h, |x, y| alpha(m[(y * w + x) as usize]))
-        };
-        fix_border(&mut out);
-        Ok(out)
+        Ok(upsample_mask(m, emb.width, emb.height))
     }
+}
+
+/// 256er-Logits über dem ganzen (gestreckten) Bild → Maske `w`×`h`: bilinear
+/// in Pixelmitten wie F.interpolate im Modell, Logit → weiche, aber schmale
+/// Kante um 0, Reste weit außerhalb auf 0.
+fn upsample_mask(m: &[f32], w: u32, h: u32) -> GrayImage {
+    let alpha = |v: f32| {
+        let a = 1.0 / (1.0 + (-v * 4.0).exp());
+        Luma([if a.is_finite() && a >= 0.03 {
+            (a * 255.0) as u8
+        } else {
+            0
+        }])
+    };
+    let (kx, ky) = (SAM_LOW as f32 / w as f32, SAM_LOW as f32 / h as f32);
+    let last = (SAM_LOW - 1) as f32;
+    let mut out = GrayImage::from_fn(w, h, |x, y| {
+        let fx = ((x as f32 + 0.5) * kx - 0.5).clamp(0.0, last);
+        let fy = ((y as f32 + 0.5) * ky - 0.5).clamp(0.0, last);
+        let (x0, y0) = (fx as usize, fy as usize);
+        let (x1, y1) = ((x0 + 1).min(SAM_LOW - 1), (y0 + 1).min(SAM_LOW - 1));
+        let (ax, ay) = (fx - x0 as f32, fy - y0 as f32);
+        let v = |x: usize, y: usize| m[y * SAM_LOW + x];
+        let top = v(x0, y0) + (v(x1, y0) - v(x0, y0)) * ax;
+        let bot = v(x0, y1) + (v(x1, y1) - v(x0, y1)) * ax;
+        alpha(top + (bot - top) * ay)
+    });
+    fix_border(&mut out);
+    out
 }
 
 // --- Himmel ---------------------------------------------------------------

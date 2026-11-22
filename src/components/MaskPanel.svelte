@@ -17,6 +17,8 @@
 
   const aiReady = $derived(lib.aiOn && !!lib.ai?.masksReady);
   const partsReady = $derived(aiReady && !!lib.ai?.partsReady);
+  // „Objekt“ braucht Segment Anything 2.1, das nach dem Update eigens nachgeladen wird
+  const samReady = $derived(aiReady && !!lib.ai?.samReady);
 
   const kinds: { kind: NewMaskKind; label: string; hint: string; ai?: boolean }[] = [
     { kind: "subject", label: t("Motiv"), hint: t("Hauptmotiv automatisch erkennen"), ai: true },
@@ -230,7 +232,7 @@
 {#snippet kindMenu()}
   <div class="menu" role="menu" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
     {#each kinds as k (k.kind)}
-      {@const disabled = k.ai && !aiReady}
+      {@const disabled = k.ai && !(k.kind === "object" ? samReady : aiReady)}
       <button role="menuitem" {disabled} onclick={() => pick(k.kind)} title={disabled ? (lib.aiOn ? t("Benötigt die KI-Masken (unten links unter „KI“)") : t("Die KI ist in den Einstellungen ausgeschaltet")) : k.hint}>
         {#if k.ai || k.kind === "sky"}<Icon name="sparkle" size={12} />{:else}<span class="sp"></span>{/if}
         <span class="l">{k.label}</span>

@@ -1018,8 +1018,10 @@ export interface AiStatus {
   masksReady: boolean;
   /** KI-Himmelsmodell installiert */
   skyReady: boolean;
-  /** Personen und Tiere (OWLv2, Selfie Multiclass, Face Mesh) installiert */
+  /** Personen und Tiere (OWLv2, Selfie Multiclass, Face Mesh, SAM 2.1) installiert */
   partsReady: boolean;
+  /** Segment Anything 2.1 („Objekt per Klick“) installiert */
+  samReady: boolean;
   repairReady: boolean;
   repairDownloadSize: number;
   /** Tierarten genauer (BioCLIP 2) installiert */

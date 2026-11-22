@@ -67,6 +67,63 @@ fn subject_on_gpu_matches_cpu() {
     assert!(max <= 2, "Masken weichen ab: {max}");
 }
 
+/// Segment Anything 2.1 auf GPU und CPU: dieselbe Maske (der Encoder läuft
+/// gemischt, im Test etwa 0,1 s statt über 1 s auf der CPU).
+#[test]
+fn sam_on_gpu_matches_cpu() {
+    let (Some(_), Ok(dir)) = (gpu_lib(), std::env::var("LUMENKORN_TEST_SEG")) else {
+        eprintln!("übersprungen: LUMENKORN_TEST_ORT_GPU/LUMENKORN_TEST_SEG fehlen");
+        return;
+    };
+    let _g = SERIAL.lock().unwrap();
+    let dir = PathBuf::from(dir);
+    let img = image::DynamicImage::ImageRgb8(image::RgbImage::from_fn(640, 480, |x, y| {
+        let d = ((x as f32 - 400.0).powi(2) + (y as f32 - 240.0).powi(2)).sqrt();
+        if d < 110.0 {
+            image::Rgb([200, 30, 20])
+        } else {
+            let n = ((x * 31 + y * 17) % 11) as u8;
+            image::Rgb([150 + n, 150 + n, 155 + n])
+        }
+    }));
+    let click = lumenkorn_ai::segment::Point {
+        x: 400.0 / 640.0,
+        y: 0.5,
+        positive: true,
+    };
+    let run = |gpu: bool| {
+        accel::set_use_gpu(gpu);
+        let sam = lumenkorn_ai::segment::Sam::load(
+            &dir.join(lumenkorn_ai::models::SAM_ENCODER),
+            &dir.join(lumenkorn_ai::models::SAM_DECODER),
+        )
+        .unwrap();
+        let emb = sam.embed(&img).unwrap();
+        let t = std::time::Instant::now();
+        let emb2 = sam.embed(&img).unwrap();
+        eprintln!(
+            "SAM 2.1 {}: {:.2?}",
+            if gpu { "GPU" } else { "CPU" },
+            t.elapsed()
+        );
+        drop(emb2);
+        sam.predict(&emb, &[click]).unwrap()
+    };
+    let cpu = run(false);
+    let gpu = run(true);
+    // Als Fläche (über 50 %) vergleichen: Am weichen Saum runden GPU und CPU
+    // etwas verschieden
+    let (mut both, mut any) = (0u32, 0u32);
+    for (a, b) in cpu.pixels().zip(gpu.pixels()) {
+        let (a, b) = (a[0] > 127, b[0] > 127);
+        both += u32::from(a && b);
+        any += u32::from(a || b);
+    }
+    let iou = both as f32 / any.max(1) as f32;
+    eprintln!("SAM: Übereinstimmung GPU/CPU (IoU) {iou:.4}");
+    assert!(iou > 0.98, "Masken weichen ab: IoU {iou}");
+}
+
 #[test]
 fn denoise_on_gpu_matches_cpu() {
     let (Some(_), Ok(dir)) = (gpu_lib(), std::env::var("LUMENKORN_TEST_DENOISE")) else {

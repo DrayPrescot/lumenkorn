@@ -319,7 +319,115 @@ const EXTRA: &[(&str, &str)] = &[
     ("winter", "winter"),
     ("sommer", "summer"),
     ("urlaub", "vacation"),
-    ("essen", "food"),
+    // Hochzeit und Familie
+    ("brautpaar", "bride and groom"),
+    ("braut", "bride"),
+    ("bräutigam", "groom"),
+    ("brautkleid", "wedding dress"),
+    ("hochzeitstorte", "wedding cake"),
+    ("trauung", "wedding ceremony"),
+    ("familie", "family"),
+    ("kinder", "children"),
+    ("paar", "couple"),
+    ("freunde", "friends"),
+    ("gäste", "guests"),
+    // Körper, Kleidung
+    ("gesicht", "face"),
+    ("augen", "eyes"),
+    ("haare", "hair"),
+    ("hände", "hands"),
+    ("lächeln", "smile"),
+    ("kleid", "dress"),
+    ("hut", "hat"),
+    ("brille", "glasses"),
+    ("anzug", "suit"),
+    // Bauwerke, Orte
+    ("burg", "castle"),
+    ("schloss", "castle"),
+    ("ruine", "ruin"),
+    ("turm", "tower"),
+    ("tempel", "temple"),
+    ("schrein", "shrine"),
+    ("kapelle", "chapel"),
+    ("dom", "cathedral"),
+    ("kathedrale", "cathedral"),
+    ("altstadt", "old town"),
+    ("gasse", "alley"),
+    ("platz", "square"),
+    ("markt", "market"),
+    ("hütte", "hut"),
+    ("zimmer", "room"),
+    ("tisch", "table"),
+    ("fenster", "window"),
+    ("tür", "door"),
+    ("treppe", "stairs"),
+    ("weg", "path"),
+    ("häuser", "houses"),
+    ("kirchen", "churches"),
+    ("brücken", "bridges"),
+    // Natur
+    ("spiegelung", "reflection"),
+    ("spiegelungen", "reflections"),
+    ("felsen", "rocks"),
+    ("stein", "stone"),
+    ("steine", "stones"),
+    ("insel", "island"),
+    ("küste", "coast"),
+    ("welle", "wave"),
+    ("wellen", "waves"),
+    ("ufer", "shore"),
+    ("teich", "pond"),
+    ("bach", "stream"),
+    ("gletscher", "glacier"),
+    ("vulkan", "volcano"),
+    ("hügel", "hill"),
+    ("gipfel", "summit"),
+    ("tal", "valley"),
+    ("dschungel", "jungle"),
+    ("regenbogen", "rainbow"),
+    ("blitz", "lightning"),
+    ("gras", "grass"),
+    ("blätter", "leaves"),
+    ("blüten", "blossoms"),
+    ("kirschblüte", "cherry blossom"),
+    ("blumen", "flowers"),
+    ("bäume", "trees"),
+    ("vögel", "birds"),
+    ("pferde", "horses"),
+    ("tiere", "animals"),
+    ("tier", "animal"),
+    ("fisch", "fish"),
+    ("affe", "monkey"),
+    ("reh", "deer"),
+    ("hirsch", "deer"),
+    ("ente", "duck"),
+    ("schwan", "swan"),
+    ("möwe", "seagull"),
+    ("eule", "owl"),
+    ("schmetterling", "butterfly"),
+    ("libelle", "dragonfly"),
+    // Zeit, Licht, Tätigkeiten
+    ("abend", "evening"),
+    ("morgen", "morning"),
+    ("dämmerung", "dusk"),
+    ("sonnenaufgang", "sunrise"),
+    ("lichter", "lights"),
+    ("flug", "flight"),
+    ("fliegend", "flying"),
+    ("fliegt", "flying"),
+    ("spielen", "playing"),
+    ("spielend", "playing"),
+    ("schwimmen", "swimming"),
+    ("wandern", "hiking"),
+    ("sitzen", "sitting"),
+    ("sitzend", "sitting"),
+    ("über", "over"),
+    ("von", "of"),
+    ("zum", "to the"),
+    ("beim", "at the"),
+    ("groß", "big"),
+    ("klein", "small"),
+    ("alt", "old"),
 ];
 
 #[cfg(test)]
@@ -330,6 +438,37 @@ mod tests {
     fn translates_known_words() {
         assert_eq!(translate_query("Hund am Strand"), "dog at the sandy beach");
         assert_eq!(translate_query("Eiffelturm"), "Eiffelturm");
+    }
+
+    /// Häufige Suchbegriffe, die früher deutsch beim englischen CLIP ankamen
+    #[test]
+    fn common_photo_words_translate() {
+        assert_eq!(translate_query("Brautpaar"), "bride and groom");
+        assert_eq!(translate_query("Burg"), "castle");
+        assert_eq!(
+            translate_query("Spiegelung im Wasser"),
+            "reflection in the water"
+        );
+        assert_eq!(translate_query("Vogel im Flug"), "bird in the flight");
+        assert_eq!(
+            translate_query("Lichter der Stadt"),
+            "lights the city street"
+        );
+    }
+
+    /// Jedes deutsche Wort steht nur einmal im Wörterbuch und nicht schon als
+    /// Schlagwort (das würde dort ohnehin zuerst gefunden)
+    #[test]
+    fn extra_words_are_unique() {
+        let mut seen = std::collections::HashSet::new();
+        let tags: std::collections::HashSet<String> = default_groups()
+            .iter()
+            .flat_map(|g| g.concepts.iter().map(|c| c.tag.to_lowercase()))
+            .collect();
+        for (de, _) in EXTRA {
+            assert!(seen.insert(*de), "doppelt: {de}");
+            assert!(!tags.contains(*de), "schon Schlagwort: {de}");
+        }
     }
 
     #[test]

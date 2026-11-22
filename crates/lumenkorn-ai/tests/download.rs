@@ -719,3 +719,104 @@ fn manifest_with_unsafe_names_or_urls_is_ignored() {
         true
     )));
 }
+
+/// Die Standardquellen holen SAM 2.1 (Modelle und Gewichte) gepinnt mit Prüfsumme
+#[test]
+fn default_sam_is_pinned() {
+    let m = models::default_manifest();
+    for name in models::SAM_FILES {
+        let f = m.masks.iter().find(|f| f.name == name).expect(name);
+        assert!(f.url.contains("/resolve/") && f.sha256.as_deref().map(str::len) == Some(64));
+    }
+    assert!(!m.masks.iter().any(|f| f.name.starts_with("sam-")));
+}
+
+/// Nach dem Update von SAM 1 auf SAM 2.1: Motiv und Himmel bleiben nutzbar,
+/// nur „Objekt“, „Person“ und „Tier“ warten auf SAM 2.1.
+#[test]
+fn old_sam_keeps_subject_and_sky_ready() {
+    let data = tempfile::tempdir().unwrap();
+    let dir = models::masks_dir(data.path());
+    std::fs::create_dir_all(&dir).unwrap();
+    let m = models::default_manifest();
+    for f in &m.masks {
+        if !models::SAM_FILES.contains(&f.name.as_str()) {
+            std::fs::write(dir.join(&f.name), b"x").unwrap();
+        }
+    }
+    for old in ["sam-encoder.onnx", "sam-decoder.onnx"] {
+        std::fs::write(dir.join(old), b"alt").unwrap();
+    }
+    let s = models::status(data.path());
+    assert!(s.masks_ready && s.sky_ready, "Motiv und Himmel bleiben");
+    assert!(!s.sam_ready && !s.parts_ready);
+    let sam: u64 = m
+        .masks
+        .iter()
+        .filter(|f| models::SAM_FILES.contains(&f.name.as_str()))
+        .filter_map(|f| f.size)
+        .sum();
+    // Die Laufzeit fehlt im Testordner und zählt bei jeder KI-Komponente mit
+    let runtime = m.runtime.as_ref().and_then(|r| r.size).unwrap_or(0);
+    assert_eq!(s.masks_download_size, sam + runtime);
+}
+
+/// Die SAM-1-Dateien verschwinden erst, wenn SAM 2.1 vollständig da ist.
+#[test]
+fn old_sam_is_removed_after_sam2_download() {
+    let data = tempfile::tempdir().unwrap();
+    let ai = models::ai_dir(data.path());
+    let dir = models::masks_dir(data.path());
+    std::fs::create_dir_all(&dir).unwrap();
+    for old in ["sam-encoder.onnx", "sam-decoder.onnx"] {
+        std::fs::write(dir.join(old), b"alt").unwrap();
+    }
+    let files: Vec<(&'static str, Vec<u8>)> = vec![
+        ("/enc", b"enc".to_vec()),
+        ("/enc-data", b"enc-data".to_vec()),
+        ("/dec", b"dec".to_vec()),
+        ("/dec-data", b"dec-data".to_vec()),
+    ];
+    let manifest = |base: &str, served: bool| Manifest {
+        runtime: None,
+        model: vec![],
+        masks: models::SAM_FILES
+            .iter()
+            .zip(["/enc", "/enc-data", "/dec", "/dec-data"])
+            .map(|(name, path)| FileSpec {
+                name: (*name).into(),
+                url: format!("{base}{}", if served { path } else { "/fehlt" }),
+                size: None,
+                sha256: None,
+            })
+            .collect(),
+        denoise: vec![],
+        gpu_runtimes: vec![],
+        faces: vec![],
+        repair: vec![],
+        animals: vec![],
+    };
+    let no_cancel = AtomicBool::new(false);
+    let base = serve(files.clone());
+    std::fs::write(
+        ai.join("quellen.json"),
+        serde_json::to_string(&manifest(&base, false)).unwrap(),
+    )
+    .unwrap();
+    assert!(models::download_missing(data.path(), Component::Masks, &|_| {}, &no_cancel).is_err());
+    assert!(
+        dir.join("sam-encoder.onnx").is_file(),
+        "bleibt, solange SAM 2.1 fehlt"
+    );
+    let base = serve(files);
+    std::fs::write(
+        ai.join("quellen.json"),
+        serde_json::to_string(&manifest(&base, true)).unwrap(),
+    )
+    .unwrap();
+    models::download_missing(data.path(), Component::Masks, &|_| {}, &no_cancel).unwrap();
+    assert!(models::status(data.path()).sam_ready);
+    for old in ["sam-encoder.onnx", "sam-decoder.onnx"] {
+        assert!(!dir.join(old).exists(), "{old} gelöscht");
+    }
+}

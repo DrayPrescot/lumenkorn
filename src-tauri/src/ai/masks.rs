@@ -62,15 +62,34 @@ pub(super) fn subject_model(state: &AppState) -> Result<Arc<SubjectModel>, Error
     )
 }
 
+/// Segment Anything 2.1 hat einen eigenen Status (siehe `models::Status::sam_ready`)
+fn sam_needed(state: &AppState) -> Result<(), Error> {
+    state.usage.touch(Slot::Interactive);
+    if !models::status(&state.data_dir).sam_ready {
+        return Err(Error::Invalid(
+            tr_s(
+                "„Objekt per Klick“ braucht Segment Anything 2.1. Lade es über „KI“ unten links.",
+                "“Object by click” needs Segment Anything 2.1. Download it via “AI” at the bottom left.",
+            )
+            .into(),
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn sam_model(state: &AppState) -> Result<Arc<Sam>, Error> {
-    masks_needed(state)?;
+    sam_needed(state)?;
     lazy_model(
         state,
         &state.ai.sam,
         tr_s("Segment Anything (Objekt)", "Segment Anything (object)"),
         || {
             let dir = models::masks_dir(&state.data_dir);
-            Sam::load(&dir.join("sam-encoder.onnx"), &dir.join("sam-decoder.onnx")).map_err(err)
+            Sam::load(
+                &dir.join(models::SAM_ENCODER),
+                &dir.join(models::SAM_DECODER),
+            )
+            .map_err(err)
         },
     )
 }
@@ -160,7 +179,7 @@ pub async fn mask_sky(app: AppHandle, id: i64) -> Result<MaskResult, Error> {
             })?;
             let _g = analysis_guard(state, tr_s("Himmel", "Sky"));
             segment::sky_mask(&input, Some(&sky), None).map_err(err)?
-        } else if ai && status.masks_ready {
+        } else if ai && status.sam_ready {
             let s = sam_model(state)?;
             let emb = sam_embedding(state, &s, id)?;
             segment::sky_mask(&input, None, Some((&s, &emb))).map_err(err)?

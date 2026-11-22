@@ -52,7 +52,7 @@ export const LIBRARIES: Credit[] = [
 export const MODELS: Credit[] = [
   { name: "CLIP ViT-B/32", url: "https://huggingface.co/Xenova/clip-vit-base-patch32", use: t("Schlagworte und Suche nach Bildinhalt"), license: "MIT" },
   { name: "IS-Net (DIS)", url: "https://github.com/xuebinqin/DIS", use: t("Motiv-Maske"), license: "Apache-2.0" },
-  { name: "Segment Anything (ViT-B)", url: "https://github.com/facebookresearch/segment-anything", use: t("Objekt-, Personen- und Tiermasken"), license: "Apache-2.0" },
+  { name: "Segment Anything 2.1", url: "https://github.com/facebookresearch/sam2", use: t("Objekt-, Personen- und Tiermasken"), license: "Apache-2.0" },
   { name: "skyseg (U²-Net)", url: "https://huggingface.co/JianyuanWang/skyseg", use: t("Himmel-Maske"), license: "MIT" },
   { name: "OWLv2 (ensemble)", url: "https://huggingface.co/Xenova/owlv2-base-patch16-ensemble", use: t("Personen, Gesichter und Tiere finden"), license: "Apache-2.0" },
   { name: "MediaPipe Selfie Multiclass", url: "https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX", use: t("Haare, Haut und Kleidung"), license: "Apache-2.0" },

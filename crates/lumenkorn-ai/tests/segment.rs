@@ -3,11 +3,11 @@
 //!     LUMENKORN_TEST_ORT=/pfad/libonnxruntime.so LUMENKORN_TEST_SEG=/pfad cargo test -p lumenkorn-ai --test segment
 //!
 //! `LUMENKORN_TEST_SEG` enthält subject.onnx (isnet-general-use),
-//! sam-encoder.onnx und sam-decoder.onnx (vit_b, quantisiert).
+//! sam2-encoder.onnx und sam2-decoder.onnx (SAM 2.1 Hiera Base+).
 
 use image::{DynamicImage, Rgb, RgbImage};
-use lumenkorn_ai::runtime;
 use lumenkorn_ai::segment::{Point, Sam, SubjectModel, sky_mask};
+use lumenkorn_ai::{models, runtime};
 use std::path::PathBuf;
 
 fn setup() -> Option<PathBuf> {
@@ -62,7 +62,11 @@ fn sam_segments_clicked_object_and_refines_sky() {
         eprintln!("übersprungen: LUMENKORN_TEST_ORT/LUMENKORN_TEST_SEG fehlen");
         return;
     };
-    let sam = Sam::load(&dir.join("sam-encoder.onnx"), &dir.join("sam-decoder.onnx")).unwrap();
+    let sam = Sam::load(
+        &dir.join(models::SAM_ENCODER),
+        &dir.join(models::SAM_DECODER),
+    )
+    .unwrap();
     let img = ball();
     let t = std::time::Instant::now();
     let emb = sam.embed(&img).unwrap();
@@ -120,7 +124,11 @@ fn sam_mask_fits_portrait_images() {
         eprintln!("übersprungen: LUMENKORN_TEST_ORT/LUMENKORN_TEST_SEG fehlen");
         return;
     };
-    let sam = Sam::load(&dir.join("sam-encoder.onnx"), &dir.join("sam-decoder.onnx")).unwrap();
+    let sam = Sam::load(
+        &dir.join(models::SAM_ENCODER),
+        &dir.join(models::SAM_DECODER),
+    )
+    .unwrap();
     // Roter Ball oben rechts in einem Hochformat
     let (cx, cy, r) = (300.0, 220.0, 90.0);
     let img = DynamicImage::ImageRgb8(RgbImage::from_fn(400, 800, |x, y| {
