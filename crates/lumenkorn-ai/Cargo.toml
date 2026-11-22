@@ -15,7 +15,7 @@ lumenkorn-develop = { path = "../lumenkorn-develop" }
 log = "0.4.34"
 # ONNX Runtime wird zur Laufzeit geladen (load-dynamic): Die App startet auch
 # ohne, und die passende Bibliothek kann pro Plattform nachgeladen werden.
-ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "api-22", "webgpu"] }
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "load-dynamic", "api-22", "webgpu"] }
 rayon = "1.12.0"
 regex = "1.13.1"
 serde = { version = "1.0.229", features = ["derive"] }

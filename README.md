@@ -730,7 +730,7 @@ The same list is shown in the app: click ⓘ (**About Lumenkorn**) at the bottom
 | [rawspeed](https://github.com/darktable-org/rawspeed) camera data (`cameras.xml`, reduced to a table by `tools/rawspeed_white.py`) | sensor white and black levels | LGPL-2.1-or-later |
 | [wgpu](https://github.com/gfx-rs/wgpu) | GPU image processing | MIT or Apache-2.0 |
 | [ort](https://github.com/pykeio/ort) | Rust bindings for ONNX Runtime | MIT or Apache-2.0 |
-| [ONNX Runtime](https://github.com/microsoft/onnxruntime) | running the AI models (downloaded on demand) | MIT |
+| [ONNX Runtime](https://onnxruntime.ai) | running the AI models (downloaded on demand from PyPI) | MIT |
 | [Dawn](https://dawn.googlesource.com/dawn) and the [DirectX Shader Compiler](https://github.com/microsoft/DirectXShaderCompiler) | part of the WebGPU build of ONNX Runtime | BSD-3-Clause, NCSA (`dxil.dll`: Microsoft license) |
 | [SQLite](https://sqlite.org) via [rusqlite](https://github.com/rusqlite/rusqlite) | catalog and search index | public domain / MIT |
 | [image](https://github.com/image-rs/image) | reading and writing JPEG, PNG, TIFF, WebP | MIT or Apache-2.0 |

@@ -789,8 +789,7 @@ Ziehen eines Reglers nicht ändert.
 
 ONNX Runtime ist nicht fest eingebaut, sondern wird zur Laufzeit geladen. Lumenkorn startet und
 funktioniert also auch ohne, und für jede Plattform kann die passende Fassung heruntergeladen
-werden: die CPU-Fassung von den GitHub-Releases von ONNX Runtime, die WebGPU-Fassung als offizielles
-Paket von PyPI (geprüft per SHA-256). Weil die WebGPU-Laufzeit nicht zwei Modelle gleichzeitig
+werden: beide Fassungen (CPU und WebGPU) als offizielle Pakete von PyPI, geprüft per SHA-256. Weil die WebGPU-Laufzeit nicht zwei Modelle gleichzeitig
 rechnen lässt, kommen Rechnungen auf der GPU nacheinander dran.
 
 Aufwendige Ergebnisse (entrauschtes Bild, Reparatur-Flicken, KI-Masken) liegen im Datenordner und
@@ -921,7 +920,7 @@ Nominatim. Der Hinweis „© OpenStreetMap contributors“ steht auf der Karte.
 
 | Was | Von | Bezugsquelle | Lizenz |
 |---|---|---|---|
-| ONNX Runtime | [Microsoft](https://github.com/microsoft/onnxruntime) | GitHub-Releases, PyPI (WebGPU) | MIT |
+| ONNX Runtime | [Microsoft](https://onnxruntime.ai) | PyPI | MIT |
 | Dawn, DirectX Shader Compiler (in der WebGPU-Fassung von ONNX Runtime enthalten) | [Google](https://dawn.googlesource.com/dawn), [Microsoft](https://github.com/microsoft/DirectXShaderCompiler) | mit ONNX Runtime | BSD-3-Clause, NCSA (`dxil.dll`: Microsoft-Lizenz) |
 | CLIP ViT-B/32 | OpenAI, ONNX-Fassung von [Xenova](https://huggingface.co/Xenova/clip-vit-base-patch32) | Hugging Face | MIT |
 | IS-Net / DIS | [Xuebin Qin u. a.](https://github.com/xuebinqin/DIS) | Releases von [rembg](https://github.com/danielgatis/rembg) | Apache-2.0 |

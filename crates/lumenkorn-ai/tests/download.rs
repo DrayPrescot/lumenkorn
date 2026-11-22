@@ -336,6 +336,100 @@ fn gpu_runtime_from_wheel_checks_sha256() {
     );
 }
 
+/// Die CPU-Laufzeit kommt seit 1.2.12 aus dem PyPI-Wheel: Nur die Bibliothek
+/// wird übernommen, der Python-Teil und Begleiter bleiben draußen.
+#[test]
+fn cpu_runtime_from_wheel() {
+    use sha2::Digest;
+
+    let mut wheel = Vec::new();
+    {
+        let mut z = zip::ZipWriter::new(std::io::Cursor::new(&mut wheel));
+        let opt = zip::write::SimpleFileOptions::default();
+        for (name, body) in [
+            ("onnxruntime/capi/onnxruntime.dll", b"cpu lib".as_slice()),
+            (
+                "onnxruntime/capi/onnxruntime_providers_shared.dll",
+                b"shared",
+            ),
+            ("onnxruntime/capi/onnxruntime_pybind11_state.pyd", b"python"),
+        ] {
+            z.start_file(name, opt).unwrap();
+            z.write_all(body).unwrap();
+        }
+        z.finish().unwrap();
+    }
+    let sha: String = sha2::Sha256::digest(&wheel)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let base = serve(vec![("/ort.whl", wheel), ("/t.onnx", b"text".to_vec())]);
+    let data = tempfile::tempdir().unwrap();
+    let ai = models::ai_dir(data.path());
+    std::fs::create_dir_all(&ai).unwrap();
+    let manifest = Manifest {
+        runtime: Some(RuntimeSpec {
+            url: format!("{base}/ort.whl"),
+            archive_entry: "onnxruntime/capi/onnxruntime.dll".into(),
+            size: None,
+            sha256: Some(sha),
+        }),
+        model: vec![FileSpec {
+            name: "text.onnx".into(),
+            url: format!("{base}/t.onnx"),
+            size: None,
+            sha256: None,
+        }],
+        masks: vec![],
+        denoise: vec![],
+        gpu_runtimes: vec![],
+        faces: vec![],
+        repair: vec![],
+        animals: vec![],
+    };
+    std::fs::write(
+        ai.join("quellen.json"),
+        serde_json::to_string(&manifest).unwrap(),
+    )
+    .unwrap();
+    models::download_missing(
+        data.path(),
+        Component::Clip,
+        &|_| {},
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    let dir = ai.join("runtime");
+    assert_eq!(
+        std::fs::read(dir.join(lumenkorn_ai::runtime::library_file_name())).unwrap(),
+        b"cpu lib"
+    );
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+    assert!(!ai.join("runtime-download.part").exists());
+}
+
+/// Version, Adresse und Archiveintrag der Standard-Laufzeit gehören zusammen:
+/// Beim nächsten Update darf keines davon stehen bleiben.
+#[test]
+fn default_runtime_matches_ort_version() {
+    let Some(rt) = models::default_manifest().runtime else {
+        return; // Plattform ohne Download
+    };
+    let v = models::ORT_VERSION;
+    assert!(
+        rt.url.starts_with("https://files.pythonhosted.org/"),
+        "{}",
+        rt.url
+    );
+    assert!(rt.url.contains(&format!("/onnxruntime-{v}-")), "{}", rt.url);
+    assert!(rt.url.ends_with(".whl"));
+    assert!(rt.archive_entry.starts_with("onnxruntime/capi/"));
+    if !cfg!(windows) {
+        assert!(rt.archive_entry.contains(v), "{}", rt.archive_entry);
+    }
+    assert_eq!(rt.sha256.as_deref().map(str::len), Some(64));
+}
+
 fn single_file_manifest(data: &std::path::Path, spec: FileSpec) {
     let ai = models::ai_dir(data);
     std::fs::create_dir_all(&ai).unwrap();

@@ -6,6 +6,9 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 static LOADED: OnceLock<std::result::Result<(PathBuf, Backend), String>> = OnceLock::new();
+/// Die ORT-Umgebung lebt so lange wie der Prozess: `ort` selbst hält nur eine
+/// schwache Referenz, ohne diese hier würde sie sofort wieder freigegeben.
+static ENV: OnceLock<ort::environment::Environment> = OnceLock::new();
 
 /// Dateiname der Laufzeitbibliothek auf dieser Plattform.
 pub fn library_file_name() -> &'static str {
@@ -46,7 +49,11 @@ pub fn init_with(lib: &Path, backend: Backend) -> Result<()> {
                 e.to_string()
             }
         })?;
-        builder.with_name("lumenkorn").commit();
+        let env = builder
+            .with_name("lumenkorn")
+            .build()
+            .map_err(|e| e.to_string())?;
+        let _ = ENV.set(env);
         accel::set_library(backend, lib);
         log::info!(
             "ONNX Runtime geladen ({}): {}",
@@ -56,6 +63,19 @@ pub fn init_with(lib: &Path, backend: Backend) -> Result<()> {
         Ok((lib.to_path_buf(), backend))
     });
     res.as_ref().map(|_| ()).map_err(|e| Error::Ort(e.clone()))
+}
+
+/// Umgebung für neue Sitzungen; scheitert, solange [`init_with`] nicht gelungen ist.
+pub(crate) fn environment() -> Result<&'static ort::environment::Environment> {
+    ENV.get().ok_or_else(|| {
+        Error::Ort(
+            lumenkorn_develop::tr!(
+                "ONNX Runtime ist nicht geladen",
+                "ONNX Runtime is not loaded"
+            )
+            .to_string(),
+        )
+    })
 }
 
 pub fn is_loaded() -> bool {

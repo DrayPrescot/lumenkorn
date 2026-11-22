@@ -6,6 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- The AI runtime (ONNX Runtime for the CPU) could not be downloaded any more: its GitHub
+  repository has been unreachable since mid-November 2026. Lumenkorn now loads it from the
+  official PyPI package, like the GPU build, and checks it by SHA-256. Installed runtimes keep
+  working; new downloads get ONNX Runtime 1.32.0.
+
+### Changed
+- ort (the Rust binding for ONNX Runtime) 2.0.0-rc.15, which fixes several memory-safety bugs.
+  Building Lumenkorn now needs Rust 1.92.
+- ureq 3.5 and other compatible dependency updates.
+
 ## [1.2.11] – 2026-11-13
 
 ### Changed

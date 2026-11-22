@@ -9,7 +9,7 @@ license = "GPL-3.0-or-later"
 authors = ["DrayPrescot"]
 repository = "https://github.com/DrayPrescot/lumenkorn"
 homepage = "https://github.com/DrayPrescot/lumenkorn"
-rust-version = "1.90"
+rust-version = "1.92"
 
 [profile.dev.package."*"]
 # Bilddekodierung ist im Debug-Build sonst unerträglich langsam.

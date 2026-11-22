@@ -266,7 +266,7 @@ fn cpu_builder() -> Result<SessionBuilder> {
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4);
-    Ok(Session::builder()?
+    Ok(Session::builder(crate::runtime::environment()?)?
         .with_optimization_level(GraphOptimizationLevel::Level3)?
         .with_intra_threads(threads)?)
 }

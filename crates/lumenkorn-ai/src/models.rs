@@ -31,7 +31,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-pub const ORT_VERSION: &str = "1.28.0";
+pub const ORT_VERSION: &str = "1.32.0";
 pub const MODEL_ID: &str = "clip-vit-b32";
 // Alle Hugging-Face- und GitHub-Quellen sind auf eine feste Revision (Commit)
 // gepinnt und tragen die SHA-256-Prüfsumme der Datei: Ein späteres Überschreiben
@@ -394,47 +394,50 @@ pub fn model_dir(data_dir: &Path) -> PathBuf {
     ai_dir(data_dir).join(MODEL_ID)
 }
 
-/// Standardquellen: ONNX Runtime von GitHub, CLIP ViT-B/32 (quantisiert, ~150 MB)
-/// von Hugging Face.
+/// Standardquellen: ONNX Runtime (CPU) aus dem offiziellen PyPI-Paket
+/// `onnxruntime`, CLIP ViT-B/32 (quantisiert, ~150 MB) von Hugging Face.
+///
+/// Bis 1.2.11 kam die Laufzeit aus den GitHub-Releases von `microsoft/onnxruntime`.
+/// Das Repository ist seit November 2026 nicht mehr erreichbar; PyPI liefert
+/// dieselbe eigenständige C-Bibliothek (wie schon bei der WebGPU-Variante).
 pub fn default_manifest() -> Manifest {
-    let gh = format!("https://github.com/microsoft/onnxruntime/releases/download/v{ORT_VERSION}");
     let v = ORT_VERSION;
-    // Prüfsummen der GitHub-Releases (bei neuer ORT_VERSION mit erneuern)
+    // Pfad, Größe und SHA-256 laut PyPI-API (bei neuer ORT_VERSION mit erneuern)
     let runtime = match (std::env::consts::OS, std::env::consts::ARCH) {
         ("linux", "x86_64") => Some((
-            format!("onnxruntime-linux-x64-{v}.tgz"),
-            format!("lib/libonnxruntime.so.{v}"),
-            9_125_960,
-            "a3e1b79d7bb1bf09696ce675f49e4064e6c81f6202b8225624fff0e93f8d6407",
+            "a3/81/55845186c20cba59f614991f4065dea148e48eeb9749893768c85ce64327/onnxruntime-1.32.0-cp312-cp312-manylinux_2_28_x86_64.whl",
+            format!("onnxruntime/capi/libonnxruntime.so.{v}"),
+            27_780_211,
+            "99e1074c4b2197accd5073052a465361be17b89c093b8ffb6e6bd8f986c52df8",
         )),
         ("linux", "aarch64") => Some((
-            format!("onnxruntime-linux-aarch64-{v}.tgz"),
-            format!("lib/libonnxruntime.so.{v}"),
-            8_116_278,
-            "e15ff8b5d85afe6c144d97c6fd432254bf76a219daaf17658087d6ecb3e8f0bb",
+            "4a/8f/1e43fb994513c7c7a9c6965272ef89d963c1bd4080993a6267bf913701d1/onnxruntime-1.32.0-cp312-cp312-manylinux_2_28_aarch64.whl",
+            format!("onnxruntime/capi/libonnxruntime.so.{v}"),
+            23_196_724,
+            "e36c187006e7a7c8b8d6d57f1a209dd63f52430dca6c282b177718ad6b841054",
         )),
         ("windows", "x86_64") => Some((
-            format!("onnxruntime-win-x64-{v}.zip"),
-            "lib/onnxruntime.dll".to_string(),
-            78_796_801,
-            "abef733dacbe2f571547a7150b479b5cb9cc0df22f96c24983a42cadb1b4f8bc",
+            "a9/3e/27039badc39a1b01628b6b40b1ff1bf4a886e6dfb2f311c483606b7c86f7/onnxruntime-1.32.0-cp312-cp312-win_amd64.whl",
+            "onnxruntime/capi/onnxruntime.dll".to_string(),
+            16_698_767,
+            "efe7456952c243a05a53d5b8732953625144642c2f3989094277f6217f0c0c40",
         )),
         ("windows", "aarch64") => Some((
-            format!("onnxruntime-win-arm64-{v}.zip"),
-            "lib/onnxruntime.dll".to_string(),
-            79_812_663,
-            "cbe4547463ece092b505c3581376ed5896d22b5429f39d5e645e425ecdd369ad",
+            "5d/e1/2ee4e15cebe7c2868e1d9ef391450db0951e6bbb2f01b2eb926722e19397/onnxruntime-1.32.0-cp312-cp312-win_arm64.whl",
+            "onnxruntime/capi/onnxruntime.dll".to_string(),
+            16_030_610,
+            "64d394c69d561af3efd4d4f49dcac8f11d0ce135a20701c16d53b74056cd4cf8",
         )),
         ("macos", "aarch64") => Some((
-            format!("onnxruntime-osx-arm64-{v}.tgz"),
-            format!("lib/libonnxruntime.{v}.dylib"),
-            32_396_562,
-            "1268b359718099bde2cedb55787f182a130067bc4f31e8c88478c445b850d3d8",
+            "6f/a4/480cd367bc135dd9951c89d461cc6af6be9302cd2ce91e231f6cb0e7ee1b/onnxruntime-1.32.0-cp312-cp312-macosx_14_0_arm64.whl",
+            format!("onnxruntime/capi/libonnxruntime.{v}.dylib"),
+            22_519_308,
+            "d52510bbbcc880c13b826f7d75cdf33ac5cf0bb864d960000fc29ce73f0cb83e",
         )),
         _ => None,
     }
-    .map(|(archive, entry, size, sha)| RuntimeSpec {
-        url: format!("{gh}/{archive}"),
+    .map(|(path, entry, size, sha)| RuntimeSpec {
+        url: format!("{PYPI}/{path}"),
         archive_entry: entry,
         size: Some(size),
         sha256: Some(sha.to_string()),

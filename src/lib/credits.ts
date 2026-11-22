@@ -25,7 +25,7 @@ export const LIBRARIES: Credit[] = [
   { name: "Leaflet, Leaflet.markercluster", url: "https://github.com/Leaflet/Leaflet", use: t("Karte und gebündelte Fotomarker"), license: "BSD-2-Clause, MIT" },
   { name: "OpenStreetMap", url: "https://www.openstreetmap.org/copyright", use: t("Kartenkacheln und Ortssuche (Nominatim), online abgerufen"), license: t("Daten: ODbL, Kacheln: CC BY-SA 2.0") },
   { name: "wgpu", url: "https://github.com/gfx-rs/wgpu", use: t("Bildbearbeitung auf der Grafikkarte"), license: "MIT / Apache-2.0" },
-  { name: "ONNX Runtime", url: "https://github.com/microsoft/onnxruntime", use: t("KI-Modelle ausführen (wird bei Bedarf geladen)"), license: "MIT" },
+  { name: "ONNX Runtime", url: "https://onnxruntime.ai", use: t("KI-Modelle ausführen (wird bei Bedarf geladen)"), license: "MIT" },
   { name: "Dawn, DirectX Shader Compiler", url: "https://dawn.googlesource.com/dawn", use: t("Teil von ONNX Runtime für WebGPU"), license: t("BSD-3-Clause, NCSA (dxil.dll: Microsoft-Lizenz)") },
   { name: "ort", url: "https://github.com/pykeio/ort", use: t("Anbindung an ONNX Runtime"), license: "MIT / Apache-2.0" },
   { name: "SQLite, rusqlite", url: "https://github.com/rusqlite/rusqlite", use: t("Katalog und Suchindex"), license: t("Public Domain / MIT") },
