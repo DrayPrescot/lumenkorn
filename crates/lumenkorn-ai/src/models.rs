@@ -1247,6 +1247,8 @@ struct StallTransport {
 }
 
 /// Kürzere der beiden Fristen; `true`, wenn die Hänger-Frist greift.
+/// Fristen je Lese-/Schreibvorgang (`per_read`/`per_write`) bleiben erhalten:
+/// Die TCP-Schicht wendet sie selbst an (`NextTimeout::for_read`).
 fn clamp_timeout(
     t: ureq::unversioned::transport::NextTimeout,
     stall: Duration,
@@ -1257,7 +1259,7 @@ fn clamp_timeout(
         (
             NextTimeout {
                 after: time::Duration::Exact(stall),
-                reason: t.reason,
+                ..t
             },
             true,
         )
@@ -1438,6 +1440,7 @@ mod tests {
             NextTimeout {
                 after: time::Duration::NotHappening,
                 reason: ureq::Timeout::RecvBody,
+                ..NextTimeout::default()
             },
             stall,
         );
@@ -1448,6 +1451,7 @@ mod tests {
             NextTimeout {
                 after: time::Duration::from_secs(600),
                 reason: ureq::Timeout::RecvBody,
+                ..NextTimeout::default()
             },
             stall,
         );
@@ -1457,11 +1461,31 @@ mod tests {
             NextTimeout {
                 after: time::Duration::from_secs(5),
                 reason: ureq::Timeout::Connect,
+                ..NextTimeout::default()
             },
             stall,
         );
         assert!(!c);
         assert_eq!(*t.after, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn stall_timeout_keeps_io_timeouts() {
+        let per_read = Some(time::Duration::from_secs(7));
+        let per_write = Some(time::Duration::from_secs(9));
+        let (t, c) = clamp_timeout(
+            NextTimeout {
+                after: time::Duration::NotHappening,
+                reason: ureq::Timeout::RecvBody,
+                per_read,
+                per_write,
+            },
+            Duration::from_secs(60),
+        );
+        assert!(c);
+        assert_eq!(t.reason, ureq::Timeout::RecvBody);
+        assert_eq!(t.per_read, per_read);
+        assert_eq!(t.per_write, per_write);
     }
 
     fn content() -> Vec<u8> {
