@@ -28,6 +28,10 @@ pub struct Source {
     /// Farbtemperatur, auf die das Bild abgeglichen ist (Kamera-Weißabgleich
     /// eines RAWs); ohne sie gibt es nur den relativen Weißabgleich
     pub as_shot_kelvin: Option<f32>,
+    /// Blendenstufen, um die die Kamera wegen ihres Lichterschutzes knapper
+    /// belichtet hat (Canon ALO, Fuji DR …, siehe [`crate::dt::makernote`]).
+    /// Wirkt nur bei `DevelopParams::highlight_compensation`.
+    pub highlight_ev: f32,
 }
 
 impl Source {
@@ -61,6 +65,7 @@ impl Source {
                 full_height,
                 lens: None,
                 as_shot_kelvin: None,
+                highlight_ev: 0.0,
             });
         }
         // Volle Abmessungen (vor Verkleinerung); Rasterbilder setzen sie
@@ -68,6 +73,7 @@ impl Source {
         let mut full = None;
         let mut lens = None;
         let mut as_shot_kelvin = None;
+        let mut highlight_ev = 0.0;
         let (kind, image) = if crate::exr_io::is_exr(path) {
             let (img, scene) = crate::exr_io::read(path)?;
             let kind = if scene {
@@ -84,6 +90,7 @@ impl Source {
                 .map(std::sync::Arc::new);
             full = Some(size);
             as_shot_kelvin = opened.kelvin;
+            highlight_ev = opened.highlight_ev;
             // Erst verkleinern, dann aufrichten: Bei Hochformat drehte sonst
             // jede Vorschau das volle Bild (bis 720 MB Kopie)
             let img = match max_edge {
@@ -114,6 +121,7 @@ impl Source {
             full_height,
             lens,
             as_shot_kelvin,
+            highlight_ev,
         })
     }
 
@@ -128,6 +136,7 @@ impl Source {
             full_height: self.full_height,
             lens: self.lens.clone(),
             as_shot_kelvin: self.as_shot_kelvin,
+            highlight_ev: self.highlight_ev,
         }
     }
 }
@@ -147,6 +156,8 @@ struct Opened {
     meta: Option<rawler::decoders::RawMetadata>,
     /// Farbtemperatur des Kamera-Weißabgleichs
     kelvin: Option<f32>,
+    /// Lichterschutz der Kamera in Blendenstufen
+    highlight_ev: f32,
 }
 
 /// Entwickelt ein RAW bis zum szenenbezogenen, linearen sRGB wie darktable
@@ -172,6 +183,14 @@ fn decode_raw(path: &Path) -> Result<(ImageF32, u16, Opened)> {
         .and_then(|d| d.raw_metadata(&file, &RawDecodeParams::default()).ok());
     let orientation = raw.orientation.to_u16();
     let kelvin = crate::dt::raw::as_shot_kelvin(&raw);
+    let (make, model) = meta.as_ref().map_or(
+        (
+            raw.camera.clean_make.as_str(),
+            raw.camera.clean_model.as_str(),
+        ),
+        |m| (m.make.as_str(), m.model.as_str()),
+    );
+    let highlight_ev = crate::dt::makernote::highlight_preservation(file.buf(), make, model);
     let mut img = if crate::dt::raw::applies(&raw) {
         let exif = meta
             .as_ref()
@@ -185,7 +204,16 @@ fn decode_raw(path: &Path) -> Result<(ImageF32, u16, Opened)> {
         return Err(Error::Raw(tr_s("leeres Bild", "empty image").into()));
     }
     crate::capture_sharpen::apply(&mut img);
-    Ok((img, orientation, Opened { file, meta, kelvin }))
+    Ok((
+        img,
+        orientation,
+        Opened {
+            file,
+            meta,
+            kelvin,
+            highlight_ev,
+        },
+    ))
 }
 
 /// rawler komplett: Sonderfälle (Fuji SuperCCD, Vierfarb-Sensoren, Monochrom).

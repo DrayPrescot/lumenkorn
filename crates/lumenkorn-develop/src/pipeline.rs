@@ -359,6 +359,7 @@ fn prepared_image(
         full_height: src.full_height,
         lens: src.lens.clone(),
         as_shot_kelvin: src.as_shot_kelvin,
+        highlight_ev: src.highlight_ev,
     });
     let id = REPAIRED_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     if !opts.keep_prepared {
@@ -528,6 +529,7 @@ fn render_sanitized(
                         full_height: base.full_height,
                         lens: base.lens.clone(),
                         as_shot_kelvin: base.as_shot_kelvin,
+                        highlight_ev: base.highlight_ev,
                     })
                 }
                 _ => base,
@@ -552,7 +554,7 @@ fn render_sanitized(
 
     // --- Szenenbezogene Stufen und Kodierung -------------------------------
     let wb = global_white_balance(p, src.as_shot_kelvin);
-    let gain = 2f32.powf(p.exposure);
+    let gain = exposure_gain(p, src);
     img.data.par_iter_mut().for_each(|px| {
         let mut c = crate::wb::apply_wb(&wb, *px).map(|v| v * gain);
         c = if raw {
@@ -574,7 +576,11 @@ fn render_sanitized(
         let est = repaired.as_ref().map_or(&src.image, |r| &r.image);
         let amount = p.dehaze / 100.0;
         let wb = global_white_balance(p, src.as_shot_kelvin);
-        dehaze(&mut img, amount, haze_level(est, p, wb, raw, amount));
+        dehaze(
+            &mut img,
+            amount,
+            haze_level(est, exposure_gain(p, src), wb, raw, amount),
+        );
     }
 
     // --- Tonwerte und Farbe ------------------------------------------------
@@ -709,7 +715,7 @@ fn gcd(a: usize, b: usize) -> usize {
 /// und Basiskurve – für CPU und GPU dieselben Zahlen.
 pub(crate) fn haze_level(
     src: &ImageF32,
-    p: &DevelopParams,
+    gain: f32,
     wb: crate::wb::WbMatrix,
     raw: bool,
     amount: f32,
@@ -721,7 +727,6 @@ pub(crate) fn haze_level(
             lift: 0.0,
         };
     }
-    let gain = 2f32.powf(p.exposure);
     // Etwa 65 000 gleichmäßig verteilte Stichproben genügen. Die Schrittweite
     // teilerfremd zur Breite, sonst fielen alle Proben auf dieselben Spalten
     // (z. B. Schrittweite 8 bei durch 8 teilbarer Breite).
@@ -1170,6 +1175,18 @@ fn soft_clip(v: f32) -> f32 {
 /// Weißabgleich des ganzen Bildes als Matrix (lineares sRGB): Kelvin (wenn
 /// gesetzt und die Quelle ihre Aufnahme-Temperatur kennt, volle Anpassung nach
 /// Bradford), danach relativ (Faktoren je Kanal). Für CPU und GPU dieselben Zahlen.
+/// Verstärkung der globalen Belichtung: Regler plus, falls eingeschaltet, der
+/// Ausgleich des Lichterschutzes der Kamera ([`Source::highlight_ev`]).
+/// Für CPU und GPU dieselbe Zahl.
+pub(crate) fn exposure_gain(p: &DevelopParams, src: &Source) -> f32 {
+    let comp = if p.highlight_compensation {
+        src.highlight_ev
+    } else {
+        0.0
+    };
+    2f32.powf(p.exposure + comp)
+}
+
 pub(crate) fn global_white_balance(p: &DevelopParams, as_shot: Option<f32>) -> crate::wb::WbMatrix {
     let rel = white_balance(p.temperature / 100.0, p.tint / 100.0);
     let k = match as_shot {
@@ -1322,6 +1339,26 @@ fn sharpen(img: &ImageF32, amount: f32) -> ImageF32 {
 mod tests {
     use super::*;
 
+    /// Lichterschutz der Kamera: nur mit eingeschaltetem Ausgleich heller
+    #[test]
+    fn exposure_gain_adds_camera_highlight_preservation() {
+        let mut src = raster(&[[0.5; 3]], 1);
+        src.highlight_ev = 1.0;
+        let p = DevelopParams {
+            exposure: 0.5,
+            ..Default::default()
+        };
+        assert!((exposure_gain(&p, &src) - 2f32.powf(1.5)).abs() < 1e-6);
+        let off = DevelopParams {
+            highlight_compensation: false,
+            ..p.clone()
+        };
+        assert!((exposure_gain(&off, &src) - 2f32.powf(0.5)).abs() < 1e-6);
+        // Im Bild: heller als ohne Ausgleich
+        let lum = |p: &DevelopParams| render(&src, p).data[0][1];
+        assert!(lum(&p) > lum(&off));
+    }
+
     #[test]
     fn raw_base_look_keeps_slider_ends() {
         let p = |c: f32, s: f32, v: f32, mono: bool| DevelopParams {
@@ -1367,6 +1404,7 @@ mod tests {
             full_height: h,
             lens: None,
             as_shot_kelvin: None,
+            highlight_ev: 0.0,
         }
     }
 
@@ -1736,6 +1774,7 @@ mod tests {
             full_height: 1,
             lens: None,
             as_shot_kelvin: None,
+            highlight_ev: 0.0,
         };
         let lin = |v: f32| crate::color::srgb_to_linear(v);
         // Ohne Grundabstimmung: Mittelgrau bleibt Mittelgrau (sigmoid)

@@ -119,6 +119,7 @@ pub fn encode_lossy(
             image: small,
             lens: None,
             as_shot_kelvin: None,
+            highlight_ev: 0.0,
         };
         crate::render(&src, &crate::DevelopParams::default())
     };

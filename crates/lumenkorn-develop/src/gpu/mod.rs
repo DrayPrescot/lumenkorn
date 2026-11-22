@@ -1376,7 +1376,7 @@ impl Gpu {
         let wb = crate::pipeline::global_white_balance(p, src.as_shot_kelvin);
         let mut u = U {
             wbm: wb.map(|r| [r[0], r[1], r[2], 0.0]),
-            gain: 2f32.powf(p.exposure),
+            gain: crate::pipeline::exposure_gain(p, src),
             ..cx.base_u()
         };
         if raw {
@@ -1397,7 +1397,13 @@ impl Gpu {
         // --- Dunst (Dunsthelligkeit wie auf der CPU aus der Quelle)
         if p.dehaze != 0.0 {
             let amount = p.dehaze / 100.0;
-            let haze = crate::pipeline::haze_level(&src.image, p, wb, raw, amount);
+            let haze = crate::pipeline::haze_level(
+                &src.image,
+                crate::pipeline::exposure_gain(p, src),
+                wb,
+                raw,
+                amount,
+            );
             cx.dehaze(&set.img, amount, haze);
         }
 

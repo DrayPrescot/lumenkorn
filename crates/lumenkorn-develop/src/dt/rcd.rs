@@ -1,13 +1,15 @@
 //! RCD-Demosaicing (Ratio Corrected Demosaicing), CPU-Pfad.
 //!
-//! Aus darktable 5.0 `src/iop/demosaicing/rcd.c` nach Rust übertragen
-//! (GPL-3.0-or-later). Originalverfahren RCD von Luis Sanz Rodríguez.
+//! Aus darktable 5.6.2 `src/iop/demosaicing/rcd.c` (Randbereich: `demosaic_ppg`
+//! aus `ppg.c`) nach Rust übertragen (GPL-3.0-or-later). Originalverfahren RCD
+//! von Luis Sanz Rodríguez. Gegenüber 5.0: breiterer Rand (10/9), Rand per PPG
+//! ohne Abschneiden der Eingabe, Richtungsgewichte auf 0…1 begrenzt.
 //!
 //! Originalkopf der C-Datei:
 //!
 //! ```text
 //! This file is part of darktable,
-//! Copyright (C) 2010-2024 darktable developers.
+//! Copyright (C) 2010-2026 darktable developers.
 //!
 //! darktable is free software: you can redistribute it and/or modify
 //! it under the terms of the GNU General Public License as published by
@@ -41,9 +43,9 @@ use rayon::prelude::*;
 /// Kachelgröße (`DT_RCD_TILESIZE` aus demosaic.c).
 const TS: usize = 112;
 /// Rand zwischen Kacheln, damit keine Überlappungsfehler entstehen.
-const RCD_BORDER: usize = 9;
+const RCD_BORDER: usize = 10;
 /// Für die äußersten Kacheln genügt ein kleinerer Rand.
-const RCD_MARGIN: usize = 7;
+const RCD_MARGIN: usize = 9;
 const RCD_TILEVALID: usize = TS - 2 * RCD_BORDER;
 const W1: usize = TS;
 const W2: usize = 2 * TS;
@@ -97,9 +99,17 @@ fn interpolatef(a: f32, b: f32, c: f32) -> f32 {
     a * (b - c) + c
 }
 
-/// Im Wesentlichen PPG, nur für den Randbereich (`rcd_ppg_border`).
+/// darktables `CLIP`: auf 0…1 begrenzen
+#[inline(always)]
+fn clip(x: f32) -> f32 {
+    x.clamp(0.0, 1.0)
+}
+
+/// PPG für den Randbereich (`demosaic_ppg` ohne Median, `thrs` = 0): rechnet
+/// nur die Pixel mit weniger als `margin` Abstand zum Rand. Eingaben werden
+/// nicht abgeschnitten, jedes Ergebnis aber auf ≥ 0 begrenzt.
 /// `out` hat `width * height` Pixel.
-fn rcd_ppg_border(
+fn demosaic_ppg(
     out: &mut [[f32; 3]],
     input: &[f32],
     width: usize,
@@ -119,14 +129,14 @@ fn rcd_ppg_border(
             for y in j.saturating_sub(1)..(j + 2).min(height) {
                 for x in i.saturating_sub(1)..(i + 2).min(width) {
                     let f = fc(y, x, filters);
-                    sum[f] += input[y * width + x].max(0.0);
+                    sum[f] += input[y * width + x];
                     sum[f + 4] += 1.0;
                 }
             }
             let f = fc(j, i, filters);
             for c in 0..3 {
                 out[j * width + i][c] = if c != f && sum[c + 4] > 0.0 {
-                    sum[c] / sum[c + 4]
+                    (sum[c] / sum[c + 4]).max(0.0)
                 } else {
                     input[j * width + i].max(0.0)
                 };
@@ -145,11 +155,11 @@ fn rcd_ppg_border(
                 }
                 let idx = j * width + i;
                 let c = fc(j, i, filters);
-                let pc = input[idx].max(0.0);
+                let pc = input[idx];
                 let mut color = [0f32; 3];
                 if c == 0 || c == 2 {
                     color[c] = pc;
-                    let g = |o: isize| input[(idx as isize + o) as usize].max(0.0);
+                    let g = |o: isize| input[(idx as isize + o) as usize];
                     let w = width as isize;
                     let pym = g(-w);
                     let pym2 = g(-2 * w);
@@ -185,7 +195,7 @@ fn rcd_ppg_border(
                 } else {
                     color[1] = pc;
                 }
-                out[idx] = color;
+                out[idx] = color.map(|v| v.max(0.0));
                 i += 1;
             }
         }
@@ -241,7 +251,7 @@ fn rcd_ppg_border(
                         (guess1 + guess2) * 0.25
                     };
                 }
-                out[idx] = color;
+                out[idx] = color.map(|v| v.max(0.0));
                 i += 1;
             }
         }
@@ -419,7 +429,7 @@ fn process_tile(
                 + (cfa[indx - W1] - cfa[indx - W3]).abs()
                 + (cfa[indx - W2] - cfa[indx - W4]).abs();
             let s_grad = EPS
-                + (cfa[indx - W1] - cfa[indx + W1]).abs()
+                + (cfa[indx + W1] - cfa[indx - W1]).abs()
                 + (cfai - cfa[indx + W2]).abs()
                 + (cfa[indx + W1] - cfa[indx + W3]).abs()
                 + (cfa[indx + W2] - cfa[indx + W4]).abs();
@@ -429,7 +439,7 @@ fn process_tile(
                 + (cfa[indx - 1] - cfa[indx - 3]).abs()
                 + (cfa[indx - 2] - cfa[indx - 4]).abs();
             let e_grad = EPS
-                + (cfa[indx - 1] - cfa[indx + 1]).abs()
+                + (cfa[indx + 1] - cfa[indx - 1]).abs()
                 + (cfai - cfa[indx + 2]).abs()
                 + (cfa[indx + 1] - cfa[indx + 3]).abs()
                 + (cfa[indx + 2] - cfa[indx + 4]).abs();
@@ -458,7 +468,7 @@ fn process_tile(
                 vh_central
             };
 
-            rgb[T2 + indx] = interpolatef(vh_disc, h_est, v_est);
+            rgb[T2 + indx] = interpolatef(clip(vh_disc), h_est, v_est);
 
             col += 2;
             indx += 2;
@@ -556,7 +566,7 @@ fn process_tile(
             let q_est = (ne_grad * sw_est + sw_grad * ne_est) / (ne_grad + sw_grad);
 
             // R auf B und B auf R
-            rgb[co + indx] = g0 + interpolatef(pq_disc, q_est, p_est);
+            rgb[co + indx] = g0 + interpolatef(clip(pq_disc), q_est, p_est);
 
             col += 2;
             indx += 2;
@@ -616,7 +626,7 @@ fn process_tile(
                 let h_est = (e_grad * w_est + w_grad * e_est) / (e_grad + w_grad);
 
                 // R auf G und B auf G
-                rgb[co + indx] = rgb1 + interpolatef(vh_disc, h_est, v_est);
+                rgb[co + indx] = rgb1 + interpolatef(clip(vh_disc), h_est, v_est);
             }
 
             col += 2;
@@ -693,11 +703,10 @@ pub(crate) fn rcd_demosaic_scaled(
 ) -> Vec<[f32; 3]> {
     assert_eq!(data.len(), width * height, "Mosaikgröße passt nicht");
     let mut out = vec![[0f32; 3]; width * height];
+    demosaic_ppg(&mut out, data, width, height, filters, RCD_BORDER);
     if width < 2 * RCD_BORDER || height < 2 * RCD_BORDER {
-        rcd_ppg_border(&mut out, data, width, height, filters, RCD_BORDER);
         return out;
     }
-    rcd_ppg_border(&mut out, data, width, height, filters, RCD_MARGIN);
 
     let scaler = scaler.max(1.0);
     let revscaler = 1.0 / scaler;
@@ -863,6 +872,28 @@ mod tests {
             (base * (0.8 + 0.4 * noise(xf, yf, 47.0, 4))).clamp(0.0, 1.0),
             (base * (0.8 + 0.4 * noise(xf, yf, 61.0, 5))).clamp(0.0, 1.0),
         ]
+    }
+
+    /// Seit 5.6 kommt Rauschen unter 0 ungekürzt an (opposed schneidet nicht mehr
+    /// ab): Das Ergebnis bleibt überall endlich und ≥ 0, auch im PPG-Rand.
+    #[test]
+    fn negative_input_gives_no_negative_output() {
+        let (w, h) = (150, 131);
+        let data: Vec<f32> = (0..w * h)
+            .map(|i| {
+                let v = hash((i % w) as i32, (i / w) as i32, 7);
+                if i % 5 == 0 {
+                    -0.02 * v
+                } else {
+                    0.05 + 0.3 * v
+                }
+            })
+            .collect();
+        let out = rcd_demosaic(&data, w, h, filters_from_pattern(RGGB));
+        assert!(
+            out.iter().flatten().all(|v| v.is_finite() && *v >= 0.0),
+            "negative oder ungültige Werte"
+        );
     }
 
     #[test]

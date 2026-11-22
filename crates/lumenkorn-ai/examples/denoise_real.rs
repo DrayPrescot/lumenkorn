@@ -56,6 +56,7 @@ fn main() {
             full_height: img.height,
             lens: None,
             as_shot_kelvin: src.as_shot_kelvin,
+            highlight_ev: src.highlight_ev,
         };
         render(&s, &params)
     };

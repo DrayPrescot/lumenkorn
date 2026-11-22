@@ -332,6 +332,14 @@ pub(super) const MIGRATIONS: &[&str] = &[
                OR COALESCE(json_extract(params, '$.perspectiveHorizontal'), 0) != 0)
     );
     "#,
+    // v31: RAW-Entwicklung auf dem Stand von darktable 5.6 (Lichter-Rekonstruktion
+    // „inpaint opposed“ und Rand des RCD-Demosaicings) – die Vorschaubilder
+    // bearbeiteter RAWs neu erzeugen.
+    r#"
+    UPDATE images SET thumb_state = 0
+    WHERE kind = 'raw'
+      AND id IN (SELECT image_id FROM edits WHERE is_current = 1);
+    "#,
 ];
 
 /// v24: Metadaten, die der Nutzer geändert hat (`imagemeta.rs`). Ein Eintrag

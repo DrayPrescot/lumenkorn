@@ -352,8 +352,13 @@ Weitere Reiter:
 Außerdem:
 
 - **RAW-Details:** Die RAW-Entwicklung folgt dem Standard-Ablauf von darktable 5.0 (szenenbezogen,
-  mit Sigmoid): Bayer-Sensoren werden mit RCD demosaikt, Fujifilm X-Trans mit Markesteijn
-  (ein Durchgang, wie bei darktable). Danach folgt eine Eingangsschärfung in Sensorauflösung, wie
+  mit Sigmoid), Lichter-Rekonstruktion und RCD auf dem Stand von darktable 5.6: Bayer-Sensoren
+  werden mit RCD demosaikt, Fujifilm X-Trans mit Markesteijn (ein Durchgang, wie bei darktable).
+  Wie darktable ab 5.4 gleicht die Belichtung den Lichterschutz der Kamera aus (Canon Auto Lighting
+  Optimizer, Fujifilm DR200 und DR400 außer bei den EXR-Kompakten, Nikon HLG, Olympus Gradation, Pentax
+  Dynamikbereichserweiterung): Diese Modi belichten bis zu zwei Blenden knapper, Lumenkorn liest
+  die Einstellung aus den Herstellerdaten. Bearbeitungen von vor Version 1.2.12 bleiben, wie sie
+  waren. Danach folgt eine Eingangsschärfung in Sensorauflösung, wie
   Lightroom sie standardmäßig anwendet: nur auf der Helligkeit, ohne Säume, mit einer Schwelle, die
   sich nach dem gemessenen Rauschen richtet.
 - **Vorher/Nachher:** „Original zeigen“ oben in der Leiste (Klick schaltet um, gedrückt halten zeigt

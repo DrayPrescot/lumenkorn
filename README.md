@@ -488,14 +488,18 @@ To show a photo, Lumenkorn decodes it once into a linear floating-point image:
 1. RAW files are read with [rawler](https://github.com/dnglab/dnglab). From there on
    Lumenkorn follows the default scene-referred workflow of
    [darktable](https://github.com/darktable-org/darktable) 5.0, translated from darktable's C
-   code to Rust: sensor white and black levels from the
-   [rawspeed](https://github.com/darktable-org/rawspeed) camera database, white balance as
-   shot by the camera, highlight reconstruction ("inpaint opposed"), RCD demosaicing for Bayer
-   sensors (Markesteijn with one pass for Fujifilm X-Trans, through rawler), exposure of
-   +0.7 EV minus the camera's exposure compensation, the camera matrix to linear Rec.2020, and
+   code to Rust, with highlight reconstruction and RCD as in darktable 5.6: sensor white and
+   black levels from the [rawspeed](https://github.com/darktable-org/rawspeed) camera database,
+   white balance as shot by the camera, highlight reconstruction ("inpaint opposed"), RCD
+   demosaicing for Bayer sensors (Markesteijn with one pass for Fujifilm X-Trans, through
+   rawler), exposure of +0.7 EV minus the camera's exposure compensation, the camera matrix to linear Rec.2020, and
    color calibration with CAT16 from the camera's illuminant. Lumenkorn also applies capture
    sharpening at sensor resolution, adapted to the measured noise, because every RAW is
-   slightly soft out of the camera.
+   slightly soft out of the camera. As in darktable 5.4 and later, the exposure also makes up
+   for the camera's highlight protection (Canon Auto Lighting Optimizer, Fujifilm DR200 and
+   DR400 except on the EXR compacts, Nikon HLG, Olympus gradation, Pentax dynamic range expansion): these modes expose
+   up to two stops darker, and Lumenkorn reads the setting from the maker notes. Edits made
+   before version 1.2.12 keep their look.
 2. JPEG, PNG, TIFF and WebP are converted to linear light. Very large images (panoramas,
    astro stacks) are averaged down while converting instead of being expanded to a full-size
    float copy first.

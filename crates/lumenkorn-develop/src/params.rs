@@ -26,6 +26,12 @@ pub struct DevelopParams {
     // Licht
     /// Belichtung in Blendenstufen, −5…5
     pub exposure: f32,
+    /// Lichterschutz der Kamera ausgleichen (Canon ALO, Fuji DR200/400, Nikon
+    /// HLG, Olympus, Pentax; wie darktable 5.4 „compensate highlight
+    /// preservation“): belichtet um [`crate::Source::highlight_ev`] heller.
+    /// Standard: an; Bearbeitungen von vor Lumenkorn 1.2.12 haben das Feld
+    /// nicht und bleiben aus (siehe [`DevelopParams::from_json`]).
+    pub highlight_compensation: bool,
     /// −100…100
     pub contrast: f32,
     pub highlights: f32,
@@ -651,6 +657,7 @@ impl Default for DevelopParams {
             tint: 0.0,
             kelvin: 0.0,
             exposure: 0.0,
+            highlight_compensation: true,
             contrast: 0.0,
             highlights: 0.0,
             shadows: 0.0,
@@ -708,6 +715,7 @@ impl DevelopParams {
                 0.0
             },
             exposure: c(self.exposure, -5.0, 5.0),
+            highlight_compensation: self.highlight_compensation,
             contrast: c(self.contrast, -100.0, 100.0),
             highlights: c(self.highlights, -100.0, 100.0),
             shadows: c(self.shadows, -100.0, 100.0),
@@ -821,6 +829,7 @@ impl DevelopParams {
         }
         if g.basic || g.light {
             out.exposure = src.exposure;
+            out.highlight_compensation = src.highlight_compensation;
             out.contrast = src.contrast;
             out.highlights = src.highlights;
             out.shadows = src.shadows;
@@ -889,6 +898,11 @@ impl DevelopParams {
                     .iter()
                     .any(|s| matches!(s, MaskShape::Brush { .. } | MaskShape::Raster { .. }))
             });
+        }
+        // Bearbeitungen von vor dem Ausgleich des Lichterschutzes: Ihre Belichtung
+        // wurde ohne ihn eingestellt, sie sollen aussehen wie bisher
+        if v.is_object() && v.get("highlightCompensation").is_none() {
+            p.highlight_compensation = false;
         }
         p.sanitized()
     }
@@ -985,6 +999,39 @@ mod tests {
         let old: TransferGroups =
             serde_json::from_value(serde_json::json!({ "basic": true })).unwrap();
         assert_eq!(dst.transfer_from(&src, old).exposure, 1.0);
+    }
+
+    /// Neue Bearbeitungen gleichen den Lichterschutz der Kamera aus, alte (ohne
+    /// das Feld) behalten ihr Aussehen; Übertragen nimmt ihn mit der Belichtung mit.
+    #[test]
+    fn highlight_compensation_is_on_except_for_old_edits() {
+        assert!(DevelopParams::default().highlight_compensation);
+        let old = DevelopParams::from_json(&serde_json::json!({ "exposure": 0.5 }));
+        assert!(!old.highlight_compensation);
+        assert!(!old.is_default());
+        let new =
+            DevelopParams::from_json(&serde_json::to_value(DevelopParams::default()).unwrap());
+        assert!(new.highlight_compensation && new.is_default());
+        let light = TransferGroups {
+            basic: false,
+            light: true,
+            ..Default::default()
+        };
+        assert!(
+            !DevelopParams::default()
+                .transfer_from(&old, light)
+                .highlight_compensation
+        );
+        let wb = TransferGroups {
+            basic: false,
+            white_balance: true,
+            ..Default::default()
+        };
+        assert!(
+            DevelopParams::default()
+                .transfer_from(&old, wb)
+                .highlight_compensation
+        );
     }
 
     #[test]

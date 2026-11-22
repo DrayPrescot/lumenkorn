@@ -6,6 +6,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- RAW exposure makes up for the camera's highlight protection, as darktable does since 5.4:
+  Canon Auto Lighting Optimizer, Fujifilm DR200/DR400, Nikon HLG, Olympus gradation (Auto and
+  Low Key) and Pentax dynamic range expansion expose up to two stops darker, and Lumenkorn now
+  brightens these photos by the same amount. The setting is read from the maker notes. Fujifilm
+  EXR compacts are left out: they reach DR400 through the sensor, not by exposing darker. Edits
+  made with earlier versions keep their look; “Reset” switches the compensation on.
+
+### Changed
+- Highlight reconstruction (“inpaint opposed”) and RCD demosaicing follow darktable 5.6. For
+  Fujifilm X-Trans files, the colour correction of reconstructed highlights used the wrong
+  colours before; Bayer files change only slightly where highlights are clipped. Previews of
+  edited RAW files are created again once.
+
 ### Fixed
 - The AI runtime (ONNX Runtime for the CPU) could not be downloaded any more: its GitHub
   repository has been unreachable since mid-November 2026. Lumenkorn now loads it from the

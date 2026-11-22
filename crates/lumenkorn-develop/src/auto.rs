@@ -423,6 +423,7 @@ mod tests {
             full_height: h,
             lens: None,
             as_shot_kelvin: None,
+            highlight_ev: 0.0,
             image,
         };
         let AutoWb {
@@ -451,6 +452,7 @@ mod tests {
         let raw = Source {
             kind: SourceKind::Raw,
             as_shot_kelvin: Some(5500.0),
+            highlight_ev: 0.0,
             ..src
         };
         let a = auto_white_balance(&raw, &DevelopParams::default());
@@ -489,6 +491,7 @@ mod tests {
             full_height: h,
             lens: None,
             as_shot_kelvin: None,
+            highlight_ev: 0.0,
             image,
         }
     }
@@ -565,6 +568,7 @@ mod tests {
             full_height: h,
             lens: None,
             as_shot_kelvin: None,
+            highlight_ev: 0.0,
             image,
         };
         let a = auto_tone(&night, &DevelopParams::default());

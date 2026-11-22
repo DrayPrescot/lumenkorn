@@ -30,6 +30,7 @@
   "dehaze": 0.0,
   "denoise": null,
   "exposure": 0.0,
+  "highlightCompensation": true,
   "flipHorizontal": false,
   "highlights": 0.0,
   "hsl": {

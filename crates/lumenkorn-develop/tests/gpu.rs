@@ -40,6 +40,7 @@ fn source(kind: SourceKind, w: usize, h: usize) -> Source {
         lens: None,
         // RAWs mit Kamera-Weißabgleich, damit auch Kelvin geprüft wird
         as_shot_kelvin: (kind == SourceKind::Raw).then_some(5200.0),
+        highlight_ev: 0.0,
         image,
     }
 }

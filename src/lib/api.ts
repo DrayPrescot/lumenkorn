@@ -476,6 +476,8 @@ export interface DevelopParams {
   /** Lichtfarbe in Kelvin (RAWs), 0 = wie aufgenommen */
   kelvin: number;
   exposure: number;
+  /** Lichterschutz der Kamera ausgleichen (Canon ALO, Fuji DR …); alte Bearbeitungen: aus */
+  highlightCompensation: boolean;
   contrast: number;
   highlights: number;
   shadows: number;
@@ -720,6 +722,7 @@ export const DEFAULT_PARAMS: DevelopParams = {
   tint: 0,
   kelvin: 0,
   exposure: 0,
+  highlightCompensation: true,
   contrast: 0,
   highlights: 0,
   shadows: 0,
@@ -765,7 +768,7 @@ export function transferParams(target: DevelopParams, src: DevelopParams, g: Tra
   };
   if (g.basic || g.whiteBalance) copy(["temperature", "tint", "kelvin"]);
   if (g.basic || g.light) {
-    copy(["exposure", "contrast", "highlights", "shadows", "whites", "blacks"]);
+    copy(["exposure", "highlightCompensation", "contrast", "highlights", "shadows", "whites", "blacks"]);
     out.toneCurve = JSON.parse(JSON.stringify(src.toneCurve ?? DEFAULT_PARAMS.toneCurve));
   }
   if (g.basic || g.color) copy(["vibrance", "saturation", "monochrome"]);
