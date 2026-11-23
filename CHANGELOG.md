@@ -6,9 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.13] – 2026-11-23
+
 ### Security
 - cookie 0.18.3, which Tauri uses, fixes RUSTSEC-2026-0594 (private cookie nonces could repeat in
   processes that fork).
+
+### Changed
+- rusqlite 0.43 (the Rust binding for SQLite) with several memory-safety fixes. The bundled SQLite
+  stays at version 3.54.1, so the catalog is not changed.
 
 ## [1.2.12] – 2026-11-22
 

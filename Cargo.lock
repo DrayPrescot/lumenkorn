@@ -3242,7 +3242,7 @@ dependencies = [
 
 [[package]]
 name = "lumenkorn"
-version = "1.2.12"
+version = "1.2.13"
 dependencies = [
  "apple-native-keyring-store",
  "base64 0.23.1",
@@ -3276,7 +3276,7 @@ dependencies = [
 
 [[package]]
 name = "lumenkorn-ai"
-version = "1.2.12"
+version = "1.2.13"
 dependencies = [
  "flate2",
  "image",
@@ -3299,7 +3299,7 @@ dependencies = [
 
 [[package]]
 name = "lumenkorn-core"
-version = "1.2.12"
+version = "1.2.13"
 dependencies = [
  "blake3",
  "image",
@@ -3319,7 +3319,7 @@ dependencies = [
 
 [[package]]
 name = "lumenkorn-develop"
-version = "1.2.12"
+version = "1.2.13"
 dependencies = [
  "bytemuck",
  "exr",
