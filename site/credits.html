@@ -17,6 +17,7 @@
   <meta property="og:image" content="https://lumenkorn.com/img/og-v2.jpg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Lumenkorn: photo library and RAW developer, green northern lights over Iceland">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/img/icon-192.png" type="image/png" sizes="192x192">
@@ -65,7 +66,7 @@
         <tr><td><a href="https://github.com/openai/CLIP">CLIP ViT-B/32</a></td><td>OpenAI; ONNX: <a href="https://huggingface.co/Xenova/clip-vit-base-patch32">Xenova</a></td><td>keywords, search by content, “is there an animal?”</td><td>MIT</td></tr>
         <tr><td><a href="https://huggingface.co/imageomics/bioclip-2">BioCLIP 2</a></td><td>Imageomics Institute (Gu et al., NeurIPS 2025); ONNX: <a href="https://huggingface.co/DrayPrescot/bioclip2-onnx">DrayPrescot/bioclip2-onnx</a></td><td>animal species</td><td>MIT</td></tr>
         <tr><td><a href="https://github.com/xuebinqin/DIS">IS-Net / DIS</a></td><td>Xuebin Qin et al.; via <a href="https://github.com/danielgatis/rembg">rembg</a></td><td>subject mask</td><td>Apache-2.0</td></tr>
-        <tr><td><a href="https://github.com/facebookresearch/segment-anything">Segment Anything</a></td><td>Meta AI; via rembg</td><td>object mask by click, outlines of people and animals</td><td>Apache-2.0</td></tr>
+        <tr><td><a href="https://github.com/facebookresearch/sam2">Segment Anything 2.1</a></td><td>Meta AI; ONNX: <a href="https://huggingface.co/onnx-community/sam2.1-hiera-base-plus-ONNX">onnx-community</a></td><td>object mask by click, outlines of people and animals</td><td>Apache-2.0</td></tr>
         <tr><td><a href="https://github.com/xiongzhu666/Sky-Segmentation-and-Post-processing">skyseg</a></td><td>xiongzhu666, based on <a href="https://github.com/xuebinqin/U-2-Net">U²-Net</a></td><td>sky mask</td><td>MIT</td></tr>
         <tr><td><a href="https://github.com/google-research/scenic/tree/main/scenic/projects/owl_vit">OWLv2</a></td><td>Google Research; ONNX: <a href="https://huggingface.co/Xenova/owlv2-base-patch16-ensemble">Xenova</a></td><td>finding people and animals for masks</td><td>Apache-2.0</td></tr>
         <tr><td><a href="https://ai.google.dev/edge/mediapipe/solutions/vision/image_segmenter">MediaPipe Selfie Multiclass</a></td><td>Google; ONNX: <a href="https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX">senty-au</a></td><td>hair, skin and clothes masks</td><td>Apache-2.0</td></tr>
@@ -89,7 +90,7 @@
         <tr><td><a href="https://github.com/darktable-org/darktable">darktable</a></td><td>RAW development: highlight reconstruction, demosaicing, color calibration, sigmoid (translated to Rust)</td><td>GPL-3.0-or-later</td></tr>
         <tr><td><a href="https://github.com/darktable-org/rawspeed">rawspeed</a> camera data</td><td>sensor white and black levels</td><td>LGPL-2.1-or-later</td></tr>
         <tr><td><a href="https://github.com/gfx-rs/wgpu">wgpu</a></td><td>image processing on the GPU</td><td>MIT / Apache-2.0</td></tr>
-        <tr><td><a href="https://github.com/microsoft/onnxruntime">ONNX Runtime</a> via <a href="https://github.com/pykeio/ort">ort</a></td><td>running the AI models</td><td>MIT / Apache-2.0</td></tr>
+        <tr><td><a href="https://onnxruntime.ai">ONNX Runtime</a> via <a href="https://github.com/pykeio/ort">ort</a></td><td>running the AI models</td><td>MIT / Apache-2.0</td></tr>
         <tr><td><a href="https://dawn.googlesource.com/dawn">Dawn</a>, <a href="https://github.com/microsoft/DirectXShaderCompiler">DirectX Shader Compiler</a></td><td>WebGPU build of ONNX Runtime</td><td>BSD-3-Clause, NCSA</td></tr>
         <tr><td><a href="https://sqlite.org">SQLite</a> via <a href="https://github.com/rusqlite/rusqlite">rusqlite</a></td><td>catalog and search index</td><td>Public domain / MIT</td></tr>
         <tr><td><a href="https://github.com/image-rs/image">image</a>, <a href="https://github.com/vstroebel/jpeg-encoder">jpeg-encoder</a>, <a href="https://github.com/johannesvollmer/exrs">exrs</a></td><td>reading and writing JPEG, PNG, TIFF, WebP, OpenEXR</td><td>MIT / Apache-2.0, IJG, BSD-3-Clause</td></tr>
@@ -98,7 +99,7 @@
         <tr><td><a href="https://github.com/notify-rs/notify">notify</a>, <a href="https://github.com/BurntSushi/walkdir">walkdir</a>, <a href="https://github.com/Byron/trash-rs">trash</a></td><td>watching and scanning folders, system trash</td><td>CC0-1.0, MIT / Unlicense, MIT</td></tr>
         <tr><td><a href="https://github.com/BLAKE3-team/BLAKE3">BLAKE3</a>, <a href="https://github.com/RustCrypto/hashes">RustCrypto sha2</a></td><td>content hashes, download checksums</td><td>CC0-1.0 / Apache-2.0, MIT / Apache-2.0</td></tr>
         <tr><td><a href="https://github.com/algesten/ureq">ureq</a></td><td>downloads, map, Nextcloud</td><td>MIT / Apache-2.0</td></tr>
-        <tr><td><a href="https://github.com/open-source-cooperative/keyring-rs">keyring</a></td><td>Nextcloud password in the system credential store</td><td>MIT / Apache-2.0</td></tr>
+        <tr><td><a href="https://github.com/open-source-cooperative/keyring-core">keyring-core</a></td><td>Nextcloud password in the system credential store</td><td>MIT / Apache-2.0</td></tr>
         <tr><td><a href="https://github.com/RazrFalcon/fontdb">fontdb</a></td><td>system fonts for the photo album</td><td>MIT</td></tr>
         <tr><td><a href="https://github.com/tiny-http/tiny-http">tiny_http</a></td><td>interface for AI agents (MCP)</td><td>MIT / Apache-2.0</td></tr>
         <tr><td><a href="https://github.com/Vanilagy/mediabunny">Mediabunny</a></td><td>writing the slideshow video (MP4)</td><td>MPL-2.0</td></tr>
@@ -136,7 +137,7 @@
     </ul>
 
     <h2 id="dev">Development and testing</h2>
-    <p>Used to build and test Lumenkorn: <a href="https://github.com/microsoft/TypeScript">TypeScript</a>, <a href="https://github.com/vitejs/vite">Vite</a>, <a href="https://github.com/sveltejs/language-tools">svelte-check</a>, <a href="https://github.com/tauri-apps/tauri">Tauri CLI</a>, <a href="https://www.mesa3d.org">Mesa</a>, <a href="https://github.com/Stebalien/tempfile">tempfile</a>, <a href="https://github.com/AcademySoftwareFoundation/OpenImageIO-images">OpenImageIO-images</a>.</p>
+    <p>Used to build and test Lumenkorn: <a href="https://github.com/microsoft/TypeScript">TypeScript</a>, <a href="https://github.com/vitejs/vite">Vite</a>, <a href="https://github.com/sveltejs/language-tools">svelte-check</a>, <a href="https://github.com/vitest-dev/vitest">Vitest</a>, <a href="https://github.com/tauri-apps/tauri">Tauri CLI</a>, <a href="https://www.mesa3d.org">Mesa</a>, <a href="https://github.com/Stebalien/tempfile">tempfile</a>, <a href="https://github.com/AcademySoftwareFoundation/OpenImageIO-images">OpenImageIO-images</a>.</p>
 
     <p class="muted">The <a href="https://github.com/DrayPrescot/lumenkorn#open-source-projects-used-by-lumenkorn">README on GitHub</a> has the complete list with every library. In the app, ⓘ (About Lumenkorn) at the bottom left shows it too.</p>
   </div>

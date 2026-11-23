@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Lumenkorn – Fotoverwaltung und RAW-Entwicklung</title>
-  <meta name="description" content="Kostenlose Fotoverwaltung und RAW-Entwicklung, die ganz auf deinem Rechner läuft. KI für Schlagworte, Masken und Rauschreduzierung, offline. Ohne Konto, Cloud und Abo.">
+  <title>Lumenkorn – kostenlose Fotoverwaltung und RAW-Entwicklung</title>
+  <meta name="description" content="Kostenlose Fotoverwaltung und RAW-Entwicklung, die samt KI auf deinem eigenen PC läuft. Eine Alternative zu Lightroom Classic: ohne Konto, Cloud und Abo.">
   <link rel="canonical" href="https://lumenkorn.com/de/">
   <link rel="alternate" hreflang="en" href="https://lumenkorn.com/">
   <link rel="alternate" hreflang="de" href="https://lumenkorn.com/de/">
   <link rel="alternate" hreflang="x-default" href="https://lumenkorn.com/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Lumenkorn">
-  <meta property="og:title" content="Lumenkorn – Fotoverwaltung und RAW-Entwicklung">
-  <meta property="og:description" content="Kostenlose Fotoverwaltung und RAW-Entwicklung, die ganz auf deinem Rechner läuft. KI für Schlagworte, Masken und Rauschreduzierung, offline. Ohne Konto, Cloud und Abo.">
+  <meta property="og:title" content="Lumenkorn – kostenlose Fotoverwaltung und RAW-Entwicklung">
+  <meta property="og:description" content="Kostenlose Fotoverwaltung und RAW-Entwicklung, die samt KI auf deinem eigenen PC läuft. Eine Alternative zu Lightroom Classic: ohne Konto, Cloud und Abo.">
   <meta property="og:url" content="https://lumenkorn.com/de/">
   <meta property="og:locale" content="de_DE">
   <meta property="og:image" content="https://lumenkorn.com/img/og-v2.jpg">
@@ -26,6 +26,59 @@
   <link rel="preload" href="/fonts/instrument-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/assets/style.css?v=3">
   <script src="/assets/site.js" defer></script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://lumenkorn.com/#website",
+        "name": "Lumenkorn",
+        "url": "https://lumenkorn.com/",
+        "inLanguage": [
+          "en",
+          "de"
+        ]
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://lumenkorn.com/de/#app",
+        "name": "Lumenkorn",
+        "description": "Kostenlose, quelloffene Fotoverwaltung und RAW-Entwicklung, die ganz auf deinem Rechner läuft, mit KI für Schlagworte, Suche, Masken und Rauschreduzierung, offline. Ohne Konto, Cloud und Abo.",
+        "url": "https://lumenkorn.com/de/",
+        "applicationCategory": "MultimediaApplication",
+        "operatingSystem": "Windows 10, Windows 11, Linux",
+        "isAccessibleForFree": true,
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "EUR"
+        },
+        "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+        "downloadUrl": "https://github.com/DrayPrescot/lumenkorn/releases/latest",
+        "image": "https://lumenkorn.com/img/og-v2.jpg",
+        "screenshot": "https://lumenkorn.com/img/library-v2.webp",
+        "inLanguage": "de",
+        "sameAs": [
+          "https://github.com/DrayPrescot/lumenkorn"
+        ]
+      },
+      {
+        "@type": "VideoObject",
+        "name": "Lumenkorn-Trailer",
+        "description": "Ein kurzer Blick auf Lumenkorn, die kostenlose Fotoverwaltung und RAW-Entwicklung für den eigenen PC.",
+        "thumbnailUrl": "https://lumenkorn.com/img/poster-de.webp",
+        "uploadDate": "2026-11-04T17:28:50+01:00",
+        "duration": "PT1M14S",
+        "contentUrl": "https://lumenkorn.com/video/lumenkorn-trailer-v5-de.mp4",
+        "inLanguage": "de",
+        "about": {
+          "@id": "https://lumenkorn.com/de/#app"
+        }
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
 <a class="skip" href="#main">Zum Inhalt</a>
@@ -84,7 +137,7 @@
       </div>
       <ul class="ledger-rows">
     <li><h3>Update-Prüfung</h3><span class="ledger-where">GitHub</span><span class="ledger-what">Kurz nach dem Start fragt Lumenkorn einmal, ob es eine neue Version gibt. GitHub erfährt dabei deine IP-Adresse.</span></li>
-    <li><h3>KI-Downloads</h3><span class="ledger-where">GitHub, Hugging Face, OpenCV</span><span class="ledger-what">Nur wenn du auf den Knopf dafür klickst. Über deine Fotos wird dabei nichts gesendet.</span></li>
+    <li><h3>KI-Downloads</h3><span class="ledger-where">GitHub, Hugging Face, OpenCV, PyPI</span><span class="ledger-what">Nur wenn du auf den Knopf dafür klickst. Über deine Fotos wird dabei nichts gesendet.</span></li>
     <li><h3>Karte und Ortsnamen</h3><span class="ledger-where">tile.openstreetmap.org<br>nominatim.openstreetmap.org</span><span class="ledger-what">Bei einer neuen Installation aus, bis du es unter Einstellungen → Allgemein → Karte und Ortsnamen einschaltest. Für die Ortsnamen werden dann die Koordinaten deiner Fotos gesendet, auf etwa 100 m gerundet und je Ort gebündelt.</span></li>
     <li><h3>Nextcloud</h3><span class="ledger-where">Dein eigener Server</span><span class="ledger-what">Nur wenn du sie selbst verbindest und die Exporte oder Originale eines Projekts hochlädst. Die Daten gehen nur an den Server, den du einträgst.</span></li>
       </ul>
@@ -203,7 +256,7 @@
             <ul class="facts">
   <li>PDF mit 300 dpi und Beschnittzugabe, dazu jede Seite als JPG.</li>
   <li>Die Diashow wechselt die Fotos im Takt deiner Musik und lässt sich als MP4-Video speichern.</li>
-  <li>Export als JPEG, 16-Bit-TIFF oder PNG.</li>
+  <li>Export als JPEG, 16-Bit-TIFF, PNG oder DNG.</li>
   <li>Auf Wunsch lädst du die Exporte oder Originale eines Projekts in deine eigene Nextcloud und teilst sie als Link.</li>
 </ul>
           </div>

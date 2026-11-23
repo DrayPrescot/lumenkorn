@@ -17,7 +17,7 @@ catalog and never changes the original files. Interface in English and German.
   compare up to 12 photos.
 - Develop: non-destructive RAW development following darktable's scene-referred workflow
   (translated to Rust), lens correction (camera data or Lensfun), HSL, color grading, tone
-  curve, local masks, export to JPEG, TIFF or PNG. Runs on the GPU (DirectX 12, Vulkan) or CPU.
+  curve, local masks, presets, export to JPEG, TIFF, PNG or DNG. Runs on the GPU (DirectX 12, Vulkan) or CPU.
 - Auto in your style: Auto tone that learns from the user's own edits, per camera.
 - AI (optional, offline): keywords and search by content (CLIP), masks for subject, sky,
   people and animals, noise reduction (DRUNet), object removal (LaMa), face grouping.
