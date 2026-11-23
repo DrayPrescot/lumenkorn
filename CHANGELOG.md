@@ -6,6 +6,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+- cookie 0.18.3, which Tauri uses, fixes RUSTSEC-2026-0594 (private cookie nonces could repeat in
+  processes that fork).
+
 ## [1.2.12] – 2026-11-22
 
 ### Added
