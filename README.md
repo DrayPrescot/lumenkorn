@@ -37,7 +37,7 @@ There is no account, no cloud and no usage statistics.
 | Case | Where to | What happens |
 |---|---|---|
 | **Update check** | `GitHub` | Shortly after starting, Lumenkorn asks once whether a new version is out. This tells GitHub your IP address. |
-| **AI downloads** | `GitHub`, `Hugging Face`, `OpenCV` | Only when you click the button for it. Nothing about your photos is sent. |
+| **AI downloads** | `GitHub`, `Hugging Face`, `OpenCV`, `PyPI` | Only when you click the button for it. Nothing about your photos is sent. |
 | **Map and place names** | `tile.openstreetmap.org`, `nominatim.openstreetmap.org` | To find place names, the coordinates of your photos are sent, rounded to about 100 m and bundled per town. On a new installation this is off; you switch it on, and off again, under Settings → General → Map and place names. |
 | **Nextcloud** | Your own server | Only when you connect it yourself and upload a project's exports or originals. The data only goes to the server you enter. |
 
@@ -130,7 +130,7 @@ the catalog before you let Lumenkorn loose on your whole collection.
 - A file watcher picks up new, changed, renamed and moved files. Moved files are recognized by
   a content hash, so ratings, keywords and edits stay with the photo.
 - Projects collect any number of folders, also across drives.
-- Subfolders can be left out of the library per folder (right-click → "Unterordner einbeziehen");
+- Subfolders can be left out of the library per folder (right-click → "Include subfolders");
   whether subfolders are included by default is set under Settings → Folders. Ratings and edits of
   excluded photos are kept and return when the folder is included again.
 - Ratings (`0`–`5`), pick and reject flags (`P` / `X`), keywords, and a search over file name,
@@ -140,11 +140,11 @@ the catalog before you let Lumenkorn loose on your whole collection.
 - **Statistics** shows the photos of the current view by camera, lens, focal length, aperture,
   shutter speed, ISO, month or year, time of day, keyword, person, country, file type and rating.
   Clicking an entry filters by it.
-- **Metadata** (info panel → "Bearbeiten"): title, description, author, copyright, capture time
+- **Metadata** (info panel → "Edit"): title, description, author, copyright, capture time
   (set, or shift for many photos), camera, lens, focal length, aperture, exposure time and ISO.
   Stored in the catalog and in an XMP sidecar (`photo.xmp`, or the existing `photo.ext.xmp`);
   sidecars from other programs are updated, not replaced, and the photo file stays untouched.
-- **Nextcloud:** right-click a project → "Zu Nextcloud hochladen …" uploads its exported photos,
+- **Nextcloud:** right-click a project → "Upload to Nextcloud…" uploads its exported photos,
   or all of its photos as originals (rejected ones left out), to a folder in your Nextcloud and
   shares it as a link (optionally with password and expiry date).
   Uploading again only sends new and changed files and keeps the link. Connect under
@@ -156,7 +156,7 @@ the catalog before you let Lumenkorn loose on your whole collection.
   nothing is overwritten, XMP sidecars follow, RAW+JPEG pairs keep one name.
 - Culling: `Shift+X` rejects and moves on. Rejected photos can be sent to the system trash in
   one step, together with their sidecar files and Lumenkorn's own data for them.
-- **Culling assistant** (right-click a folder or project → "Aussortieren …") suggests what to reject: the weaker
+- **Culling assistant** (right-click a folder or project → "Cull…") suggests what to reject: the weaker
   shots of a burst (the sharpest 3 to 5 stay, depending on its size), blurry photos, closed eyes,
   badly exposed photos and photos taken by accident. Sharpness is compared within a burst, so a
   portrait with a soft background is not called blurry; on its own a photo is only flagged when
@@ -209,6 +209,11 @@ the catalog before you let Lumenkorn loose on your whole collection.
 - AI noise reduction and AI repair (remove dust, power lines, people, signs).
 - History with undo/redo, snapshots, copy and paste of settings to many photos, and a
   "reset to original" button that asks before discarding everything.
+- **Presets:** right-click a photo → “New preset from this photo …” saves its edit under a name,
+  and you choose what belongs to it (white balance, light, color, HSL, color grading, details,
+  masks without AI masks, crop and rotate). “Apply preset” in the same menu applies it to all
+  selected photos; in Develop, hovering a preset first shows its effect on the open photo.
+  “Manage presets …” renames and deletes them.
 - Export to JPEG, 16-bit TIFF, PNG or DNG, several formats at once if you like, by default into
   an `Export` folder next to each original (the subfolder can be changed in Settings → Folders,
   e.g. `Export/JPEG` or `../Exports`, or to the original's own folder). DNG is slightly lossy (linear, JPEG-compressed, as in
@@ -246,7 +251,7 @@ folder). Under **Settings → Develop** you see what has been learned and can sw
 it.
 
 ### Merge
-Select photos, right-click and choose **Zusammenfügen** (merge):
+Select photos, right-click and choose **Merge**:
 
 - **HDR** from exposure brackets (`Ctrl+H`), handheld, up to ±6 EV, with optional deghosting.
 - **Panorama** (`Ctrl+M`) in any shot order and with several rows; cylindrical, spherical or
@@ -260,7 +265,7 @@ right away and is developed like a RAW file, so highlights above 1.0 can still b
 
 ### Photo album
 
-**Fotoalbum** above a project or folder makes a photo book from it. Pick a theme (vacation,
+**Photo album** above a project or folder makes a photo book from it. Pick a theme (vacation,
 travel, wedding, birthday, family, baby, nature, party, sports, animals, or describe your own),
 a page size (30×30, 20×20, A4 portrait or landscape, 28×21, A3 or your own in mm), the number of
 photos and pages, with or without margins.
@@ -298,7 +303,7 @@ photos and pages, with or without margins.
 
 ### Slideshow
 
-**Diashow** next to **Fotoalbum** picks the best photos in the same way as the photo album and
+**Slideshow** next to **Photo album** picks the best photos in the same way as the photo album and
 makes a slideshow from them. Pick a theme, the number of photos, how long each one stays, the
 transition (crossfade, slide or hard cut) and whether to show date and place.
 
@@ -325,7 +330,7 @@ transition (crossfade, slide or hard cut) and whether to show date and place.
   lakes, cities and mountains from the built-in map data) and needs no internet. It can be
   switched off, or on and off for
   single photos. Optionally a last map shows all places and the whole route.
-- **Abspielen** plays full screen. Space pauses, the arrow keys skip, Esc ends.
+- **Play** shows it full screen. Space pauses, the arrow keys skip, Esc ends.
 - **Save as video** writes an MP4 file (H.264, H.265, AV1 or VP9 with AAC sound, 720p, 1080p or
   1440p, 30 frames per second). H.264 plays almost everywhere; H.265 and AV1 are smaller at the
   same quality. Codecs the system cannot encode are greyed out. WebView2 encodes it with the encoders of Windows or the graphics card, so nothing has
@@ -335,7 +340,7 @@ transition (crossfade, slide or hard cut) and whether to show date and place.
 Faces are found in the background, grouped by similarity, and suggested for a name once you
 have named a few. Suggestions can be confirmed or rejected one by one or many at once. Named
 people can be sorted into your own collapsible groups, such as family and friends; the rest are
-listed under *Sonstige*, and faces not named yet under *Unbenannt*, so the overview stays short.
+listed under *Other*, and faces not named yet under *Unnamed*, so the overview stays short.
 
 ### Map
 
@@ -402,7 +407,7 @@ None of them deletes photos or removes folders. Changes appear in the app right 
 photo open in Develop they can be undone with `Ctrl+Z`.
 
 ### First steps
-1. Click **+** next to *Ordner* and choose a folder with photos.
+1. Click **+** next to *Folders* and choose a folder with photos.
 2. Rate with `0`–`5`, flag with `P` / `X`, and press `D` to develop the selected photo.
 3. Optional: **Settings → AI** (bottom left) downloads the AI models, one by one or with
    **Download all AI components**. Everything else works without them.
@@ -706,17 +711,17 @@ merged automatically after CI passes; breaking ones are labeled `manual-review`.
 every rawler update against real RAW files from several cameras. The Rust toolchain, the AI
 models and ONNX Runtime are pinned on purpose and updated by hand.
 
-A version tag such as `v0.2.0` builds the Windows and Linux installers and creates a draft
-release. Its text is the version's section of the CHANGELOG. With the secret
-`TAURI_SIGNING_PRIVATE_KEY` (minisign key from `npx tauri signer generate`; the public key is in
-`tauri.conf.json`) the installers are signed for the updater and `latest.json` is attached; once
-the draft is published, installed copies offer the update.
+A version tag such as `v1.2.12` builds the Windows and Linux installers on GitHub Actions and
+keeps them as a workflow artifact for 14 days, without a signing key and without creating a
+release.
 
-Without GitHub Actions, the VS Code task **Lumenkorn: Release bauen** (or
+Releases are built and signed locally. The VS Code task **Lumenkorn: Release bauen** (or
 `node tools/release_local.mjs`) builds the Windows installers, asks for the signing key's password
 in a separate window, signs them, writes `latest.json` and checks the signatures. The key is looked
 up in `~/.tauri`, or the window lets you pick it. The steps also run on their own (`build`, `sign`,
-`verify`). Upload both MSI files and `latest.json` to a published release tagged `v<version>`.
+`verify`). `python tools/publish_release.py . <version>` then checks the files again, creates a
+published release tagged `v<version>` with the version's CHANGELOG section as its text, and uploads
+both MSI files and `latest.json`. From then on, installed copies offer the update.
 
 ## Open-source projects used by Lumenkorn
 
@@ -776,6 +781,7 @@ of Windows, and the GPU build of ONNX Runtime needs the Microsoft Visual C++ Red
 
 | Model | Authors | Downloaded from | License |
 |---|---|---|---|
+| ONNX Runtime (CPU and WebGPU builds, the AI runtime) | [Microsoft](https://onnxruntime.ai) | official packages on PyPI | MIT |
 | CLIP ViT-B/32 | OpenAI; ONNX conversion by [Xenova](https://huggingface.co/Xenova/clip-vit-base-patch32) | Hugging Face | MIT |
 | IS-Net / DIS | [Xuebin Qin et al.](https://github.com/xuebinqin/DIS) | [rembg](https://github.com/danielgatis/rembg) releases | Apache-2.0 |
 | Segment Anything 2.1 (Hiera Base+, fp16) | [Meta AI](https://github.com/facebookresearch/sam2) | ONNX export by onnx-community on Hugging Face | Apache-2.0 |
@@ -821,7 +827,7 @@ to test rawler updates.
 ## Roadmap
 - Ratings and keywords in XMP sidecars, hierarchical keywords, and a multilingual text model
   for search.
-- Presets, luminance range masks, and copying masks between photos.
+- Luminance range masks, and copying AI masks between photos.
 - Further GPU tuning based on measurements on real hardware.
 
 The [changelog](CHANGELOG.md) lists what is already included.

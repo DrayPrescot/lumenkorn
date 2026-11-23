@@ -33,7 +33,7 @@ deinem Rechner. Konto, Cloud und Nutzungsstatistik gibt es nicht.
 | Fall | Wohin | Was passiert |
 |---|---|---|
 | **Update-Prüfung** | `GitHub` | Kurz nach dem Start fragt Lumenkorn einmal, ob es eine neue Version gibt. GitHub erfährt dabei deine IP-Adresse. |
-| **KI-Downloads** | `GitHub`, `Hugging Face`, `OpenCV` | Nur wenn du auf den Knopf dafür klickst. Über deine Fotos wird dabei nichts gesendet. |
+| **KI-Downloads** | `GitHub`, `Hugging Face`, `OpenCV`, `PyPI` | Nur wenn du auf den Knopf dafür klickst. Über deine Fotos wird dabei nichts gesendet. |
 | **Karte und Ortsnamen** | `tile.openstreetmap.org`, `nominatim.openstreetmap.org` | Für die Ortsnamen werden die Koordinaten deiner Fotos gesendet, auf etwa 100 m gerundet und je Ort gebündelt. Bei einer neuen Installation ist das aus; du schaltest es unter Einstellungen → Allgemein → Karte und Ortsnamen ein und dort auch wieder ab. |
 | **Nextcloud** | Dein eigener Server | Nur wenn du sie selbst verbindest und die Exporte oder Originale eines Projekts hochlädst. Die Daten gehen nur an den Server, den du einträgst. |
 
@@ -370,6 +370,11 @@ Außerdem:
 - **Einstellungen übertragen:** Strg+Umschalt+C kopiert die Basis-Einstellungen, Strg+Umschalt+V
   fügt sie auf alle ausgewählten Fotos ein (auch per Rechtsklick). Masken, Reparaturen,
   Rauschreduzierung und Zuschnitt des Zielfotos bleiben unberührt.
+- **Presets:** Rechtsklick auf ein Foto → „Neues Preset aus diesem Foto …“ speichert seine
+  Bearbeitung unter einem Namen; dabei wählst du, was dazugehört (Weißabgleich, Licht, Farbe, HSL,
+  Color Grading, Details, Masken ohne KI-Masken, Zuschnitt und Drehen). „Preset anwenden“ im selben
+  Menü wendet es auf alle ausgewählten Fotos an; in Entwickeln zeigt das Überfahren eines Presets
+  vorher seine Wirkung am offenen Foto. „Presets verwalten …“ benennt um und löscht.
 - **Export** als JPEG, 16-Bit-TIFF, PNG oder DNG, auch mehrere Formate auf einmal, optional
   verkleinert, im Hintergrund. DNG wird wie in Lightroom leicht verlustbehaftet gespeichert
   (linear, JPEG-komprimiert) und enthält wahlweise das bearbeitete Foto oder die Bilddaten des
@@ -1007,20 +1012,18 @@ Inkompatible Sprünge bekommen das Label `manual-review` und bleiben offen. Jede
 prüft die CI mit echten RAWs mehrerer Kameras. Rust-Version, KI-Modelle und ONNX Runtime sind bewusst
 festgelegt und werden von Hand aktualisiert.
 
-**Releases:** Ein Versions-Tag wie `v0.2.0` baut die Installer für Windows und Linux und legt einen
-Release-Entwurf an; sein Text ist der Abschnitt der Version aus dem CHANGELOG. Von Hand gestartet
-(Actions → Release → Run workflow) baut der Workflow nur die Installer und hebt sie 14 Tage als
-Download auf. Mit dem Secret `TAURI_SIGNING_PRIVATE_KEY` (minisign-Schlüssel aus
-`npx tauri signer generate`, der öffentliche Schlüssel steht in `tauri.conf.json`) werden die
-Installer für den Updater signiert und `latest.json` angehängt. Sobald der Entwurf veröffentlicht
-ist, bieten installierte Programme das Update an.
+**Build auf GitHub:** Ein Versions-Tag wie `v1.2.12` baut auf GitHub Actions die Installer für
+Windows und Linux und hebt sie 14 Tage als Artefakt auf, ohne Signaturschlüssel und ohne ein Release
+anzulegen. Von Hand gestartet (Actions → Release → Run workflow) macht der Workflow dasselbe.
 
-**Release ohne GitHub Actions:** In VS Code **Terminal → Aufgabe ausführen → „Lumenkorn: Release
+**Releases entstehen lokal:** In VS Code **Terminal → Aufgabe ausführen → „Lumenkorn: Release
 bauen“** (oder `node tools/release_local.mjs`) baut die Windows-Installer, fragt in einem eigenen
 Fenster nach dem Passwort des Signaturschlüssels, signiert, erzeugt `latest.json` und prüft die
 Signaturen. Der Schlüssel wird in `~/.tauri` gesucht, sonst lässt er sich im Fenster auswählen. Die
-Schritte laufen auch einzeln (`build`, `sign`, `verify`). Die beiden MSI und `latest.json` dann in
-ein veröffentlichtes Release mit dem Tag `v<Version>` hochladen.
+Schritte laufen auch einzeln (`build`, `sign`, `verify`). Danach prüft
+`python tools/publish_release.py . <Version>` die Dateien noch einmal, legt das veröffentlichte
+Release mit dem Tag `v<Version>` und dem Abschnitt der Version aus dem CHANGELOG an und lädt die
+beiden MSI und `latest.json` hoch. Ab dann bieten installierte Programme das Update an.
 
 ## Android
 
@@ -1044,10 +1047,9 @@ npm run tauri android dev
 
 ## Fahrplan
 
-1. Presets: Einstellungen speichern und auf Fotos anwenden.
-2. Masken: Helligkeitsbereich als Form, Masken auf andere Bilder übertragen.
-3. Mehrsprachiges Textmodell für die Inhaltssuche, hierarchische Schlagworte, XMP-Sidecars.
-4. GPU-Feinschliff nach Messungen auf echter Hardware, z. B. die Vorschau direkt als Textur zeigen.
+1. Masken: Helligkeitsbereich als Form, KI-Masken auf andere Bilder übertragen.
+2. Mehrsprachiges Textmodell für die Inhaltssuche, hierarchische Schlagworte, XMP-Sidecars.
+3. GPU-Feinschliff nach Messungen auf echter Hardware, z. B. die Vorschau direkt als Textur zeigen.
 
 ## Bekannte Grenzen
 
