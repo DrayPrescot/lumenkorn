@@ -71,4 +71,20 @@ mod tests {
         assert!(is_within(&a, &a));
         assert!(!is_within(&c, &a));
     }
+
+    /// Windows: Ein erreichbarer Ordner wird in der Schreibweise gespeichert, die auf
+    /// der Platte steht – `d:\fotos` und `D:\Fotos` ergeben denselben Eintrag.
+    #[cfg(windows)]
+    #[test]
+    fn same_folder_in_other_case() {
+        let d = tempfile::tempdir().unwrap();
+        let real = d.path().join("Fotos");
+        std::fs::create_dir(&real).unwrap();
+        let expected = normalize_dir(&real);
+        assert!(expected.ends_with(r"\Fotos"), "{expected}");
+        let shown = real.to_string_lossy();
+        for variant in [shown.to_lowercase(), shown.to_uppercase()] {
+            assert_eq!(normalize_dir(Path::new(&variant)), expected, "{variant}");
+        }
+    }
 }

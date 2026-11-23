@@ -1053,8 +1053,9 @@ npm run tauri android dev
 
 ## Bekannte Grenzen
 
-- Windows: Pfadvergleiche unterscheiden Groß- und Kleinschreibung (`D:\Fotos` und `d:\fotos` wären
-  zwei Ordner).
+- Windows: Ein Projektordner, der beim Hinzufügen nicht erreichbar ist, wird so gespeichert, wie er
+  eingegeben wurde. Weicht die Schreibweise dann ab (`d:\fotos` statt `D:\Fotos`), zeigt das Projekt
+  die Fotos dieses Ordners nicht.
 - Bei JPEGs und anderen fertigen Bildern ist die Temperatur relativ zur Aufnahme, nicht in Kelvin.
 - Jede aktive Maskenebene kostet einen weiteren Durchlauf der Tonwert-Pipeline; ohne Grafikkarte wird
   die Vorschau bei vielen Ebenen spürbar langsamer.
